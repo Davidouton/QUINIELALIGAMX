@@ -5,10 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
 
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const canViewAdmin = useAdminVisibility();
 
   async function handleSignOut() {
     const supabase = createSupabaseBrowserClient();
@@ -65,16 +67,18 @@ export function TopNav() {
           >
             Settings
           </Link>
-          <Link
-            href="/dashboard/admin"
-            prefetch={false}
-            className={cn(
-              "app-pill-ghost",
-              pathname.startsWith("/dashboard/admin") && "app-pill-active font-medium text-ink",
-            )}
-          >
-            Admin
-          </Link>
+          {canViewAdmin ? (
+            <Link
+              href="/dashboard/admin"
+              prefetch={false}
+              className={cn(
+                "app-pill-ghost",
+                pathname.startsWith("/dashboard/admin") && "app-pill-active font-medium text-ink",
+              )}
+            >
+              Admin
+            </Link>
+          ) : null}
           <button
             onClick={handleSignOut}
             className="app-pill text-ink hover:text-coral"

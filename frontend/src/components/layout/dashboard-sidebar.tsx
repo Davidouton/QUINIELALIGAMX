@@ -6,8 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { cn } from "@/lib/utils";
+import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
 
-const links = [
+const baseLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
@@ -16,7 +17,6 @@ const links = [
   { href: "/dashboard/hall-of-fame", label: "Salon de la Fama" },
   { href: "/dashboard/rules", label: "Reglamento" },
   { href: "/dashboard/settings", label: "Settings" },
-  { href: "/dashboard/admin", label: "Admin" },
 ];
 
 const primaryMobileLinks = [
@@ -27,19 +27,6 @@ const primaryMobileLinks = [
   { href: "/dashboard/leaderboard", label: "Ranking" },
   { href: "/dashboard/settings", label: "Ajustes" },
 ];
-
-function getCompactLabel(label: string, shortLabel?: string) {
-  if (shortLabel) {
-    return shortLabel;
-  }
-
-  return label
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 function renderLinkLabel(label: string) {
   if (label !== "Quiniela +") {
@@ -56,8 +43,13 @@ function renderLinkLabel(label: string) {
 export function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const currentLink = links.find((link) => pathname === link.href) ?? links[0];
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const canViewAdmin = useAdminVisibility();
+  const links = [
+    ...baseLinks,
+    ...(canViewAdmin ? [{ href: "/dashboard/admin", label: "Admin" }] : []),
+  ];
+  const currentLink = links.find((link) => pathname === link.href) ?? links[0];
 
   async function handleSignOut() {
     const supabase = createSupabaseBrowserClient();
