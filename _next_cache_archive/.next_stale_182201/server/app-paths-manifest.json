@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/auth/confirm/route": "app/auth/confirm/route.js",
+  "/(auth)/register/page": "app/(auth)/register/page.js",
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/page": "app/page.js",
+  "/leaderboard/page": "app/leaderboard/page.js",
+  "/(dashboard)/dashboard/page": "app/(dashboard)/dashboard/page.js",
+  "/(dashboard)/dashboard/jornada/page": "app/(dashboard)/dashboard/jornada/page.js",
+  "/(dashboard)/dashboard/leaderboard/page": "app/(dashboard)/dashboard/leaderboard/page.js",
+  "/(dashboard)/dashboard/picks/page": "app/(dashboard)/dashboard/picks/page.js",
+  "/(dashboard)/dashboard/results/page": "app/(dashboard)/dashboard/results/page.js"
+}

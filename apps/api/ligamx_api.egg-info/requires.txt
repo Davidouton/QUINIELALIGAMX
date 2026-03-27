@@ -1,0 +1,17 @@
+fastapi<1.0.0,>=0.116.0
+uvicorn[standard]<1.0.0,>=0.35.0
+sqlalchemy<3.0.0,>=2.0.42
+alembic<2.0.0,>=1.16.4
+psycopg[binary]<4.0.0,>=3.2.9
+pydantic-settings<3.0.0,>=2.10.1
+email-validator<3.0.0,>=2.2.0
+python-jose[cryptography]<4.0.0,>=3.5.0
+passlib[bcrypt]<2.0.0,>=1.7.4
+python-multipart<1.0.0,>=0.0.20
+
+[dev]
+black<26.0.0,>=25.1.0
+ruff<1.0.0,>=0.12.9
+pytest<9.0.0,>=8.4.1
+httpx<1.0.0,>=0.28.1
+coverage<8.0.0,>=7.10.6

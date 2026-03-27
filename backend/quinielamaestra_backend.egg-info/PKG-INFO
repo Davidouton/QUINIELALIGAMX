@@ -1,0 +1,32 @@
+Metadata-Version: 2.4
+Name: quinielamaestra-backend
+Version: 0.1.0
+Summary: FastAPI backend for QuinielaMaestra
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi<1.0.0,>=0.116.0
+Requires-Dist: uvicorn[standard]<1.0.0,>=0.35.0
+Requires-Dist: sqlalchemy<3.0.0,>=2.0.42
+Requires-Dist: psycopg[binary]<4.0.0,>=3.2.9
+Requires-Dist: pydantic-settings<3.0.0,>=2.10.1
+Requires-Dist: python-jose[cryptography]<4.0.0,>=3.5.0
+Requires-Dist: email-validator<3.0.0,>=2.2.0
+Requires-Dist: httpx<1.0.0,>=0.28.1
+Provides-Extra: dev
+Requires-Dist: pytest<9.0.0,>=8.4.1; extra == "dev"
+Requires-Dist: ruff<1.0.0,>=0.12.9; extra == "dev"
+
+# QuinielaMaestra Backend
+
+Backend FastAPI modular para autenticacion, picks, resultados, leaderboards y sincronizacion con proveedores deportivos.
+
+## Comandos
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+uvicorn app.main:app --reload --port 8000
+```
+

@@ -1,0 +1,217 @@
+{
+  "version": 3,
+  "pages404": true,
+  "caseSensitive": false,
+  "basePath": "",
+  "redirects": [
+    {
+      "source": "/:path+/",
+      "destination": "/:path+",
+      "internal": true,
+      "statusCode": 308,
+      "regex": "^(?:/((?:[^/]+?)(?:/(?:[^/]+?))*))/$"
+    }
+  ],
+  "headers": [],
+  "dynamicRoutes": [],
+  "staticRoutes": [
+    {
+      "page": "/",
+      "regex": "^/(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/(?:/)?$"
+    },
+    {
+      "page": "/_not-found",
+      "regex": "^/_not\\-found(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/_not\\-found(?:/)?$"
+    },
+    {
+      "page": "/auth/confirm",
+      "regex": "^/auth/confirm(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/auth/confirm(?:/)?$"
+    },
+    {
+      "page": "/dashboard",
+      "regex": "^/dashboard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin",
+      "regex": "^/dashboard/admin(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/hall-of-fame",
+      "regex": "^/dashboard/admin/hall\\-of\\-fame(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/hall\\-of\\-fame(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/matchdays",
+      "regex": "^/dashboard/admin/matchdays(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/matchdays(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/matches",
+      "regex": "^/dashboard/admin/matches(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/matches(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/odds",
+      "regex": "^/dashboard/admin/odds(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/odds(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/prizes",
+      "regex": "^/dashboard/admin/prizes(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/prizes(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/results",
+      "regex": "^/dashboard/admin/results(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/results(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/rules",
+      "regex": "^/dashboard/admin/rules(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/rules(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/seasons",
+      "regex": "^/dashboard/admin/seasons(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/seasons(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/settings",
+      "regex": "^/dashboard/admin/settings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/settings(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/teams",
+      "regex": "^/dashboard/admin/teams(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/teams(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/trophies",
+      "regex": "^/dashboard/admin/trophies(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/trophies(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/user-info",
+      "regex": "^/dashboard/admin/user\\-info(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/user\\-info(?:/)?$"
+    },
+    {
+      "page": "/dashboard/admin/users",
+      "regex": "^/dashboard/admin/users(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/admin/users(?:/)?$"
+    },
+    {
+      "page": "/dashboard/hall-of-fame",
+      "regex": "^/dashboard/hall\\-of\\-fame(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/hall\\-of\\-fame(?:/)?$"
+    },
+    {
+      "page": "/dashboard/jornada",
+      "regex": "^/dashboard/jornada(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/jornada(?:/)?$"
+    },
+    {
+      "page": "/dashboard/leaderboard",
+      "regex": "^/dashboard/leaderboard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/leaderboard(?:/)?$"
+    },
+    {
+      "page": "/dashboard/picks",
+      "regex": "^/dashboard/picks(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/picks(?:/)?$"
+    },
+    {
+      "page": "/dashboard/prizes",
+      "regex": "^/dashboard/prizes(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/prizes(?:/)?$"
+    },
+    {
+      "page": "/dashboard/quiniela-plus",
+      "regex": "^/dashboard/quiniela\\-plus(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/quiniela\\-plus(?:/)?$"
+    },
+    {
+      "page": "/dashboard/results",
+      "regex": "^/dashboard/results(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/results(?:/)?$"
+    },
+    {
+      "page": "/dashboard/rules",
+      "regex": "^/dashboard/rules(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/rules(?:/)?$"
+    },
+    {
+      "page": "/dashboard/settings",
+      "regex": "^/dashboard/settings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/dashboard/settings(?:/)?$"
+    },
+    {
+      "page": "/leaderboard",
+      "regex": "^/leaderboard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/leaderboard(?:/)?$"
+    },
+    {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
+    },
+    {
+      "page": "/register",
+      "regex": "^/register(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/register(?:/)?$"
+    }
+  ],
+  "dataRoutes": [],
+  "rsc": {
+    "header": "RSC",
+    "varyHeader": "RSC, Next-Router-State-Tree, Next-Router-Prefetch, Next-Router-Segment-Prefetch",
+    "prefetchHeader": "Next-Router-Prefetch",
+    "didPostponeHeader": "x-nextjs-postponed",
+    "contentTypeHeader": "text/x-component",
+    "suffix": ".rsc",
+    "prefetchSuffix": ".prefetch.rsc",
+    "prefetchSegmentHeader": "Next-Router-Segment-Prefetch",
+    "prefetchSegmentSuffix": ".segment.rsc",
+    "prefetchSegmentDirSuffix": ".segments"
+  },
+  "rewriteHeaders": {
+    "pathHeader": "x-nextjs-rewritten-path",
+    "queryHeader": "x-nextjs-rewritten-query"
+  },
+  "rewrites": []
+}

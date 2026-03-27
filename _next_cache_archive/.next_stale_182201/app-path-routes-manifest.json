@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/auth/confirm/route": "/auth/confirm",
+  "/(auth)/register/page": "/register",
+  "/(auth)/login/page": "/login",
+  "/page": "/",
+  "/leaderboard/page": "/leaderboard",
+  "/(dashboard)/dashboard/page": "/dashboard",
+  "/(dashboard)/dashboard/jornada/page": "/dashboard/jornada",
+  "/(dashboard)/dashboard/leaderboard/page": "/dashboard/leaderboard",
+  "/(dashboard)/dashboard/picks/page": "/dashboard/picks",
+  "/(dashboard)/dashboard/results/page": "/dashboard/results"
+}
