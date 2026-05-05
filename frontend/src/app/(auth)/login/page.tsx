@@ -21,6 +21,10 @@ export default function LoginPage() {
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     setShowRegisteredMessage(searchParams.get("registered") === "1");
+    if (searchParams.get("reset") === "1") {
+      setAuthMessage("Contrasena actualizada. Inicia sesion con tu nueva clave.");
+      return;
+    }
     setAuthMessage(searchParams.get("error"));
 
     async function checkSession() {
@@ -109,9 +113,20 @@ export default function LoginPage() {
             required
           />
         </div>
+        <div className="mt-4 flex justify-end">
+          <Link href="/forgot-password" className="text-sm text-coral transition hover:text-coral/80">
+            Olvide mi contrasena
+          </Link>
+        </div>
         {error ? <p className="mt-4 text-sm text-coral">{error}</p> : null}
-        {showRegisteredMessage ? <p className="mt-4 text-sm text-moss">Cuenta creada. Inicia sesion para entrar al panel.</p> : null}
-        {authMessage ? <p className="mt-4 text-sm text-coral">{authMessage}</p> : null}
+        {showRegisteredMessage ? (
+          <p className="mt-4 text-sm text-moss">Cuenta creada. Inicia sesion para entrar al panel.</p>
+        ) : null}
+        {authMessage ? (
+          <p className={`mt-4 text-sm ${authMessage.includes("actualizada") ? "text-moss" : "text-coral"}`}>
+            {authMessage}
+          </p>
+        ) : null}
         <button
           type="submit"
           disabled={loading}

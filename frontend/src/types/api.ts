@@ -3,6 +3,8 @@ export type MatchStatus = "scheduled" | "final" | "postponed" | "cancelled";
 export type PickSelection = "home" | "draw" | "away";
 export type ThemePreference = "standard" | "favorite_team";
 export type PaymentModality = "pre_pago" | "aval";
+export type VipMembershipStatus = "pending" | "approved" | "rejected";
+export type PickReminderHoursBefore = 1 | 3;
 
 export interface Matchday {
   id: string;
@@ -48,6 +50,11 @@ export interface Pick {
   away_team_name: string;
   kickoff_at: string;
   is_locked: boolean;
+  is_admin_override: boolean;
+  admin_override_note: string | null;
+  overridden_by_profile_id: string | null;
+  overridden_by_display_name: string | null;
+  overridden_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,9 +75,37 @@ export interface PickResultRow {
   home_score: number | null;
   away_score: number | null;
   is_official: boolean;
+  is_admin_override: boolean;
+  admin_override_note: string | null;
+  overridden_by_display_name: string | null;
+  overridden_at: string | null;
   result_points: number;
   exact_score_points: number;
   total_points: number;
+}
+
+export interface AdminPickRow {
+  pick_id: string | null;
+  profile_id: string;
+  profile_display_name: string;
+  match_id: string;
+  matchday_id: string;
+  home_team_name: string;
+  away_team_name: string;
+  kickoff_at: string;
+  picks_lock_at: string;
+  match_status: MatchStatus;
+  has_pick: boolean;
+  is_locked: boolean;
+  selection: PickSelection | null;
+  predicted_home_score: number | null;
+  predicted_away_score: number | null;
+  is_admin_override: boolean;
+  admin_override_note: string | null;
+  overridden_by_profile_id: string | null;
+  overridden_by_display_name: string | null;
+  overridden_at: string | null;
+  updated_at: string | null;
 }
 
 export interface GlobalPickPlayer {
@@ -113,6 +148,91 @@ export interface LeaderboardEntry {
   correct_results: number;
   exact_scores: number;
   rank_position: number;
+}
+
+export interface VipMatchday {
+  id: string;
+  season_id: string;
+  number: number;
+  name: string;
+}
+
+export interface VipLeaderboardEntry {
+  profile_id: string;
+  display_name: string;
+  total_points: number;
+  correct_results: number;
+  exact_scores: number;
+  rank_position: number;
+}
+
+export interface VipMembership {
+  id: string;
+  profile_id: string;
+  display_name: string;
+  status: VipMembershipStatus;
+  requested_at: string;
+  decided_at: string | null;
+  decided_by_profile_id: string | null;
+  decided_by_display_name: string | null;
+  admin_note: string | null;
+}
+
+export interface VipCompetition {
+  id: string;
+  season_id: string;
+  season_name: string;
+  name: string;
+  entry_fee_amount: number;
+  admin_commission_pct: number;
+  first_place_pct: number;
+  second_place_pct: number;
+  third_place_pct: number;
+  is_active: boolean;
+  matchdays: VipMatchday[];
+  approved_members_count: number;
+  pending_requests_count: number;
+  gross_pool_amount: number;
+  admin_commission_amount: number;
+  distributable_prize_pool_amount: number;
+  first_place_amount: number;
+  second_place_amount: number;
+  third_place_amount: number;
+  remaining_pool_amount: number;
+  my_membership: VipMembership | null;
+  leaderboard: VipLeaderboardEntry[];
+}
+
+export interface VipJoinResponse {
+  vip_id: string;
+  membership: VipMembership;
+}
+
+export interface AdminVipCompetition {
+  id: string;
+  season_id: string;
+  season_name: string;
+  name: string;
+  entry_fee_amount: number;
+  admin_commission_pct: number;
+  first_place_pct: number;
+  second_place_pct: number;
+  third_place_pct: number;
+  is_active: boolean;
+  created_by_profile_id: string | null;
+  created_by_display_name: string | null;
+  matchdays: VipMatchday[];
+  memberships: VipMembership[];
+  approved_members_count: number;
+  pending_requests_count: number;
+  gross_pool_amount: number;
+  admin_commission_amount: number;
+  distributable_prize_pool_amount: number;
+  first_place_amount: number;
+  second_place_amount: number;
+  third_place_amount: number;
+  remaining_pool_amount: number;
+  leaderboard: VipLeaderboardEntry[];
 }
 
 export interface MyMatchdayPointsEntry {
@@ -160,6 +280,9 @@ export interface Me {
   modality: PaymentModality;
   aval_profile_id: string | null;
   theme_preference: ThemePreference;
+  pick_reminder_email_enabled: boolean;
+  pick_reminder_opening_enabled: boolean;
+  pick_reminder_hours_before: PickReminderHoursBefore | null;
   role_code: string;
   is_active: boolean;
   active_season_id: string | null;

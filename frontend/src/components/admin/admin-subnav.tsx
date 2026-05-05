@@ -11,6 +11,8 @@ const links = [
   { href: "/dashboard/admin/settings", label: "Configuracion" },
   { href: "/dashboard/admin/prizes", label: "Premios" },
   { href: "/dashboard/admin/users", label: "Usuarios" },
+  { href: "/dashboard/admin/picks", label: "Picks" },
+  { href: "/dashboard/admin/vip", label: "VIP" },
   { href: "/dashboard/admin/user-info", label: "Info usuarios" },
   { href: "/dashboard/admin/seasons", label: "Temporadas" },
   { href: "/dashboard/admin/matchdays", label: "Jornadas" },

@@ -6,6 +6,11 @@ import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AdminUser, Me, Season } from "@/types/api";
 
+type BillingDraft = {
+  modality: string;
+  aval_profile_id: string;
+};
+
 const squareActionButtonClass =
   "inline-flex h-8 w-full items-center justify-center whitespace-nowrap rounded-[12px] border px-3 text-[10px] font-semibold tracking-[0.02em] transition disabled:opacity-60";
 
@@ -67,6 +72,7 @@ export function AdminUsersPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [billingDrafts, setBillingDrafts] = useState<Record<string, BillingDraft>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -78,6 +84,17 @@ export function AdminUsersPanel() {
     const suffix = seasonId ? `?season_id=${seasonId}` : "";
     const rows = await backendFetch<AdminUser[]>(`/admin/users${suffix}`, token);
     setUsers(rows);
+    setBillingDrafts(
+      Object.fromEntries(
+        rows.map((user) => [
+          user.id,
+          {
+            modality: user.modality ?? "pre_pago",
+            aval_profile_id: user.aval_profile_id ?? "",
+          },
+        ]),
+      ),
+    );
   }
 
   async function loadPanel() {
@@ -234,6 +251,49 @@ export function AdminUsersPanel() {
     }
   }
 
+  function updateBillingDraft(userId: string, patch: Partial<BillingDraft>) {
+    setBillingDrafts((current) => ({
+      ...current,
+      [userId]: {
+        modality: current[userId]?.modality ?? "pre_pago",
+        aval_profile_id: current[userId]?.aval_profile_id ?? "",
+        ...patch,
+      },
+    }));
+  }
+
+  async function handleSaveBilling(user: AdminUser) {
+    const draft = billingDrafts[user.id] ?? {
+      modality: user.modality ?? "pre_pago",
+      aval_profile_id: user.aval_profile_id ?? "",
+    };
+
+    if (draft.modality === "aval" && !draft.aval_profile_id) {
+      setError("Selecciona un aval antes de guardar la modalidad aval.");
+      return;
+    }
+
+    setSavingKey(`billing:${user.id}`);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch<AdminUser>(`/admin/users/${user.id}/billing`, accessToken, {
+        method: "PUT",
+        body: JSON.stringify({
+          modality: draft.modality,
+          aval_profile_id: draft.modality === "aval" ? draft.aval_profile_id || null : null,
+        }),
+      });
+      await loadUsers(selectedSeasonId, accessToken);
+      setMessage(`${user.display_name}: modalidad de cobro actualizada.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la modalidad");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) ?? null;
   const activeCount = users.filter((user) => user.selected_season_membership?.is_active).length;
   const paidCount = users.filter((user) => user.selected_season_membership?.is_paid).length;
@@ -349,7 +409,7 @@ export function AdminUsersPanel() {
             <div className="px-2 pb-2 text-[10px] text-steel/80">
               Roles: Usuario / Admin / SAdmin
             </div>
-            <table className="min-w-[910px] table-fixed text-center text-[11px] text-steel">
+            <table className="min-w-[1250px] table-fixed text-center text-[11px] text-steel">
               <colgroup>
                 <col className="w-[156px]" />
                 <col className="w-[92px]" />
@@ -357,6 +417,8 @@ export function AdminUsersPanel() {
                 <col className="w-[78px]" />
                 <col className="w-[84px]" />
                 <col className="w-[88px]" />
+                <col className="w-[210px]" />
+                <col className="w-[210px]" />
                 <col className="w-[360px]" />
               </colgroup>
               <thead className="text-[10px] uppercase tracking-[0.18em] text-steel/85">
@@ -369,6 +431,8 @@ export function AdminUsersPanel() {
                   <th className="px-1 py-2 font-medium">Torneo</th>
                   <th className="px-1 py-2 font-medium">Pago</th>
                   <th className="px-1 py-2 font-medium">Puntua</th>
+                  <th className="px-1 py-2 font-medium">Modalidad</th>
+                  <th className="px-1 py-2 font-medium">Aval</th>
                   <th className="px-2 py-2 font-medium">Acciones</th>
                 </tr>
               </thead>
@@ -382,6 +446,13 @@ export function AdminUsersPanel() {
                   const accessActionClass = user.is_active ? actionDangerClass : actionPositiveClass;
                   const paymentActionClass = membership?.is_paid ? actionDangerClass : actionPositiveClass;
                   const membershipActionClass = membership?.is_active ? actionDangerClass : actionPositiveClass;
+                  const billingDraft = billingDrafts[user.id] ?? {
+                    modality: user.modality ?? "pre_pago",
+                    aval_profile_id: user.aval_profile_id ?? "",
+                  };
+                  const avalOptions = users
+                    .filter((optionUser) => optionUser.id !== user.id)
+                    .sort((left, right) => left.display_name.localeCompare(right.display_name));
 
                   return (
                     <tr key={user.id}>
@@ -417,6 +488,36 @@ export function AdminUsersPanel() {
                         )}`}>
                           {getScoringStateLabel(membership?.eligible_for_scoring)}
                         </span>
+                      </td>
+                      <td className="px-1 py-2 align-top">
+                        <select
+                          value={billingDraft.modality}
+                          onChange={(event) =>
+                            updateBillingDraft(user.id, {
+                              modality: event.target.value,
+                              aval_profile_id: event.target.value === "aval" ? billingDraft.aval_profile_id : "",
+                            })
+                          }
+                          className="field-control h-8 w-full text-[11px]"
+                        >
+                          <option value="pre_pago">Pre-pago</option>
+                          <option value="aval">Aval</option>
+                        </select>
+                      </td>
+                      <td className="px-1 py-2 align-top">
+                        <select
+                          value={billingDraft.aval_profile_id}
+                          onChange={(event) => updateBillingDraft(user.id, { aval_profile_id: event.target.value })}
+                          className="field-control h-8 w-full text-[11px]"
+                          disabled={billingDraft.modality !== "aval"}
+                        >
+                          <option value="">{billingDraft.modality === "aval" ? "Selecciona aval" : "No aplica"}</option>
+                          {avalOptions.map((optionUser) => (
+                            <option key={optionUser.id} value={optionUser.id}>
+                              {optionUser.display_name}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-2 py-2 align-top">
                         <div className="flex flex-nowrap items-center gap-2 text-left">
@@ -474,6 +575,15 @@ export function AdminUsersPanel() {
                                 ? "Quitar"
                                 : "Dar alta"}
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveBilling(user)}
+                            disabled={savingKey === `billing:${user.id}`}
+                            className={actionNeutralClass}
+                            title="Guardar modalidad de cobro"
+                          >
+                            {savingKey === `billing:${user.id}` ? "..." : "Guardar cobro"}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -481,7 +591,7 @@ export function AdminUsersPanel() {
                 })}
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-sm text-steel">
+                    <td colSpan={9} className="px-4 py-8 text-sm text-steel">
                       No hubo coincidencias para ese filtro.
                     </td>
                   </tr>

@@ -7,11 +7,11 @@ from fastapi.testclient import TestClient
 from app.api.v1.routes import admin as admin_routes
 from app.api.deps import get_current_profile
 from app.main import app
-from app.models.entities import Match, MatchResult, MatchStatus, Profile, RawMatchResult, RoleCode, SyncLog, SyncStatus
+from app.models.entities import Match, MatchResult, MatchStatus, Matchday, MatchdayStatus, Profile, RawMatchResult, RoleCode, SyncLog, SyncStatus
 from app.providers.mock_provider import MockSportsDataProvider
 from app.services.sync_results import sync_results
 
-from conftest import MATCH_ONE_ID, MATCH_TWO_ID, MATCHDAY_ID, PROFILE_USER_ID, SessionLocal
+from conftest import MATCH_ONE_ID, MATCH_TWO_ID, MATCHDAY_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
 
 
 @pytest.fixture
@@ -315,6 +315,92 @@ def test_sync_matches_by_alias_and_mexico_city_date_from_kickoff() -> None:
 
     assert result.home_score == 1
     assert result.away_score == 0
+
+
+def test_sync_for_matchday_falls_back_to_global_results_and_only_updates_selected_matchday() -> None:
+    class FakeProvider:
+        name = "fake_results"
+
+        def fetch_matches(self):
+            return []
+
+        def fetch_odds(self):
+            return []
+
+        def fetch_results_for_dates(self, dates):
+            assert dates == ["2026-01-01"]
+            return []
+
+        def fetch_results(self):
+            return [
+                {
+                    "home_team_name": "Club America",
+                    "away_team_name": "Guadalajara",
+                    "source_match_date": "2026-01-01",
+                    "kickoff_at": "2026-01-02T03:00:00Z",
+                    "home_score": 2,
+                    "away_score": 1,
+                    "is_official": True,
+                    "payload": {"source": "fallback"},
+                },
+                {
+                    "home_team_name": "Tigres",
+                    "away_team_name": "Monterrey",
+                    "source_match_date": "2026-01-01",
+                    "kickoff_at": "2026-01-01T14:00:00Z",
+                    "home_score": 4,
+                    "away_score": 4,
+                    "is_official": True,
+                    "payload": {"source": "other-matchday"},
+                },
+            ]
+
+    second_matchday_id = "30000000-0000-0000-0000-000000000099"
+
+    db = SessionLocal()
+    try:
+        first_match = db.get(Match, MATCH_ONE_ID)
+        second_match = db.get(Match, MATCH_TWO_ID)
+        assert first_match is not None
+        assert second_match is not None
+
+        first_match.external_id = None
+        first_match.kickoff_at = datetime(2026, 1, 1, 20, 0, tzinfo=UTC)
+        second_match.matchday_id = second_matchday_id
+        second_match.external_id = None
+        second_match.kickoff_at = datetime(2026, 1, 1, 14, 0, tzinfo=UTC)
+
+        extra_matchday = Matchday(
+            id=second_matchday_id,
+            season_id=SEASON_ID,
+            number=99,
+            name="Jornada 99",
+            status=MatchdayStatus.ACTIVE,
+            starts_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+            ends_at=datetime(2026, 1, 2, 12, 0, tzinfo=UTC),
+        )
+        db.add(extra_matchday)
+        db.add(first_match)
+        db.add(second_match)
+        db.commit()
+
+        summary = sync_results(db, FakeProvider(), matchday_id=MATCHDAY_ID)
+    finally:
+        db.close()
+
+    assert summary["records_processed"] == 1
+
+    db = SessionLocal()
+    try:
+        first_result = db.query(MatchResult).filter_by(match_id=MATCH_ONE_ID).one_or_none()
+        second_result = db.query(MatchResult).filter_by(match_id=MATCH_TWO_ID).one_or_none()
+    finally:
+        db.close()
+
+    assert first_result is not None
+    assert first_result.home_score == 2
+    assert first_result.away_score == 1
+    assert second_result is None
 
 
 def test_admin_can_clear_manual_override_and_restore_latest_raw(admin_client: TestClient) -> None:

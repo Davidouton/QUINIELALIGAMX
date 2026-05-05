@@ -40,6 +40,11 @@ export default function DashboardAdminPage() {
                   "Activa acceso a la app y da de alta participantes dentro del torneo elegido.",
                 ],
                 [
+                  "/dashboard/admin/vip",
+                  "VIP",
+                  "Crea VIPs por jornadas, define costo de entrada y aprueba solicitudes de acceso.",
+                ],
+                [
                   "/dashboard/admin/user-info",
                   "Info usuarios",
                   "Consulta telefono, equipo, modalidad, aval, ambiente y cuenta capturados en settings.",

@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
@@ -52,14 +54,25 @@ class ProfileService:
                 db.refresh(profile)
             return profile
 
-        profile = self.repo.create_from_auth_user(
-            db,
-            auth_user,
-            role_code=RoleCode.MASTER_ADMIN if can_bootstrap_admin else RoleCode.USER,
-        )
-        db.commit()
-        db.refresh(profile)
-        return profile
+        try:
+            profile = self.repo.create_from_auth_user(
+                db,
+                auth_user,
+                role_code=RoleCode.MASTER_ADMIN if can_bootstrap_admin else RoleCode.USER,
+            )
+            db.commit()
+            db.refresh(profile)
+            return profile
+        except IntegrityError as exc:
+            db.rollback()
+            existing_profile = self.repo.get_by_auth_user_id(db, auth_user.auth_user_id)
+            if existing_profile is not None:
+                return existing_profile
+
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No se pudo sincronizar tu perfil. Cierra sesion y vuelve a entrar.",
+            ) from exc
 
     def update_settings(
         self,
@@ -79,6 +92,9 @@ class ProfileService:
             modality=payload.modality,
             aval_profile_id=self._normalize_optional_text(payload.aval_profile_id),
             theme_preference=payload.theme_preference,
+            pick_reminder_email_enabled=payload.pick_reminder_email_enabled,
+            pick_reminder_opening_enabled=payload.pick_reminder_opening_enabled,
+            pick_reminder_hours_before=payload.pick_reminder_hours_before,
         )
         db.commit()
         db.refresh(updated)
@@ -111,6 +127,9 @@ class ProfileService:
             modality=profile.modality,
             aval_profile_id=profile.aval_profile_id,
             theme_preference=profile.theme_preference,
+            pick_reminder_email_enabled=profile.pick_reminder_email_enabled,
+            pick_reminder_opening_enabled=profile.pick_reminder_opening_enabled,
+            pick_reminder_hours_before=profile.pick_reminder_hours_before,
             active_season_id=active_season.id if active_season is not None else None,
             active_season_name=active_season.name if active_season is not None else None,
             can_participate_active_season=bool(

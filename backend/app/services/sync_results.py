@@ -35,12 +35,17 @@ def sync_results(db: Session, provider: SportsDataProvider, *, matchday_id: str 
     fetch_results_for_dates = getattr(provider, "fetch_results_for_dates", None)
     if callable(fetch_results_for_dates) and len(target_dates) > 0:
         records = list(fetch_results_for_dates(target_dates))
+        if len(records) == 0:
+            records = list(provider.fetch_results())
     else:
         records = list(provider.fetch_results())
     if len(records) == 0 and provider.name == "mock":
         records = _build_demo_results(db)
 
-    matches = list(db.scalars(select(Match).order_by(Match.kickoff_at.asc())))
+    matches_stmt = select(Match).order_by(Match.kickoff_at.asc())
+    if matchday_id is not None:
+        matches_stmt = matches_stmt.where(Match.matchday_id == matchday_id)
+    matches = list(db.scalars(matches_stmt))
     results_by_match_id = {
         result.match_id: result for result in db.scalars(select(MatchResult))
     }
@@ -143,7 +148,7 @@ def _build_target_dates(db: Session, matchday_id: str | None) -> list[str]:
             .order_by(Match.kickoff_at.asc())
         )
     )
-    return sorted({ensure_utc(match.kickoff_at).date().isoformat() for match in matches})
+    return sorted({mexico_city_match_date(match.kickoff_at) for match in matches})
 
 
 def _build_db_match_key(match: Match, teams_by_id: dict[str, Team]) -> str:

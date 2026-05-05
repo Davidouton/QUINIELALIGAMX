@@ -17,6 +17,7 @@ app/api/v1/routes/results.py
 app/api/v1/routes/rules.py
 app/api/v1/routes/seasons.py
 app/api/v1/routes/teams.py
+app/api/v1/routes/vip.py
 app/core/config.py
 app/core/database.py
 app/core/datetime.py
@@ -48,6 +49,7 @@ app/schemas/result.py
 app/schemas/rules.py
 app/schemas/season.py
 app/schemas/team.py
+app/schemas/vip.py
 app/services/leaderboard_service.py
 app/services/match_service.py
 app/services/matchday_service.py
@@ -59,14 +61,17 @@ app/services/season_eligibility_service.py
 app/services/sync_matches.py
 app/services/sync_odds.py
 app/services/sync_results.py
+app/services/vip_service.py
 quinielamaestra_backend.egg-info/PKG-INFO
 quinielamaestra_backend.egg-info/SOURCES.txt
 quinielamaestra_backend.egg-info/dependency_links.txt
 quinielamaestra_backend.egg-info/requires.txt
 quinielamaestra_backend.egg-info/top_level.txt
+tests/test_admin_picks.py
 tests/test_admin_results.py
 tests/test_admin_settings.py
 tests/test_first_flow.py
 tests/test_pick_membership.py
 tests/test_tie_rankings.py
 tests/test_tournament_freeze.py
+tests/test_vip.py

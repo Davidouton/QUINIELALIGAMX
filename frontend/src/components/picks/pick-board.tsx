@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
@@ -234,6 +235,16 @@ function formatMexicoCityCompactDateTime(value: string) {
 
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.day}/${values.month}/${values.year} ${values.hour}:${values.minute}`;
+}
+
+function buildOverrideMessage(pick: Pick) {
+  const base = pick.overridden_by_display_name
+    ? `Pick ajustado por ${pick.overridden_by_display_name}.`
+    : "Pick ajustado por admin.";
+  if (pick.admin_override_note) {
+    return `${base} ${pick.admin_override_note}`;
+  }
+  return base;
 }
 
 function pickPreferredMatchday(matchdays: Matchday[]) {
@@ -658,6 +669,13 @@ export function PickBoard() {
           >
             Picks Globales
           </button>
+          <Link
+            href="/dashboard/vip"
+            prefetch={false}
+            className={pickBoardButtonClass}
+          >
+            VIP
+          </Link>
         </div>
       </div>
 
@@ -699,12 +717,10 @@ export function PickBoard() {
               );
 
               return (
-                <div
-                  key={match.id}
-                  className="grid grid-cols-[1.7fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.7fr] items-center gap-1.5 border-b border-white/5 py-2 last:border-b-0 md:grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] md:gap-2"
-                >
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
-                    <div className="flex min-w-0 flex-col items-center justify-start gap-1 self-start text-center">
+                <div key={match.id} className="border-b border-white/5 py-2 last:border-b-0">
+                  <div className="grid grid-cols-[1.7fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.7fr] items-center gap-1.5 md:grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] md:gap-2">
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
+                      <div className="flex min-w-0 flex-col items-center justify-start gap-1 self-start text-center">
                       {homeTeam?.crest_url ? (
                         <img
                           src={homeTeam.crest_url}
@@ -739,81 +755,87 @@ export function PickBoard() {
                         {match.away_team_name}
                       </span>
                     </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Inicio</p>
+                      <p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityCompactDateTime(match.kickoff_at)}</p>
+                    </div>
+                    <div className="hidden text-center md:block">
+                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Cierre</p>
+                      <p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityCompactDateTime(match.picks_lock_at)}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">L</p>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={form?.predicted_home_score ?? ""}
+                        onChange={(event) =>
+                          updateForm(match.id, {
+                            predicted_home_score: sanitizeScoreInput(event.target.value),
+                          })
+                        }
+                        onFocus={(event) => event.currentTarget.select()}
+                        disabled={match.is_locked}
+                        placeholder="-"
+                        className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
+                      />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">V</p>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={form?.predicted_away_score ?? ""}
+                        onChange={(event) =>
+                          updateForm(match.id, {
+                            predicted_away_score: sanitizeScoreInput(event.target.value),
+                          })
+                        }
+                        onFocus={(event) => event.currentTarget.select()}
+                        disabled={match.is_locked}
+                        placeholder="-"
+                        className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
+                      />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Pick</p>
+                      <p className={`mt-1 text-[10px] font-semibold md:mt-0 ${derivedSelection ? "text-ink" : "text-steel"}`}>
+                        <span className="md:hidden">{getSelectionShortLabel(derivedSelection)}</span>
+                        <span className="hidden md:inline">{getSelectionLabel(derivedSelection)}</span>
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Estado</p>
+                      <p className={`mt-1 text-[10px] font-semibold md:mt-0 ${match.is_locked ? "text-rose-100" : "text-emerald-100"}`}>
+                        <span className="md:hidden">{match.is_locked ? "C" : "A"}</span>
+                        <span className="hidden md:inline">{match.is_locked ? "Cerrado" : "Abierto"}</span>
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Guardado</p>
+                      <p
+                        title={autoSaveState?.detail}
+                        className={`mt-1 text-[10px] font-semibold md:mt-0 ${
+                          autoSaveState?.status === "saved"
+                            ? "text-emerald-100"
+                            : autoSaveState?.status === "saving" || autoSaveState?.status === "pending"
+                              ? "text-amber-100"
+                              : autoSaveState?.status === "error"
+                                ? "text-rose-100"
+                                : "text-steel"
+                        }`}
+                      >
+                        <span className="md:hidden">{autoSaveLabel}</span>
+                        <span className="hidden md:inline">{getAutoSaveDesktopLabel(match, autoSaveState, Boolean(existingPick))}</span>
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Inicio</p>
-                    <p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityCompactDateTime(match.kickoff_at)}</p>
-                  </div>
-                  <div className="hidden text-center md:block">
-                    <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Cierre</p>
-                    <p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityCompactDateTime(match.picks_lock_at)}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">L</p>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={form?.predicted_home_score ?? ""}
-                      onChange={(event) =>
-                        updateForm(match.id, {
-                          predicted_home_score: sanitizeScoreInput(event.target.value),
-                        })
-                      }
-                      onFocus={(event) => event.currentTarget.select()}
-                      disabled={match.is_locked}
-                      placeholder="-"
-                      className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
-                    />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">V</p>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={form?.predicted_away_score ?? ""}
-                      onChange={(event) =>
-                        updateForm(match.id, {
-                          predicted_away_score: sanitizeScoreInput(event.target.value),
-                        })
-                      }
-                      onFocus={(event) => event.currentTarget.select()}
-                      disabled={match.is_locked}
-                      placeholder="-"
-                      className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
-                    />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Pick</p>
-                    <p className={`mt-1 text-[10px] font-semibold md:mt-0 ${derivedSelection ? "text-ink" : "text-steel"}`}>
-                      <span className="md:hidden">{getSelectionShortLabel(derivedSelection)}</span>
-                      <span className="hidden md:inline">{getSelectionLabel(derivedSelection)}</span>
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Estado</p>
-                    <p className={`mt-1 text-[10px] font-semibold md:mt-0 ${match.is_locked ? "text-rose-100" : "text-emerald-100"}`}>
-                      <span className="md:hidden">{match.is_locked ? "C" : "A"}</span>
-                      <span className="hidden md:inline">{match.is_locked ? "Cerrado" : "Abierto"}</span>
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Guardado</p>
-                    <p
-                      title={autoSaveState?.detail}
-                      className={`mt-1 text-[10px] font-semibold md:mt-0 ${
-                        autoSaveState?.status === "saved"
-                          ? "text-emerald-100"
-                          : autoSaveState?.status === "saving" || autoSaveState?.status === "pending"
-                            ? "text-amber-100"
-                            : autoSaveState?.status === "error"
-                              ? "text-rose-100"
-                              : "text-steel"
-                      }`}
-                    >
-                      <span className="md:hidden">{autoSaveLabel}</span>
-                      <span className="hidden md:inline">{getAutoSaveDesktopLabel(match, autoSaveState, Boolean(existingPick))}</span>
-                    </p>
-                  </div>
+                  {existingPick?.is_admin_override ? (
+                    <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[10px] text-amber-100">
+                      {buildOverrideMessage(existingPick)}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

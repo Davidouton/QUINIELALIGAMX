@@ -39,6 +39,7 @@ def update_me(
 ) -> MeResponse:
     favorite_team_id = payload.favorite_team_id.strip() if payload.favorite_team_id else None
     aval_profile_id = payload.aval_profile_id.strip() if payload.aval_profile_id else None
+    next_email = payload.email.strip() if payload.email else None
     if favorite_team_id and team_repo.get_by_id(db, favorite_team_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Equipo favorito no encontrado")
     if payload.theme_preference == "favorite_team" and not favorite_team_id:
@@ -58,12 +59,18 @@ def update_me(
         )
     if aval_profile_id and profile_repo.get_by_id(db, aval_profile_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aval no encontrado")
+    if payload.pick_reminder_email_enabled and not next_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Agrega un correo antes de activar recordatorios por mail",
+        )
 
     updated = service.update_settings(
         db,
         current_profile,
         payload.model_copy(
             update={
+                "email": next_email,
                 "favorite_team_id": favorite_team_id,
                 "aval_profile_id": aval_profile_id if payload.modality == "aval" else None,
             }

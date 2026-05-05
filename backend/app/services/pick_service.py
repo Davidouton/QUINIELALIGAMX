@@ -9,6 +9,7 @@ from app.models.entities import Match, MatchResult, Matchday, PickSelection, Pro
 from app.repositories.match_repository import MatchRepository
 from app.repositories.pick_repository import PickRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
+from app.schemas.admin import AdminPickOverrideRequest, AdminPickRowOut
 from app.schemas.pick import GlobalPickBoardOut, GlobalPickCellOut, GlobalPickMatchOut, GlobalPickPlayerOut, PickCreate, PickOut, PickResultRowOut, PickUpdate
 from app.services.season_eligibility_service import SeasonEligibilityService
 
@@ -32,12 +33,13 @@ class PickService:
                 predicted_home_score=payload.predicted_home_score,
                 predicted_away_score=payload.predicted_away_score,
             )
-            db.add(pick)
         else:
             pick.selection = payload.selection
             pick.predicted_home_score = payload.predicted_home_score
             pick.predicted_away_score = payload.predicted_away_score
-            db.add(pick)
+
+        self._clear_admin_override(pick)
+        db.add(pick)
 
         db.commit()
         db.refresh(pick)
@@ -53,6 +55,7 @@ class PickService:
         pick.selection = payload.selection
         pick.predicted_home_score = payload.predicted_home_score
         pick.predicted_away_score = payload.predicted_away_score
+        self._clear_admin_override(pick)
         db.add(pick)
         db.commit()
         db.refresh(pick)
@@ -95,6 +98,14 @@ class PickService:
         rules = self._load_rules(db)
         rows = db.execute(stmt).all()
         teams = self._load_teams(db, [match for match, _, _ in rows])
+        override_profiles = self._load_override_profiles(
+            db,
+            [
+                pick.overridden_by_profile_id
+                for _, pick, _ in rows
+                if pick is not None and pick.overridden_by_profile_id is not None
+            ],
+        )
 
         result_rows: list[PickResultRowOut] = []
         for match, pick, result in rows:
@@ -136,6 +147,14 @@ class PickService:
                     home_score=result.home_score if result is not None else None,
                     away_score=result.away_score if result is not None else None,
                     is_official=is_official,
+                    is_admin_override=pick.is_admin_override if pick is not None else False,
+                    admin_override_note=pick.admin_override_note if pick is not None else None,
+                    overridden_by_display_name=(
+                        override_profiles.get(pick.overridden_by_profile_id).display_name
+                        if pick is not None and pick.overridden_by_profile_id is not None
+                        else None
+                    ),
+                    overridden_at=pick.overridden_at if pick is not None else None,
                     result_points=result_points,
                     exact_score_points=exact_score_points,
                     total_points=result_points + exact_score_points,
@@ -245,6 +264,152 @@ class PickService:
             cells=cells,
         )
 
+    def list_admin_picks(
+        self,
+        db: Session,
+        matchday_id: str,
+        profile_id: str | None = None,
+    ) -> list[AdminPickRowOut]:
+        matchday = db.get(Matchday, matchday_id)
+        if matchday is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
+
+        matches = list(
+            db.scalars(
+                select(Match)
+                .where(Match.matchday_id == matchday_id)
+                .order_by(Match.kickoff_at.asc())
+            )
+        )
+        if not matches:
+            return []
+
+        teams = self._load_teams(db, matches)
+        players_stmt = (
+            select(Profile)
+            .join(SeasonMembership, SeasonMembership.profile_id == Profile.id)
+            .where(
+                SeasonMembership.season_id == matchday.season_id,
+                SeasonMembership.is_active.is_(True),
+                Profile.is_active.is_(True),
+            )
+            .order_by(Profile.display_name.asc())
+        )
+        if profile_id is not None:
+            players_stmt = players_stmt.where(Profile.id == profile_id)
+
+        players = list(db.scalars(players_stmt))
+        if not players:
+            return []
+
+        match_ids = [match.id for match in matches]
+        profile_ids = [player.id for player in players]
+        pick_rows = list(
+            db.scalars(
+                select(UserPick).where(
+                    UserPick.profile_id.in_(profile_ids),
+                    UserPick.match_id.in_(match_ids),
+                )
+            )
+        )
+        pick_map = {(pick.profile_id, pick.match_id): pick for pick in pick_rows}
+        override_profiles = self._load_override_profiles(
+            db,
+            [pick.overridden_by_profile_id for pick in pick_rows if pick.overridden_by_profile_id is not None],
+        )
+
+        now = datetime.now(UTC)
+        result_rows: list[AdminPickRowOut] = []
+        for match in matches:
+            home_team = teams.get(match.home_team_id)
+            away_team = teams.get(match.away_team_id)
+            for player in players:
+                pick = pick_map.get((player.id, match.id))
+                result_rows.append(
+                    AdminPickRowOut(
+                        pick_id=pick.id if pick is not None else None,
+                        profile_id=player.id,
+                        profile_display_name=player.display_name,
+                        match_id=match.id,
+                        matchday_id=match.matchday_id,
+                        home_team_name=home_team.name if home_team else "Local",
+                        away_team_name=away_team.name if away_team else "Visitante",
+                        kickoff_at=match.kickoff_at,
+                        picks_lock_at=match.picks_lock_at,
+                        match_status=match.status,
+                        has_pick=pick is not None,
+                        is_locked=now >= ensure_utc(match.picks_lock_at),
+                        selection=pick.selection if pick is not None else None,
+                        predicted_home_score=pick.predicted_home_score if pick is not None else None,
+                        predicted_away_score=pick.predicted_away_score if pick is not None else None,
+                        is_admin_override=pick.is_admin_override if pick is not None else False,
+                        admin_override_note=pick.admin_override_note if pick is not None else None,
+                        overridden_by_profile_id=pick.overridden_by_profile_id if pick is not None else None,
+                        overridden_by_display_name=(
+                            override_profiles.get(pick.overridden_by_profile_id).display_name
+                            if pick is not None and pick.overridden_by_profile_id is not None
+                            else None
+                        ),
+                        overridden_at=pick.overridden_at if pick is not None else None,
+                        updated_at=pick.updated_at if pick is not None else None,
+                    )
+                )
+
+        return result_rows
+
+    def save_admin_override(
+        self,
+        db: Session,
+        payload: AdminPickOverrideRequest,
+        updated_by: Profile,
+    ) -> AdminPickRowOut:
+        profile = db.get(Profile, payload.profile_id)
+        if profile is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if not profile.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is inactive")
+
+        match = self.match_repo.get_by_id(db, payload.match_id)
+        if match is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+
+        season_id = self._season_id_for_match(db, match)
+        membership = self.membership_repo.get_for_profile_and_season(db, profile.id, season_id)
+        if membership is None or not membership.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is not active in the season for this match",
+            )
+
+        pick = self.pick_repo.get_for_user_and_match(db, profile.id, match.id)
+        if pick is None:
+            pick = UserPick(
+                profile_id=profile.id,
+                match_id=match.id,
+                selection=payload.selection,
+                predicted_home_score=payload.predicted_home_score,
+                predicted_away_score=payload.predicted_away_score,
+            )
+        else:
+            pick.selection = payload.selection
+            pick.predicted_home_score = payload.predicted_home_score
+            pick.predicted_away_score = payload.predicted_away_score
+
+        pick.is_admin_override = True
+        pick.admin_override_note = self._normalize_optional_text(payload.admin_override_note)
+        pick.overridden_by_profile_id = updated_by.id
+        pick.overridden_at = datetime.now(UTC)
+        db.add(pick)
+        db.commit()
+        db.refresh(pick)
+
+        rows = self.list_admin_picks(db, match.matchday_id, profile_id=profile.id)
+        for row in rows:
+            if row.match_id == match.id:
+                return row
+
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Override saved but row not found")
+
     def _get_open_match(self, db: Session, match_id: str) -> Match:
         match = self.match_repo.get_by_id(db, match_id)
         if match is None:
@@ -277,12 +442,25 @@ class PickService:
                 detail="No estas dado de alta en este torneo. Pidele al admin que te active la temporada.",
             )
 
+    def _season_id_for_match(self, db: Session, match: Match) -> str:
+        matchday = db.get(Matchday, match.matchday_id)
+        if matchday is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
+        return matchday.season_id
+
+    def _clear_admin_override(self, pick: UserPick) -> None:
+        pick.is_admin_override = False
+        pick.admin_override_note = None
+        pick.overridden_by_profile_id = None
+        pick.overridden_at = None
+
     def _build_pick_out(self, db: Session, pick: UserPick, match: Match | None = None) -> PickOut:
         match = match or self.match_repo.get_by_id(db, pick.match_id)
         if match is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
         home_team = db.get(Team, match.home_team_id)
         away_team = db.get(Team, match.away_team_id)
+        overridden_by = db.get(Profile, pick.overridden_by_profile_id) if pick.overridden_by_profile_id else None
         return PickOut(
             id=pick.id,
             profile_id=pick.profile_id,
@@ -295,6 +473,11 @@ class PickService:
             away_team_name=away_team.name if away_team else "Visitante",
             kickoff_at=match.kickoff_at,
             is_locked=datetime.now(UTC) >= ensure_utc(match.picks_lock_at),
+            is_admin_override=pick.is_admin_override,
+            admin_override_note=pick.admin_override_note,
+            overridden_by_profile_id=pick.overridden_by_profile_id,
+            overridden_by_display_name=overridden_by.display_name if overridden_by is not None else None,
+            overridden_at=pick.overridden_at,
             created_at=pick.created_at,
             updated_at=pick.updated_at,
         )
@@ -315,6 +498,19 @@ class PickService:
             return {}
         teams = db.scalars(select(Team).where(Team.id.in_(team_ids))).all()
         return {team.id: team for team in teams}
+
+    def _load_override_profiles(self, db: Session, profile_ids: list[str | None]) -> dict[str, Profile]:
+        clean_ids = sorted({profile_id for profile_id in profile_ids if profile_id})
+        if not clean_ids:
+            return {}
+        profiles = list(db.scalars(select(Profile).where(Profile.id.in_(clean_ids))))
+        return {profile.id: profile for profile in profiles}
+
+    def _normalize_optional_text(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
     def _resolve_winner(self, home_score: int, away_score: int) -> PickSelection:
         if home_score > away_score:

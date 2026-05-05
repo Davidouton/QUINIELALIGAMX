@@ -1,4 +1,4 @@
-// File: /Users/davidoutonballina/Desktop/LIGAMX/APP/frontend/src/app/(dashboard)/dashboard/jornada/page.tsx
+// File: /Users/davidouton/Desktop/LIGAMX/APP/frontend/src/app/(dashboard)/dashboard/jornada/page.tsx
 import * as entry from '../../../../../../src/app/(dashboard)/dashboard/jornada/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

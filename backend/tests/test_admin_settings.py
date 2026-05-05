@@ -10,7 +10,7 @@ from app.core.datetime import ensure_utc
 from app.main import app
 from app.models.entities import Match, Matchday, Profile, RoleCode, ScoringRule, Season, SeasonMembership
 
-from conftest import MATCH_ONE_ID, MATCHDAY_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
+from conftest import MATCH_ONE_ID, MATCHDAY_ID, PROFILE_LEADER_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
 
 
 @pytest.fixture
@@ -175,6 +175,33 @@ def test_admin_can_update_user_season_membership(admin_client: TestClient) -> No
 
     assert membership.is_active is False
     assert membership.is_paid is True
+
+
+def test_admin_can_update_user_billing_modality_and_aval(admin_client: TestClient) -> None:
+    response = admin_client.put(
+        f"/api/v1/admin/users/{PROFILE_USER_ID}/billing",
+        json={
+            "modality": "aval",
+            "aval_profile_id": PROFILE_LEADER_ID,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["modality"] == "aval"
+    assert payload["aval_profile_id"] == PROFILE_LEADER_ID
+    assert payload["aval_display_name"] == "Lider Semanal"
+
+    db = SessionLocal()
+    try:
+        profile = db.get(Profile, PROFILE_USER_ID)
+        assert profile is not None
+    finally:
+        db.close()
+
+    assert profile.modality == "aval"
+    assert profile.aval_profile_id == PROFILE_LEADER_ID
 
 
 def test_admin_can_promote_user_to_admin(admin_client: TestClient) -> None:

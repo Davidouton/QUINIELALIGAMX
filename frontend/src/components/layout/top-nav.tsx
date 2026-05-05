@@ -47,6 +47,16 @@ export function TopNav() {
             Picks Center
           </Link>
           <Link
+            href="/dashboard/vip"
+            prefetch={false}
+            className={cn(
+              "app-pill-ghost",
+              pathname.startsWith("/dashboard/vip") && "app-pill-active font-medium text-ink",
+            )}
+          >
+            VIP
+          </Link>
+          <Link
             href="/dashboard/leaderboard"
             prefetch={false}
             className={cn(

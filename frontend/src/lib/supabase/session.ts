@@ -1,3 +1,4 @@
+import { env } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
 export const NO_ACTIVE_SESSION_MESSAGE = "No hay sesion activa";
@@ -11,33 +12,51 @@ type StoredSupabaseSession =
     }
   | null;
 
+function getSupabaseStorageKeys(): string[] {
+  try {
+    const url = new URL(env.supabaseUrl);
+    const host = url.hostname;
+    const projectRef = host.split(".")[0];
+    return [
+      `sb-${projectRef}-auth-token`,
+      `sb-${host}-auth-token`,
+    ];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredAccessToken(key: string): string | null {
+  try {
+    const rawValue = window.localStorage.getItem(key);
+    if (!rawValue) {
+      return null;
+    }
+
+    const parsed = JSON.parse(rawValue) as StoredSupabaseSession;
+    if (parsed?.access_token) {
+      return parsed.access_token;
+    }
+    if (parsed?.currentSession?.access_token) {
+      return parsed.currentSession.access_token;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }
 
-  try {
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const key = window.localStorage.key(index);
-      if (!key || !key.startsWith("sb-") || !key.endsWith("-auth-token")) {
-        continue;
-      }
-
-      const rawValue = window.localStorage.getItem(key);
-      if (!rawValue) {
-        continue;
-      }
-
-      const parsed = JSON.parse(rawValue) as StoredSupabaseSession;
-      if (parsed?.access_token) {
-        return parsed.access_token;
-      }
-      if (parsed?.currentSession?.access_token) {
-        return parsed.currentSession.access_token;
-      }
+  for (const key of getSupabaseStorageKeys()) {
+    const token = readStoredAccessToken(key);
+    if (token) {
+      return token;
     }
-  } catch {
-    return null;
   }
 
   return null;

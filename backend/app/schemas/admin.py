@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.datetime import mexico_city_to_utc
-from app.models.entities import MatchStatus, MatchdayStatus, RoleCode
+from app.models.entities import MatchStatus, MatchdayStatus, PickSelection, RoleCode
 
 
 class RoleUpdateRequest(BaseModel):
@@ -12,6 +12,11 @@ class RoleUpdateRequest(BaseModel):
 
 class UserAccessUpdateRequest(BaseModel):
     is_active: bool
+
+
+class AdminUserBillingUpdateRequest(BaseModel):
+    modality: str = "pre_pago"
+    aval_profile_id: str | None = None
 
 
 class UserSeasonMembershipUpdateRequest(BaseModel):
@@ -47,6 +52,49 @@ class AdminResultUpdateRequest(BaseModel):
     home_score: int = Field(ge=0)
     away_score: int = Field(ge=0)
     is_official: bool = True
+
+
+class AdminPickOverrideRequest(BaseModel):
+    profile_id: str
+    match_id: str
+    selection: PickSelection
+    predicted_home_score: int = Field(ge=0)
+    predicted_away_score: int = Field(ge=0)
+    admin_override_note: str | None = None
+
+    @model_validator(mode="after")
+    def validate_score_against_selection(self) -> "AdminPickOverrideRequest":
+        if self.selection == PickSelection.DRAW and self.predicted_home_score != self.predicted_away_score:
+            raise ValueError("Draw picks require equal scores")
+        if self.selection == PickSelection.HOME and self.predicted_home_score <= self.predicted_away_score:
+            raise ValueError("Home picks require home score greater than away score")
+        if self.selection == PickSelection.AWAY and self.predicted_home_score >= self.predicted_away_score:
+            raise ValueError("Away picks require away score greater than home score")
+        return self
+
+
+class AdminPickRowOut(BaseModel):
+    pick_id: str | None = None
+    profile_id: str
+    profile_display_name: str
+    match_id: str
+    matchday_id: str
+    home_team_name: str
+    away_team_name: str
+    kickoff_at: datetime
+    picks_lock_at: datetime
+    match_status: MatchStatus
+    has_pick: bool
+    is_locked: bool
+    selection: PickSelection | None = None
+    predicted_home_score: int | None = None
+    predicted_away_score: int | None = None
+    is_admin_override: bool = False
+    admin_override_note: str | None = None
+    overridden_by_profile_id: str | None = None
+    overridden_by_display_name: str | None = None
+    overridden_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class AdminSettingsOut(BaseModel):

@@ -29,9 +29,12 @@ from app.models.entities import (
     StandingsMatchday,
     Team,
     TrophyAsset,
+    VipMembershipStatus,
 )
+from app.providers.api_football_provider import ApiFootballProvider
 from app.providers.mock_provider import MockSportsDataProvider
 from app.providers.results_api_provider import ResultsApiProvider
+from app.providers.the_odds_scores_provider import TheOddsScoresProvider
 from app.repositories.matchday_repository import MatchdayRepository
 from app.repositories.match_repository import MatchRepository
 from app.repositories.profile_repository import ProfileRepository
@@ -39,6 +42,9 @@ from app.repositories.season_repository import SeasonRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.repositories.team_repository import TeamRepository
 from app.schemas.admin import (
+    AdminUserBillingUpdateRequest,
+    AdminPickOverrideRequest,
+    AdminPickRowOut,
     AdminUserOut,
     AdminResultRowOut,
     AdminResultUpdateRequest,
@@ -73,13 +79,16 @@ from app.schemas.profile import ProfileOut
 from app.schemas.rules import RulePageOut, RulePageUpdateRequest
 from app.schemas.season import SeasonOut
 from app.schemas.team import TeamOut
+from app.schemas.vip import AdminVipCompetitionOut, AdminVipMembershipDecisionRequest, AdminVipUpsertRequest
 from app.services.match_service import MatchService
+from app.services.pick_service import PickService
 from app.services.result_service import ResultService
 from app.services.scoring_service import ScoringService
 from app.services.season_eligibility_service import SeasonEligibilityService
 from app.services.sync_matches import sync_matches
 from app.services.sync_odds import sync_odds
 from app.services.sync_results import sync_results
+from app.services.vip_service import VipService
 
 router = APIRouter()
 profile_repo = ProfileRepository()
@@ -90,13 +99,48 @@ season_membership_repo = SeasonMembershipRepository()
 team_repo = TeamRepository()
 match_service = MatchService()
 result_service = ResultService()
+pick_service = PickService()
 season_eligibility_service = SeasonEligibilityService()
+vip_service = VipService()
 REPO_ROOT = Path(__file__).resolve().parents[5]
 APPS_API_DIR = REPO_ROOT / "apps" / "api"
 BACKEND_DIR = REPO_ROOT / "backend"
 RAW_ODDS_TABLE = "lmx_odds_5d"
 DEFAULT_RESULT_CORRECT_POINTS = 3
 DEFAULT_EXACT_SCORE_POINTS = 2
+
+
+def ensure_matchday_can_be_saved(
+    db: Session,
+    *,
+    season_id: str,
+    number: int,
+    starts_at: datetime,
+    ends_at: datetime,
+    existing_matchday_id: str | None = None,
+) -> None:
+    if ends_at <= starts_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La fecha de cierre de la jornada debe ser posterior a la fecha de inicio.",
+        )
+
+    duplicate_stmt = select(Matchday).where(
+        Matchday.season_id == season_id,
+        Matchday.number == number,
+    )
+    if existing_matchday_id:
+        duplicate_stmt = duplicate_stmt.where(Matchday.id != existing_matchday_id)
+
+    duplicate_matchday = db.scalar(duplicate_stmt)
+    if duplicate_matchday is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Ya existe la jornada {number} en esta temporada: "
+                f"{duplicate_matchday.name}."
+            ),
+        )
 
 
 def list_historical_champions_rows(db: Session) -> list[HistoricalChampion]:
@@ -477,6 +521,13 @@ def get_provider() -> MockSportsDataProvider:
 
 def get_results_provider():
     settings = get_settings()
+    if settings.default_provider in {"api_football", "api_football_v3"}:
+        if settings.api_football_key.strip():
+            return ApiFootballProvider(settings)
+        if settings.results_provider_base_url:
+            return ResultsApiProvider(settings)
+    if settings.default_provider in {"the_odds_api", "the_odds_scores"} and settings.the_odds_api_key.strip():
+        return TheOddsScoresProvider(settings)
     if settings.default_provider in {"results_api", "thesportsdb_v1"} and settings.results_provider_base_url:
         return ResultsApiProvider(settings)
     return MockSportsDataProvider()
@@ -750,6 +801,38 @@ def update_user_access(
         if did_freeze:
             db.commit()
             db.refresh(season)
+    return build_admin_user_out(db, profile, season)
+
+
+@router.put("/users/{profile_id}/billing", response_model=AdminUserOut)
+def update_user_billing(
+    profile_id: str,
+    payload: AdminUserBillingUpdateRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminUserOut:
+    profile = profile_repo.get_by_id(db, profile_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    modality = normalize_optional_text(payload.modality) or "pre_pago"
+    if modality not in {"pre_pago", "aval"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Modalidad invalida")
+
+    aval_profile_id = normalize_optional_text(payload.aval_profile_id)
+    if modality == "aval" and not aval_profile_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selecciona un aval para esta modalidad")
+    if aval_profile_id == profile.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No puedes seleccionarlo como su propio aval")
+    if aval_profile_id and profile_repo.get_by_id(db, aval_profile_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aval no encontrado")
+
+    profile.modality = modality
+    profile.aval_profile_id = aval_profile_id if modality == "aval" else None
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    season = get_selected_season(db)
     return build_admin_user_out(db, profile, season)
 
 
@@ -1221,6 +1304,13 @@ def create_matchday(
     season = season_repo.get_by_id(db, payload.season_id)
     if season is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+    ensure_matchday_can_be_saved(
+        db,
+        season_id=payload.season_id,
+        number=payload.number,
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+    )
 
     matchday = Matchday(
         season_id=payload.season_id,
@@ -1256,6 +1346,14 @@ def update_matchday(
     season = season_repo.get_by_id(db, payload.season_id)
     if season is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+    ensure_matchday_can_be_saved(
+        db,
+        season_id=payload.season_id,
+        number=payload.number,
+        starts_at=payload.starts_at,
+        ends_at=payload.ends_at,
+        existing_matchday_id=matchday.id,
+    )
 
     matchday.season_id = payload.season_id
     matchday.number = payload.number
@@ -1457,6 +1555,92 @@ def list_admin_results(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> list[AdminResultRowOut]:
     return result_service.list_admin_results(db, matchday_id=matchday_id)
+
+
+@router.get("/picks", response_model=list[AdminPickRowOut])
+def list_admin_picks(
+    matchday_id: str,
+    profile_id: str | None = None,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> list[AdminPickRowOut]:
+    return pick_service.list_admin_picks(db, matchday_id=matchday_id, profile_id=profile_id)
+
+
+@router.post("/picks/override", response_model=AdminPickRowOut)
+def save_admin_pick_override(
+    payload: AdminPickOverrideRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminPickRowOut:
+    return pick_service.save_admin_override(db, payload, updated_by=current_profile)
+
+
+@router.get("/vip", response_model=list[AdminVipCompetitionOut])
+def list_admin_vips(
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> list[AdminVipCompetitionOut]:
+    return vip_service.list_admin_vips(db)
+
+
+@router.post("/vip", response_model=AdminVipCompetitionOut, status_code=201)
+def create_admin_vip(
+    payload: AdminVipUpsertRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip = vip_service.create_admin_vip(db, payload, current_profile)
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip.id)
+
+
+@router.put("/vip/{vip_id}", response_model=AdminVipCompetitionOut)
+def update_admin_vip(
+    vip_id: str,
+    payload: AdminVipUpsertRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip = vip_service.update_admin_vip(db, vip_id, payload)
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip.id)
+
+
+@router.post("/vip/{vip_id}/memberships/{membership_id}/approve", response_model=AdminVipCompetitionOut)
+def approve_admin_vip_membership(
+    vip_id: str,
+    membership_id: str,
+    payload: AdminVipMembershipDecisionRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.decide_membership(
+        db,
+        vip_id=vip_id,
+        membership_id=membership_id,
+        decision=VipMembershipStatus.APPROVED,
+        current_profile=current_profile,
+        payload=payload,
+    )
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+
+
+@router.post("/vip/{vip_id}/memberships/{membership_id}/reject", response_model=AdminVipCompetitionOut)
+def reject_admin_vip_membership(
+    vip_id: str,
+    membership_id: str,
+    payload: AdminVipMembershipDecisionRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.decide_membership(
+        db,
+        vip_id=vip_id,
+        membership_id=membership_id,
+        decision=VipMembershipStatus.REJECTED,
+        current_profile=current_profile,
+        payload=payload,
+    )
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
 
 
 @router.put("/results/{match_id}", response_model=AdminResultRowOut)

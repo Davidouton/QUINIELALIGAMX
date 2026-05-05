@@ -41,6 +41,18 @@ def run_startup_migrations() -> None:
                     "ALTER TABLE profiles "
                     "ADD COLUMN theme_preference VARCHAR(32) NOT NULL DEFAULT 'standard'"
                 ),
+                "pick_reminder_email_enabled": (
+                    "ALTER TABLE profiles "
+                    "ADD COLUMN pick_reminder_email_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
+                "pick_reminder_opening_enabled": (
+                    "ALTER TABLE profiles "
+                    "ADD COLUMN pick_reminder_opening_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
+                "pick_reminder_hours_before": (
+                    "ALTER TABLE profiles "
+                    "ADD COLUMN pick_reminder_hours_before INTEGER"
+                ),
             }
             for column_name, statement in missing_profile_columns.items():
                 if column_name not in profile_column_names:
@@ -129,6 +141,20 @@ def run_startup_migrations() -> None:
             }
             for column_name, statement in missing_match_result_columns.items():
                 if column_name not in match_result_column_names:
+                    connection.execute(text(statement))
+
+        if "user_picks" in table_names:
+            pick_column_names = {column["name"] for column in inspector.get_columns("user_picks")}
+            missing_pick_columns = {
+                "is_admin_override": (
+                    "ALTER TABLE user_picks ADD COLUMN is_admin_override BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
+                "admin_override_note": "ALTER TABLE user_picks ADD COLUMN admin_override_note TEXT",
+                "overridden_by_profile_id": "ALTER TABLE user_picks ADD COLUMN overridden_by_profile_id UUID",
+                "overridden_at": "ALTER TABLE user_picks ADD COLUMN overridden_at TIMESTAMP WITH TIME ZONE",
+            }
+            for column_name, statement in missing_pick_columns.items():
+                if column_name not in pick_column_names:
                     connection.execute(text(statement))
 
         if "raw_match_results" not in table_names:
@@ -220,6 +246,174 @@ def run_startup_migrations() -> None:
             for column_name, statement in missing_membership_columns.items():
                 if column_name not in membership_column_names:
                     connection.execute(text(statement))
+
+        if "pick_reminder_email_events" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS pick_reminder_email_events (
+                      id UUID PRIMARY KEY,
+                      dedupe_key VARCHAR(255) NOT NULL,
+                      profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      matchday_id UUID NOT NULL REFERENCES matchdays(id) ON DELETE CASCADE,
+                      reminder_kind VARCHAR(24) NOT NULL,
+                      target_match_date DATE,
+                      hours_before INTEGER,
+                      recipient_email VARCHAR(255) NOT NULL,
+                      provider_name VARCHAR(80) NOT NULL DEFAULT 'resend',
+                      provider_message_id VARCHAR(160),
+                      sent_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_pick_reminder_email_events_dedupe UNIQUE (dedupe_key)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_pick_reminder_email_events_profile "
+                    "ON pick_reminder_email_events(profile_id, sent_at DESC)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_pick_reminder_email_events_matchday "
+                    "ON pick_reminder_email_events(matchday_id, sent_at DESC)"
+                )
+            )
+        else:
+            reminder_event_column_names = {
+                column["name"] for column in inspector.get_columns("pick_reminder_email_events")
+            }
+            missing_reminder_event_columns = {
+                "provider_name": (
+                    "ALTER TABLE pick_reminder_email_events "
+                    "ADD COLUMN provider_name VARCHAR(80) NOT NULL DEFAULT 'resend'"
+                ),
+                "provider_message_id": (
+                    "ALTER TABLE pick_reminder_email_events "
+                    "ADD COLUMN provider_message_id VARCHAR(160)"
+                ),
+                "hours_before": (
+                    "ALTER TABLE pick_reminder_email_events "
+                    "ADD COLUMN hours_before INTEGER"
+                ),
+                "target_match_date": (
+                    "ALTER TABLE pick_reminder_email_events "
+                    "ADD COLUMN target_match_date DATE"
+                ),
+            }
+            for column_name, statement in missing_reminder_event_columns.items():
+                if column_name not in reminder_event_column_names:
+                    connection.execute(text(statement))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_pick_reminder_email_events_profile "
+                    "ON pick_reminder_email_events(profile_id, sent_at DESC)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_pick_reminder_email_events_matchday "
+                    "ON pick_reminder_email_events(matchday_id, sent_at DESC)"
+                )
+            )
+
+        if "vip_competitions" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS vip_competitions (
+                      id UUID PRIMARY KEY,
+                      season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+                      name VARCHAR(160) NOT NULL,
+                      entry_fee_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                      admin_commission_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+                      first_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+                      second_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+                      third_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+                      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      created_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_competitions_season "
+                    "ON vip_competitions(season_id)"
+                )
+            )
+        else:
+            vip_competition_column_names = {column["name"] for column in inspector.get_columns("vip_competitions")}
+            missing_vip_competition_columns = {
+                "entry_fee_amount": "ALTER TABLE vip_competitions ADD COLUMN entry_fee_amount NUMERIC(10,2) NOT NULL DEFAULT 0",
+                "admin_commission_pct": "ALTER TABLE vip_competitions ADD COLUMN admin_commission_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
+                "first_place_pct": "ALTER TABLE vip_competitions ADD COLUMN first_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
+                "second_place_pct": "ALTER TABLE vip_competitions ADD COLUMN second_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
+                "third_place_pct": "ALTER TABLE vip_competitions ADD COLUMN third_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
+                "is_active": "ALTER TABLE vip_competitions ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE",
+                "created_by_profile_id": "ALTER TABLE vip_competitions ADD COLUMN created_by_profile_id UUID",
+            }
+            for column_name, statement in missing_vip_competition_columns.items():
+                if column_name not in vip_competition_column_names:
+                    connection.execute(text(statement))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_competitions_season "
+                    "ON vip_competitions(season_id)"
+                )
+            )
+
+        if "vip_competition_matchdays" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS vip_competition_matchdays (
+                      id UUID PRIMARY KEY,
+                      vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
+                      matchday_id UUID NOT NULL REFERENCES matchdays(id) ON DELETE CASCADE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_vip_competition_matchday UNIQUE (vip_competition_id, matchday_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_competition_matchdays_vip "
+                    "ON vip_competition_matchdays(vip_competition_id, matchday_id)"
+                )
+            )
+
+        if "vip_memberships" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS vip_memberships (
+                      id UUID PRIMARY KEY,
+                      vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
+                      profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      status VARCHAR(24) NOT NULL DEFAULT 'pending',
+                      requested_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      decided_at TIMESTAMP WITH TIME ZONE,
+                      decided_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      admin_note TEXT,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_vip_membership_profile UNIQUE (vip_competition_id, profile_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_memberships_vip_profile "
+                    "ON vip_memberships(vip_competition_id, profile_id)"
+                )
+            )
 
         if "historical_champions" not in table_names:
             connection.execute(

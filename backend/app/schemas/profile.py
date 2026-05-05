@@ -24,6 +24,9 @@ class MeResponse(ProfileOut):
     modality: Literal["pre_pago", "aval"] = "pre_pago"
     aval_profile_id: str | None = None
     theme_preference: str = "standard"
+    pick_reminder_email_enabled: bool = False
+    pick_reminder_opening_enabled: bool = False
+    pick_reminder_hours_before: Literal[1, 3] | None = None
     active_season_id: str | None = None
     active_season_name: str | None = None
     can_participate_active_season: bool = False
@@ -118,3 +121,6 @@ class MeUpdateRequest(BaseModel):
     modality: Literal["pre_pago", "aval"] = "pre_pago"
     aval_profile_id: str | None = None
     theme_preference: Literal["standard", "favorite_team"] = "standard"
+    pick_reminder_email_enabled: bool = False
+    pick_reminder_opening_enabled: bool = False
+    pick_reminder_hours_before: Literal[1, 3] | None = None

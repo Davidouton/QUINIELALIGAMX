@@ -32,6 +32,16 @@ function getPointsTone(totalPoints: number, hasPick: boolean, isOfficial: boolea
   return "text-emerald-300";
 }
 
+function buildOverrideMessage(row: PickResultRow) {
+  const base = row.overridden_by_display_name
+    ? `Pick ajustado por ${row.overridden_by_display_name}.`
+    : "Pick ajustado por admin.";
+  if (row.admin_override_note) {
+    return `${base} ${row.admin_override_note}`;
+  }
+  return base;
+}
+
 function TeamBadge({ crestUrl, name }: { crestUrl: string | null; name: string }) {
   return (
     <div className="flex w-[88px] min-w-0 flex-col items-center justify-center gap-1 text-center sm:w-[108px]">
@@ -91,6 +101,9 @@ export function PickResultsTable({
                         <p className="mt-1 text-[8px] uppercase tracking-[0.08em] text-steel">
                           {getSelectionLabel(row.selection)}
                         </p>
+                        {row.is_admin_override ? (
+                          <p className="mt-1 text-[9px] text-amber-100">{buildOverrideMessage(row)}</p>
+                        ) : null}
                       </>
                     ) : (
                       <p className="mt-1 text-[10px] font-semibold text-coral">Sin pick</p>
@@ -151,6 +164,9 @@ export function PickResultsTable({
                         <p className="mt-1 text-xs uppercase tracking-[0.18em] text-steel">
                           {getSelectionLabel(row.selection)}
                         </p>
+                        {row.is_admin_override ? (
+                          <p className="mt-2 text-xs text-amber-100">{buildOverrideMessage(row)}</p>
+                        ) : null}
                       </>
                     ) : (
                       <span className="text-xs font-semibold text-coral">

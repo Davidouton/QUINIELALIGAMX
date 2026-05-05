@@ -6,7 +6,14 @@ import { backendFetch } from "@/lib/api/backend";
 import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { applyAppTheme, resetAppTheme } from "@/lib/theme/app-theme";
-import type { Me, PaymentModality, RegisteredUserOption, Team, ThemePreference } from "@/types/api";
+import type {
+  Me,
+  PaymentModality,
+  PickReminderHoursBefore,
+  RegisteredUserOption,
+  Team,
+  ThemePreference,
+} from "@/types/api";
 
 type SettingsFormState = {
   display_name: string;
@@ -18,6 +25,9 @@ type SettingsFormState = {
   modality: PaymentModality;
   aval_profile_id: string;
   theme_preference: ThemePreference;
+  pick_reminder_email_enabled: boolean;
+  pick_reminder_opening_enabled: boolean;
+  pick_reminder_hours_before: "" | PickReminderHoursBefore;
 };
 
 const initialForm: SettingsFormState = {
@@ -30,6 +40,9 @@ const initialForm: SettingsFormState = {
   modality: "pre_pago",
   aval_profile_id: "",
   theme_preference: "standard",
+  pick_reminder_email_enabled: false,
+  pick_reminder_opening_enabled: false,
+  pick_reminder_hours_before: "",
 };
 
 function buildFormFromMe(me: Me): SettingsFormState {
@@ -43,6 +56,9 @@ function buildFormFromMe(me: Me): SettingsFormState {
     modality: me.modality ?? "pre_pago",
     aval_profile_id: me.aval_profile_id ?? "",
     theme_preference: me.theme_preference ?? "standard",
+    pick_reminder_email_enabled: me.pick_reminder_email_enabled ?? false,
+    pick_reminder_opening_enabled: me.pick_reminder_opening_enabled ?? false,
+    pick_reminder_hours_before: me.pick_reminder_hours_before ?? "",
   };
 }
 
@@ -155,6 +171,12 @@ export function SettingsPageContent() {
           modality: form.modality,
           aval_profile_id: form.modality === "aval" ? normalizeOptionalValue(form.aval_profile_id) : null,
           theme_preference: form.theme_preference,
+          pick_reminder_email_enabled: form.pick_reminder_email_enabled,
+          pick_reminder_opening_enabled: form.pick_reminder_opening_enabled,
+          pick_reminder_hours_before:
+            form.pick_reminder_email_enabled && form.pick_reminder_hours_before !== ""
+              ? form.pick_reminder_hours_before
+              : null,
         }),
       });
 
@@ -360,6 +382,76 @@ export function SettingsPageContent() {
                 >
                   <option value="standard">Estandar</option>
                   <option value="favorite_team">Equipo favorito</option>
+                </select>
+              </label>
+            </div>
+
+            <div>
+              <h3 className="text-xl font-semibold text-ink">Recordatorios</h3>
+              <p className="mt-2 text-sm text-steel">
+                Te avisamos por mail cuando una jornada ya este activa y antes del primer juego del dia.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2 text-sm">
+                <span className="text-steel">Mail de recordatorios</span>
+                <select
+                  value={form.pick_reminder_email_enabled ? "si" : "no"}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      pick_reminder_email_enabled: event.target.value === "si",
+                      pick_reminder_opening_enabled:
+                        event.target.value === "si" ? current.pick_reminder_opening_enabled : false,
+                      pick_reminder_hours_before:
+                        event.target.value === "si" ? current.pick_reminder_hours_before : "",
+                    }))
+                  }
+                  className="field-control"
+                >
+                  <option value="no">No enviar</option>
+                  <option value="si">Enviar por mail</option>
+                </select>
+              </label>
+
+              <label className="space-y-2 text-sm">
+                <span className="text-steel">Antes del primer juego del dia</span>
+                <select
+                  value={form.pick_reminder_hours_before === "" ? "none" : String(form.pick_reminder_hours_before)}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      pick_reminder_hours_before:
+                        event.target.value === "none"
+                          ? ""
+                          : (Number(event.target.value) as PickReminderHoursBefore),
+                    }))
+                  }
+                  className="field-control"
+                  disabled={!form.pick_reminder_email_enabled}
+                >
+                  <option value="none">Sin recordatorio previo</option>
+                  <option value="3">3 horas antes</option>
+                  <option value="1">1 hora antes</option>
+                </select>
+              </label>
+
+              <label className="space-y-2 text-sm md:col-span-2">
+                <span className="text-steel">Al abrir la jornada</span>
+                <select
+                  value={form.pick_reminder_opening_enabled ? "si" : "no"}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      pick_reminder_opening_enabled: event.target.value === "si",
+                    }))
+                  }
+                  className="field-control"
+                  disabled={!form.pick_reminder_email_enabled}
+                >
+                  <option value="no">No mandar</option>
+                  <option value="si">Mandar una vez</option>
                 </select>
               </label>
             </div>

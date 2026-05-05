@@ -63,6 +63,9 @@ class ProfileRepository:
         modality: str,
         aval_profile_id: str | None,
         theme_preference: str,
+        pick_reminder_email_enabled: bool,
+        pick_reminder_opening_enabled: bool,
+        pick_reminder_hours_before: int | None,
     ) -> Profile:
         profile.display_name = display_name
         profile.email = email
@@ -73,6 +76,9 @@ class ProfileRepository:
         profile.modality = modality
         profile.aval_profile_id = aval_profile_id
         profile.theme_preference = theme_preference
+        profile.pick_reminder_email_enabled = pick_reminder_email_enabled
+        profile.pick_reminder_opening_enabled = pick_reminder_opening_enabled
+        profile.pick_reminder_hours_before = pick_reminder_hours_before
         db.add(profile)
         db.flush()
         return profile

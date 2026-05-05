@@ -42,11 +42,18 @@ class PickOut(BaseModel):
     away_team_name: str
     kickoff_at: datetime
     is_locked: bool
+    is_admin_override: bool = False
+    admin_override_note: str | None = None
+    overridden_by_profile_id: str | None = None
+    overridden_by_display_name: str | None = None
+    overridden_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
-    @field_serializer("kickoff_at", "created_at", "updated_at")
-    def serialize_datetimes(self, value: datetime) -> str:
+    @field_serializer("kickoff_at", "created_at", "updated_at", "overridden_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
         return ensure_utc(value).isoformat().replace("+00:00", "Z")
 
 
@@ -66,12 +73,18 @@ class PickResultRowOut(BaseModel):
     home_score: int | None
     away_score: int | None
     is_official: bool
+    is_admin_override: bool = False
+    admin_override_note: str | None = None
+    overridden_by_display_name: str | None = None
+    overridden_at: datetime | None = None
     result_points: int
     exact_score_points: int
     total_points: int
 
-    @field_serializer("kickoff_at")
-    def serialize_kickoff(self, value: datetime) -> str:
+    @field_serializer("kickoff_at", "overridden_at")
+    def serialize_kickoff(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
         return ensure_utc(value).isoformat().replace("+00:00", "Z")
 
 

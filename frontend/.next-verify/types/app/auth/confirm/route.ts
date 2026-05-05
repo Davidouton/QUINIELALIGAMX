@@ -1,4 +1,4 @@
-// File: /Users/davidoutonballina/Desktop/LIGAMX/APP/frontend/src/app/auth/confirm/route.ts
+// File: /Users/davidouton/Desktop/LIGAMX/APP/frontend/src/app/auth/confirm/route.ts
 import * as entry from '../../../../../src/app/auth/confirm/route.js'
 import type { NextRequest } from 'next/server.js'
 

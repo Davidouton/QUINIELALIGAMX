@@ -303,13 +303,12 @@ export function DashboardHome() {
       try {
         const accessToken = await getBrowserAccessToken();
 
-        const [me, seasons, matchdays, activeMatchdays, leaderboard, publishedResults, teams, personalTrophies] = await Promise.all([
+        const [me, seasons, matchdays, activeMatchdays, leaderboard, teams, personalTrophies] = await Promise.all([
           backendFetch<Me>("/me", accessToken),
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<Matchday[]>("/matchdays", accessToken),
           backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
           backendFetch<LeaderboardEntry[]>("/leaderboard/overall", accessToken),
-          backendFetch<PublishedResult[]>("/published-results", accessToken),
           backendFetch<Team[]>("/teams"),
           backendFetch<PersonalTrophyRecord[]>("/me/trophies", accessToken),
         ]);
@@ -340,7 +339,6 @@ export function DashboardHome() {
           selectedSeason,
           teams,
           leaderboard,
-          publishedResults,
           personalTrophies,
           error: null,
         }));

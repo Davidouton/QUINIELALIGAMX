@@ -8,6 +8,8 @@ from app.models.entities import (
     MatchdayStatus,
     Odds,
     PickPoint,
+    PickReminderEmailEvent,
+    PickReminderKind,
     PickSelection,
     Profile,
     PublishedMatchday,
@@ -23,6 +25,10 @@ from app.models.entities import (
     SyncStatus,
     Team,
     UserPick,
+    VipCompetition,
+    VipCompetitionMatchday,
+    VipMembership,
+    VipMembershipStatus,
     WeeklyLeader,
 )
 
@@ -36,6 +42,8 @@ __all__ = [
     "MatchdayStatus",
     "Odds",
     "PickPoint",
+    "PickReminderEmailEvent",
+    "PickReminderKind",
     "PickSelection",
     "Profile",
     "PublishedMatchday",
@@ -51,5 +59,9 @@ __all__ = [
     "SyncStatus",
     "Team",
     "UserPick",
+    "VipCompetition",
+    "VipCompetitionMatchday",
+    "VipMembership",
+    "VipMembershipStatus",
     "WeeklyLeader",
 ]
