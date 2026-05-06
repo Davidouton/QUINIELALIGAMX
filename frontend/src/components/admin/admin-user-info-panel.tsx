@@ -4,14 +4,11 @@ import { useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { getThemePreferenceLabel } from "@/lib/theme/app-theme";
 import type { AdminUser } from "@/types/api";
 
 function getModalityLabel(modality: string) {
   return modality === "aval" ? "Aval" : "Pre-pago";
-}
-
-function getThemeLabel(themePreference: string) {
-  return themePreference === "favorite_team" ? "Equipo" : "Estandar";
 }
 
 export function AdminUserInfoPanel() {
@@ -52,7 +49,7 @@ export function AdminUserInfoPanel() {
       user.deposit_account ?? "",
       user.aval_display_name ?? "",
       getModalityLabel(user.modality),
-      getThemeLabel(user.theme_preference),
+      getThemePreferenceLabel(user.theme_preference),
     ]
       .join(" ")
       .toLowerCase()
@@ -124,7 +121,7 @@ export function AdminUserInfoPanel() {
                     <td className="px-3 py-3 text-steel">{user.bank_name ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{user.deposit_account ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{user.favorite_team_name ?? "-"}</td>
-                    <td className="px-3 py-3 text-steel">{getThemeLabel(user.theme_preference)}</td>
+                    <td className="px-3 py-3 text-steel">{getThemePreferenceLabel(user.theme_preference)}</td>
                   </tr>
                 ))}
                 {filteredUsers.length === 0 ? (

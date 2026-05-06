@@ -1,7 +1,7 @@
 export type MatchdayStatus = "draft" | "active" | "closed" | "published";
 export type MatchStatus = "scheduled" | "final" | "postponed" | "cancelled";
 export type PickSelection = "home" | "draw" | "away";
-export type ThemePreference = "standard" | "favorite_team";
+export type ThemePreference = "standard" | "auto" | "night" | "day_blue" | "favorite_team";
 export type PaymentModality = "pre_pago" | "aval";
 export type VipMembershipStatus = "pending" | "approved" | "rejected";
 export type PickReminderHoursBefore = 1 | 3;

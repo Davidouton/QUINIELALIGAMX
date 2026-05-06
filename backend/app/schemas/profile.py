@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 from app.models.entities import RoleCode
 
+ThemePreferenceLiteral = Literal["standard", "auto", "night", "day_blue", "favorite_team"]
+
 
 class ProfileOut(BaseModel):
     id: str
@@ -23,7 +25,7 @@ class MeResponse(ProfileOut):
     deposit_account: str | None = None
     modality: Literal["pre_pago", "aval"] = "pre_pago"
     aval_profile_id: str | None = None
-    theme_preference: str = "standard"
+    theme_preference: ThemePreferenceLiteral = "standard"
     pick_reminder_email_enabled: bool = False
     pick_reminder_opening_enabled: bool = False
     pick_reminder_hours_before: Literal[1, 3] | None = None
@@ -120,7 +122,7 @@ class MeUpdateRequest(BaseModel):
     deposit_account: str | None = Field(default=None, max_length=160)
     modality: Literal["pre_pago", "aval"] = "pre_pago"
     aval_profile_id: str | None = None
-    theme_preference: Literal["standard", "favorite_team"] = "standard"
+    theme_preference: ThemePreferenceLiteral = "standard"
     pick_reminder_email_enabled: bool = False
     pick_reminder_opening_enabled: bool = False
     pick_reminder_hours_before: Literal[1, 3] | None = None

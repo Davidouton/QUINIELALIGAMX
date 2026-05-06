@@ -9,11 +9,23 @@
   --app-bg-bottom: #0a1322;
   --app-surface-card-bg: rgba(255, 255, 255, 0.05);
   --app-surface-strong-bg: rgba(13, 26, 48, 0.8);
+  --app-surface-subtle-bg: rgba(255, 255, 255, 0.014);
+  --app-surface-soft-bg: rgba(255, 255, 255, 0.05);
+  --app-surface-soft-hover-bg: rgba(255, 255, 255, 0.08);
+  --app-border-soft: rgba(255, 255, 255, 0.04);
+  --app-border-strong: rgba(255, 255, 255, 0.08);
   --app-accent-hex: #ff5c7a;
   --app-accent-rgb: 255, 92, 122;
   --app-primary-hex: #87e0a1;
   --app-primary-rgb: 135, 224, 161;
   --app-primary-text: #07111f;
+  --app-ink-rgb: 245, 247, 255;
+  --app-sand-rgb: 219, 229, 255;
+  --app-steel-rgb: 142, 165, 209;
+  --app-night-rgb: 7, 17, 31;
+  --app-slate-rgb: 13, 26, 48;
+  --app-grid-rgb: 255, 255, 255;
+  --app-placeholder-rgb: 142, 165, 209;
 }
 
 * {
@@ -28,7 +40,7 @@ body {
   min-height: 100vh;
   background:
     linear-gradient(180deg, var(--app-bg-top) 0%, var(--app-bg-mid) 45%, var(--app-bg-bottom) 100%);
-  color: #f5f7ff;
+  color: rgb(var(--app-ink-rgb));
   font-family: "Avenir Next", "SF Pro Display", "Segoe UI", sans-serif;
   position: relative;
   overflow-x: hidden;
@@ -53,8 +65,8 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    linear-gradient(90deg, rgba(var(--app-grid-rgb), 0.04) 1px, transparent 1px),
+    linear-gradient(rgba(var(--app-grid-rgb), 0.04) 1px, transparent 1px);
   background-size: 120px 120px;
   mask-image: radial-gradient(circle at center, black 32%, transparent 92%);
   opacity: 0.18;
@@ -66,20 +78,20 @@ body::after {
 
 ::selection {
   background: rgba(var(--app-accent-rgb), 0.35);
-  color: #f5f7ff;
+  color: rgb(var(--app-ink-rgb));
 }
 
 @layer components {
   .surface-card {
     @apply rounded-[14px] p-4 md:p-5;
-    background-color: rgba(255, 255, 255, 0.014);
-    border: 1px solid rgba(255, 255, 255, 0.03);
+    background-color: var(--app-surface-subtle-bg);
+    border: 1px solid var(--app-border-soft);
   }
 
   .surface-card-strong {
     @apply rounded-[14px];
-    background-color: rgba(10, 22, 40, 0.18);
-    border: 1px solid rgba(255, 255, 255, 0.03);
+    background-color: var(--app-surface-strong-bg);
+    border: 1px solid var(--app-border-soft);
   }
 
   .eyebrow {
@@ -93,34 +105,34 @@ body::after {
 
   .primary-button {
     @apply inline-flex h-10 items-center justify-center rounded-[12px] border px-5 text-sm font-semibold text-ink transition;
-    border-color: rgba(255, 255, 255, 0.06);
-    background-color: rgba(255, 255, 255, 0.05);
+    border-color: var(--app-border-strong);
+    background-color: var(--app-surface-soft-bg);
   }
 
   .primary-button:hover {
-    border-color: rgba(255, 255, 255, 0.1);
-    background-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(var(--app-accent-rgb), 0.35);
+    background-color: var(--app-surface-soft-hover-bg);
   }
 
   .secondary-button {
     @apply inline-flex h-10 items-center justify-center rounded-[12px] border px-4 text-sm font-semibold text-ink transition;
-    border-color: rgba(255, 255, 255, 0.04);
-    background-color: rgba(255, 255, 255, 0.02);
+    border-color: var(--app-border-soft);
+    background-color: var(--app-surface-subtle-bg);
   }
 
   .secondary-button:hover {
     border-color: rgba(var(--app-accent-rgb), 0.6);
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--app-surface-soft-hover-bg);
   }
 
   .field-control {
     @apply h-10 w-full rounded-[12px] border px-3 py-2 text-sm font-semibold text-ink outline-none transition focus:ring-2;
-    border-color: rgba(255, 255, 255, 0.04);
-    background-color: rgba(255, 255, 255, 0.02);
+    border-color: var(--app-border-soft);
+    background-color: var(--app-surface-subtle-bg);
   }
 
   .field-control::placeholder {
-    color: rgba(142, 165, 209, 0.6);
+    color: rgba(var(--app-placeholder-rgb), 0.72);
   }
 
   .field-control:focus {
@@ -134,39 +146,39 @@ body::after {
 
   .app-pill {
     @apply inline-flex h-10 items-center justify-center rounded-[12px] border px-4 text-xs font-semibold text-ink transition;
-    border-color: rgba(255, 255, 255, 0.04);
-    background-color: rgba(255, 255, 255, 0.02);
+    border-color: var(--app-border-soft);
+    background-color: var(--app-surface-subtle-bg);
   }
 
   .app-pill:hover {
-    border-color: rgba(255, 255, 255, 0.08);
-    background-color: rgba(255, 255, 255, 0.04);
+    border-color: var(--app-border-strong);
+    background-color: var(--app-surface-soft-bg);
   }
 
   .app-pill-active {
     @apply app-pill;
-    border-color: rgba(255, 255, 255, 0.06);
-    background-color: rgba(255, 255, 255, 0.05);
+    border-color: rgba(var(--app-accent-rgb), 0.28);
+    background-color: var(--app-surface-soft-bg);
   }
 
   .app-pill-ghost {
     @apply inline-flex h-10 items-center justify-center rounded-[12px] border px-4 text-xs font-semibold text-steel transition;
-    border-color: rgba(255, 255, 255, 0.04);
+    border-color: var(--app-border-soft);
     background-color: transparent;
   }
 
   .app-pill-ghost:hover {
-    border-color: rgba(255, 255, 255, 0.08);
-    color: #f5f7ff;
+    border-color: var(--app-border-strong);
+    color: rgb(var(--app-ink-rgb));
   }
 
   .app-table-head {
     @apply border-b pb-2 text-left text-[11px] uppercase tracking-[0.18em] text-steel/80;
-    border-color: rgba(255, 255, 255, 0.06);
+    border-color: var(--app-border-strong);
   }
 
   .app-table-row {
-    border-color: rgba(255, 255, 255, 0.05);
+    border-color: var(--app-border-soft);
   }
 
   .compact-datetime-control {
@@ -213,7 +225,7 @@ body::after {
 
   .stat-tile {
     @apply rounded-[12px] p-4;
-    background-color: rgba(255, 255, 255, 0.012);
+    background-color: var(--app-surface-subtle-bg);
   }
 
   .no-scrollbar {
@@ -224,4 +236,12 @@ body::after {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+}
+
+html[data-app-surface="light"] [class*="border-white/["] {
+  border-color: rgba(var(--app-night-rgb), 0.12) !important;
+}
+
+html[data-app-surface="light"] [class*="bg-white/["] {
+  background-color: rgba(255, 255, 255, 0.78) !important;
 }

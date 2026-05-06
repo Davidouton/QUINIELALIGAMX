@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { getThemePreferenceLabel } from "@/lib/theme/app-theme";
 import type { AdminUser, Me, Season } from "@/types/api";
 
 type BillingDraft = {
@@ -61,10 +62,6 @@ function getRoleTableLabel(roleCode: string) {
 
 function getModalityLabel(modality: string) {
   return modality === "aval" ? "Aval" : "Pre-pago";
-}
-
-function getThemeLabel(themePreference: string) {
-  return themePreference === "favorite_team" ? "Equipo" : "Estandar";
 }
 
 export function AdminUsersPanel() {
@@ -313,7 +310,7 @@ export function AdminUsersPanel() {
       user.deposit_account ?? "",
       user.aval_display_name ?? "",
       getModalityLabel(user.modality),
-      getThemeLabel(user.theme_preference),
+      getThemePreferenceLabel(user.theme_preference),
       user.role_code,
       getRoleLabel(user.role_code),
       membership?.is_active ? "activo" : "sin alta",

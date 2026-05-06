@@ -1,11 +1,18 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, type CSSProperties, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import { applyAppTheme, resetAppTheme } from "@/lib/theme/app-theme";
+import {
+  THEME_PREFERENCE_OPTIONS,
+  applyAppTheme,
+  getThemePreferenceDescription,
+  getThemePreferenceLabel,
+  getThemeTokens,
+  normalizeThemePreference,
+} from "@/lib/theme/app-theme";
 import type {
   Me,
   PaymentModality,
@@ -39,7 +46,7 @@ const initialForm: SettingsFormState = {
   deposit_account: "",
   modality: "pre_pago",
   aval_profile_id: "",
-  theme_preference: "standard",
+  theme_preference: "night",
   pick_reminder_email_enabled: false,
   pick_reminder_opening_enabled: false,
   pick_reminder_hours_before: "",
@@ -55,7 +62,7 @@ function buildFormFromMe(me: Me): SettingsFormState {
     deposit_account: me.deposit_account ?? "",
     modality: me.modality ?? "pre_pago",
     aval_profile_id: me.aval_profile_id ?? "",
-    theme_preference: me.theme_preference ?? "standard",
+    theme_preference: normalizeThemePreference(me.theme_preference),
     pick_reminder_email_enabled: me.pick_reminder_email_enabled ?? false,
     pick_reminder_opening_enabled: me.pick_reminder_opening_enabled ?? false,
     pick_reminder_hours_before: me.pick_reminder_hours_before ?? "",
@@ -183,11 +190,7 @@ export function SettingsPageContent() {
       setMe(saved);
       setForm(buildFormFromMe(saved));
       const nextFavoriteTeam = teams.find((team) => team.id === saved.favorite_team_id) ?? null;
-      if (saved.theme_preference === "favorite_team") {
-        applyAppTheme(saved.theme_preference, nextFavoriteTeam);
-      } else {
-        resetAppTheme();
-      }
+      applyAppTheme(saved.theme_preference, nextFavoriteTeam);
       setMessage("Settings guardados.");
     } catch (caughtError) {
       setSaveError(
@@ -198,16 +201,19 @@ export function SettingsPageContent() {
     }
   }
 
-  const previewStyle =
-    form.theme_preference === "favorite_team" && favoriteTeam
-      ? {
-          background: `linear-gradient(135deg, ${favoriteTeam.primary_color ?? "#87e0a1"} 0%, ${
-            favoriteTeam.secondary_color ?? "#091425"
-          } 58%, ${favoriteTeam.accent_color ?? favoriteTeam.primary_color ?? "#ff5c7a"} 100%)`,
-          color: "#f5f7ff",
-        }
-      : undefined;
-  const isFavoriteThemePreview = form.theme_preference === "favorite_team" && favoriteTeam;
+  const previewTheme = useMemo(
+    () => getThemeTokens(form.theme_preference, favoriteTeam),
+    [favoriteTeam, form.theme_preference],
+  );
+  const previewStyle = {
+    background: `linear-gradient(135deg, ${previewTheme.bgTop} 0%, ${previewTheme.bgMid} 58%, ${previewTheme.bgBottom} 100%)`,
+    border: `1px solid ${previewTheme.borderSoft}`,
+    boxShadow:
+      previewTheme.surfaceMode === "light"
+        ? "0 24px 60px rgba(18, 57, 122, 0.12)"
+        : "0 24px 60px rgba(4, 10, 22, 0.34)",
+    color: `rgb(${previewTheme.inkRgb})`,
+  } satisfies CSSProperties;
   const whatsappCards = [
     {
       title: "WhatsApp general",
@@ -380,8 +386,11 @@ export function SettingsPageContent() {
                   }
                   className="field-control"
                 >
-                  <option value="standard">Estandar</option>
-                  <option value="favorite_team">Equipo favorito</option>
+                  {THEME_PREFERENCE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>
@@ -475,25 +484,22 @@ export function SettingsPageContent() {
           </div>
 
           <div
-            className="px-4 py-4"
+            className="rounded-[18px] px-4 py-4"
             style={previewStyle}
           >
             <p
-              className={`text-xs uppercase tracking-[0.25em] ${
-                isFavoriteThemePreview ? "text-white/75" : "text-steel/80"
-              }`}
+              className="text-xs uppercase tracking-[0.25em]"
+              style={{ color: previewTheme.accentHex, opacity: previewTheme.surfaceMode === "light" ? 0.92 : 0.78 }}
             >
-              {form.theme_preference === "favorite_team" ? "Equipo favorito" : "Estandar"}
+              {getThemePreferenceLabel(form.theme_preference)}
             </p>
-            <p className={`mt-3 text-2xl font-semibold ${isFavoriteThemePreview ? "text-white" : "text-ink"}`}>
+            <p className="mt-3 text-2xl font-semibold" style={{ color: `rgb(${previewTheme.inkRgb})` }}>
               {form.theme_preference === "favorite_team" && favoriteTeam
                 ? favoriteTeam.name
                 : me?.display_name ?? "Usuario"}
             </p>
-            <p className={`mt-2 text-sm ${isFavoriteThemePreview ? "text-white/80" : "text-steel"}`}>
-              {form.theme_preference === "favorite_team"
-                ? "El dashboard usara los colores principales del club seleccionado."
-                : "Se mantiene el look base de QuinielaMaestra."}
+            <p className="mt-2 text-sm" style={{ color: `rgba(${previewTheme.steelRgb}, 0.94)` }}>
+              {getThemePreferenceDescription(form.theme_preference, Boolean(favoriteTeam))}
             </p>
           </div>
         </section>

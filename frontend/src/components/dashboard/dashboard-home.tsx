@@ -25,6 +25,7 @@ import type {
   PublishedResult,
   Season,
   Team,
+  VipCompetition,
 } from "@/types/api";
 
 type DashboardState = {
@@ -41,6 +42,7 @@ type DashboardState = {
   pickResults: PickResultRow[];
   matchdayPoints: MyMatchdayPointsEntry[];
   leaderboard: LeaderboardEntry[];
+  vipCompetitions: VipCompetition[];
   publishedResults: PublishedResult[];
   personalTrophies: PersonalTrophyRecord[];
   upcomingMatchdayGroups: {
@@ -49,6 +51,8 @@ type DashboardState = {
   }[];
   error: string | null;
 };
+
+type DashboardTab = "general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios" | "vip";
 
 const initialState: DashboardState = {
   me: null,
@@ -64,6 +68,7 @@ const initialState: DashboardState = {
   pickResults: [],
   matchdayPoints: [],
   leaderboard: [],
+  vipCompetitions: [],
   publishedResults: [],
   personalTrophies: [],
   upcomingMatchdayGroups: [],
@@ -221,7 +226,8 @@ function MatchTeamsInline({
 export function DashboardHome() {
   const [state, setState] = useState<DashboardState>(initialState);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios">("general");
+  const [activeTab, setActiveTab] = useState<DashboardTab>("general");
+  const [selectedVipBoardId, setSelectedVipBoardId] = useState("");
   const [isTabMenuOpen, setIsTabMenuOpen] = useState(false);
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
@@ -303,7 +309,7 @@ export function DashboardHome() {
       try {
         const accessToken = await getBrowserAccessToken();
 
-        const [me, seasons, matchdays, activeMatchdays, leaderboard, teams, personalTrophies] = await Promise.all([
+        const [me, seasons, matchdays, activeMatchdays, leaderboard, teams, personalTrophies, vipCompetitions] = await Promise.all([
           backendFetch<Me>("/me", accessToken),
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<Matchday[]>("/matchdays", accessToken),
@@ -311,6 +317,7 @@ export function DashboardHome() {
           backendFetch<LeaderboardEntry[]>("/leaderboard/overall", accessToken),
           backendFetch<Team[]>("/teams"),
           backendFetch<PersonalTrophyRecord[]>("/me/trophies", accessToken),
+          backendFetch<VipCompetition[]>("/vip", accessToken),
         ]);
 
         const activeSeason = seasons.find((season) => season.is_active) ?? null;
@@ -339,6 +346,7 @@ export function DashboardHome() {
           selectedSeason,
           teams,
           leaderboard,
+          vipCompetitions,
           personalTrophies,
           error: null,
         }));
@@ -416,6 +424,21 @@ export function DashboardHome() {
     void loadUpcomingMatchdays();
   }, [activeTab, state.selectedMatchday?.number, state.selectedSeason, state.matchdays]);
 
+  useEffect(() => {
+    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+    if (approvedVipCompetitions.length === 0 && activeTab === "vip") {
+      setActiveTab("general");
+      return;
+    }
+
+    if (approvedVipCompetitions.length > 0) {
+      const stillSelected = approvedVipCompetitions.some((vip) => vip.id === selectedVipBoardId);
+      if (!stillSelected) {
+        setSelectedVipBoardId(approvedVipCompetitions[0].id);
+      }
+    }
+  }, [activeTab, selectedVipBoardId, state.vipCompetitions]);
+
   async function handleSeasonChange(seasonId: string) {
     const selectedSeason = state.seasons.find((season) => season.id === seasonId) ?? null;
     const seasonMatchdays = state.matchdays.filter((matchday) => !seasonId || matchday.season_id === seasonId);
@@ -477,14 +500,23 @@ export function DashboardHome() {
   const trophyRecords = state.personalTrophies.filter((row) => row.recognition_type === "trophy");
   const awardRecords = state.personalTrophies.filter((row) => row.recognition_type === "award");
   const teamCrestById = new Map(state.teams.map((team) => [team.id, team.crest_url]));
-  const dashboardTabs = [
+  const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+  const selectedVipCompetition =
+    approvedVipCompetitions.find((vip) => vip.id === selectedVipBoardId) ?? approvedVipCompetitions[0] ?? null;
+  const myVipEntry =
+    selectedVipCompetition?.leaderboard.find((entry) => entry.profile_id === state.me?.id) ?? null;
+  const visibleVipLeaderboard = selectedVipCompetition?.leaderboard.slice(0, 10) ?? [];
+  const dashboardTabs: Array<{ id: DashboardTab; label: string }> = [
     { id: "general", label: "General" },
     { id: "jornada", label: "Jornada" },
     { id: "proximos", label: "Proximos juegos" },
     { id: "probabilidades", label: "Probabilidades" },
     { id: "advanced", label: "E. Avanzadas" },
     { id: "premios", label: "Premios" },
-  ] as const;
+  ];
+  if (approvedVipCompetitions.length > 0) {
+    dashboardTabs.push({ id: "vip", label: "VIP Board" });
+  }
   const activeTabLabel = dashboardTabs.find((tab) => tab.id === activeTab)?.label ?? "General";
   const compactSeasonLabel = formatCompactSeasonName(state.summary?.season_name ?? state.selectedSeason?.name);
   const summaryTileClass =
@@ -669,7 +701,155 @@ export function DashboardHome() {
         </div>
       ) : null}
 
-      {activeTab === "advanced" ? (
+      {activeTab === "vip" ? (
+        <section className="space-y-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.3em] text-steel">VIP Board</p>
+              <h2 className="mt-1.5 text-lg font-semibold text-ink sm:mt-2 sm:text-2xl">
+                {selectedVipCompetition?.name ?? "VIP"}
+              </h2>
+              <p className="mt-1.5 max-w-2xl text-xs text-steel sm:mt-2 sm:text-sm">
+                Tablero exclusivo de tu competencia VIP, usando solo las jornadas que cuentan para esa bolsa.
+              </p>
+            </div>
+            {approvedVipCompetitions.length > 1 ? (
+              <label className="w-full max-w-[280px] space-y-1.5 text-xs">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Competencia VIP</span>
+                <select
+                  value={selectedVipCompetition?.id ?? ""}
+                  onChange={(event) => setSelectedVipBoardId(event.target.value)}
+                  className={dashboardSelectClass}
+                >
+                  {approvedVipCompetitions.map((vip) => (
+                    <option key={vip.id} value={vip.id}>
+                      {vip.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+
+          {selectedVipCompetition ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="stat-tile border border-white/[0.06]">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Mi lugar</p>
+                  <p className="mt-2 text-lg font-semibold text-coral">
+                    {myVipEntry ? `#${myVipEntry.rank_position}` : "-"}
+                  </p>
+                  <p className="mt-1 text-xs text-steel">Posicion actual dentro de la VIP</p>
+                </div>
+                <div className="stat-tile border border-white/[0.06]">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Mis puntos</p>
+                  <p className="mt-2 text-lg font-semibold text-ink">{myVipEntry?.total_points ?? 0}</p>
+                  <p className="mt-1 text-xs text-steel">
+                    {myVipEntry?.exact_scores ?? 0} exactos · {myVipEntry?.correct_results ?? 0} aciertos
+                  </p>
+                </div>
+                <div className="stat-tile border border-white/[0.06]">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Bolsa VIP</p>
+                  <p className="mt-2 text-lg font-semibold text-ink">{formatCurrency(selectedVipCompetition.gross_pool_amount)}</p>
+                  <p className="mt-1 text-xs text-steel">{selectedVipCompetition.approved_members_count} participantes aprobados</p>
+                </div>
+                <div className="stat-tile border border-white/[0.06]">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Jornadas que cuentan</p>
+                  <p className="mt-2 text-lg font-semibold text-ink">{selectedVipCompetition.matchdays.length}</p>
+                  <p className="mt-1 text-xs text-steel">
+                    J{selectedVipCompetition.matchdays.map((matchday) => matchday.number).join(", J")}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_320px]">
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Leaderboard VIP</p>
+                      <p className="mt-1 text-xs text-steel">
+                        {selectedVipCompetition.leaderboard.length} jugadores en competencia
+                      </p>
+                    </div>
+                    <p className="text-xs text-steel">Top 10</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {visibleVipLeaderboard.map((entry) => {
+                      const isMe = entry.profile_id === state.me?.id;
+                      return (
+                        <div
+                          key={entry.profile_id}
+                          className={`grid grid-cols-[52px_minmax(0,1fr)_72px_72px] items-center gap-3 rounded-[14px] border px-4 py-3 ${
+                            isMe ? "border-coral/35 bg-coral/10" : "border-white/[0.06] bg-white/[0.02]"
+                          }`}
+                        >
+                          <div className="text-center">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-steel">Lugar</p>
+                            <p className="mt-1 text-lg font-semibold text-ink">#{entry.rank_position}</p>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink">
+                              {entry.display_name} {isMe ? "· Tu" : ""}
+                            </p>
+                            <p className="mt-1 text-xs text-steel">
+                              {entry.correct_results} aciertos · {entry.exact_scores} exactos
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-steel">Puntos</p>
+                            <p className="mt-1 text-sm font-semibold text-ink">{entry.total_points}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[10px] uppercase tracking-[0.12em] text-steel">Exactos</p>
+                            <p className="mt-1 text-sm font-semibold text-ink">{entry.exact_scores}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {visibleVipLeaderboard.length === 0 ? (
+                      <p className="text-sm text-steel">Todavia no hay puntos cargados en esta VIP.</p>
+                    ) : null}
+                  </div>
+                </section>
+
+                <aside className="space-y-3">
+                  <div className="stat-tile border border-white/[0.06]">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Premios</p>
+                    <div className="mt-3 space-y-2 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-steel">1er lugar</span>
+                        <span className="font-semibold text-ink">{formatCurrency(selectedVipCompetition.first_place_amount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-steel">2do lugar</span>
+                        <span className="font-semibold text-ink">{formatCurrency(selectedVipCompetition.second_place_amount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-steel">3er lugar</span>
+                        <span className="font-semibold text-ink">{formatCurrency(selectedVipCompetition.third_place_amount)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="stat-tile border border-white/[0.06]">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Jornadas que cuentan</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedVipCompetition.matchdays.map((matchday) => (
+                        <span key={matchday.id} className="app-pill-ghost h-9 px-3 text-[11px] text-ink">
+                          J{matchday.number}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </aside>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-steel">No tienes una VIP aprobada para mostrar en el dashboard.</p>
+          )}
+        </section>
+      ) : activeTab === "advanced" ? (
         <AdvancedStatsPanel stats={state.advancedStats} />
       ) : activeTab === "jornada" ? (
         <PickResultsTable
