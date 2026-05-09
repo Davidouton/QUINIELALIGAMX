@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     the_odds_api_bookmaker: str = "draftkings"
     the_odds_api_results_days_from: int = 3
     the_odds_api_timeout_seconds: float = 20.0
+    stripe_api_base_url: str = "https://api.stripe.com/v1"
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_success_url: str = "http://localhost:3000/dashboard/payments/success"
+    stripe_cancel_url: str = "http://localhost:3000/dashboard/payments/cancel"
+    stripe_default_currency: str = "mxn"
+    stripe_webhook_tolerance_seconds: int = 300
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 

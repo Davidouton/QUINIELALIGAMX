@@ -84,7 +84,14 @@ class ScoringService:
                 and pick.predicted_away_score == result.away_score
                 else 0
             )
-            total_points = result_points + exact_points
+            advancing_points = (
+                rules["advancing_team"]
+                if match.stage_type.value not in {"regular", "group"}
+                and pick.advancing_team_id is not None
+                and pick.advancing_team_id == result.advancing_team_id
+                else 0
+            )
+            total_points = result_points + exact_points + advancing_points
 
             db.add(
                 PickPoint(
@@ -94,6 +101,7 @@ class ScoringService:
                     matchday_id=match.matchday_id,
                     result_points=result_points,
                     exact_score_points=exact_points,
+                    advancing_team_points=advancing_points,
                     total_points=total_points,
                 )
             )
@@ -288,6 +296,7 @@ class ScoringService:
         return {
             "result_correct": stored_rules.get("result_correct", 3),
             "exact_score": stored_rules.get("exact_score", 2),
+            "advancing_team": stored_rules.get("advancing_team", 1),
         }
 
     def _resolve_winner(self, home_score: int, away_score: int) -> PickSelection:

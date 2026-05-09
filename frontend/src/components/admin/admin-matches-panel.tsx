@@ -10,12 +10,17 @@ import {
   toMexicoCityInputValue,
 } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Match, Matchday, Season, Team } from "@/types/api";
+import type { Match, MatchStageType, Matchday, Season, Team } from "@/types/api";
 
 type MatchFormState = {
   matchday_id: string;
   home_team_id: string;
   away_team_id: string;
+  stage_type: MatchStageType;
+  group_label: string;
+  bracket_slot: string;
+  home_placeholder: string;
+  away_placeholder: string;
   kickoff_at: string;
   picks_lock_at: string;
   venue: string;
@@ -27,6 +32,11 @@ const initialMatchForm: MatchFormState = {
   matchday_id: "",
   home_team_id: "",
   away_team_id: "",
+  stage_type: "regular",
+  group_label: "",
+  bracket_slot: "",
+  home_placeholder: "",
+  away_placeholder: "",
   kickoff_at: "",
   picks_lock_at: "",
   venue: "",
@@ -37,8 +47,13 @@ const initialMatchForm: MatchFormState = {
 function buildFormFromMatch(match: Match): MatchFormState {
   return {
     matchday_id: match.matchday_id,
-    home_team_id: match.home_team_id,
-    away_team_id: match.away_team_id,
+    home_team_id: match.home_team_id ?? "",
+    away_team_id: match.away_team_id ?? "",
+    stage_type: match.stage_type,
+    group_label: match.group_label ?? "",
+    bracket_slot: match.bracket_slot ?? "",
+    home_placeholder: match.home_placeholder ?? "",
+    away_placeholder: match.away_placeholder ?? "",
     kickoff_at: toMexicoCityInputValue(match.kickoff_at),
     picks_lock_at: toMexicoCityInputValue(match.picks_lock_at),
     venue: match.venue ?? "",
@@ -71,6 +86,21 @@ const compactExternalIdControlClass = `${compactTableControlClass} font-mono tra
 
 const compactActionButtonClass =
   "app-pill inline-flex h-7 items-center justify-center rounded-[10px] px-2 text-[10px] font-semibold disabled:opacity-60";
+
+const stageLabels: Record<MatchStageType, string> = {
+  regular: "Regular",
+  group: "Grupo",
+  round_of_32: "Dieciseisavos",
+  round_of_16: "Octavos",
+  quarterfinal: "Cuartos",
+  semifinal: "Semifinal",
+  third_place: "3er lugar",
+  final: "Final",
+};
+
+function isKnockoutStage(stageType: MatchStageType) {
+  return stageType !== "regular" && stageType !== "group";
+}
 
 export function AdminMatchesPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -105,6 +135,22 @@ export function AdminMatchesPanel() {
       ),
     [matchdays, selectedSeasonId],
   );
+  const createFormSeasonId = matchdayById[createForm.matchday_id]?.season_id ?? selectedSeasonId;
+  const createEligibleTeams = useMemo(() => {
+    const competitionId = createFormSeasonId ? seasonById[createFormSeasonId]?.competition_id ?? null : null;
+    if (!competitionId) {
+      return teams;
+    }
+    return teams.filter((team) => team.competition_id === competitionId);
+  }, [createFormSeasonId, seasonById, teams]);
+
+  function getEligibleTeamsForSeasonId(seasonId: string | null | undefined) {
+    const competitionId = seasonId ? seasonById[seasonId]?.competition_id ?? null : null;
+    if (!competitionId) {
+      return teams;
+    }
+    return teams.filter((team) => team.competition_id === competitionId);
+  }
 
   async function loadMatches(matchdayId: string, accessToken?: string) {
     const path = matchdayId ? `/matches?matchday_id=${matchdayId}` : "/matches";
@@ -201,6 +247,12 @@ export function AdminMatchesPanel() {
         method: "POST",
         body: JSON.stringify({
           ...createForm,
+          home_team_id: createForm.home_team_id || null,
+          away_team_id: createForm.away_team_id || null,
+          group_label: createForm.group_label || null,
+          bracket_slot: createForm.bracket_slot || null,
+          home_placeholder: createForm.home_placeholder || null,
+          away_placeholder: createForm.away_placeholder || null,
           picks_lock_at: getAutoLockValue(createForm.kickoff_at, createForm.matchday_id) || createForm.kickoff_at,
           venue: createForm.venue || null,
           external_id: createForm.external_id || null,
@@ -235,6 +287,12 @@ export function AdminMatchesPanel() {
         method: "PUT",
         body: JSON.stringify({
           ...draft,
+          home_team_id: draft.home_team_id || null,
+          away_team_id: draft.away_team_id || null,
+          group_label: draft.group_label || null,
+          bracket_slot: draft.bracket_slot || null,
+          home_placeholder: draft.home_placeholder || null,
+          away_placeholder: draft.away_placeholder || null,
           picks_lock_at: getAutoLockValue(draft.kickoff_at, draft.matchday_id) || draft.kickoff_at,
           venue: draft.venue || null,
           external_id: draft.external_id || null,
@@ -293,6 +351,12 @@ export function AdminMatchesPanel() {
           body: JSON.stringify({
             ...currentDraft,
             matchday_id: bulkMatchdayId,
+            home_team_id: currentDraft.home_team_id || null,
+            away_team_id: currentDraft.away_team_id || null,
+            group_label: currentDraft.group_label || null,
+            bracket_slot: currentDraft.bracket_slot || null,
+            home_placeholder: currentDraft.home_placeholder || null,
+            away_placeholder: currentDraft.away_placeholder || null,
             picks_lock_at: getAutoLockValue(currentDraft.kickoff_at, bulkMatchdayId) || currentDraft.kickoff_at,
             venue: currentDraft.venue || null,
             external_id: currentDraft.external_id || null,
@@ -343,6 +407,8 @@ export function AdminMatchesPanel() {
                 setBulkMatchdayId(nextBulkMatchdayId);
                 setCreateForm((current) => ({
                   ...current,
+                  home_team_id: "",
+                  away_team_id: "",
                   matchday_id:
                     matchdays.find((matchday) => matchday.season_id === nextSeasonId && matchday.id === current.matchday_id)?.id ||
                     matchdays.find((matchday) => matchday.season_id === nextSeasonId)?.id ||
@@ -423,6 +489,10 @@ export function AdminMatchesPanel() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h3 className="text-base font-semibold text-ink">Crear partido manual</h3>
+            <p className="mt-2 max-w-3xl text-sm text-steel">
+              En fase regular o grupos debes asignar ambos equipos. En knockout puedes dejar sembrado el bracket con
+              placeholders como <span className="font-semibold text-ink">1A</span>, <span className="font-semibold text-ink">2B</span> o <span className="font-semibold text-ink">Ganador 49</span>.
+            </p>
           </div>
         </div>
 
@@ -448,32 +518,50 @@ export function AdminMatchesPanel() {
           </select>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <select
-              value={createForm.home_team_id}
-              onChange={(event) => setCreateForm((current) => ({ ...current, home_team_id: event.target.value }))}
-              className="field-control"
-              required
-            >
-              <option value="">Equipo local</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={createForm.away_team_id}
-              onChange={(event) => setCreateForm((current) => ({ ...current, away_team_id: event.target.value }))}
-              className="field-control"
-              required
-            >
-              <option value="">Equipo visitante</option>
-              {teams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
+            <div className="grid gap-3">
+              <select
+                value={createForm.home_team_id}
+                onChange={(event) => setCreateForm((current) => ({ ...current, home_team_id: event.target.value }))}
+                className="field-control"
+              >
+                <option value="">Equipo local</option>
+                {createEligibleTeams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+              {isKnockoutStage(createForm.stage_type) ? (
+                <input
+                  value={createForm.home_placeholder}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, home_placeholder: event.target.value }))}
+                  placeholder="Seed local: 1A / Ganador 49"
+                  className="field-control"
+                />
+              ) : null}
+            </div>
+            <div className="grid gap-3">
+              <select
+                value={createForm.away_team_id}
+                onChange={(event) => setCreateForm((current) => ({ ...current, away_team_id: event.target.value }))}
+                className="field-control"
+              >
+                <option value="">Equipo visitante</option>
+                {createEligibleTeams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+              {isKnockoutStage(createForm.stage_type) ? (
+                <input
+                  value={createForm.away_placeholder}
+                  onChange={(event) => setCreateForm((current) => ({ ...current, away_placeholder: event.target.value }))}
+                  placeholder="Seed visita: 2B / Ganador 50"
+                  className="field-control"
+                />
+              ) : null}
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -507,6 +595,34 @@ export function AdminMatchesPanel() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
+            <select
+              value={createForm.stage_type}
+              onChange={(event) =>
+                setCreateForm((current) => ({ ...current, stage_type: event.target.value as MatchStageType }))
+              }
+              className="field-control"
+            >
+              {Object.entries(stageLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <input
+              value={createForm.group_label}
+              onChange={(event) => setCreateForm((current) => ({ ...current, group_label: event.target.value }))}
+              placeholder="Grupo A / opcional"
+              className="field-control"
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <input
+              value={createForm.bracket_slot}
+              onChange={(event) => setCreateForm((current) => ({ ...current, bracket_slot: event.target.value }))}
+              placeholder="R16-1 / SF-2 / opcional"
+              className="field-control"
+            />
             <input
               value={createForm.venue}
               onChange={(event) => setCreateForm((current) => ({ ...current, venue: event.target.value }))}
@@ -547,12 +663,14 @@ export function AdminMatchesPanel() {
 
         {matches.length > 0 ? (
           <div className="no-scrollbar max-h-[72vh] overflow-auto touch-pan-x [WebkitOverflowScrolling:touch]">
-            <table className="min-w-[1380px] table-fixed text-center text-[11px] text-steel">
+            <table className="min-w-[1620px] table-fixed text-center text-[11px] text-steel">
               <thead className="app-table-head sticky top-0 z-10 bg-night/95 backdrop-blur-xl">
                 <tr>
                   <th className="w-[180px] px-2 py-3">Partido</th>
                   <th className="w-[150px] px-2 py-3">Torneo</th>
                   <th className="w-[150px] px-2 py-3">Jornada</th>
+                  <th className="w-[120px] px-2 py-3">Fase</th>
+                  <th className="w-[120px] px-2 py-3">Grupo / Bracket</th>
                   <th className="w-[125px] px-2 py-3">Local</th>
                   <th className="w-[125px] px-2 py-3">Visitante</th>
                   <th className="w-[228px] px-2 py-3">Hora</th>
@@ -568,6 +686,7 @@ export function AdminMatchesPanel() {
                   const draft = drafts[match.id] ?? buildFormFromMatch(match);
                   const currentMatchday = matchdayById[draft.matchday_id];
                   const currentSeason = currentMatchday ? seasonById[currentMatchday.season_id] : null;
+                  const eligibleTeamsForRow = getEligibleTeamsForSeasonId(currentSeason?.id);
 
                   return (
                     <tr key={match.id} className="app-table-row border-b align-top last:border-b-0">
@@ -608,17 +727,54 @@ export function AdminMatchesPanel() {
                       </td>
                       <td className="px-2 py-2 align-top">
                         <select
+                          value={draft.stage_type}
+                          onChange={(event) => updateDraft(match.id, { stage_type: event.target.value as MatchStageType })}
+                          className={compactTableControlClass}
+                        >
+                          {Object.entries(stageLabels).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-2 py-2 align-top">
+                        <div className="grid gap-1">
+                          <input
+                            value={draft.group_label}
+                            onChange={(event) => updateDraft(match.id, { group_label: event.target.value })}
+                            placeholder="Grupo"
+                            className={compactTableControlClass}
+                          />
+                          <input
+                            value={draft.bracket_slot}
+                            onChange={(event) => updateDraft(match.id, { bracket_slot: event.target.value })}
+                            placeholder="Bracket"
+                            className={compactTableControlClass}
+                          />
+                        </div>
+                      </td>
+                      <td className="px-2 py-2 align-top">
+                        <select
                           value={draft.home_team_id}
                           onChange={(event) => updateDraft(match.id, { home_team_id: event.target.value })}
                           className={compactTableControlClass}
                         >
                           <option value="">Equipo local</option>
-                          {teams.map((team) => (
+                          {eligibleTeamsForRow.map((team) => (
                             <option key={team.id} value={team.id}>
                               {team.name}
                             </option>
                           ))}
                         </select>
+                        {isKnockoutStage(draft.stage_type) ? (
+                          <input
+                            value={draft.home_placeholder}
+                            onChange={(event) => updateDraft(match.id, { home_placeholder: event.target.value })}
+                            placeholder="Seed local"
+                            className={`${compactTableControlClass} mt-1`}
+                          />
+                        ) : null}
                       </td>
                       <td className="px-2 py-2 align-top">
                         <select
@@ -627,12 +783,20 @@ export function AdminMatchesPanel() {
                           className={compactTableControlClass}
                         >
                           <option value="">Equipo visitante</option>
-                          {teams.map((team) => (
+                          {eligibleTeamsForRow.map((team) => (
                             <option key={team.id} value={team.id}>
                               {team.name}
                             </option>
                           ))}
                         </select>
+                        {isKnockoutStage(draft.stage_type) ? (
+                          <input
+                            value={draft.away_placeholder}
+                            onChange={(event) => updateDraft(match.id, { away_placeholder: event.target.value })}
+                            placeholder="Seed visita"
+                            className={`${compactTableControlClass} mt-1`}
+                          />
+                        ) : null}
                       </td>
                       <td className="px-2 py-2 align-top">
                         <div className="grid grid-cols-[116px_108px] gap-1">

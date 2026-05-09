@@ -8,6 +8,7 @@ import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { PerformanceRaceChart } from "@/components/dashboard/performance-race-chart";
 import { Card } from "@/components/ui/card";
 import { backendFetch } from "@/lib/api/backend";
+import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -188,11 +189,25 @@ function RecognitionShelf({
   );
 }
 
-function TeamMiniBadge({ crestUrl, name }: { crestUrl: string | null; name: string }) {
+function TeamMiniBadge({
+  crestUrl,
+  name,
+  useWorldCupBubbles,
+}: {
+  crestUrl: string | null;
+  name: string;
+  useWorldCupBubbles: boolean;
+}) {
   return (
     <div className="flex min-w-0 flex-col items-center justify-start gap-1 self-start text-center">
       {crestUrl ? (
-        <img src={crestUrl} alt={name} className="h-7 w-7 object-contain sm:h-10 sm:w-10" />
+        useWorldCupBubbles ? (
+          <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06] sm:h-10 sm:w-10">
+            <img src={crestUrl} alt={name} className="h-full w-full object-cover" />
+          </div>
+        ) : (
+          <img src={crestUrl} alt={name} className="h-7 w-7 object-contain sm:h-10 sm:w-10" />
+        )
       ) : (
         <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[8px] font-semibold uppercase text-steel sm:h-10 sm:w-10 sm:text-[10px]">
           {name.slice(0, 3)}
@@ -208,19 +223,25 @@ function MatchTeamsInline({
   homeCrestUrl,
   awayName,
   awayCrestUrl,
+  useWorldCupBubbles,
 }: {
   homeName: string;
   homeCrestUrl: string | null;
   awayName: string;
   awayCrestUrl: string | null;
+  useWorldCupBubbles: boolean;
 }) {
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
-      <TeamMiniBadge crestUrl={homeCrestUrl} name={homeName} />
+      <TeamMiniBadge crestUrl={homeCrestUrl} name={homeName} useWorldCupBubbles={useWorldCupBubbles} />
       <span className="self-start pt-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
-      <TeamMiniBadge crestUrl={awayCrestUrl} name={awayName} />
+      <TeamMiniBadge crestUrl={awayCrestUrl} name={awayName} useWorldCupBubbles={useWorldCupBubbles} />
     </div>
   );
+}
+
+function isWorldCupSeason(season: Season | null) {
+  return season?.tournament_format === "world_cup";
 }
 
 export function DashboardHome() {
@@ -229,6 +250,7 @@ export function DashboardHome() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("general");
   const [selectedVipBoardId, setSelectedVipBoardId] = useState("");
   const [isTabMenuOpen, setIsTabMenuOpen] = useState(false);
+  const { seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
     try {
@@ -320,20 +342,24 @@ export function DashboardHome() {
           backendFetch<VipCompetition[]>("/vip", accessToken),
         ]);
 
-        const activeSeason = seasons.find((season) => season.is_active) ?? null;
-        const activeSeasonMatchdays = activeSeason
-          ? matchdays.filter((matchday) => matchday.season_id === activeSeason.id)
+        const preferredSeason =
+          seasons.find((season) => season.id === seasonIdParam) ??
+          seasons.find((season) => season.is_active) ??
+          seasons[0] ??
+          null;
+        const preferredSeasonMatchdays = preferredSeason
+          ? matchdays.filter((matchday) => matchday.season_id === preferredSeason.id)
           : [];
         const selectedMatchday =
-          (activeSeason
-            ? activeMatchdays.find((matchday) => matchday.season_id === activeSeason.id) ??
-              pickPreferredMatchday(activeSeasonMatchdays)
+          (preferredSeason
+            ? activeMatchdays.find((matchday) => matchday.season_id === preferredSeason.id) ??
+              pickPreferredMatchday(preferredSeasonMatchdays)
             : null) ??
           pickPreferredMatchday(activeMatchdays) ??
           pickPreferredMatchday(matchdays) ??
           null;
         const selectedSeason =
-          activeSeason ??
+          preferredSeason ??
           seasons.find((season) => season.id === selectedMatchday?.season_id) ??
           null;
 
@@ -366,7 +392,7 @@ export function DashboardHome() {
     }
 
     void load();
-  }, []);
+  }, [seasonIdParam]);
 
   useEffect(() => {
     async function loadUpcomingMatchdays() {
@@ -439,30 +465,6 @@ export function DashboardHome() {
     }
   }, [activeTab, selectedVipBoardId, state.vipCompetitions]);
 
-  async function handleSeasonChange(seasonId: string) {
-    const selectedSeason = state.seasons.find((season) => season.id === seasonId) ?? null;
-    const seasonMatchdays = state.matchdays.filter((matchday) => !seasonId || matchday.season_id === seasonId);
-    const nextMatchday = pickPreferredMatchday(seasonMatchdays);
-
-    if (!nextMatchday) {
-      setState((current) => ({
-        ...current,
-        selectedSeason,
-        selectedMatchday: null,
-        summary: null,
-        advancedStats: null,
-        performanceRace: null,
-        matches: [],
-        pickResults: [],
-        matchdayPoints: [],
-        error: null,
-      }));
-      return;
-    }
-
-    await loadSelectedMatchday(nextMatchday.id, state.seasons, state.matchdays);
-  }
-
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando dashboard...</p>;
   }
@@ -500,6 +502,7 @@ export function DashboardHome() {
   const trophyRecords = state.personalTrophies.filter((row) => row.recognition_type === "trophy");
   const awardRecords = state.personalTrophies.filter((row) => row.recognition_type === "award");
   const teamCrestById = new Map(state.teams.map((team) => [team.id, team.crest_url]));
+  const teamShortNameById = new Map(state.teams.map((team) => [team.id, team.short_name]));
   const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
   const selectedVipCompetition =
     approvedVipCompetitions.find((vip) => vip.id === selectedVipBoardId) ?? approvedVipCompetitions[0] ?? null;
@@ -521,6 +524,15 @@ export function DashboardHome() {
   const compactSeasonLabel = formatCompactSeasonName(state.summary?.season_name ?? state.selectedSeason?.name);
   const summaryTileClass =
     "flex min-w-0 h-[78px] flex-col justify-between rounded-[16px] bg-transparent p-1.5 sm:h-auto sm:rounded-[30px] sm:p-5";
+  const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
+
+  function getMatchTeamLabel(teamId: string | null, fallbackName: string) {
+    if (!useWorldCupAbbreviation || !teamId) {
+      return fallbackName;
+    }
+    return teamShortNameById.get(teamId) ?? fallbackName;
+  }
+
   return (
     <div className="space-y-6 sm:space-y-8">
       <section className="relative px-1 py-2 sm:px-0 sm:py-1">
@@ -619,29 +631,16 @@ export function DashboardHome() {
         <div
           className={
             showsMatchdayControls
-              ? "grid gap-2 lg:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] lg:items-end"
-              : "grid gap-2 lg:grid-cols-[minmax(0,220px)_1fr] lg:items-end"
+              ? "grid gap-2 lg:grid-cols-[minmax(0,240px)_auto] lg:items-end"
+              : "grid gap-2"
           }
         >
-          <label className="space-y-1.5 text-xs">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Temporada</span>
-            <select
-              value={state.selectedSeason?.id ?? ""}
-              onChange={(event) => void handleSeasonChange(event.target.value)}
-              className={dashboardSelectClass}
-            >
-              <option value="">Selecciona temporada</option>
-              {state.seasons.map((season) => (
-                <option key={season.id} value={season.id}>
-                  {season.name}
-                </option>
-              ))}
-            </select>
-          </label>
           {showsMatchdayControls ? (
             <>
               <label className="space-y-1.5 text-xs">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Jornada</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
+                  {state.selectedSeason?.name ?? "Torneo"} · Jornada
+                </span>
                 <select
                   value={state.selectedMatchday?.id ?? ""}
                   onChange={(event) => void loadSelectedMatchday(event.target.value)}
@@ -856,6 +855,7 @@ export function DashboardHome() {
           rows={state.pickResults}
           title={state.selectedMatchday ? state.selectedMatchday.name : "Jornada"}
           emptyMessage="No hay partidos cargados para la jornada seleccionada."
+          useWorldCupBubbles={useWorldCupAbbreviation}
         />
       ) : activeTab === "proximos" ? (
         <section className="space-y-4">
@@ -896,10 +896,11 @@ export function DashboardHome() {
                           className="grid gap-1.5 border-b border-white/5 py-2 last:border-b-0 md:grid-cols-[1.5fr_1fr_1fr] md:items-center md:gap-3"
                         >
                           <MatchTeamsInline
-                            homeName={match.home_team_name}
-                            homeCrestUrl={teamCrestById.get(match.home_team_id) ?? null}
-                            awayName={match.away_team_name}
-                            awayCrestUrl={teamCrestById.get(match.away_team_id) ?? null}
+                            homeName={getMatchTeamLabel(match.home_team_id, match.home_team_name)}
+                            homeCrestUrl={match.home_team_id ? (teamCrestById.get(match.home_team_id) ?? null) : null}
+                            awayName={getMatchTeamLabel(match.away_team_id, match.away_team_name)}
+                            awayCrestUrl={match.away_team_id ? (teamCrestById.get(match.away_team_id) ?? null) : null}
+                            useWorldCupBubbles={useWorldCupAbbreviation}
                           />
                           <p className="text-[10px] text-steel md:text-center">{formatMexicoCityDateTime(match.kickoff_at)}</p>
                           <p className="text-[10px] text-steel md:text-center">{match.venue ?? "Por definir"}</p>
@@ -942,10 +943,11 @@ export function DashboardHome() {
                     className="grid grid-cols-[1.45fr_0.95fr_0.6fr_0.75fr_0.75fr] items-center gap-2 border-b border-white/5 py-2 last:border-b-0 md:grid-cols-[1.5fr_1fr_0.8fr_0.8fr_0.8fr] md:gap-3"
                   >
                     <MatchTeamsInline
-                      homeName={match.home_team_name}
-                      homeCrestUrl={teamCrestById.get(match.home_team_id) ?? null}
-                      awayName={match.away_team_name}
-                      awayCrestUrl={teamCrestById.get(match.away_team_id) ?? null}
+                      homeName={getMatchTeamLabel(match.home_team_id, match.home_team_name)}
+                      homeCrestUrl={match.home_team_id ? (teamCrestById.get(match.home_team_id) ?? null) : null}
+                      awayName={getMatchTeamLabel(match.away_team_id, match.away_team_name)}
+                      awayCrestUrl={match.away_team_id ? (teamCrestById.get(match.away_team_id) ?? null) : null}
+                      useWorldCupBubbles={useWorldCupAbbreviation}
                     />
                     <p className="text-[9px] text-steel md:text-center">{formatMexicoCityDateTime(match.kickoff_at)}</p>
                     <div className="text-center">

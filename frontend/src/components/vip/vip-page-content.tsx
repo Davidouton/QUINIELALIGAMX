@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { VipCompetition, VipJoinResponse, VipMembershipStatus } from "@/types/api";
+import type {
+  CheckoutSessionResponse,
+  EffectivePricing,
+  VipCompetition,
+  VipJoinResponse,
+  VipMembershipStatus,
+} from "@/types/api";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("es-MX", {
@@ -48,9 +54,11 @@ function statusCopy(status: VipMembershipStatus | null) {
 
 export function VipPageContent() {
   const [vips, setVips] = useState<VipCompetition[]>([]);
+  const [pricingByVipId, setPricingByVipId] = useState<Record<string, EffectivePricing>>({});
   const [selectedVipId, setSelectedVipId] = useState("");
   const [loading, setLoading] = useState(true);
   const [requestingVipId, setRequestingVipId] = useState<string | null>(null);
+  const [payingVipId, setPayingVipId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -58,11 +66,28 @@ export function VipPageContent() {
     () => vips.find((vip) => vip.id === selectedVipId) ?? vips[0] ?? null,
     [selectedVipId, vips],
   );
+  const selectedVipPricing = selectedVip ? pricingByVipId[selectedVip.id] ?? null : null;
 
   async function loadVips() {
     const accessToken = await getBrowserAccessToken();
     const rows = await backendFetch<VipCompetition[]>("/vip", accessToken);
+    const pricingEntries = await Promise.all(
+      rows.map(async (vip) => {
+        try {
+          const pricing = await backendFetch<EffectivePricing>(
+            `/payments/pricing?scope_type=vip&scope_id=${vip.id}`,
+            accessToken,
+          );
+          return [vip.id, pricing] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
     setVips(rows);
+    setPricingByVipId(
+      Object.fromEntries(pricingEntries.filter((entry): entry is readonly [string, EffectivePricing] => entry !== null)),
+    );
     setSelectedVipId((current) => (rows.some((vip) => vip.id === current) ? current : (rows[0]?.id ?? "")));
   }
 
@@ -98,6 +123,26 @@ export function VipPageContent() {
     }
   }
 
+  async function handleVipCheckout(vipId: string) {
+    setPayingVipId(vipId);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const response = await backendFetch<CheckoutSessionResponse>("/payments/checkout-session", accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          scope_type: "vip",
+          scope_id: vipId,
+        }),
+      });
+      window.location.href = response.checkout_url;
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo iniciar el checkout VIP");
+      setPayingVipId(null);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando espacios VIP...</p>;
   }
@@ -123,7 +168,8 @@ export function VipPageContent() {
         <div className="space-y-3">
           {vips.map((vip) => {
             const status = statusCopy(vip.my_membership?.status ?? null);
-            const disabled = vip.my_membership?.status === "approved" || vip.my_membership?.status === "pending";
+            const pricing = pricingByVipId[vip.id] ?? null;
+            const disabled = vip.my_membership?.status === "approved";
             return (
               <div
                 key={vip.id}
@@ -178,17 +224,23 @@ export function VipPageContent() {
                   </p>
                   <button
                     type="button"
-                    disabled={disabled || requestingVipId === vip.id}
+                    disabled={disabled || requestingVipId === vip.id || payingVipId === vip.id}
                     className={`app-pill px-3 text-xs ${disabled ? "opacity-70" : ""}`}
-                    onClick={() => void handleRequest(vip.id)}
+                    onClick={() =>
+                      pricing ? void handleVipCheckout(vip.id) : void handleRequest(vip.id)
+                    }
                   >
-                    {requestingVipId === vip.id
-                      ? "Enviando"
-                      : vip.my_membership?.status === "approved"
-                        ? "Dentro"
-                        : vip.my_membership?.status === "pending"
-                          ? "En revision"
-                          : "Solicitar"}
+                    {payingVipId === vip.id
+                      ? "Abriendo checkout"
+                      : requestingVipId === vip.id
+                        ? "Enviando"
+                        : vip.my_membership?.status === "approved"
+                          ? "Dentro"
+                          : pricing
+                            ? `Pagar acceso · ${formatCurrency(pricing.amount)}`
+                            : vip.my_membership?.status === "pending"
+                              ? "En revision"
+                              : "Solicitar"}
                   </button>
                 </div>
               </div>
@@ -229,6 +281,37 @@ export function VipPageContent() {
                   </div>
                 </div>
               </div>
+
+              {selectedVip.my_membership?.status !== "approved" ? (
+                <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                  {selectedVipPricing ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleVipCheckout(selectedVip.id)}
+                      disabled={payingVipId === selectedVip.id}
+                      className="secondary-button disabled:opacity-60"
+                    >
+                      {payingVipId === selectedVip.id
+                        ? "Abriendo checkout..."
+                        : `Pagar acceso VIP · ${formatCurrency(selectedVipPricing.amount)}`}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleRequest(selectedVip.id)}
+                      disabled={requestingVipId === selectedVip.id}
+                      className="app-pill px-4 text-sm disabled:opacity-60"
+                    >
+                      {requestingVipId === selectedVip.id ? "Enviando..." : "Solicitar acceso"}
+                    </button>
+                  )}
+                  <p className="text-sm text-steel">
+                    {selectedVipPricing
+                      ? "El precio vigente se cobra en Stripe y tu acceso se activa cuando el backend confirme el pago."
+                      : "Todavia no hay una regla de precio activa para esta VIP, asi que solo queda la solicitud manual."}
+                  </p>
+                </div>
+              ) : null}
 
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-steel">Jornadas que cuentan</p>

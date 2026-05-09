@@ -1,12 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Team } from "@/types/api";
+import type { Competition, Team } from "@/types/api";
 
 type TeamFormState = {
+  competition_id: string;
   name: string;
   short_name: string;
   slug: string;
@@ -23,6 +24,7 @@ function toColorInputValue(value: string) {
 }
 
 const initialTeamForm: TeamFormState = {
+  competition_id: "",
   name: "",
   short_name: "",
   slug: "",
@@ -36,12 +38,19 @@ const initialTeamForm: TeamFormState = {
 
 export function AdminTeamsPanel() {
   const [teams, setTeams] = useState<Team[]>([]);
+  const [competitions, setCompetitions] = useState<Competition[]>([]);
+  const [selectedCompetitionId, setSelectedCompetitionId] = useState("");
   const [teamForm, setTeamForm] = useState<TeamFormState>(initialTeamForm);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  const visibleTeams = useMemo(
+    () => teams.filter((team) => (selectedCompetitionId ? team.competition_id === selectedCompetitionId : true)),
+    [selectedCompetitionId, teams],
+  );
 
   async function loadTeams() {
     const rows = await backendFetch<Team[]>("/teams");
@@ -51,7 +60,12 @@ export function AdminTeamsPanel() {
   useEffect(() => {
     async function load() {
       try {
-        await loadTeams();
+        const [teamRows, competitionRows] = await Promise.all([
+          backendFetch<Team[]>("/teams"),
+          backendFetch<Competition[]>("/competitions"),
+        ]);
+        setTeams(teamRows);
+        setCompetitions(competitionRows);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los equipos");
       } finally {
@@ -75,6 +89,7 @@ export function AdminTeamsPanel() {
         method,
         body: JSON.stringify({
           ...teamForm,
+          competition_id: teamForm.competition_id || null,
           external_id: teamForm.external_id || null,
           crest_url: teamForm.crest_url || null,
           home_venue: teamForm.home_venue || null,
@@ -97,6 +112,7 @@ export function AdminTeamsPanel() {
   function beginEditTeam(team: Team) {
     setEditingTeamId(team.id);
     setTeamForm({
+      competition_id: team.competition_id ?? "",
       name: team.name,
       short_name: team.short_name,
       slug: team.slug,
@@ -134,6 +150,18 @@ export function AdminTeamsPanel() {
           ) : null}
         </div>
         <form onSubmit={handleCreateTeam} className="mt-5 grid gap-4 md:grid-cols-2">
+          <select
+            value={teamForm.competition_id}
+            onChange={(event) => setTeamForm((current) => ({ ...current, competition_id: event.target.value }))}
+            className="field-control md:col-span-2"
+          >
+            <option value="">Sin competencia base</option>
+            {competitions.map((competition) => (
+              <option key={competition.id} value={competition.id}>
+                {competition.sport_name} · {competition.name}
+              </option>
+            ))}
+          </select>
           <input
             value={teamForm.name}
             onChange={(event) => setTeamForm((current) => ({ ...current, name: event.target.value }))}
@@ -269,10 +297,25 @@ export function AdminTeamsPanel() {
       <section className="space-y-3">
         <h3 className="text-base font-semibold text-ink">Equipos registrados</h3>
         {loading ? <p className="mt-4 text-sm text-steel">Cargando equipos...</p> : null}
+        <div className="max-w-[320px]">
+          <select
+            value={selectedCompetitionId}
+            onChange={(event) => setSelectedCompetitionId(event.target.value)}
+            className="field-control"
+          >
+            <option value="">Todas las competencias</option>
+            {competitions.map((competition) => (
+              <option key={competition.id} value={competition.id}>
+                {competition.sport_name} · {competition.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="no-scrollbar overflow-x-auto overscroll-x-contain touch-pan-x [WebkitOverflowScrolling:touch]">
-          <table className="min-w-full table-fixed text-left text-[11px] text-steel">
+          <table className="min-w-[1080px] table-fixed text-left text-[11px] text-steel">
             <thead className="app-table-head">
               <tr>
+                <th className="w-[210px] px-3 py-3">Competencia</th>
                 <th className="w-[180px] px-3 py-3">Equipo</th>
                 <th className="w-[90px] px-3 py-3">Short</th>
                 <th className="w-[140px] px-3 py-3">Slug</th>
@@ -282,8 +325,11 @@ export function AdminTeamsPanel() {
               </tr>
             </thead>
             <tbody>
-          {teams.map((team) => (
+          {visibleTeams.map((team) => (
             <tr key={team.id} className="app-table-row border-b last:border-b-0">
+              <td className="px-3 py-3 text-steel">
+                {team.competition_name ? `${team.competition_sport_name} · ${team.competition_name}` : "Sin asignar"}
+              </td>
               <td className="px-3 py-3 font-medium text-ink">{team.name}</td>
               <td className="px-3 py-3 text-steel">{team.short_name}</td>
               <td className="px-3 py-3 text-steel">{team.slug}</td>
@@ -313,7 +359,7 @@ export function AdminTeamsPanel() {
           ))}
             </tbody>
           </table>
-          {!loading && teams.length === 0 ? (
+          {!loading && visibleTeams.length === 0 ? (
             <p className="text-sm text-steel">Todavia no hay equipos cargados.</p>
           ) : null}
         </div>

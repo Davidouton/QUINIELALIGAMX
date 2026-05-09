@@ -7,6 +7,7 @@ type PickResultsTableProps = {
   title?: string;
   subtitle?: string;
   emptyMessage?: string;
+  useWorldCupBubbles?: boolean;
 };
 
 function getSelectionLabel(selection: PickResultRow["selection"]) {
@@ -42,15 +43,33 @@ function buildOverrideMessage(row: PickResultRow) {
   return base;
 }
 
-function TeamBadge({ crestUrl, name }: { crestUrl: string | null; name: string }) {
+function TeamBadge({
+  crestUrl,
+  name,
+  useWorldCupBubbles,
+}: {
+  crestUrl: string | null;
+  name: string;
+  useWorldCupBubbles: boolean;
+}) {
   return (
     <div className="flex w-[88px] min-w-0 flex-col items-center justify-center gap-1 text-center sm:w-[108px]">
       {crestUrl ? (
-        <img
-          src={crestUrl}
-          alt={name}
-          className="h-7 w-7 object-contain sm:h-10 sm:w-10"
-        />
+        useWorldCupBubbles ? (
+          <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06] sm:h-10 sm:w-10">
+            <img
+              src={crestUrl}
+              alt={name}
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ) : (
+          <img
+            src={crestUrl}
+            alt={name}
+            className="h-7 w-7 object-contain sm:h-10 sm:w-10"
+          />
+        )
       ) : (
         <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[8px] font-semibold uppercase text-steel sm:h-10 sm:w-10 sm:text-[10px]">
           {name.slice(0, 3)}
@@ -67,6 +86,7 @@ export function PickResultsTable({
   rows,
   title = "Jornada",
   emptyMessage = "Todavia no hay partidos para esta jornada.",
+  useWorldCupBubbles = false,
 }: PickResultsTableProps) {
   const totalPoints = rows.reduce((sum, row) => sum + row.total_points, 0);
 
@@ -87,9 +107,9 @@ export function PickResultsTable({
               <div key={row.match_id} className="border-b border-white/10 pb-3">
                 <div className="grid grid-cols-[1.5fr_1fr_1fr_0.7fr] items-center gap-2">
                   <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
-                    <TeamBadge crestUrl={row.home_team_crest_url} name={row.home_team_name} />
+                    <TeamBadge crestUrl={row.home_team_crest_url} name={row.home_team_name} useWorldCupBubbles={useWorldCupBubbles} />
                     <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
-                    <TeamBadge crestUrl={row.away_team_crest_url} name={row.away_team_name} />
+                    <TeamBadge crestUrl={row.away_team_crest_url} name={row.away_team_name} useWorldCupBubbles={useWorldCupBubbles} />
                   </div>
                   <div className="text-center">
                     <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80">Prediccion</p>
@@ -150,9 +170,9 @@ export function PickResultsTable({
                 <tr key={row.match_id} className="app-table-row border-b align-top last:border-b-0">
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-3">
-                      <TeamBadge crestUrl={row.home_team_crest_url} name={row.home_team_name} />
+                      <TeamBadge crestUrl={row.home_team_crest_url} name={row.home_team_name} useWorldCupBubbles={useWorldCupBubbles} />
                       <span className="text-xs font-semibold uppercase tracking-[0.2em] text-steel">vs</span>
-                      <TeamBadge crestUrl={row.away_team_crest_url} name={row.away_team_name} />
+                      <TeamBadge crestUrl={row.away_team_crest_url} name={row.away_team_name} useWorldCupBubbles={useWorldCupBubbles} />
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-center">

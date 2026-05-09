@@ -4,12 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
+import { DashboardSeasonSwitcher } from "@/components/layout/dashboard-season-switcher";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { cn } from "@/lib/utils";
 import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
 
 const baseLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
+  { href: "/dashboard/world-cup", label: "Mundial", shortLabel: "WC" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
   { href: "/dashboard/vip", label: "VIP" },
@@ -22,11 +25,11 @@ const baseLinks = [
 
 const primaryMobileLinks = [
   { href: "/dashboard/quiniela-plus", label: "Q+" },
+  { href: "/dashboard/world-cup", label: "WC" },
   { href: "/dashboard", label: "Inicio" },
   { href: "/dashboard/prizes", label: "Premios" },
   { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks" },
-  { href: "/dashboard/leaderboard", label: "Ranking" },
 ];
 
 function renderLinkLabel(label: string) {
@@ -46,6 +49,7 @@ export function DashboardSidebar() {
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const canViewAdmin = useAdminVisibility();
+  const { buildHrefWithSeason } = useDashboardSeasonParam();
   const links = [
     ...baseLinks,
     ...(canViewAdmin ? [{ href: "/dashboard/admin", label: "Admin" }] : []),
@@ -87,21 +91,24 @@ export function DashboardSidebar() {
           </div>
 
           {isMobileMenuOpen ? (
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {links.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  prefetch={false}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={cn(
-                    "app-pill-ghost h-10 px-3 text-center",
-                    pathname === link.href && "app-pill-active text-ink",
-                  )}
-                >
-                  {renderLinkLabel(link.label)}
-                </Link>
-              ))}
+            <div className="mt-4 space-y-3">
+              <DashboardSeasonSwitcher />
+              <div className="grid grid-cols-2 gap-2">
+                {links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={buildHrefWithSeason(link.href)}
+                    prefetch={false}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={cn(
+                      "app-pill-ghost h-10 px-3 text-center",
+                      pathname === link.href && "app-pill-active text-ink",
+                    )}
+                  >
+                    {renderLinkLabel(link.label)}
+                  </Link>
+                ))}
+              </div>
             </div>
           ) : null}
         </div>
@@ -111,7 +118,7 @@ export function DashboardSidebar() {
             {primaryMobileLinks.map((link) => (
               <Link
                 key={link.href}
-                href={link.href}
+                href={buildHrefWithSeason(link.href)}
                 prefetch={false}
                 className={cn(
                   "app-pill-ghost h-10 px-2 text-center text-[11px]",
@@ -139,11 +146,15 @@ export function DashboardSidebar() {
             <p className="text-xs uppercase tracking-[0.35em] text-steel">Panel</p>
           </div>
 
+          <div className="mb-5">
+            <DashboardSeasonSwitcher />
+          </div>
+
           <div className="space-y-3">
             {links.map((link) => (
               <Link
                 key={link.href}
-                href={link.href}
+                href={buildHrefWithSeason(link.href)}
                 prefetch={false}
                 aria-label={link.label}
                 title={link.label}

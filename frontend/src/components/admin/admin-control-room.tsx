@@ -470,8 +470,8 @@ export function AdminControlRoom() {
     setState((current) => ({ ...current, editingMatchId: match.id }));
     setMatchForm({
       matchday_id: match.matchday_id,
-      home_team_id: match.home_team_id,
-      away_team_id: match.away_team_id,
+      home_team_id: match.home_team_id ?? "",
+      away_team_id: match.away_team_id ?? "",
       kickoff_at: toMexicoCityInputValue(match.kickoff_at),
       picks_lock_at: toMexicoCityInputValue(match.picks_lock_at),
       venue: match.venue ?? "",

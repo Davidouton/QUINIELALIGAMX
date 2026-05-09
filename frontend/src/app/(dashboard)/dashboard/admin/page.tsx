@@ -30,6 +30,26 @@ export default function DashboardAdminPage() {
                   "Define el torneo activo y la puntuacion por ganador y marcador exacto.",
                 ],
                 [
+                  "/dashboard/admin/competitions",
+                  "Competencias",
+                  "Ordena el catalogo base por liga, federacion o deporte y liga equipos y temporadas a esa estructura.",
+                ],
+                [
+                  "/dashboard/admin/world-cup-groups",
+                  "Mundial · Grupos",
+                  "Define grupos A, B, C..., asigna selecciones y deja lista la base para tablas y stats.",
+                ],
+                [
+                  "/dashboard/admin/world-cup-bracket",
+                  "Mundial · Bracket",
+                  "Siembra llaves de octavos a final con placeholders, sorteos o equipos reales sin depender de Partidos.",
+                ],
+                [
+                  "/dashboard/admin/quiniela-plus",
+                  "Quiniela +",
+                  "Configura ligas, bundles, periodos y deja el checkout listo para activarlo cuando proceda.",
+                ],
+                [
                   "/dashboard/admin/prizes",
                   "Premios",
                   "Configura costo por ingreso, premios semanales, comision, reserva y bolsa del torneo.",

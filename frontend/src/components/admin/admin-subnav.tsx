@@ -9,6 +9,10 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "/dashboard/admin", label: "Resumen" },
   { href: "/dashboard/admin/settings", label: "Configuracion" },
+  { href: "/dashboard/admin/competitions", label: "Competencias" },
+  { href: "/dashboard/admin/world-cup-groups", label: "WC Grupos" },
+  { href: "/dashboard/admin/world-cup-bracket", label: "WC Bracket" },
+  { href: "/dashboard/admin/quiniela-plus", label: "Quiniela +" },
   { href: "/dashboard/admin/prizes", label: "Premios" },
   { href: "/dashboard/admin/users", label: "Usuarios" },
   { href: "/dashboard/admin/picks", label: "Picks" },

@@ -24,6 +24,7 @@ class PickService:
     def create_pick(self, db: Session, profile: Profile, payload: PickCreate) -> PickOut:
         match = self._get_open_match(db, payload.match_id)
         self._ensure_profile_can_pick(db, profile, match)
+        advancing_team_id = self._validate_advancing_team_for_match(match, payload)
         pick = self.pick_repo.get_for_user_and_match(db, profile.id, payload.match_id)
         if pick is None:
             pick = UserPick(
@@ -32,11 +33,13 @@ class PickService:
                 selection=payload.selection,
                 predicted_home_score=payload.predicted_home_score,
                 predicted_away_score=payload.predicted_away_score,
+                advancing_team_id=advancing_team_id,
             )
         else:
             pick.selection = payload.selection
             pick.predicted_home_score = payload.predicted_home_score
             pick.predicted_away_score = payload.predicted_away_score
+            pick.advancing_team_id = advancing_team_id
 
         self._clear_admin_override(pick)
         db.add(pick)
@@ -52,9 +55,11 @@ class PickService:
 
         match = self._get_open_match(db, pick.match_id)
         self._ensure_profile_can_pick(db, profile, match)
+        advancing_team_id = self._validate_advancing_team_for_match(match, payload)
         pick.selection = payload.selection
         pick.predicted_home_score = payload.predicted_home_score
         pick.predicted_away_score = payload.predicted_away_score
+        pick.advancing_team_id = advancing_team_id
         self._clear_admin_override(pick)
         db.add(pick)
         db.commit()
@@ -120,6 +125,7 @@ class PickService:
 
             result_points = 0
             exact_score_points = 0
+            advancing_team_points = 0
             if pick is not None and is_official and result is not None:
                 winner = self._resolve_winner(result.home_score, result.away_score)
                 result_points = rules["result_correct"] if pick.selection == winner else 0
@@ -129,14 +135,22 @@ class PickService:
                     and pick.predicted_away_score == result.away_score
                     else 0
                 )
+                advancing_team_points = (
+                    rules["advancing_team"]
+                    if match.stage_type != "group"
+                    and match.stage_type != "regular"
+                    and pick.advancing_team_id is not None
+                    and pick.advancing_team_id == result.advancing_team_id
+                    else 0
+                )
 
             result_rows.append(
                 PickResultRowOut(
                     match_id=match.id,
                     matchday_id=match.matchday_id,
-                    home_team_name=home_team.name if home_team else "Local",
+                    home_team_name=home_team.name if home_team else match.home_placeholder or "Local",
                     home_team_crest_url=home_team.crest_url if home_team else None,
-                    away_team_name=away_team.name if away_team else "Visitante",
+                    away_team_name=away_team.name if away_team else match.away_placeholder or "Visitante",
                     away_team_crest_url=away_team.crest_url if away_team else None,
                     kickoff_at=match.kickoff_at,
                     match_status=match.status.value,
@@ -144,8 +158,10 @@ class PickService:
                     selection=pick.selection if pick is not None else None,
                     predicted_home_score=pick.predicted_home_score if pick is not None else None,
                     predicted_away_score=pick.predicted_away_score if pick is not None else None,
+                    advancing_team_id=pick.advancing_team_id if pick is not None else None,
                     home_score=result.home_score if result is not None else None,
                     away_score=result.away_score if result is not None else None,
+                    official_advancing_team_id=result.advancing_team_id if result is not None else None,
                     is_official=is_official,
                     is_admin_override=pick.is_admin_override if pick is not None else False,
                     admin_override_note=pick.admin_override_note if pick is not None else None,
@@ -157,7 +173,8 @@ class PickService:
                     overridden_at=pick.overridden_at if pick is not None else None,
                     result_points=result_points,
                     exact_score_points=exact_score_points,
-                    total_points=result_points + exact_score_points,
+                    advancing_team_points=advancing_team_points,
+                    total_points=result_points + exact_score_points + advancing_team_points,
                 )
             )
 
@@ -218,12 +235,20 @@ class PickService:
             match_out.append(
                 GlobalPickMatchOut(
                     match_id=match.id,
-                    home_team_name=home_team.name if home_team else "Local",
+                    home_team_id=match.home_team_id,
+                    home_placeholder=match.home_placeholder,
+                    home_team_name=home_team.name if home_team else match.home_placeholder or "Local",
                     home_team_crest_url=home_team.crest_url if home_team else None,
-                    away_team_name=away_team.name if away_team else "Visitante",
+                    away_team_id=match.away_team_id,
+                    away_placeholder=match.away_placeholder,
+                    away_team_name=away_team.name if away_team else match.away_placeholder or "Visitante",
                     away_team_crest_url=away_team.crest_url if away_team else None,
+                    stage_type=match.stage_type.value,
+                    group_label=match.group_label,
+                    bracket_slot=match.bracket_slot,
                     kickoff_at=match.kickoff_at,
                     is_locked=now >= ensure_utc(match.picks_lock_at),
+                    is_ready_for_picks=self._match_has_confirmed_teams(match),
                 )
             )
 
@@ -241,6 +266,7 @@ class PickService:
                             selection=None,
                             predicted_home_score=None,
                             predicted_away_score=None,
+                            advancing_team_id=None,
                         )
                     )
                     continue
@@ -254,6 +280,7 @@ class PickService:
                         selection=pick.selection if pick is not None else None,
                         predicted_home_score=pick.predicted_home_score if pick is not None else None,
                         predicted_away_score=pick.predicted_away_score if pick is not None else None,
+                        advancing_team_id=pick.advancing_team_id if pick is not None else None,
                     )
                 )
 
@@ -332,16 +359,25 @@ class PickService:
                         profile_display_name=player.display_name,
                         match_id=match.id,
                         matchday_id=match.matchday_id,
-                        home_team_name=home_team.name if home_team else "Local",
-                        away_team_name=away_team.name if away_team else "Visitante",
+                        home_team_id=match.home_team_id,
+                        home_placeholder=match.home_placeholder,
+                        home_team_name=home_team.name if home_team else match.home_placeholder or "Local",
+                        away_team_id=match.away_team_id,
+                        away_placeholder=match.away_placeholder,
+                        away_team_name=away_team.name if away_team else match.away_placeholder or "Visitante",
+                        stage_type=match.stage_type,
+                        group_label=match.group_label,
+                        bracket_slot=match.bracket_slot,
                         kickoff_at=match.kickoff_at,
                         picks_lock_at=match.picks_lock_at,
                         match_status=match.status,
                         has_pick=pick is not None,
                         is_locked=now >= ensure_utc(match.picks_lock_at),
+                        is_ready_for_picks=self._match_has_confirmed_teams(match),
                         selection=pick.selection if pick is not None else None,
                         predicted_home_score=pick.predicted_home_score if pick is not None else None,
                         predicted_away_score=pick.predicted_away_score if pick is not None else None,
+                        advancing_team_id=pick.advancing_team_id if pick is not None else None,
                         is_admin_override=pick.is_admin_override if pick is not None else False,
                         admin_override_note=pick.admin_override_note if pick is not None else None,
                         overridden_by_profile_id=pick.overridden_by_profile_id if pick is not None else None,
@@ -382,6 +418,7 @@ class PickService:
             )
 
         pick = self.pick_repo.get_for_user_and_match(db, profile.id, match.id)
+        advancing_team_id = self._validate_advancing_team_for_match(match, payload)
         if pick is None:
             pick = UserPick(
                 profile_id=profile.id,
@@ -389,11 +426,13 @@ class PickService:
                 selection=payload.selection,
                 predicted_home_score=payload.predicted_home_score,
                 predicted_away_score=payload.predicted_away_score,
+                advancing_team_id=advancing_team_id,
             )
         else:
             pick.selection = payload.selection
             pick.predicted_home_score = payload.predicted_home_score
             pick.predicted_away_score = payload.predicted_away_score
+            pick.advancing_team_id = advancing_team_id
 
         pick.is_admin_override = True
         pick.admin_override_note = self._normalize_optional_text(payload.admin_override_note)
@@ -414,6 +453,11 @@ class PickService:
         match = self.match_repo.get_by_id(db, match_id)
         if match is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+        if not self._match_has_confirmed_teams(match):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Este partido todavia no tiene a los dos equipos definidos",
+            )
         if datetime.now(UTC) >= ensure_utc(match.picks_lock_at):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick window closed")
         return match
@@ -454,12 +498,41 @@ class PickService:
         pick.overridden_by_profile_id = None
         pick.overridden_at = None
 
+    def _validate_advancing_team_for_match(
+        self,
+        match: Match,
+        payload: PickCreate | PickUpdate | AdminPickOverrideRequest,
+    ) -> str | None:
+        if match.stage_type.value in {"regular", "group"}:
+            return None
+        if not self._match_has_confirmed_teams(match):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Este partido todavia no tiene a los dos equipos definidos",
+            )
+        if payload.advancing_team_id not in {match.home_team_id, match.away_team_id}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Debes seleccionar el equipo que avanza en eliminatoria directa",
+            )
+        if payload.selection == PickSelection.HOME and payload.advancing_team_id != match.home_team_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Si ganas con local en 90 minutos, el local debe ser el equipo que avanza",
+            )
+        if payload.selection == PickSelection.AWAY and payload.advancing_team_id != match.away_team_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Si ganas con visitante en 90 minutos, el visitante debe ser el equipo que avanza",
+            )
+        return payload.advancing_team_id
+
     def _build_pick_out(self, db: Session, pick: UserPick, match: Match | None = None) -> PickOut:
         match = match or self.match_repo.get_by_id(db, pick.match_id)
         if match is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
-        home_team = db.get(Team, match.home_team_id)
-        away_team = db.get(Team, match.away_team_id)
+        home_team = db.get(Team, match.home_team_id) if match.home_team_id else None
+        away_team = db.get(Team, match.away_team_id) if match.away_team_id else None
         overridden_by = db.get(Profile, pick.overridden_by_profile_id) if pick.overridden_by_profile_id else None
         return PickOut(
             id=pick.id,
@@ -469,10 +542,17 @@ class PickService:
             selection=pick.selection,
             predicted_home_score=pick.predicted_home_score,
             predicted_away_score=pick.predicted_away_score,
-            home_team_name=home_team.name if home_team else "Local",
-            away_team_name=away_team.name if away_team else "Visitante",
+            advancing_team_id=pick.advancing_team_id,
+            home_team_name=home_team.name if home_team else match.home_placeholder or "Local",
+            away_team_name=away_team.name if away_team else match.away_placeholder or "Visitante",
+            stage_type=match.stage_type.value,
+            group_label=match.group_label,
+            bracket_slot=match.bracket_slot,
+            home_placeholder=match.home_placeholder,
+            away_placeholder=match.away_placeholder,
             kickoff_at=match.kickoff_at,
             is_locked=datetime.now(UTC) >= ensure_utc(match.picks_lock_at),
+            is_ready_for_picks=self._match_has_confirmed_teams(match),
             is_admin_override=pick.is_admin_override,
             admin_override_note=pick.admin_override_note,
             overridden_by_profile_id=pick.overridden_by_profile_id,
@@ -490,14 +570,23 @@ class PickService:
         return {
             "result_correct": stored_rules.get("result_correct", 3),
             "exact_score": stored_rules.get("exact_score", 2),
+            "advancing_team": stored_rules.get("advancing_team", 1),
         }
 
     def _load_teams(self, db: Session, matches: list[Match]) -> dict[str, Team]:
-        team_ids = {match.home_team_id for match in matches} | {match.away_team_id for match in matches}
+        team_ids = {
+            team_id
+            for match in matches
+            for team_id in (match.home_team_id, match.away_team_id)
+            if team_id is not None
+        }
         if not team_ids:
             return {}
         teams = db.scalars(select(Team).where(Team.id.in_(team_ids))).all()
         return {team.id: team for team in teams}
+
+    def _match_has_confirmed_teams(self, match: Match) -> bool:
+        return match.home_team_id is not None and match.away_team_id is not None
 
     def _load_override_profiles(self, db: Session, profile_ids: list[str | None]) -> dict[str, Profile]:
         clean_ids = sorted({profile_id for profile_id in profile_ids if profile_id})

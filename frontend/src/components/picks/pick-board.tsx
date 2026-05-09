@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team } from "@/types/api";
 
 type PickFormState = {
   predicted_home_score: string;
   predicted_away_score: string;
+  advancing_team_id: string;
 };
 
 type FormsMap = Record<string, PickFormState>;
@@ -67,11 +69,33 @@ function buildFormFromPick(pick?: Pick): PickFormState {
   return {
     predicted_home_score: pick ? String(pick.predicted_home_score) : "",
     predicted_away_score: pick ? String(pick.predicted_away_score) : "",
+    advancing_team_id: pick?.advancing_team_id ?? "",
   };
 }
 
-function isPickFormComplete(form: PickFormState | undefined) {
-  return Boolean(form && form.predicted_home_score !== "" && form.predicted_away_score !== "");
+function isKnockoutMatch(match: Match) {
+  return match.stage_type !== "regular" && match.stage_type !== "group";
+}
+
+function isWorldCupSeason(season: Season | null) {
+  return season?.tournament_format === "world_cup";
+}
+
+function isMatchReadyForPicks(match: Match) {
+  return match.is_ready_for_picks;
+}
+
+function isPickFormComplete(match: Match, form: PickFormState | undefined) {
+  if (!isMatchReadyForPicks(match)) {
+    return false;
+  }
+  if (!form || form.predicted_home_score === "" || form.predicted_away_score === "") {
+    return false;
+  }
+  if (isKnockoutMatch(match) && !form.advancing_team_id) {
+    return false;
+  }
+  return true;
 }
 
 function deriveSelectionFromForm(form: PickFormState | undefined): PickSelection | null {
@@ -93,6 +117,37 @@ function deriveSelectionFromForm(form: PickFormState | undefined): PickSelection
     return "away";
   }
   return "draw";
+}
+
+function TeamBubble({
+  crestUrl,
+  fallback,
+  sizeClassName,
+  textClassName,
+  useWorldCupBubbles,
+}: {
+  crestUrl: string | null | undefined;
+  fallback: string;
+  sizeClassName: string;
+  textClassName: string;
+  useWorldCupBubbles: boolean;
+}) {
+  if (crestUrl) {
+    if (!useWorldCupBubbles) {
+      return <img src={crestUrl} alt={fallback} className={`${sizeClassName} object-contain`} />;
+    }
+    return (
+      <span className={`inline-flex items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06] ${sizeClassName}`}>
+        <img src={crestUrl} alt={fallback} className="h-full w-full object-cover" />
+      </span>
+    );
+  }
+
+  return (
+    <span className={`inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.04] font-semibold text-ink ${sizeClassName} ${textClassName}`}>
+      {fallback}
+    </span>
+  );
 }
 
 function getSelectionLabel(selection: PickSelection | null) {
@@ -121,18 +176,18 @@ function getSelectionShortLabel(selection: PickSelection | null) {
   return "-";
 }
 
-function getFormSignature(form: PickFormState | undefined) {
-  if (!isPickFormComplete(form)) {
+function getFormSignature(match: Match, form: PickFormState | undefined) {
+  if (!isPickFormComplete(match, form)) {
     return "";
   }
-  return `${form?.predicted_home_score}:${form?.predicted_away_score}`;
+  return `${form?.predicted_home_score}:${form?.predicted_away_score}:${form?.advancing_team_id ?? ""}`;
 }
 
 function getPickSignature(pick: Pick | undefined) {
   if (!pick) {
     return "";
   }
-  return `${pick.predicted_home_score}:${pick.predicted_away_score}`;
+  return `${pick.predicted_home_score}:${pick.predicted_away_score}:${pick.advancing_team_id ?? ""}`;
 }
 
 function getSelectionTone(selection: PickSelection | null) {
@@ -162,6 +217,9 @@ function getAutoSaveTone(status: AutoSaveStatus | undefined) {
 }
 
 function getAutoSaveShortLabel(match: Match, autoSaveState: AutoSaveState | undefined, hasSavedPick: boolean) {
+  if (!match.is_ready_for_picks) {
+    return hasSavedPick ? "G" : "PD";
+  }
   if (match.is_locked) {
     return hasSavedPick ? "G" : "-";
   }
@@ -181,6 +239,9 @@ function getAutoSaveShortLabel(match: Match, autoSaveState: AutoSaveState | unde
 }
 
 function getAutoSaveDesktopLabel(match: Match, autoSaveState: AutoSaveState | undefined, hasSavedPick: boolean) {
+  if (!match.is_ready_for_picks) {
+    return hasSavedPick ? "Guardado" : "Pendiente";
+  }
   if (match.is_locked) {
     return hasSavedPick ? "Guardado" : "Sin pick";
   }
@@ -215,6 +276,31 @@ function getTeamInitials(name: string) {
 
 function getGlobalCellKey(profileId: string, matchId: string) {
   return `${profileId}:${matchId}`;
+}
+
+function getStageLabel(match: Match) {
+  if (match.stage_type === "group") {
+    return match.group_label ? `Grupo ${match.group_label}` : "Grupo";
+  }
+  if (match.stage_type === "round_of_32") {
+    return "Dieciseisavos";
+  }
+  if (match.stage_type === "round_of_16") {
+    return "Octavos";
+  }
+  if (match.stage_type === "quarterfinal") {
+    return "Cuartos";
+  }
+  if (match.stage_type === "semifinal") {
+    return "Semifinal";
+  }
+  if (match.stage_type === "third_place") {
+    return "3er lugar";
+  }
+  if (match.stage_type === "final") {
+    return "Final";
+  }
+  return "Regular";
 }
 
 function formatMexicoCityCompactDateTime(value: string) {
@@ -267,6 +353,15 @@ export function PickBoard() {
   const [loading, setLoading] = useState(true);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const teamById = Object.fromEntries(teams.map((team) => [team.id, team]));
+  const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
+
+  function getMatchTeamLabel(teamId: string | null, fallbackName: string) {
+    if (!useWorldCupAbbreviation || !teamId) {
+      return fallbackName;
+    }
+    return teamById[teamId]?.short_name ?? fallbackName;
+  }
+  const { seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
 
   useEffect(() => {
     async function loadBoard() {
@@ -279,14 +374,18 @@ export function PickBoard() {
           backendFetch<Matchday[]>("/matchdays", accessToken),
           backendFetch<Team[]>("/teams", accessToken),
         ]);
-        const activeSeason = seasons.find((season) => season.is_active) ?? null;
-        const activeSeasonMatchdays = activeSeason
-          ? matchdays.filter((matchday) => matchday.season_id === activeSeason.id)
+        const preferredSeason =
+          seasons.find((season) => season.id === seasonIdParam) ??
+          seasons.find((season) => season.is_active) ??
+          seasons[0] ??
+          null;
+        const preferredSeasonMatchdays = preferredSeason
+          ? matchdays.filter((matchday) => matchday.season_id === preferredSeason.id)
           : [];
         const activeMatchday =
-          (activeSeason
-            ? activeMatchdays.find((matchday) => matchday.season_id === activeSeason.id) ??
-              pickPreferredMatchday(activeSeasonMatchdays)
+          (preferredSeason
+            ? activeMatchdays.find((matchday) => matchday.season_id === preferredSeason.id) ??
+              pickPreferredMatchday(preferredSeasonMatchdays)
             : null) ??
           pickPreferredMatchday(activeMatchdays) ??
           pickPreferredMatchday(matchdays);
@@ -294,7 +393,7 @@ export function PickBoard() {
           activeMatchday ??
           null;
         const selectedSeason =
-          activeSeason ??
+          preferredSeason ??
           seasons.find((season) => season.id === selectedMatchday?.season_id) ??
           null;
 
@@ -353,7 +452,7 @@ export function PickBoard() {
     }
 
     void loadBoard();
-  }, []);
+  }, [seasonIdParam]);
 
   useEffect(() => {
     const timers = timersRef.current;
@@ -371,9 +470,18 @@ export function PickBoard() {
     state.matches.forEach((match) => {
       const form = forms[match.id];
       const existingPick = state.existingPicks.find((pick) => pick.match_id === match.id);
-      const formSignature = getFormSignature(form);
+      const formSignature = getFormSignature(match, form);
       const savedSignature = getPickSignature(existingPick);
       const currentState = autoSave[match.id];
+
+      if (!match.is_ready_for_picks) {
+        if (savedSignature) {
+          nextAutoSave[match.id] = { status: "saved", detail: "Partido sembrado y pick ya guardado." };
+        } else {
+          nextAutoSave[match.id] = { status: "idle", detail: "Esperando definicion de equipos." };
+        }
+        return;
+      }
 
       if (match.is_locked) {
         if (savedSignature) {
@@ -476,6 +584,7 @@ export function PickBoard() {
   }
 
   async function handleSeasonChange(seasonId: string) {
+    setSeasonId(seasonId);
     const seasonMatchdays = state.matchdays.filter((matchday) => !seasonId || matchday.season_id === seasonId);
     const nextMatchday = pickPreferredMatchday(seasonMatchdays);
     const selectedSeason = state.seasons.find((season) => season.id === seasonId) ?? null;
@@ -507,9 +616,10 @@ export function PickBoard() {
   async function savePick(matchId: string) {
     try {
       const currentForm = forms[matchId];
+      const match = state.matches.find((row) => row.id === matchId);
       const selection = deriveSelectionFromForm(currentForm);
 
-      if (!selection || !isPickFormComplete(currentForm)) {
+      if (!match || !selection || !isPickFormComplete(match, currentForm)) {
         return;
       }
 
@@ -527,12 +637,14 @@ export function PickBoard() {
             selection,
             predicted_home_score: Number(currentForm.predicted_home_score),
             predicted_away_score: Number(currentForm.predicted_away_score),
+            advancing_team_id: currentForm.advancing_team_id || null,
           }
         : {
             match_id: matchId,
             selection,
             predicted_home_score: Number(currentForm.predicted_home_score),
             predicted_away_score: Number(currentForm.predicted_away_score),
+            advancing_team_id: currentForm.advancing_team_id || null,
           };
 
       const savedPick = await backendFetch<Pick>(path, accessToken, {
@@ -708,57 +820,53 @@ export function PickBoard() {
               const existingPick = state.existingPicks.find((pick) => pick.match_id === match.id);
               const derivedSelection = deriveSelectionFromForm(form);
               const autoSaveState = autoSave[match.id];
-              const homeTeam = teamById[match.home_team_id];
-              const awayTeam = teamById[match.away_team_id];
+              const homeTeam = match.home_team_id ? teamById[match.home_team_id] : undefined;
+              const awayTeam = match.away_team_id ? teamById[match.away_team_id] : undefined;
               const autoSaveLabel = getAutoSaveShortLabel(
                 match,
                 autoSaveState,
                 Boolean(existingPick),
               );
+              const pickDisabled = match.is_locked || !match.is_ready_for_picks;
 
               return (
                 <div key={match.id} className="border-b border-white/5 py-2 last:border-b-0">
                   <div className="grid grid-cols-[1.7fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.7fr] items-center gap-1.5 md:grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] md:gap-2">
                     <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
                       <div className="flex min-w-0 flex-col items-center justify-start gap-1 self-start text-center">
-                      {homeTeam?.crest_url ? (
-                        <img
-                          src={homeTeam.crest_url}
-                          alt={match.home_team_name}
-                          className="h-7 w-7 object-contain"
-                        />
-                      ) : (
-                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[9px] font-semibold text-ink">
-                          {getTeamInitials(match.home_team_name)}
-                        </span>
-                      )}
+                      <TeamBubble
+                        crestUrl={homeTeam?.crest_url}
+                        fallback={getTeamInitials(match.home_team_name)}
+                        sizeClassName="h-7 w-7"
+                        textClassName="text-[9px]"
+                        useWorldCupBubbles={useWorldCupAbbreviation}
+                      />
                       <span className="min-h-[20px] max-w-[58px] text-[8px] leading-tight text-steel">
-                        {match.home_team_name}
+                        {getMatchTeamLabel(match.home_team_id, match.home_team_name)}
                       </span>
                     </div>
                     <span className="self-start pt-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-steel/70">
                       vs
                     </span>
                     <div className="flex min-w-0 flex-col items-center justify-start gap-1 self-start text-center">
-                      {awayTeam?.crest_url ? (
-                        <img
-                          src={awayTeam.crest_url}
-                          alt={match.away_team_name}
-                          className="h-7 w-7 object-contain"
-                        />
-                      ) : (
-                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[9px] font-semibold text-ink">
-                          {getTeamInitials(match.away_team_name)}
-                        </span>
-                      )}
+                      <TeamBubble
+                        crestUrl={awayTeam?.crest_url}
+                        fallback={getTeamInitials(match.away_team_name)}
+                        sizeClassName="h-7 w-7"
+                        textClassName="text-[9px]"
+                        useWorldCupBubbles={useWorldCupAbbreviation}
+                      />
                       <span className="min-h-[20px] max-w-[58px] text-[8px] leading-tight text-steel">
-                        {match.away_team_name}
+                        {getMatchTeamLabel(match.away_team_id, match.away_team_name)}
                       </span>
                     </div>
                     </div>
                     <div className="text-center">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Inicio</p>
                       <p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityCompactDateTime(match.kickoff_at)}</p>
+                      <p className="mt-1 hidden text-[8px] text-steel md:block">
+                        {getStageLabel(match)}{match.bracket_slot ? ` · ${match.bracket_slot}` : ""}
+                      </p>
                     </div>
                     <div className="hidden text-center md:block">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Cierre</p>
@@ -776,7 +884,7 @@ export function PickBoard() {
                           })
                         }
                         onFocus={(event) => event.currentTarget.select()}
-                        disabled={match.is_locked}
+                        disabled={pickDisabled}
                         placeholder="-"
                         className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
                       />
@@ -793,7 +901,7 @@ export function PickBoard() {
                           })
                         }
                         onFocus={(event) => event.currentTarget.select()}
-                        disabled={match.is_locked}
+                        disabled={pickDisabled}
                         placeholder="-"
                         className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
                       />
@@ -807,9 +915,21 @@ export function PickBoard() {
                     </div>
                     <div className="text-center">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Estado</p>
-                      <p className={`mt-1 text-[10px] font-semibold md:mt-0 ${match.is_locked ? "text-rose-100" : "text-emerald-100"}`}>
-                        <span className="md:hidden">{match.is_locked ? "C" : "A"}</span>
-                        <span className="hidden md:inline">{match.is_locked ? "Cerrado" : "Abierto"}</span>
+                      <p
+                        className={`mt-1 text-[10px] font-semibold md:mt-0 ${
+                          !match.is_ready_for_picks
+                            ? "text-amber-100"
+                            : match.is_locked
+                              ? "text-rose-100"
+                              : "text-emerald-100"
+                        }`}
+                      >
+                        <span className="md:hidden">
+                          {!match.is_ready_for_picks ? "PD" : match.is_locked ? "C" : "A"}
+                        </span>
+                        <span className="hidden md:inline">
+                          {!match.is_ready_for_picks ? "Pendiente" : match.is_locked ? "Cerrado" : "Abierto"}
+                        </span>
                       </p>
                     </div>
                     <div className="text-center">
@@ -831,6 +951,36 @@ export function PickBoard() {
                       </p>
                     </div>
                   </div>
+                  {isKnockoutMatch(match) && match.is_ready_for_picks ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-steel">
+                        Equipo que avanza
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => updateForm(match.id, { advancing_team_id: match.home_team_id ?? "" })}
+                        disabled={pickDisabled}
+                        className={`app-pill px-3 text-[10px] ${form?.advancing_team_id === match.home_team_id ? "app-pill-active text-ink" : ""}`}
+                      >
+                        {getMatchTeamLabel(match.home_team_id, match.home_team_name)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateForm(match.id, { advancing_team_id: match.away_team_id ?? "" })}
+                        disabled={pickDisabled}
+                        className={`app-pill px-3 text-[10px] ${form?.advancing_team_id === match.away_team_id ? "app-pill-active text-ink" : ""}`}
+                      >
+                        {getMatchTeamLabel(match.away_team_id, match.away_team_name)}
+                      </button>
+                      <p className="text-[10px] text-steel">
+                        90 min + clasificado correcto = hasta 6 puntos.
+                      </p>
+                    </div>
+                  ) : isKnockoutMatch(match) ? (
+                    <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[10px] text-amber-100">
+                      Este cruce todavia esta sembrado con placeholders. Los picks se habilitan en cuanto queden definidos ambos equipos.
+                    </div>
+                  ) : null}
                   {existingPick?.is_admin_override ? (
                     <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[10px] text-amber-100">
                       {buildOverrideMessage(existingPick)}
@@ -870,29 +1020,21 @@ export function PickBoard() {
                       <th key={match.match_id} className="px-3 py-2 text-center">
                         <div className="space-y-1">
                           <div className="flex items-center justify-center gap-2">
-                            {match.home_team_crest_url ? (
-                              <img
-                                src={match.home_team_crest_url}
-                                alt={match.home_team_name}
-                                className="h-5 w-5 object-contain"
-                              />
-                            ) : (
-                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[8px] font-semibold text-ink">
-                                {getTeamInitials(match.home_team_name)}
-                              </span>
-                            )}
+                            <TeamBubble
+                              crestUrl={match.home_team_crest_url}
+                              fallback={getTeamInitials(match.home_team_name)}
+                              sizeClassName="h-5 w-5"
+                              textClassName="text-[8px]"
+                              useWorldCupBubbles={useWorldCupAbbreviation}
+                            />
                             <span className="text-[10px] font-medium text-ink">vs</span>
-                            {match.away_team_crest_url ? (
-                              <img
-                                src={match.away_team_crest_url}
-                                alt={match.away_team_name}
-                                className="h-5 w-5 object-contain"
-                              />
-                            ) : (
-                              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[8px] font-semibold text-ink">
-                                {getTeamInitials(match.away_team_name)}
-                              </span>
-                            )}
+                            <TeamBubble
+                              crestUrl={match.away_team_crest_url}
+                              fallback={getTeamInitials(match.away_team_name)}
+                              sizeClassName="h-5 w-5"
+                              textClassName="text-[8px]"
+                              useWorldCupBubbles={useWorldCupAbbreviation}
+                            />
                           </div>
                         </div>
                       </th>

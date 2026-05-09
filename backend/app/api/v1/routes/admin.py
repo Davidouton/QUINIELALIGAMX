@@ -18,6 +18,7 @@ from app.models.entities import (
     Match,
     Matchday,
     MatchdayStatus,
+    Competition,
     Profile,
     ProfileTrophyAward,
     PublishedMatchday,
@@ -51,6 +52,8 @@ from app.schemas.admin import (
     AdminUserSeasonMembershipOut,
     AdminSettingsOut,
     AdminSettingsUpdateRequest,
+    CompetitionCreateRequest,
+    CompetitionUpdateRequest,
     HistoricalChampionCreateRequest,
     HistoricalChampionOut,
     HistoricalChampionUpdateRequest,
@@ -76,6 +79,7 @@ from app.schemas.admin import (
 from app.schemas.match import MatchOut
 from app.schemas.matchday import MatchdayOut
 from app.schemas.profile import ProfileOut
+from app.schemas.competition import CompetitionOut
 from app.schemas.rules import RulePageOut, RulePageUpdateRequest
 from app.schemas.season import SeasonOut
 from app.schemas.team import TeamOut
@@ -544,6 +548,48 @@ def normalize_optional_text(value: str | None) -> str | None:
     return stripped or None
 
 
+def build_competition_out(row: Competition) -> CompetitionOut:
+    return CompetitionOut.model_validate(row, from_attributes=True)
+
+
+def build_team_out(row: Team, competition: Competition | None = None) -> TeamOut:
+    return TeamOut(
+        id=row.id,
+        competition_id=row.competition_id,
+        competition_name=competition.name if competition is not None else None,
+        competition_sport_name=competition.sport_name if competition is not None else None,
+        external_id=row.external_id,
+        name=row.name,
+        short_name=row.short_name,
+        slug=row.slug,
+        crest_url=row.crest_url,
+        home_venue=row.home_venue,
+        primary_color=row.primary_color,
+        secondary_color=row.secondary_color,
+        accent_color=row.accent_color,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def build_season_out(row: Season, competition: Competition | None = None) -> SeasonOut:
+    return SeasonOut(
+        id=row.id,
+        name=row.name,
+        slug=row.slug,
+        competition_id=row.competition_id,
+        competition_name=competition.name if competition is not None else None,
+        competition_sport_name=competition.sport_name if competition is not None else None,
+        tournament_format=row.tournament_format,
+        is_active=row.is_active,
+        start_matchday_id=row.start_matchday_id,
+        end_matchday_id=row.end_matchday_id,
+        participants_lock_at=row.participants_lock_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
 def build_trophy_asset_code(name: str, category: str) -> str:
     raw_value = f"{name.strip()}-{category.strip()}"
     normalized = normalize_slug(raw_value)
@@ -704,6 +750,7 @@ def get_admin_settings_payload(
         third_place_amount=float(third_place_amount),
         result_correct_points=stored_rules.get("result_correct", DEFAULT_RESULT_CORRECT_POINTS),
         exact_score_points=stored_rules.get("exact_score", DEFAULT_EXACT_SCORE_POINTS),
+        advancing_team_points=stored_rules.get("advancing_team", 1),
         evaluated_picks=evaluated_picks,
         weekly_leaders=weekly_leaders,
     )
@@ -952,6 +999,7 @@ def update_admin_settings(
     season_repo.save(db, season)
     upsert_scoring_rule(db, "result_correct", payload.result_correct_points)
     upsert_scoring_rule(db, "exact_score", payload.exact_score_points)
+    upsert_scoring_rule(db, "advancing_team", payload.advancing_team_points)
     recalculate_summary = ScoringService().recalculate(db)
     return get_admin_settings_payload(
         db,
@@ -966,11 +1014,16 @@ def create_season(
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SeasonOut:
+    competition = db.get(Competition, payload.competition_id) if payload.competition_id else None
+    if payload.competition_id and competition is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
     season = season_repo.create(
         db,
         Season(
             name=payload.name.strip(),
             slug=normalize_slug(payload.slug),
+            competition_id=competition.id if competition is not None else None,
+            tournament_format=payload.tournament_format,
             is_active=payload.is_active,
         ),
     )
@@ -978,7 +1031,7 @@ def create_season(
         set_active_season(db, season)
     db.commit()
     db.refresh(season)
-    return SeasonOut.model_validate(season, from_attributes=True)
+    return build_season_out(season, competition)
 
 
 @router.put("/seasons/{season_id}", response_model=SeasonOut)
@@ -992,15 +1045,78 @@ def update_season(
     if season is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
 
+    competition = db.get(Competition, payload.competition_id) if payload.competition_id else None
+    if payload.competition_id and competition is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
+
     season.name = payload.name.strip()
     season.slug = normalize_slug(payload.slug)
+    season.competition_id = competition.id if competition is not None else None
+    season.tournament_format = payload.tournament_format
     season.is_active = payload.is_active
     season_repo.save(db, season)
     if payload.is_active:
         set_active_season(db, season)
     db.commit()
     db.refresh(season)
-    return SeasonOut.model_validate(season, from_attributes=True)
+    return build_season_out(season, competition)
+
+
+@router.get("/competitions", response_model=list[CompetitionOut])
+def list_competitions(
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> list[CompetitionOut]:
+    rows = list(
+        db.scalars(
+            select(Competition)
+            .order_by(Competition.sort_order.asc(), Competition.sport_name.asc(), Competition.name.asc())
+        )
+    )
+    return [build_competition_out(row) for row in rows]
+
+
+@router.post("/competitions", response_model=CompetitionOut, status_code=201)
+def create_competition(
+    payload: CompetitionCreateRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> CompetitionOut:
+    row = Competition(
+        sport_name=payload.sport_name.strip(),
+        name=payload.name.strip(),
+        slug=normalize_slug(payload.slug),
+        provider_league_id=normalize_optional_text(payload.provider_league_id),
+        is_active=payload.is_active,
+        sort_order=payload.sort_order,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return build_competition_out(row)
+
+
+@router.put("/competitions/{competition_id}", response_model=CompetitionOut)
+def update_competition(
+    competition_id: str,
+    payload: CompetitionUpdateRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> CompetitionOut:
+    row = db.get(Competition, competition_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
+
+    row.sport_name = payload.sport_name.strip()
+    row.name = payload.name.strip()
+    row.slug = normalize_slug(payload.slug)
+    row.provider_league_id = normalize_optional_text(payload.provider_league_id)
+    row.is_active = payload.is_active
+    row.sort_order = payload.sort_order
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return build_competition_out(row)
 
 
 @router.post("/teams", response_model=TeamOut, status_code=201)
@@ -1009,9 +1125,13 @@ def create_team(
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> TeamOut:
+    competition = db.get(Competition, payload.competition_id) if payload.competition_id else None
+    if payload.competition_id and competition is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
     team = team_repo.create(
         db,
         Team(
+            competition_id=competition.id if competition is not None else None,
             name=payload.name.strip(),
             short_name=payload.short_name.strip().upper(),
             slug=normalize_slug(payload.slug),
@@ -1025,7 +1145,7 @@ def create_team(
     )
     db.commit()
     db.refresh(team)
-    return TeamOut.model_validate(team, from_attributes=True)
+    return build_team_out(team, competition)
 
 
 @router.put("/teams/{team_id}", response_model=TeamOut)
@@ -1039,6 +1159,11 @@ def update_team(
     if team is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
+    competition = db.get(Competition, payload.competition_id) if payload.competition_id else None
+    if payload.competition_id and competition is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
+
+    team.competition_id = competition.id if competition is not None else None
     team.name = payload.name.strip()
     team.short_name = payload.short_name.strip().upper()
     team.slug = normalize_slug(payload.slug)
@@ -1051,7 +1176,7 @@ def update_team(
     team_repo.save(db, team)
     db.commit()
     db.refresh(team)
-    return TeamOut.model_validate(team, from_attributes=True)
+    return build_team_out(team, competition)
 
 
 @router.get("/historical-champions", response_model=list[HistoricalChampionOut])
@@ -1439,22 +1564,28 @@ def create_match(
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> MatchOut:
-    if payload.home_team_id == payload.away_team_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Home and away teams must differ")
-
     matchday = matchday_repo.get_by_id(db, payload.matchday_id)
     if matchday is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
 
-    home_team = team_repo.get_by_id(db, payload.home_team_id)
-    away_team = team_repo.get_by_id(db, payload.away_team_id)
-    if home_team is None or away_team is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+    if payload.home_team_id:
+        home_team = team_repo.get_by_id(db, payload.home_team_id)
+        if home_team is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found")
+    if payload.away_team_id:
+        away_team = team_repo.get_by_id(db, payload.away_team_id)
+        if away_team is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found")
 
     match = Match(
         matchday_id=payload.matchday_id,
         home_team_id=payload.home_team_id,
         away_team_id=payload.away_team_id,
+        stage_type=payload.stage_type,
+        group_label=normalize_optional_text(payload.group_label),
+        bracket_slot=normalize_optional_text(payload.bracket_slot),
+        home_placeholder=normalize_optional_text(payload.home_placeholder),
+        away_placeholder=normalize_optional_text(payload.away_placeholder),
         kickoff_at=payload.kickoff_at,
         picks_lock_at=payload.picks_lock_at,
         venue=payload.venue.strip() if payload.venue else None,
@@ -1474,9 +1605,6 @@ def update_match(
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> MatchOut:
-    if payload.home_team_id == payload.away_team_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Home and away teams must differ")
-
     match = match_repo.get_by_id(db, match_id)
     if match is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
@@ -1485,14 +1613,23 @@ def update_match(
     if matchday is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
 
-    home_team = team_repo.get_by_id(db, payload.home_team_id)
-    away_team = team_repo.get_by_id(db, payload.away_team_id)
-    if home_team is None or away_team is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+    if payload.home_team_id:
+        home_team = team_repo.get_by_id(db, payload.home_team_id)
+        if home_team is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found")
+    if payload.away_team_id:
+        away_team = team_repo.get_by_id(db, payload.away_team_id)
+        if away_team is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found")
 
     match.matchday_id = payload.matchday_id
     match.home_team_id = payload.home_team_id
     match.away_team_id = payload.away_team_id
+    match.stage_type = payload.stage_type
+    match.group_label = normalize_optional_text(payload.group_label)
+    match.bracket_slot = normalize_optional_text(payload.bracket_slot)
+    match.home_placeholder = normalize_optional_text(payload.home_placeholder)
+    match.away_placeholder = normalize_optional_text(payload.away_placeholder)
     match.kickoff_at = payload.kickoff_at
     match.picks_lock_at = payload.picks_lock_at
     match.venue = payload.venue.strip() if payload.venue else None

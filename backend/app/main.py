@@ -74,9 +74,44 @@ def run_startup_migrations() -> None:
                 if column_name not in matchday_column_names:
                     connection.execute(text(statement))
 
+        if "competitions" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS competitions (
+                      id UUID PRIMARY KEY,
+                      sport_name VARCHAR(80) NOT NULL,
+                      name VARCHAR(120) NOT NULL,
+                      slug VARCHAR(120) NOT NULL UNIQUE,
+                      provider_league_id VARCHAR(120),
+                      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      sort_order INTEGER NOT NULL DEFAULT 100,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_competitions_sport_name ON competitions(sport_name)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_competitions_provider_league_id ON competitions(provider_league_id)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_competitions_is_active ON competitions(is_active)")
+            )
+
         if "seasons" in table_names:
             season_column_names = {column["name"] for column in inspector.get_columns("seasons")}
             missing_season_columns = {
+                "competition_id": (
+                    "ALTER TABLE seasons "
+                    "ADD COLUMN competition_id UUID REFERENCES competitions(id) ON DELETE SET NULL"
+                ),
+                "tournament_format": (
+                    "ALTER TABLE seasons ADD COLUMN tournament_format VARCHAR(24) NOT NULL DEFAULT 'standard'"
+                ),
                 "start_matchday_id": "ALTER TABLE seasons ADD COLUMN start_matchday_id UUID",
                 "end_matchday_id": "ALTER TABLE seasons ADD COLUMN end_matchday_id UUID",
                 "participants_lock_at": "ALTER TABLE seasons ADD COLUMN participants_lock_at TIMESTAMP WITH TIME ZONE",
@@ -111,6 +146,34 @@ def run_startup_migrations() -> None:
             for column_name, statement in missing_season_columns.items():
                 if column_name not in season_column_names:
                     connection.execute(text(statement))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_seasons_tournament_format ON seasons(tournament_format)")
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_seasons_competition_id ON seasons(competition_id)"))
+
+        if "matches" in table_names:
+            match_columns = {column["name"]: column for column in inspector.get_columns("matches")}
+            match_column_names = set(match_columns)
+            missing_match_columns = {
+                "stage_type": (
+                    "ALTER TABLE matches ADD COLUMN stage_type VARCHAR(24) NOT NULL DEFAULT 'regular'"
+                ),
+                "group_label": "ALTER TABLE matches ADD COLUMN group_label VARCHAR(16)",
+                "bracket_slot": "ALTER TABLE matches ADD COLUMN bracket_slot VARCHAR(32)",
+                "home_placeholder": "ALTER TABLE matches ADD COLUMN home_placeholder VARCHAR(64)",
+                "away_placeholder": "ALTER TABLE matches ADD COLUMN away_placeholder VARCHAR(64)",
+            }
+            for column_name, statement in missing_match_columns.items():
+                if column_name not in match_column_names:
+                    connection.execute(text(statement))
+            if connection.dialect.name.startswith("postgresql"):
+                if match_columns.get("home_team_id", {}).get("nullable") is False:
+                    connection.execute(text("ALTER TABLE matches ALTER COLUMN home_team_id DROP NOT NULL"))
+                if match_columns.get("away_team_id", {}).get("nullable") is False:
+                    connection.execute(text("ALTER TABLE matches ALTER COLUMN away_team_id DROP NOT NULL"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_matches_stage_type ON matches(stage_type)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_matches_group_label ON matches(group_label)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_matches_bracket_slot ON matches(bracket_slot)"))
 
         if "odds" in table_names:
             odds_column_names = {column["name"] for column in inspector.get_columns("odds")}
@@ -130,6 +193,7 @@ def run_startup_migrations() -> None:
         if "match_results" in table_names:
             match_result_column_names = {column["name"] for column in inspector.get_columns("match_results")}
             missing_match_result_columns = {
+                "advancing_team_id": "ALTER TABLE match_results ADD COLUMN advancing_team_id UUID",
                 "source_provider_name": "ALTER TABLE match_results ADD COLUMN source_provider_name VARCHAR(120)",
                 "source_external_id": "ALTER TABLE match_results ADD COLUMN source_external_id VARCHAR(120)",
                 "source_updated_at": "ALTER TABLE match_results ADD COLUMN source_updated_at TIMESTAMP WITH TIME ZONE",
@@ -142,10 +206,17 @@ def run_startup_migrations() -> None:
             for column_name, statement in missing_match_result_columns.items():
                 if column_name not in match_result_column_names:
                     connection.execute(text(statement))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_match_results_advancing_team "
+                    "ON match_results(advancing_team_id)"
+                )
+            )
 
         if "user_picks" in table_names:
             pick_column_names = {column["name"] for column in inspector.get_columns("user_picks")}
             missing_pick_columns = {
+                "advancing_team_id": "ALTER TABLE user_picks ADD COLUMN advancing_team_id UUID",
                 "is_admin_override": (
                     "ALTER TABLE user_picks ADD COLUMN is_admin_override BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
@@ -156,6 +227,19 @@ def run_startup_migrations() -> None:
             for column_name, statement in missing_pick_columns.items():
                 if column_name not in pick_column_names:
                     connection.execute(text(statement))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_user_picks_advancing_team ON user_picks(advancing_team_id)")
+            )
+
+        if "pick_points" in table_names:
+            pick_point_column_names = {column["name"] for column in inspector.get_columns("pick_points")}
+            if "advancing_team_points" not in pick_point_column_names:
+                connection.execute(
+                    text(
+                        "ALTER TABLE pick_points "
+                        "ADD COLUMN advancing_team_points INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
 
         if "raw_match_results" not in table_names:
             connection.execute(
@@ -197,6 +281,10 @@ def run_startup_migrations() -> None:
         if "teams" in table_names:
             team_column_names = {column["name"] for column in inspector.get_columns("teams")}
             missing_team_columns = {
+                "competition_id": (
+                    "ALTER TABLE teams "
+                    "ADD COLUMN competition_id UUID REFERENCES competitions(id) ON DELETE SET NULL"
+                ),
                 "home_venue": "ALTER TABLE teams ADD COLUMN home_venue VARCHAR(255)",
                 "primary_color": "ALTER TABLE teams ADD COLUMN primary_color VARCHAR(16)",
                 "secondary_color": "ALTER TABLE teams ADD COLUMN secondary_color VARCHAR(16)",
@@ -205,6 +293,54 @@ def run_startup_migrations() -> None:
             for column_name, statement in missing_team_columns.items():
                 if column_name not in team_column_names:
                     connection.execute(text(statement))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_teams_competition_id ON teams(competition_id)"))
+
+        if "world_cup_groups" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS world_cup_groups (
+                      id UUID PRIMARY KEY,
+                      season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+                      group_label VARCHAR(16) NOT NULL,
+                      display_name VARCHAR(120),
+                      sort_order INTEGER NOT NULL DEFAULT 100,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_world_cup_groups_season_label UNIQUE (season_id, group_label)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_world_cup_groups_season_id ON world_cup_groups(season_id)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_world_cup_groups_group_label ON world_cup_groups(group_label)")
+            )
+
+        if "world_cup_group_teams" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS world_cup_group_teams (
+                      id UUID PRIMARY KEY,
+                      group_id UUID NOT NULL REFERENCES world_cup_groups(id) ON DELETE CASCADE,
+                      team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                      sort_order INTEGER NOT NULL DEFAULT 100,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_world_cup_group_teams_group_team UNIQUE (group_id, team_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_world_cup_group_teams_group_id ON world_cup_group_teams(group_id)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_world_cup_group_teams_team_id ON world_cup_group_teams(team_id)")
+            )
 
         if "season_memberships" not in table_names:
             connection.execute(
@@ -412,6 +548,188 @@ def run_startup_migrations() -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS idx_vip_memberships_vip_profile "
                     "ON vip_memberships(vip_competition_id, profile_id)"
+                )
+            )
+
+        if "pricing_rules" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS pricing_rules (
+                      id UUID PRIMARY KEY,
+                      scope_type VARCHAR(24) NOT NULL,
+                      scope_id UUID NOT NULL,
+                      label VARCHAR(160) NOT NULL,
+                      amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                      currency VARCHAR(8) NOT NULL DEFAULT 'mxn',
+                      starts_at TIMESTAMP WITH TIME ZONE,
+                      ends_at TIMESTAMP WITH TIME ZONE,
+                      start_matchday_number INTEGER,
+                      end_matchday_number INTEGER,
+                      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      created_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_pricing_rules_scope "
+                    "ON pricing_rules(scope_type, scope_id, is_active)"
+                )
+            )
+
+        if "payments" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS payments (
+                      id UUID PRIMARY KEY,
+                      profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      scope_type VARCHAR(24) NOT NULL,
+                      scope_id UUID NOT NULL,
+                      pricing_rule_id UUID REFERENCES pricing_rules(id) ON DELETE SET NULL,
+                      provider_name VARCHAR(40) NOT NULL DEFAULT 'stripe',
+                      amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                      currency VARCHAR(8) NOT NULL DEFAULT 'mxn',
+                      status VARCHAR(24) NOT NULL DEFAULT 'pending_checkout',
+                      stripe_checkout_session_id VARCHAR(160) UNIQUE,
+                      stripe_payment_intent_id VARCHAR(160),
+                      stripe_customer_id VARCHAR(160),
+                      checkout_url TEXT,
+                      metadata_json TEXT,
+                      paid_at TIMESTAMP WITH TIME ZONE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_payments_profile_created "
+                    "ON payments(profile_id, created_at DESC)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_payments_scope_status "
+                    "ON payments(scope_type, scope_id, status)"
+                )
+            )
+
+        if "commerce_settings" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS commerce_settings (
+                      id UUID PRIMARY KEY,
+                      quiniela_plus_checkout_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                      quiniela_plus_checkout_message TEXT,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+
+        if "quiniela_plus_leagues" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS quiniela_plus_leagues (
+                      id UUID PRIMARY KEY,
+                      sport_name VARCHAR(80) NOT NULL,
+                      league_name VARCHAR(120) NOT NULL,
+                      slug VARCHAR(120) NOT NULL UNIQUE,
+                      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      sort_order INTEGER NOT NULL DEFAULT 100,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_qp_leagues_active_order "
+                    "ON quiniela_plus_leagues(is_active, sort_order, league_name)"
+                )
+            )
+
+        if "quiniela_plus_plans" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS quiniela_plus_plans (
+                      id UUID PRIMARY KEY,
+                      name VARCHAR(160) NOT NULL,
+                      billing_period VARCHAR(24) NOT NULL,
+                      included_leagues_count INTEGER,
+                      includes_all_leagues BOOLEAN NOT NULL DEFAULT FALSE,
+                      price_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                      currency VARCHAR(8) NOT NULL DEFAULT 'mxn',
+                      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      sort_order INTEGER NOT NULL DEFAULT 100,
+                      created_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_qp_plans_active_period "
+                    "ON quiniela_plus_plans(is_active, billing_period, sort_order)"
+                )
+            )
+
+        if "quiniela_plus_memberships" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS quiniela_plus_memberships (
+                      id UUID PRIMARY KEY,
+                      profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      plan_id UUID NOT NULL REFERENCES quiniela_plus_plans(id) ON DELETE RESTRICT,
+                      source_payment_id UUID REFERENCES payments(id) ON DELETE SET NULL UNIQUE,
+                      status VARCHAR(24) NOT NULL DEFAULT 'active',
+                      starts_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                      ends_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_qp_memberships_profile_status "
+                    "ON quiniela_plus_memberships(profile_id, status, ends_at DESC)"
+                )
+            )
+
+        if "quiniela_plus_membership_leagues" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS quiniela_plus_membership_leagues (
+                      id UUID PRIMARY KEY,
+                      membership_id UUID NOT NULL REFERENCES quiniela_plus_memberships(id) ON DELETE CASCADE,
+                      league_id UUID NOT NULL REFERENCES quiniela_plus_leagues(id) ON DELETE CASCADE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_qp_membership_league UNIQUE (membership_id, league_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_qp_membership_leagues_membership "
+                    "ON quiniela_plus_membership_leagues(membership_id, league_id)"
                 )
             )
 

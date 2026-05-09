@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.datetime import mexico_city_to_utc
-from app.models.entities import MatchStatus, MatchdayStatus, PickSelection, RoleCode
+from app.models.entities import MatchStageType, MatchStatus, MatchdayStatus, PickSelection, RoleCode, TournamentFormat
 
 
 class RoleUpdateRequest(BaseModel):
@@ -36,13 +36,22 @@ class SyncResponse(BaseModel):
 class AdminResultRowOut(BaseModel):
     match_id: str
     matchday_id: str
+    home_team_id: str | None = None
+    home_placeholder: str | None = None
     home_team_name: str
+    away_team_id: str | None = None
+    away_placeholder: str | None = None
     away_team_name: str
+    stage_type: MatchStageType = MatchStageType.REGULAR
+    group_label: str | None = None
+    bracket_slot: str | None = None
     kickoff_at: datetime
     match_status: MatchStatus
     home_score: int | None = None
     away_score: int | None = None
+    advancing_team_id: str | None = None
     is_official: bool = False
+    is_ready_for_picks: bool = True
     is_published: bool = False
     source_provider_name: str | None = None
     is_manual_override: bool = False
@@ -51,6 +60,7 @@ class AdminResultRowOut(BaseModel):
 class AdminResultUpdateRequest(BaseModel):
     home_score: int = Field(ge=0)
     away_score: int = Field(ge=0)
+    advancing_team_id: str | None = None
     is_official: bool = True
 
 
@@ -60,6 +70,7 @@ class AdminPickOverrideRequest(BaseModel):
     selection: PickSelection
     predicted_home_score: int = Field(ge=0)
     predicted_away_score: int = Field(ge=0)
+    advancing_team_id: str | None = None
     admin_override_note: str | None = None
 
     @model_validator(mode="after")
@@ -79,16 +90,25 @@ class AdminPickRowOut(BaseModel):
     profile_display_name: str
     match_id: str
     matchday_id: str
+    home_team_id: str | None = None
+    home_placeholder: str | None = None
     home_team_name: str
+    away_team_id: str | None = None
+    away_placeholder: str | None = None
     away_team_name: str
+    stage_type: MatchStageType = MatchStageType.REGULAR
+    group_label: str | None = None
+    bracket_slot: str | None = None
     kickoff_at: datetime
     picks_lock_at: datetime
     match_status: MatchStatus
     has_pick: bool
     is_locked: bool
+    is_ready_for_picks: bool = True
     selection: PickSelection | None = None
     predicted_home_score: int | None = None
     predicted_away_score: int | None = None
+    advancing_team_id: str | None = None
     is_admin_override: bool = False
     admin_override_note: str | None = None
     overridden_by_profile_id: str | None = None
@@ -127,6 +147,7 @@ class AdminSettingsOut(BaseModel):
     third_place_amount: float = 0
     result_correct_points: int
     exact_score_points: int
+    advancing_team_points: int
     evaluated_picks: int | None = None
     weekly_leaders: int | None = None
 
@@ -146,6 +167,7 @@ class AdminSettingsUpdateRequest(BaseModel):
     third_place_pct: float = Field(default=0, ge=0, le=100)
     result_correct_points: int = Field(default=3, ge=0, le=100)
     exact_score_points: int = Field(default=2, ge=0, le=100)
+    advancing_team_points: int = Field(default=1, ge=0, le=100)
 
 
 class AdminUserSeasonMembershipOut(BaseModel):
@@ -206,6 +228,8 @@ class OddsPullResponse(BaseModel):
 class SeasonCreateRequest(BaseModel):
     name: str
     slug: str
+    competition_id: str | None = None
+    tournament_format: TournamentFormat = TournamentFormat.STANDARD
     is_active: bool = False
 
 
@@ -214,6 +238,7 @@ class SeasonUpdateRequest(SeasonCreateRequest):
 
 
 class TeamCreateRequest(BaseModel):
+    competition_id: str | None = None
     name: str
     short_name: str = Field(min_length=2, max_length=16)
     slug: str
@@ -226,6 +251,19 @@ class TeamCreateRequest(BaseModel):
 
 
 class TeamUpdateRequest(TeamCreateRequest):
+    pass
+
+
+class CompetitionCreateRequest(BaseModel):
+    sport_name: str = Field(min_length=2, max_length=80)
+    name: str = Field(min_length=2, max_length=120)
+    slug: str = Field(min_length=2, max_length=120)
+    provider_league_id: str | None = Field(default=None, max_length=120)
+    is_active: bool = True
+    sort_order: int = Field(default=100, ge=0, le=100000)
+
+
+class CompetitionUpdateRequest(CompetitionCreateRequest):
     pass
 
 
@@ -250,18 +288,57 @@ class MatchdayUpdateRequest(MatchdayCreateRequest):
 
 class MatchCreateRequest(BaseModel):
     matchday_id: str
-    home_team_id: str
-    away_team_id: str
+    home_team_id: str | None = None
+    away_team_id: str | None = None
+    stage_type: MatchStageType = MatchStageType.REGULAR
+    group_label: str | None = Field(default=None, max_length=16)
+    bracket_slot: str | None = Field(default=None, max_length=32)
+    home_placeholder: str | None = Field(default=None, max_length=64)
+    away_placeholder: str | None = Field(default=None, max_length=64)
     kickoff_at: datetime
     picks_lock_at: datetime
     venue: str | None = None
     status: MatchStatus = MatchStatus.SCHEDULED
     external_id: str | None = None
 
+    @field_validator(
+        "home_team_id",
+        "away_team_id",
+        "group_label",
+        "bracket_slot",
+        "home_placeholder",
+        "away_placeholder",
+        "venue",
+        "external_id",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_text_fields(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = str(value).strip()
+        return stripped or None
+
     @field_validator("kickoff_at", "picks_lock_at")
     @classmethod
     def normalize_match_datetimes(cls, value: datetime) -> datetime:
         return mexico_city_to_utc(value)
+
+    @model_validator(mode="after")
+    def validate_match_participants(self) -> "MatchCreateRequest":
+        if self.home_team_id and self.away_team_id and self.home_team_id == self.away_team_id:
+            raise ValueError("Home and away teams must differ")
+
+        if self.stage_type in {MatchStageType.REGULAR, MatchStageType.GROUP}:
+            if not self.home_team_id or not self.away_team_id:
+                raise ValueError("Regular and group matches require both teams to be assigned")
+            return self
+
+        if not self.home_team_id and not self.home_placeholder:
+            raise ValueError("Knockout matches require a home team or placeholder")
+        if not self.away_team_id and not self.away_placeholder:
+            raise ValueError("Knockout matches require an away team or placeholder")
+        return self
 
 
 class MatchUpdateRequest(MatchCreateRequest):

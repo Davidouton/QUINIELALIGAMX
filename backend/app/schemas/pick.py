@@ -10,6 +10,7 @@ class PickBase(BaseModel):
     selection: PickSelection
     predicted_home_score: int = Field(ge=0)
     predicted_away_score: int = Field(ge=0)
+    advancing_team_id: str | None = None
 
     @model_validator(mode="after")
     def validate_score_against_selection(self) -> "PickBase":
@@ -38,10 +39,17 @@ class PickOut(BaseModel):
     selection: PickSelection
     predicted_home_score: int
     predicted_away_score: int
+    advancing_team_id: str | None = None
     home_team_name: str
     away_team_name: str
+    stage_type: str = "regular"
+    group_label: str | None = None
+    bracket_slot: str | None = None
+    home_placeholder: str | None = None
+    away_placeholder: str | None = None
     kickoff_at: datetime
     is_locked: bool
+    is_ready_for_picks: bool = True
     is_admin_override: bool = False
     admin_override_note: str | None = None
     overridden_by_profile_id: str | None = None
@@ -70,8 +78,10 @@ class PickResultRowOut(BaseModel):
     selection: PickSelection | None
     predicted_home_score: int | None
     predicted_away_score: int | None
+    advancing_team_id: str | None = None
     home_score: int | None
     away_score: int | None
+    official_advancing_team_id: str | None = None
     is_official: bool
     is_admin_override: bool = False
     admin_override_note: str | None = None
@@ -79,6 +89,7 @@ class PickResultRowOut(BaseModel):
     overridden_at: datetime | None = None
     result_points: int
     exact_score_points: int
+    advancing_team_points: int
     total_points: int
 
     @field_serializer("kickoff_at", "overridden_at")
@@ -95,12 +106,20 @@ class GlobalPickPlayerOut(BaseModel):
 
 class GlobalPickMatchOut(BaseModel):
     match_id: str
+    home_team_id: str | None = None
+    home_placeholder: str | None = None
     home_team_name: str
     home_team_crest_url: str | None
+    away_team_id: str | None = None
+    away_placeholder: str | None = None
     away_team_name: str
     away_team_crest_url: str | None
+    stage_type: str = "regular"
+    group_label: str | None = None
+    bracket_slot: str | None = None
     kickoff_at: datetime
     is_locked: bool
+    is_ready_for_picks: bool = True
 
     @field_serializer("kickoff_at")
     def serialize_match_kickoff(self, value: datetime) -> str:
@@ -115,6 +134,7 @@ class GlobalPickCellOut(BaseModel):
     selection: PickSelection | None
     predicted_home_score: int | None
     predicted_away_score: int | None
+    advancing_team_id: str | None = None
 
 
 class GlobalPickBoardOut(BaseModel):

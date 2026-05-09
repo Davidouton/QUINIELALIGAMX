@@ -10,6 +10,7 @@ import type { AdminResultRow, Matchday, Season } from "@/types/api";
 type ResultDraft = {
   home_score: string;
   away_score: string;
+  advancing_team_id: string;
   is_official: boolean;
 };
 
@@ -29,8 +30,17 @@ function buildDraft(result: AdminResultRow): ResultDraft {
   return {
     home_score: result.home_score === null ? "" : String(result.home_score),
     away_score: result.away_score === null ? "" : String(result.away_score),
+    advancing_team_id: result.advancing_team_id ?? "",
     is_official: result.is_official,
   };
+}
+
+function isKnockoutResult(result: AdminResultRow) {
+  return result.stage_type !== "regular" && result.stage_type !== "group";
+}
+
+function isResultReady(result: AdminResultRow) {
+  return result.is_ready_for_picks;
 }
 
 function getStatusPillClass(isPositive: boolean) {
@@ -163,6 +173,15 @@ export function AdminResultsPanel() {
       setError("Captura marcador local y visitante antes de guardar.");
       return;
     }
+    const row = results.find((result) => result.match_id === matchId);
+    if (row && !isResultReady(row)) {
+      setError("Primero define ambos equipos antes de capturar resultado.");
+      return;
+    }
+    if (row && isKnockoutResult(row) && !draft.advancing_team_id) {
+      setError("En eliminatoria directa tambien debes seleccionar el equipo que avanza.");
+      return;
+    }
 
     setSavingMatchId(matchId);
     setError(null);
@@ -174,6 +193,7 @@ export function AdminResultsPanel() {
         body: JSON.stringify({
           home_score: Number(draft.home_score),
           away_score: Number(draft.away_score),
+          advancing_team_id: draft.advancing_team_id || null,
           is_official: draft.is_official,
         }),
       });
@@ -437,13 +457,15 @@ export function AdminResultsPanel() {
 
       <section>
         <div className="no-scrollbar overflow-x-auto overscroll-x-contain touch-pan-x [WebkitOverflowScrolling:touch]">
-          <table className="min-w-[980px] text-left text-[11px] text-steel">
+          <table className="min-w-[1160px] text-left text-[11px] text-steel">
             <thead className="app-table-head">
               <tr>
                 <th className="px-3 pb-1">Partido</th>
                 <th className="px-3 pb-1">Kickoff</th>
+                <th className="px-3 pb-1">Fase</th>
                 <th className="px-3 pb-1">Local</th>
                 <th className="px-3 pb-1">Visitante</th>
+                <th className="px-3 pb-1">Avanza</th>
                 <th className="px-3 pb-1">Oficial</th>
                 <th className="px-3 pb-1">Publicado</th>
                 <th className="px-3 pb-1">Accion</th>
@@ -459,7 +481,7 @@ export function AdminResultsPanel() {
                         {result.home_team_name} vs {result.away_team_name}
                       </p>
                       <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-steel">
-                        {result.match_status}
+                        {result.match_status} · {result.stage_type}
                       </p>
                       <p className="mt-1 text-[10px] text-steel/85">
                         Fuente:{" "}
@@ -467,9 +489,19 @@ export function AdminResultsPanel() {
                           ? "manual"
                           : result.source_provider_name ?? "sin proveedor"}
                       </p>
+                      {!result.is_ready_for_picks ? (
+                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-100">
+                          Llave sembrada, equipos pendientes
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-3 py-3 align-middle text-xs text-steel">
                       {formatMexicoCityDateTime(result.kickoff_at)}
+                    </td>
+                    <td className="px-3 py-3 align-middle text-xs text-steel">
+                      {result.group_label
+                        ? `Grupo ${result.group_label}`
+                        : result.bracket_slot ?? result.stage_type}
                     </td>
                     <td className="px-3 py-3 align-middle">
                       <input
@@ -479,9 +511,29 @@ export function AdminResultsPanel() {
                         step={1}
                         value={draft.home_score}
                         onChange={(event) => updateDraft(result.match_id, { home_score: event.target.value })}
+                        disabled={!result.is_ready_for_picks}
                         className={`${compactControlClass} w-20`}
                         placeholder="-"
                       />
+                    </td>
+                    <td className="px-3 py-3 align-middle">
+                      {isKnockoutResult(result) && result.is_ready_for_picks ? (
+                        <select
+                          value={draft.advancing_team_id}
+                          onChange={(event) =>
+                            updateDraft(result.match_id, { advancing_team_id: event.target.value })
+                          }
+                          className={`${compactControlClass} min-w-[140px]`}
+                        >
+                          <option value="">Selecciona</option>
+                          {result.home_team_id ? <option value={result.home_team_id}>{result.home_team_name}</option> : null}
+                          {result.away_team_id ? <option value={result.away_team_id}>{result.away_team_name}</option> : null}
+                        </select>
+                      ) : isKnockoutResult(result) ? (
+                        <span className="text-xs text-steel">Pendiente de definir</span>
+                      ) : (
+                        <span className="text-xs text-steel">No aplica</span>
+                      )}
                     </td>
                     <td className="px-3 py-3 align-middle">
                       <input
@@ -491,6 +543,7 @@ export function AdminResultsPanel() {
                         step={1}
                         value={draft.away_score}
                         onChange={(event) => updateDraft(result.match_id, { away_score: event.target.value })}
+                        disabled={!result.is_ready_for_picks}
                         className={`${compactControlClass} w-20`}
                         placeholder="-"
                       />
@@ -503,6 +556,7 @@ export function AdminResultsPanel() {
                           onChange={(event) =>
                             updateDraft(result.match_id, { is_official: event.target.checked })
                           }
+                          disabled={!result.is_ready_for_picks}
                           className="h-4 w-4 rounded border-white/20 bg-night/60"
                         />
                         <span className={getStatusPillClass(draft.is_official)}>
@@ -540,7 +594,7 @@ export function AdminResultsPanel() {
                         <button
                           type="button"
                           onClick={() => void handleSave(result.match_id)}
-                          disabled={savingMatchId === result.match_id}
+                          disabled={savingMatchId === result.match_id || !result.is_ready_for_picks}
                           className={neutralActionClass}
                         >
                           {savingMatchId === result.match_id ? "Guardando..." : "Guardar"}

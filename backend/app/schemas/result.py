@@ -12,6 +12,7 @@ class ResultOut(BaseModel):
     away_team_name: str
     home_score: int
     away_score: int
+    advancing_team_id: str | None = None
     is_official: bool
 
 

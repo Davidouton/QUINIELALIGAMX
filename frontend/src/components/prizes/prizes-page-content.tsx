@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { PrizeSummary } from "@/types/api";
+import type { CheckoutSessionResponse, EffectivePricing, Me, PrizeSummary } from "@/types/api";
 
 const initialState: PrizeSummary = {
   season_id: null,
@@ -34,16 +34,37 @@ const initialState: PrizeSummary = {
 };
 
 export function PrizesPageContent() {
+  const [me, setMe] = useState<Me | null>(null);
   const [summary, setSummary] = useState<PrizeSummary>(initialState);
+  const [pricing, setPricing] = useState<EffectivePricing | null>(null);
   const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const response = await backendFetch<PrizeSummary>("/me/prize-summary", accessToken);
-        setSummary(response);
+        const [meResponse, summaryResponse] = await Promise.all([
+          backendFetch<Me>("/me", accessToken),
+          backendFetch<PrizeSummary>("/me/prize-summary", accessToken),
+        ]);
+        setMe(meResponse);
+        setSummary(summaryResponse);
+        if (summaryResponse.season_id) {
+          try {
+            const pricingResponse = await backendFetch<EffectivePricing>(
+              `/payments/pricing?scope_type=season&scope_id=${summaryResponse.season_id}`,
+              accessToken,
+            );
+            setPricing(pricingResponse);
+          } catch {
+            setPricing(null);
+          }
+        } else {
+          setPricing(null);
+        }
         setError(null);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar premios");
@@ -54,6 +75,30 @@ export function PrizesPageContent() {
 
     void load();
   }, []);
+
+  async function handleSeasonCheckout() {
+    if (!summary.season_id) {
+      return;
+    }
+    setPaying(true);
+    setPaymentError(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const response = await backendFetch<CheckoutSessionResponse>("/payments/checkout-session", accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          scope_type: "season",
+          scope_id: summary.season_id,
+        }),
+      });
+      window.location.href = response.checkout_url;
+    } catch (caughtError) {
+      setPaymentError(
+        caughtError instanceof Error ? caughtError.message : "No se pudo iniciar el checkout de temporada",
+      );
+      setPaying(false);
+    }
+  }
 
   const formatMoney = (value: number) =>
     new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(value);
@@ -100,6 +145,30 @@ export function PrizesPageContent() {
       <section>
         <h1 className="text-xl font-semibold text-ink">Premios</h1>
         <p className="mt-1 text-sm text-steel">{summary.season_name ?? "Sin torneo activo"}</p>
+        {summary.season_id ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            {me?.is_paid_active_season ? (
+              <span className="app-pill-active px-4 text-sm text-ink">Temporada pagada</span>
+            ) : pricing ? (
+              <button
+                type="button"
+                onClick={() => void handleSeasonCheckout()}
+                disabled={paying}
+                className="secondary-button disabled:opacity-60"
+              >
+                {paying ? "Abriendo checkout..." : `Pagar Liga + Liguilla · ${formatMoney(pricing.amount)}`}
+              </button>
+            ) : (
+              <span className="app-pill px-4 text-sm">Precio no disponible</span>
+            )}
+            <p className="text-sm text-steel">
+              {me?.is_paid_active_season
+                ? "Tu pago de temporada ya esta confirmado."
+                : "El pago se abre en Stripe con el monto vigente que definiste en admin."}
+            </p>
+          </div>
+        ) : null}
+        {paymentError ? <p className="mt-3 text-sm text-coral">{paymentError}</p> : null}
       </section>
 
       <section className="space-y-3">

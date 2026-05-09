@@ -1,10 +1,30 @@
 export type MatchdayStatus = "draft" | "active" | "closed" | "published";
 export type MatchStatus = "scheduled" | "final" | "postponed" | "cancelled";
+export type TournamentFormat = "standard" | "world_cup";
+export type MatchStageType =
+  | "regular"
+  | "group"
+  | "round_of_32"
+  | "round_of_16"
+  | "quarterfinal"
+  | "semifinal"
+  | "third_place"
+  | "final";
 export type PickSelection = "home" | "draw" | "away";
 export type ThemePreference = "standard" | "auto" | "night" | "day_blue" | "favorite_team";
 export type PaymentModality = "pre_pago" | "aval";
+export type PaymentScopeType = "season" | "vip" | "quiniela_plus";
+export type PaymentStatus =
+  | "pending_checkout"
+  | "checkout_created"
+  | "paid"
+  | "expired"
+  | "cancelled"
+  | "failed";
 export type VipMembershipStatus = "pending" | "approved" | "rejected";
 export type PickReminderHoursBefore = 1 | 3;
+export type QuinielaPlusBillingPeriod = "weekly" | "monthly" | "quarterly" | "semiannual" | "annual";
+export type QuinielaPlusMembershipStatus = "active" | "expired" | "cancelled";
 
 export interface Matchday {
   id: string;
@@ -23,8 +43,13 @@ export interface Match {
   matchday_id: string;
   external_id: string | null;
   match_key: string;
-  home_team_id: string;
-  away_team_id: string;
+  home_team_id: string | null;
+  away_team_id: string | null;
+  stage_type: MatchStageType;
+  group_label: string | null;
+  bracket_slot: string | null;
+  home_placeholder: string | null;
+  away_placeholder: string | null;
   home_team_name: string;
   away_team_name: string;
   kickoff_at: string;
@@ -32,6 +57,7 @@ export interface Match {
   status: MatchStatus;
   venue: string | null;
   is_locked: boolean;
+  is_ready_for_picks: boolean;
   odds_provider_name: string | null;
   home_win_probability: number | null;
   draw_probability: number | null;
@@ -46,10 +72,17 @@ export interface Pick {
   selection: PickSelection;
   predicted_home_score: number;
   predicted_away_score: number;
+  advancing_team_id: string | null;
   home_team_name: string;
   away_team_name: string;
+  stage_type: MatchStageType;
+  group_label: string | null;
+  bracket_slot: string | null;
+  home_placeholder: string | null;
+  away_placeholder: string | null;
   kickoff_at: string;
   is_locked: boolean;
+  is_ready_for_picks: boolean;
   is_admin_override: boolean;
   admin_override_note: string | null;
   overridden_by_profile_id: string | null;
@@ -72,8 +105,10 @@ export interface PickResultRow {
   selection: PickSelection | null;
   predicted_home_score: number | null;
   predicted_away_score: number | null;
+  advancing_team_id: string | null;
   home_score: number | null;
   away_score: number | null;
+  official_advancing_team_id: string | null;
   is_official: boolean;
   is_admin_override: boolean;
   admin_override_note: string | null;
@@ -81,6 +116,7 @@ export interface PickResultRow {
   overridden_at: string | null;
   result_points: number;
   exact_score_points: number;
+  advancing_team_points: number;
   total_points: number;
 }
 
@@ -90,16 +126,25 @@ export interface AdminPickRow {
   profile_display_name: string;
   match_id: string;
   matchday_id: string;
+  home_team_id: string | null;
+  home_placeholder: string | null;
   home_team_name: string;
+  away_team_id: string | null;
+  away_placeholder: string | null;
   away_team_name: string;
+  stage_type: MatchStageType;
+  group_label: string | null;
+  bracket_slot: string | null;
   kickoff_at: string;
   picks_lock_at: string;
   match_status: MatchStatus;
   has_pick: boolean;
   is_locked: boolean;
+  is_ready_for_picks: boolean;
   selection: PickSelection | null;
   predicted_home_score: number | null;
   predicted_away_score: number | null;
+  advancing_team_id: string | null;
   is_admin_override: boolean;
   admin_override_note: string | null;
   overridden_by_profile_id: string | null;
@@ -115,12 +160,20 @@ export interface GlobalPickPlayer {
 
 export interface GlobalPickMatch {
   match_id: string;
+  home_team_id: string | null;
+  home_placeholder: string | null;
   home_team_name: string;
   home_team_crest_url: string | null;
+  away_team_id: string | null;
+  away_placeholder: string | null;
   away_team_name: string;
   away_team_crest_url: string | null;
+  stage_type: MatchStageType;
+  group_label: string | null;
+  bracket_slot: string | null;
   kickoff_at: string;
   is_locked: boolean;
+  is_ready_for_picks: boolean;
 }
 
 export interface GlobalPickCell {
@@ -131,6 +184,7 @@ export interface GlobalPickCell {
   selection: PickSelection | null;
   predicted_home_score: number | null;
   predicted_away_score: number | null;
+  advancing_team_id: string | null;
 }
 
 export interface GlobalPickBoard {
@@ -235,6 +289,195 @@ export interface AdminVipCompetition {
   leaderboard: VipLeaderboardEntry[];
 }
 
+export interface PricingRule {
+  id: string;
+  scope_type: PaymentScopeType;
+  scope_id: string;
+  label: string;
+  amount: number;
+  currency: string;
+  starts_at: string | null;
+  ends_at: string | null;
+  start_matchday_number: number | null;
+  end_matchday_number: number | null;
+  is_active: boolean;
+  created_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EffectivePricing {
+  scope_type: PaymentScopeType;
+  scope_id: string;
+  label: string;
+  amount: number;
+  currency: string;
+  pricing_rule_id: string;
+}
+
+export interface CheckoutSessionResponse {
+  payment_id: string;
+  checkout_session_id: string;
+  checkout_url: string;
+  scope_type: PaymentScopeType;
+  scope_id: string;
+  label: string;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+}
+
+export interface PaymentRecord {
+  id: string;
+  scope_type: PaymentScopeType;
+  scope_id: string;
+  pricing_rule_id: string | null;
+  provider_name: string;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_customer_id: string | null;
+  checkout_url: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuinielaPlusLeague {
+  id: string;
+  sport_name: string;
+  league_name: string;
+  slug: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuinielaPlusPlan {
+  id: string;
+  name: string;
+  billing_period: QuinielaPlusBillingPeriod;
+  included_leagues_count: number | null;
+  includes_all_leagues: boolean;
+  price_amount: number;
+  currency: string;
+  is_active: boolean;
+  sort_order: number;
+  created_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QuinielaPlusMembershipLeague {
+  id: string;
+  sport_name: string;
+  league_name: string;
+  slug: string;
+}
+
+export interface QuinielaPlusMembership {
+  id: string;
+  status: QuinielaPlusMembershipStatus;
+  starts_at: string;
+  ends_at: string;
+  created_at: string;
+  plan: QuinielaPlusPlan;
+  leagues: QuinielaPlusMembershipLeague[];
+}
+
+export interface QuinielaPlusCatalog {
+  checkout_enabled: boolean;
+  checkout_message: string | null;
+  leagues: QuinielaPlusLeague[];
+  plans: QuinielaPlusPlan[];
+  active_memberships: QuinielaPlusMembership[];
+}
+
+export interface QuinielaPlusAdminSettings {
+  checkout_enabled: boolean;
+  checkout_message: string | null;
+}
+
+export interface QuinielaPlusAdminConsole {
+  settings: QuinielaPlusAdminSettings;
+  leagues: QuinielaPlusLeague[];
+  plans: QuinielaPlusPlan[];
+}
+
+export interface WorldCupGroupStanding {
+  team_id: string;
+  team_name: string;
+  team_short_name: string;
+  team_crest_url: string | null;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goals_for: number;
+  goals_against: number;
+  goal_difference: number;
+  points: number;
+}
+
+export interface WorldCupGroup {
+  group_label: string;
+  standings: WorldCupGroupStanding[];
+}
+
+export interface WorldCupAdminGroupTeam {
+  team_id: string;
+  team_name: string;
+  team_short_name: string;
+  team_crest_url: string | null;
+}
+
+export interface WorldCupAdminGroup {
+  id: string;
+  season_id: string;
+  group_label: string;
+  display_name: string | null;
+  sort_order: number;
+  teams: WorldCupAdminGroupTeam[];
+}
+
+export interface WorldCupBracketMatch {
+  match_id: string;
+  matchday_id: string;
+  stage_type: MatchStageType;
+  bracket_slot: string | null;
+  home_team_id: string | null;
+  home_placeholder: string | null;
+  home_team_name: string;
+  home_team_short_name: string;
+  home_team_crest_url: string | null;
+  away_team_id: string | null;
+  away_placeholder: string | null;
+  away_team_name: string;
+  away_team_short_name: string;
+  away_team_crest_url: string | null;
+  kickoff_at: string;
+  home_score: number | null;
+  away_score: number | null;
+  advancing_team_id: string | null;
+  is_official: boolean;
+  is_ready_for_picks: boolean;
+}
+
+export interface WorldCupBoard {
+  season_id: string;
+  season_name: string;
+  groups: WorldCupGroup[];
+  round_of_32: WorldCupBracketMatch[];
+  round_of_16: WorldCupBracketMatch[];
+  quarterfinals: WorldCupBracketMatch[];
+  semifinals: WorldCupBracketMatch[];
+  third_place: WorldCupBracketMatch[];
+  final: WorldCupBracketMatch[];
+}
+
 export interface MyMatchdayPointsEntry {
   matchday_id: string;
   season_id: string;
@@ -266,6 +509,7 @@ export interface Result {
   away_team_name: string;
   home_score: number;
   away_score: number;
+  advancing_team_id: string | null;
   is_official: boolean;
 }
 
@@ -455,10 +699,26 @@ export interface RulePage {
   updated_at: string;
 }
 
+export interface Competition {
+  id: string;
+  sport_name: string;
+  name: string;
+  slug: string;
+  provider_league_id: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Season {
   id: string;
   name: string;
   slug: string;
+  competition_id: string | null;
+  competition_name: string | null;
+  competition_sport_name: string | null;
+  tournament_format: TournamentFormat;
   is_active: boolean;
   start_matchday_id: string | null;
   end_matchday_id: string | null;
@@ -469,6 +729,9 @@ export interface Season {
 
 export interface Team {
   id: string;
+  competition_id: string | null;
+  competition_name: string | null;
+  competition_sport_name: string | null;
   external_id: string | null;
   name: string;
   short_name: string;
@@ -537,6 +800,7 @@ export interface AdminSettings {
   third_place_amount: number;
   result_correct_points: number;
   exact_score_points: number;
+  advancing_team_points: number;
   evaluated_picks: number | null;
   weekly_leaders: number | null;
 }
@@ -574,13 +838,22 @@ export interface AdminUser {
 export interface AdminResultRow {
   match_id: string;
   matchday_id: string;
+  home_team_id: string | null;
+  home_placeholder: string | null;
   home_team_name: string;
+  away_team_id: string | null;
+  away_placeholder: string | null;
   away_team_name: string;
+  stage_type: MatchStageType;
+  group_label: string | null;
+  bracket_slot: string | null;
   kickoff_at: string;
   match_status: MatchStatus;
   home_score: number | null;
   away_score: number | null;
+  advancing_team_id: string | null;
   is_official: boolean;
+  is_ready_for_picks: boolean;
   is_published: boolean;
   source_provider_name: string | null;
   is_manual_override: boolean;

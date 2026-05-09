@@ -40,6 +40,22 @@ class MatchStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class TournamentFormat(str, Enum):
+    STANDARD = "standard"
+    WORLD_CUP = "world_cup"
+
+
+class MatchStageType(str, Enum):
+    REGULAR = "regular"
+    GROUP = "group"
+    ROUND_OF_32 = "round_of_32"
+    ROUND_OF_16 = "round_of_16"
+    QUARTERFINAL = "quarterfinal"
+    SEMIFINAL = "semifinal"
+    THIRD_PLACE = "third_place"
+    FINAL = "final"
+
+
 class PickSelection(str, Enum):
     HOME = "home"
     DRAW = "draw"
@@ -60,6 +76,35 @@ class VipMembershipStatus(str, Enum):
 class PickReminderKind(str, Enum):
     OPENING = "opening"
     PRE_GAME = "pre_game"
+
+
+class PaymentScopeType(str, Enum):
+    SEASON = "season"
+    VIP = "vip"
+    QUINIELA_PLUS = "quiniela_plus"
+
+
+class PaymentStatus(str, Enum):
+    PENDING_CHECKOUT = "pending_checkout"
+    CHECKOUT_CREATED = "checkout_created"
+    PAID = "paid"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class QuinielaPlusBillingPeriod(str, Enum):
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    QUARTERLY = "quarterly"
+    SEMIANNUAL = "semiannual"
+    ANNUAL = "annual"
+
+
+class QuinielaPlusMembershipStatus(str, Enum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
 
 
 class Profile(Base):
@@ -102,12 +147,42 @@ class Profile(Base):
     )
 
 
+class Competition(Base):
+    __tablename__ = "competitions"
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    sport_name: Mapped[str] = mapped_column(String(80), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    provider_league_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class Season(Base):
     __tablename__ = "seasons"
 
     id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
     name: Mapped[str] = mapped_column(String(120))
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    competition_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("competitions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    tournament_format: Mapped[TournamentFormat] = mapped_column(
+        SqlEnum(TournamentFormat, native_enum=False, values_callable=enum_values),
+        default=TournamentFormat.STANDARD,
+        nullable=False,
+        index=True,
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     start_matchday_id: Mapped[str | None] = mapped_column(UUID_SQL, nullable=True, index=True)
     end_matchday_id: Mapped[str | None] = mapped_column(UUID_SQL, nullable=True, index=True)
@@ -155,10 +230,33 @@ class Matchday(Base):
     )
 
 
+class WorldCupGroup(Base):
+    __tablename__ = "world_cup_groups"
+    __table_args__ = (UniqueConstraint("season_id", "group_label", name="uq_world_cup_groups_season_label"),)
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    season_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("seasons.id", ondelete="CASCADE"), index=True)
+    group_label: Mapped[str] = mapped_column(String(16), index=True)
+    display_name: Mapped[str | None] = mapped_column(String(120))
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class Team(Base):
     __tablename__ = "teams"
 
     id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    competition_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("competitions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     external_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
     short_name: Mapped[str] = mapped_column(String(16))
@@ -176,14 +274,54 @@ class Team(Base):
     )
 
 
+class WorldCupGroupTeam(Base):
+    __tablename__ = "world_cup_group_teams"
+    __table_args__ = (UniqueConstraint("group_id", "team_id", name="uq_world_cup_group_teams_group_team"),)
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    group_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("world_cup_groups.id", ondelete="CASCADE"),
+        index=True,
+    )
+    team_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class Match(Base):
     __tablename__ = "matches"
 
     id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
     matchday_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("matchdays.id", ondelete="CASCADE"), index=True)
     external_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
-    home_team_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
-    away_team_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("teams.id", ondelete="RESTRICT"), index=True)
+    home_team_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("teams.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    away_team_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("teams.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    stage_type: Mapped[MatchStageType] = mapped_column(
+        SqlEnum(MatchStageType, native_enum=False, values_callable=enum_values),
+        default=MatchStageType.REGULAR,
+        nullable=False,
+        index=True,
+    )
+    group_label: Mapped[str | None] = mapped_column(String(16), index=True)
+    bracket_slot: Mapped[str | None] = mapped_column(String(32), index=True)
+    home_placeholder: Mapped[str | None] = mapped_column(String(64))
+    away_placeholder: Mapped[str | None] = mapped_column(String(64))
     kickoff_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     picks_lock_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     venue: Mapped[str | None] = mapped_column(String(255))
@@ -233,6 +371,11 @@ class UserPick(Base):
     )
     predicted_home_score: Mapped[int] = mapped_column(Integer)
     predicted_away_score: Mapped[int] = mapped_column(Integer)
+    advancing_team_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("teams.id", ondelete="SET NULL"),
+        index=True,
+    )
     is_admin_override: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     admin_override_note: Mapped[str | None] = mapped_column(Text)
     overridden_by_profile_id: Mapped[str | None] = mapped_column(
@@ -261,6 +404,11 @@ class MatchResult(Base):
     )
     home_score: Mapped[int] = mapped_column(Integer)
     away_score: Mapped[int] = mapped_column(Integer)
+    advancing_team_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("teams.id", ondelete="SET NULL"),
+        index=True,
+    )
     is_official: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source_provider_name: Mapped[str | None] = mapped_column(String(120), index=True)
     source_external_id: Mapped[str | None] = mapped_column(String(120), index=True)
@@ -438,6 +586,186 @@ class VipMembership(Base):
     )
 
 
+class QuinielaPlusLeague(Base):
+    __tablename__ = "quiniela_plus_leagues"
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    sport_name: Mapped[str] = mapped_column(String(80))
+    league_name: Mapped[str] = mapped_column(String(120))
+    slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class QuinielaPlusPlan(Base):
+    __tablename__ = "quiniela_plus_plans"
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    name: Mapped[str] = mapped_column(String(160))
+    billing_period: Mapped[QuinielaPlusBillingPeriod] = mapped_column(
+        SqlEnum(QuinielaPlusBillingPeriod, native_enum=False, values_callable=enum_values),
+        nullable=False,
+        index=True,
+    )
+    included_leagues_count: Mapped[int | None] = mapped_column(Integer)
+    includes_all_leagues: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    price_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="mxn", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    created_by_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class QuinielaPlusMembership(Base):
+    __tablename__ = "quiniela_plus_memberships"
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    profile_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    plan_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("quiniela_plus_plans.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    source_payment_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("payments.id", ondelete="SET NULL"),
+        unique=True,
+        index=True,
+    )
+    status: Mapped[QuinielaPlusMembershipStatus] = mapped_column(
+        SqlEnum(QuinielaPlusMembershipStatus, native_enum=False, values_callable=enum_values),
+        default=QuinielaPlusMembershipStatus.ACTIVE,
+        nullable=False,
+        index=True,
+    )
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class QuinielaPlusMembershipLeague(Base):
+    __tablename__ = "quiniela_plus_membership_leagues"
+    __table_args__ = (UniqueConstraint("membership_id", "league_id", name="uq_qp_membership_league"),)
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    membership_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("quiniela_plus_memberships.id", ondelete="CASCADE"),
+        index=True,
+    )
+    league_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("quiniela_plus_leagues.id", ondelete="CASCADE"),
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CommerceSettings(Base):
+    __tablename__ = "commerce_settings"
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    quiniela_plus_checkout_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    quiniela_plus_checkout_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class PricingRule(Base):
+    __tablename__ = "pricing_rules"
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    scope_type: Mapped[PaymentScopeType] = mapped_column(
+        SqlEnum(PaymentScopeType, native_enum=False, values_callable=enum_values),
+        nullable=False,
+        index=True,
+    )
+    scope_id: Mapped[str] = mapped_column(UUID_SQL, nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(160))
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="mxn", nullable=False)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    start_matchday_number: Mapped[int | None] = mapped_column(Integer)
+    end_matchday_number: Mapped[int | None] = mapped_column(Integer)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    profile_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    scope_type: Mapped[PaymentScopeType] = mapped_column(
+        SqlEnum(PaymentScopeType, native_enum=False, values_callable=enum_values),
+        nullable=False,
+        index=True,
+    )
+    scope_id: Mapped[str] = mapped_column(UUID_SQL, nullable=False, index=True)
+    pricing_rule_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("pricing_rules.id", ondelete="SET NULL"),
+        index=True,
+    )
+    provider_name: Mapped[str] = mapped_column(String(40), default="stripe", nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="mxn", nullable=False)
+    status: Mapped[PaymentStatus] = mapped_column(
+        SqlEnum(PaymentStatus, native_enum=False, values_callable=enum_values),
+        default=PaymentStatus.PENDING_CHECKOUT,
+        nullable=False,
+        index=True,
+    )
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(String(160), unique=True, index=True)
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(String(160), index=True)
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(160), index=True)
+    checkout_url: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[str | None] = mapped_column(Text)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class PickPoint(Base):
     __tablename__ = "pick_points"
 
@@ -448,6 +776,7 @@ class PickPoint(Base):
     matchday_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("matchdays.id", ondelete="CASCADE"), index=True)
     result_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     exact_score_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    advancing_team_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

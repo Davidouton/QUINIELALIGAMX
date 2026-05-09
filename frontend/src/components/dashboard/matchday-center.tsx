@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { Card } from "@/components/ui/card";
 import { backendFetch } from "@/lib/api/backend";
+import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { Match, Matchday, PickResultRow, Season } from "@/types/api";
 
@@ -38,6 +39,7 @@ function getSeasonTag(season: Season | null) {
 export function MatchdayCenter() {
   const [state, setState] = useState<MatchdayCenterState>(initialState);
   const [loading, setLoading] = useState(true);
+  const { seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
 
   useEffect(() => {
     async function loadMatchdayCenter() {
@@ -48,16 +50,24 @@ export function MatchdayCenter() {
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<Matchday[]>("/matchdays", accessToken),
         ]);
-        const activeMatchday = activeMatchdays[0] ?? null;
+        const preferredSeason =
+          seasons.find((season) => season.id === seasonIdParam) ??
+          seasons.find((season) => season.is_active) ??
+          seasons[0] ??
+          null;
+        const activeMatchday = preferredSeason
+          ? activeMatchdays.find((matchday) => matchday.season_id === preferredSeason.id) ?? null
+          : activeMatchdays[0] ?? null;
         const selectedMatchday =
           activeMatchday ??
           matchdays
+            .filter((matchday) => (preferredSeason ? matchday.season_id === preferredSeason.id : true))
             .slice()
             .sort((left, right) => right.number - left.number)[0] ??
           null;
         const selectedSeason =
+          preferredSeason ??
           seasons.find((season) => season.id === selectedMatchday?.season_id) ??
-          seasons.find((season) => season.is_active) ??
           null;
 
         if (!selectedMatchday) {
@@ -97,9 +107,10 @@ export function MatchdayCenter() {
     }
 
     void loadMatchdayCenter();
-  }, []);
+  }, [seasonIdParam]);
 
   async function handleSeasonChange(seasonId: string) {
+    setSeasonId(seasonId);
     const selectedSeason = state.seasons.find((season) => season.id === seasonId) ?? null;
 
     const seasonMatchdays = state.matchdays
@@ -266,6 +277,7 @@ export function MatchdayCenter() {
         title={state.selectedMatchday ? `${state.selectedMatchday.name} · Tabla de resultados` : "Tabla de resultados"}
         subtitle="Consulta por juego tu pick, el marcador real y el puntaje que te dio esa seleccion."
         emptyMessage="No hay partidos programados para la jornada seleccionada."
+        useWorldCupBubbles={state.selectedSeason?.tournament_format === "world_cup"}
       />
     </div>
   );
