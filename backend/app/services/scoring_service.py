@@ -30,6 +30,7 @@ class ScoringService:
 
     def recalculate(self, db: Session) -> dict[str, int]:
         rules = self._load_rules(db)
+        empty_bucket = {"total_points": 0, "correct_results": 0, "exact_scores": 0}
 
         db.execute(delete(PickPoint))
         db.execute(delete(StandingsMatchday))
@@ -53,6 +54,8 @@ class ScoringService:
         season_cache: dict[str, Season | None] = {}
         matchday_cache: dict[str, Matchday | None] = {}
         membership_cache: dict[tuple[str, str], bool] = {}
+        eligible_profiles_by_season: dict[str, list[str]] = {}
+        official_matchday_ids_by_season: dict[str, set[str]] = defaultdict(set)
         evaluated_picks = 0
 
         for pick, result, match in rows:
@@ -67,6 +70,13 @@ class ScoringService:
             season = season_cache[season_id]
             if season is None:
                 continue
+            official_matchday_ids_by_season[season_id].add(match.matchday_id)
+            if season_id not in eligible_profiles_by_season:
+                eligible_profiles_by_season[season_id] = [
+                    membership.profile_id
+                    for membership in self.membership_repo.list_for_season(db, season_id)
+                    if self.eligibility_service.can_participate(db, season, membership)
+                ]
 
             membership_key = (season_id, pick.profile_id)
             if membership_key not in membership_cache:
@@ -115,6 +125,12 @@ class ScoringService:
             season_agg[season_key]["total_points"] += total_points
             season_agg[season_key]["correct_results"] += 1 if result_points else 0
             season_agg[season_key]["exact_scores"] += 1 if exact_points else 0
+
+        for season_id, participant_ids in eligible_profiles_by_season.items():
+            for profile_id in participant_ids:
+                season_agg.setdefault((season_id, profile_id), empty_bucket.copy())
+                for matchday_id in official_matchday_ids_by_season.get(season_id, set()):
+                    matchday_agg.setdefault((matchday_id, profile_id), empty_bucket.copy())
 
         weekly_leaders = 0
         weekly_awards = 0
@@ -278,13 +294,13 @@ class ScoringService:
         rows: list[tuple[str, dict[str, int]]],
     ) -> list[tuple[str, dict[str, int], int]]:
         ranked_rows: list[tuple[str, dict[str, int], int]] = []
-        previous_points: int | None = None
+        previous_signature: tuple[int, int] | None = None
         previous_rank = 0
         for index, (profile_id, values) in enumerate(rows, start=1):
-            current_points = values["total_points"]
-            if previous_points is None or current_points != previous_points:
+            current_signature = (values["total_points"], values["exact_scores"])
+            if previous_signature is None or current_signature != previous_signature:
                 previous_rank = index
-                previous_points = current_points
+                previous_signature = current_signature
             ranked_rows.append((profile_id, values, previous_rank))
         return ranked_rows
 
