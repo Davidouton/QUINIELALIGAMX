@@ -36,10 +36,13 @@ export function LeaderboardPageContent() {
           backendFetch<Season[]>("/seasons", accessToken),
         ]);
         const selectedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
-        const overall = await backendFetch<LeaderboardEntry[]>(
-          selectedSeason ? `/leaderboard/overall?season_id=${selectedSeason.id}` : "/leaderboard/overall",
-          accessToken,
-        );
+        const overall =
+          selectedSeason
+            ? await backendFetch<LeaderboardEntry[]>(
+                `/leaderboard/overall?season_id=${selectedSeason.id}`,
+                accessToken,
+              )
+            : [];
         const activeMatchday =
           (selectedSeason
             ? activeMatchdays.find((matchday) => matchday.season_id === selectedSeason.id) ??
