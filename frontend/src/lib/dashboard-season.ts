@@ -26,9 +26,15 @@ export function resolveSeasonForContext(
     return explicitSeason;
   }
 
+  if (competitionId) {
+    return (
+      visibleSeasons.find((season) => season.is_active) ??
+      visibleSeasons[0] ??
+      null
+    );
+  }
+
   return (
-    visibleSeasons.find((season) => season.is_active) ??
-    visibleSeasons[0] ??
     explicitSeason ??
     seasons.find((season) => season.is_active) ??
     seasons[0] ??

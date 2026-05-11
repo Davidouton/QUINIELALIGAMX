@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
-import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team } from "@/types/api";
 
@@ -362,6 +362,7 @@ export function PickBoard() {
     return teamById[teamId]?.short_name ?? fallbackName;
   }
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
+  const visibleSeasons = filterSeasonsByCompetition(state.seasons, competitionId);
 
   useEffect(() => {
     async function loadBoard() {
@@ -723,7 +724,7 @@ export function PickBoard() {
               className="field-control text-xs"
             >
               <option value="">Selecciona temporada</option>
-              {state.seasons.map((season) => (
+              {visibleSeasons.map((season) => (
                 <option key={season.id} value={season.id}>
                   {season.name}
                 </option>

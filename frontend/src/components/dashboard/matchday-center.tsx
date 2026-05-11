@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { Card } from "@/components/ui/card";
 import { backendFetch } from "@/lib/api/backend";
-import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { Match, Matchday, PickResultRow, Season } from "@/types/api";
 
@@ -40,6 +40,7 @@ export function MatchdayCenter() {
   const [state, setState] = useState<MatchdayCenterState>(initialState);
   const [loading, setLoading] = useState(true);
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
+  const visibleSeasons = filterSeasonsByCompetition(state.seasons, competitionId);
 
   useEffect(() => {
     async function loadMatchdayCenter() {
@@ -223,7 +224,7 @@ export function MatchdayCenter() {
               className="field-control"
             >
               <option value="">Selecciona temporada</option>
-              {state.seasons.map((season) => (
+              {visibleSeasons.map((season) => (
                 <option key={season.id} value={season.id}>
                   {season.name}
                 </option>

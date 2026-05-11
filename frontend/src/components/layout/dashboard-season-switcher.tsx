@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
-import { useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import type { Competition, Season } from "@/types/api";
 
 function getCompetitionBadge(competition: Competition) {
@@ -60,29 +60,23 @@ export function DashboardSeasonSwitcher() {
   }, [competitionId, competitions, seasonId, seasons]);
 
   const visibleSeasons = useMemo(() => {
-    if (!activeCompetition) {
-      return seasons;
-    }
-    return seasons.filter((season) => season.competition_id === activeCompetition.id);
-  }, [activeCompetition, seasons]);
+    return filterSeasonsByCompetition(seasons, activeCompetition?.id ?? "");
+  }, [activeCompetition?.id, seasons]);
 
   const selectedSeason = useMemo(() => {
-    return (
-      visibleSeasons.find((season) => season.id === seasonId) ??
-      visibleSeasons.find((season) => season.is_active) ??
-      visibleSeasons[0] ??
-      seasons.find((season) => season.id === seasonId) ??
-      seasons.find((season) => season.is_active) ??
-      seasons[0] ??
-      null
-    );
-  }, [seasonId, seasons, visibleSeasons]);
+    return resolveSeasonForContext(seasons, seasonId, activeCompetition?.id ?? competitionId);
+  }, [activeCompetition?.id, competitionId, seasonId, seasons]);
   useEffect(() => {
     if (selectedSeason) {
       const nextCompetitionId = activeCompetition?.id ?? selectedSeason.competition_id ?? "";
       if (seasonId !== selectedSeason.id || competitionId !== nextCompetitionId) {
         setSeasonId(selectedSeason.id, nextCompetitionId);
       }
+      return;
+    }
+
+    if (competitionId && seasonId) {
+      setSeasonId("", competitionId);
     }
   }, [activeCompetition?.id, competitionId, seasonId, selectedSeason, setSeasonId]);
 
