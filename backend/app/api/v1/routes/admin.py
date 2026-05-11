@@ -1911,7 +1911,7 @@ def publish_matchday(
     matchday_id: str,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
-) -> dict[str, str]:
+) -> dict[str, int | str]:
     matchday = matchday_repo.get_by_id(db, matchday_id)
     if matchday is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
@@ -1930,4 +1930,9 @@ def publish_matchday(
     matchday.status = MatchdayStatus.PUBLISHED
     db.add(matchday)
     db.commit()
-    return {"status": "published", "matchday_id": matchday_id}
+    recalculate_summary = ScoringService().recalculate(db)
+    return {
+        "status": "published",
+        "matchday_id": matchday_id,
+        **recalculate_summary,
+    }

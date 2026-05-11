@@ -3,17 +3,20 @@
 import { useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { LeaderboardEntry, Matchday } from "@/types/api";
+import type { LeaderboardEntry, Matchday, Season } from "@/types/api";
 
 type LeaderboardState = {
   activeMatchday: Matchday | null;
+  selectedSeason: Season | null;
   overall: LeaderboardEntry[];
   error: string | null;
 };
 
 const initialState: LeaderboardState = {
   activeMatchday: null,
+  selectedSeason: null,
   overall: [],
   error: null,
 };
@@ -21,19 +24,38 @@ const initialState: LeaderboardState = {
 export function LeaderboardPageContent() {
   const [state, setState] = useState<LeaderboardState>(initialState);
   const [loading, setLoading] = useState(true);
+  const { seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
 
   useEffect(() => {
     async function loadLeaderboard() {
       try {
         const accessToken = await getBrowserAccessToken();
 
-        const [activeMatchdays, overall] = await Promise.all([
+        const [activeMatchdays, seasons] = await Promise.all([
           backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
-          backendFetch<LeaderboardEntry[]>("/leaderboard/overall", accessToken),
+          backendFetch<Season[]>("/seasons", accessToken),
         ]);
+        const selectedSeason =
+          seasons.find((season) => season.id === seasonIdParam) ??
+          seasons.find((season) => season.is_active) ??
+          seasons[0] ??
+          null;
+        const overall = await backendFetch<LeaderboardEntry[]>(
+          selectedSeason ? `/leaderboard/overall?season_id=${selectedSeason.id}` : "/leaderboard/overall",
+          accessToken,
+        );
+        const activeMatchday =
+          (selectedSeason
+            ? activeMatchdays.find((matchday) => matchday.season_id === selectedSeason.id) ?? null
+            : activeMatchdays[0] ?? null);
+
+        if (selectedSeason && selectedSeason.id !== seasonIdParam) {
+          setSeasonId(selectedSeason.id, selectedSeason.competition_id ?? "");
+        }
 
         setState({
-          activeMatchday: activeMatchdays[0] ?? null,
+          activeMatchday,
+          selectedSeason,
           overall,
           error: null,
         });
@@ -48,7 +70,7 @@ export function LeaderboardPageContent() {
     }
 
     void loadLeaderboard();
-  }, []);
+  }, [seasonIdParam, setSeasonId]);
 
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando tabla general...</p>;
@@ -64,7 +86,9 @@ export function LeaderboardPageContent() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h1 className="text-xl font-semibold text-ink">Ranking</h1>
-            <p className="mt-1 text-sm text-steel">Tabla general del torneo</p>
+            <p className="mt-1 text-sm text-steel">
+              {state.selectedSeason ? `Tabla general de ${state.selectedSeason.name}` : "Tabla general del torneo"}
+            </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-3 xl:min-w-[520px]">
             <div className="space-y-1">

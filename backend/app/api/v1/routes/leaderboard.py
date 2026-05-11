@@ -12,13 +12,19 @@ service = LeaderboardService()
 
 
 @router.get("/leaderboard", response_model=list[LeaderboardEntry])
-def get_leaderboard(db: Session = Depends(get_db)) -> list[LeaderboardEntry]:
-    return service.list_overall(db)
+def get_leaderboard(
+    season_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> list[LeaderboardEntry]:
+    return service.list_overall(db, season_id=season_id)
 
 
 @router.get("/leaderboard/overall", response_model=list[LeaderboardEntry])
-def get_overall_leaderboard(db: Session = Depends(get_db)) -> list[LeaderboardEntry]:
-    return service.list_overall(db)
+def get_overall_leaderboard(
+    season_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> list[LeaderboardEntry]:
+    return service.list_overall(db, season_id=season_id)
 
 
 @router.get("/leaderboard/matchday/{matchday_id}", response_model=list[LeaderboardEntry])

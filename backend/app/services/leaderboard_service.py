@@ -19,8 +19,9 @@ class LeaderboardService:
     def __init__(self) -> None:
         self.repo = LeaderboardRepository()
 
-    def list_overall(self, db: Session) -> list[LeaderboardEntry]:
-        rows = self.repo.list_overall(db)
+    def list_overall(self, db: Session, season_id: str | None = None) -> list[LeaderboardEntry]:
+        season = self._resolve_season(db, season_id)
+        rows = self.repo.list_overall(db, season.id if season is not None else None)
         return [self._overall_entry(standing, profile) for standing, profile in rows]
 
     def list_matchday(self, db: Session, matchday_id: str) -> list[LeaderboardEntry]:
