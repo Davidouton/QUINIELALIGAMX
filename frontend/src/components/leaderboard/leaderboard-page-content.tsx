@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
-import { useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { LeaderboardEntry, Matchday, Season } from "@/types/api";
 
@@ -24,7 +24,7 @@ const initialState: LeaderboardState = {
 export function LeaderboardPageContent() {
   const [state, setState] = useState<LeaderboardState>(initialState);
   const [loading, setLoading] = useState(true);
-  const { seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
+  const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
   useEffect(() => {
     async function loadLeaderboard() {
@@ -35,19 +35,17 @@ export function LeaderboardPageContent() {
           backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
           backendFetch<Season[]>("/seasons", accessToken),
         ]);
-        const selectedSeason =
-          seasons.find((season) => season.id === seasonIdParam) ??
-          seasons.find((season) => season.is_active) ??
-          seasons[0] ??
-          null;
+        const selectedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const overall = await backendFetch<LeaderboardEntry[]>(
           selectedSeason ? `/leaderboard/overall?season_id=${selectedSeason.id}` : "/leaderboard/overall",
           accessToken,
         );
         const activeMatchday =
           (selectedSeason
-            ? activeMatchdays.find((matchday) => matchday.season_id === selectedSeason.id) ?? null
-            : activeMatchdays[0] ?? null);
+            ? activeMatchdays.find((matchday) => matchday.season_id === selectedSeason.id) ??
+              filterMatchdaysBySeason(activeMatchdays, selectedSeason.id)[0] ??
+              null
+            : null);
 
         if (selectedSeason && selectedSeason.id !== seasonIdParam) {
           setSeasonId(selectedSeason.id, selectedSeason.competition_id ?? "");
@@ -70,7 +68,7 @@ export function LeaderboardPageContent() {
     }
 
     void loadLeaderboard();
-  }, [seasonIdParam, setSeasonId]);
+  }, [competitionId, seasonIdParam, setSeasonId]);
 
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando tabla general...</p>;

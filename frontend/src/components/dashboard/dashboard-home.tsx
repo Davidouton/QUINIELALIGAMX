@@ -8,7 +8,7 @@ import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { PerformanceRaceChart } from "@/components/dashboard/performance-race-chart";
 import { Card } from "@/components/ui/card";
 import { backendFetch } from "@/lib/api/backend";
-import { useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -250,7 +250,7 @@ export function DashboardHome() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("general");
   const [selectedVipBoardId, setSelectedVipBoardId] = useState("");
   const [isTabMenuOpen, setIsTabMenuOpen] = useState(false);
-  const { seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
+  const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
     try {
@@ -278,8 +278,7 @@ export function DashboardHome() {
 
       const selectedSeason =
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
-        seasons.find((season) => season.is_active) ??
-        null;
+        resolveSeasonForContext(seasons, seasonIdParam, competitionId);
 
       const [matches, pickResults, matchdayPoints, summary, advancedStats, performanceRace] = await Promise.all([
         backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken),
@@ -331,37 +330,38 @@ export function DashboardHome() {
       try {
         const accessToken = await getBrowserAccessToken();
 
-        const [me, seasons, matchdays, activeMatchdays, leaderboard, teams, personalTrophies, vipCompetitions] = await Promise.all([
+        const [me, seasons, matchdays, activeMatchdays, teams, personalTrophies, vipCompetitions] = await Promise.all([
           backendFetch<Me>("/me", accessToken),
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<Matchday[]>("/matchdays", accessToken),
           backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
-          backendFetch<LeaderboardEntry[]>("/leaderboard/overall", accessToken),
           backendFetch<Team[]>("/teams"),
           backendFetch<PersonalTrophyRecord[]>("/me/trophies", accessToken),
           backendFetch<VipCompetition[]>("/vip", accessToken),
         ]);
 
-        const preferredSeason =
-          seasons.find((season) => season.id === seasonIdParam) ??
-          seasons.find((season) => season.is_active) ??
-          seasons[0] ??
-          null;
-        const preferredSeasonMatchdays = preferredSeason
-          ? matchdays.filter((matchday) => matchday.season_id === preferredSeason.id)
-          : [];
+        const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
         const selectedMatchday =
           (preferredSeason
             ? activeMatchdays.find((matchday) => matchday.season_id === preferredSeason.id) ??
               pickPreferredMatchday(preferredSeasonMatchdays)
             : null) ??
-          pickPreferredMatchday(activeMatchdays) ??
-          pickPreferredMatchday(matchdays) ??
           null;
         const selectedSeason =
           preferredSeason ??
           seasons.find((season) => season.id === selectedMatchday?.season_id) ??
           null;
+        const leaderboard = selectedSeason
+          ? await backendFetch<LeaderboardEntry[]>(`/leaderboard/overall?season_id=${selectedSeason.id}`, accessToken)
+          : [];
+
+        if (selectedSeason) {
+          const nextCompetitionId = selectedSeason.competition_id ?? "";
+          if (selectedSeason.id !== seasonIdParam || competitionId !== nextCompetitionId) {
+            setSeasonId(selectedSeason.id, nextCompetitionId);
+          }
+        }
 
         setState((current) => ({
           ...current,
@@ -392,7 +392,7 @@ export function DashboardHome() {
     }
 
     void load();
-  }, [seasonIdParam]);
+  }, [competitionId, seasonIdParam, setSeasonId]);
 
   useEffect(() => {
     async function loadUpcomingMatchdays() {

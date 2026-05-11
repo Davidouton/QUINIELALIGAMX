@@ -4,19 +4,22 @@ import { useEffect, useState } from "react";
 
 import { Card } from "@/components/ui/card";
 import { backendFetch } from "@/lib/api/backend";
+import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Matchday, PublishedResult, Result } from "@/types/api";
+import type { Matchday, PublishedResult, Result, Season } from "@/types/api";
 
 type ResultsBoardState = {
-  activeMatchday: Matchday | null;
+  selectedSeason: Season | null;
+  selectedMatchday: Matchday | null;
   results: Result[];
   publishedResults: PublishedResult[];
   error: string | null;
 };
 
 const initialState: ResultsBoardState = {
-  activeMatchday: null,
+  selectedSeason: null,
+  selectedMatchday: null,
   results: [],
   publishedResults: [],
   error: null,
@@ -25,22 +28,37 @@ const initialState: ResultsBoardState = {
 export function ResultsBoard() {
   const [state, setState] = useState<ResultsBoardState>(initialState);
   const [loading, setLoading] = useState(true);
+  const { seasonId: seasonIdParam, competitionId } = useDashboardSeasonParam();
 
   useEffect(() => {
     async function loadResultsBoard() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const activeMatchdays = await backendFetch<Matchday[]>("/matchdays?status=active", accessToken);
-        const activeMatchday = activeMatchdays[0] ?? null;
+        const [activeMatchdays, seasons, matchdays] = await Promise.all([
+          backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
+          backendFetch<Season[]>("/seasons", accessToken),
+          backendFetch<Matchday[]>("/matchdays", accessToken),
+        ]);
+        const selectedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        const seasonMatchdays = selectedSeason ? filterMatchdaysBySeason(matchdays, selectedSeason.id) : [];
+        const selectedMatchday =
+          (selectedSeason
+            ? activeMatchdays.find((matchday) => matchday.season_id === selectedSeason.id) ?? null
+            : null) ??
+          seasonMatchdays
+            .slice()
+            .sort((left, right) => right.number - left.number)[0] ??
+          null;
 
-        const suffix = activeMatchday ? `?matchday_id=${activeMatchday.id}` : "";
+        const suffix = selectedMatchday ? `?matchday_id=${selectedMatchday.id}` : "";
         const [results, publishedResults] = await Promise.all([
           backendFetch<Result[]>(`/results${suffix}`, accessToken),
           backendFetch<PublishedResult[]>(`/published-results${suffix}`, accessToken),
         ]);
 
         setState({
-          activeMatchday,
+          selectedSeason,
+          selectedMatchday,
           results,
           publishedResults,
           error: null,
@@ -56,7 +74,7 @@ export function ResultsBoard() {
     }
 
     void loadResultsBoard();
-  }, []);
+  }, [competitionId, seasonIdParam]);
 
   if (loading) {
     return <p className="text-sm text-steel">Cargando resultados...</p>;
@@ -76,8 +94,8 @@ export function ResultsBoard() {
         <p className="eyebrow">Results Desk</p>
         <h1 className="mt-3 text-4xl font-semibold text-ink">Resultados</h1>
         <p className="mt-3 max-w-2xl text-sm text-steel">
-          {state.activeMatchday
-            ? `Seguimiento de ${state.activeMatchday.name}.`
+          {state.selectedMatchday
+            ? `Seguimiento de ${state.selectedMatchday.name}${state.selectedSeason ? ` · ${state.selectedSeason.name}` : ""}.`
             : "Consulta marcadores recientes y lo que ya se publicó oficialmente."}
         </p>
       </section>

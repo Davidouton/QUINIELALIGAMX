@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
-import { useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team } from "@/types/api";
 
@@ -361,7 +361,7 @@ export function PickBoard() {
     }
     return teamById[teamId]?.short_name ?? fallbackName;
   }
-  const { seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
+  const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
   useEffect(() => {
     async function loadBoard() {
@@ -374,21 +374,14 @@ export function PickBoard() {
           backendFetch<Matchday[]>("/matchdays", accessToken),
           backendFetch<Team[]>("/teams", accessToken),
         ]);
-        const preferredSeason =
-          seasons.find((season) => season.id === seasonIdParam) ??
-          seasons.find((season) => season.is_active) ??
-          seasons[0] ??
-          null;
-        const preferredSeasonMatchdays = preferredSeason
-          ? matchdays.filter((matchday) => matchday.season_id === preferredSeason.id)
-          : [];
+        const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
         const activeMatchday =
           (preferredSeason
             ? activeMatchdays.find((matchday) => matchday.season_id === preferredSeason.id) ??
               pickPreferredMatchday(preferredSeasonMatchdays)
             : null) ??
-          pickPreferredMatchday(activeMatchdays) ??
-          pickPreferredMatchday(matchdays);
+          null;
         const selectedMatchday =
           activeMatchday ??
           null;
@@ -396,6 +389,13 @@ export function PickBoard() {
           preferredSeason ??
           seasons.find((season) => season.id === selectedMatchday?.season_id) ??
           null;
+
+        if (selectedSeason) {
+          const nextCompetitionId = selectedSeason.competition_id ?? "";
+          if (selectedSeason.id !== seasonIdParam || competitionId !== nextCompetitionId) {
+            setSeasonId(selectedSeason.id, nextCompetitionId);
+          }
+        }
 
         if (!selectedMatchday) {
           setTeams(teamRows);
@@ -452,7 +452,7 @@ export function PickBoard() {
     }
 
     void loadBoard();
-  }, [seasonIdParam]);
+  }, [competitionId, seasonIdParam, setSeasonId]);
 
   useEffect(() => {
     const timers = timersRef.current;
@@ -551,8 +551,7 @@ export function PickBoard() {
 
       const selectedSeason =
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
-        seasons.find((season) => season.is_active) ??
-        null;
+        resolveSeasonForContext(seasons, seasonIdParam, competitionId);
 
       const nextForms: FormsMap = {};
       matches.forEach((match) => {
@@ -584,10 +583,10 @@ export function PickBoard() {
   }
 
   async function handleSeasonChange(seasonId: string) {
-    setSeasonId(seasonId);
-    const seasonMatchdays = state.matchdays.filter((matchday) => !seasonId || matchday.season_id === seasonId);
-    const nextMatchday = pickPreferredMatchday(seasonMatchdays);
     const selectedSeason = state.seasons.find((season) => season.id === seasonId) ?? null;
+    setSeasonId(seasonId, selectedSeason?.competition_id ?? competitionId);
+    const seasonMatchdays = filterMatchdaysBySeason(state.matchdays, seasonId);
+    const nextMatchday = pickPreferredMatchday(seasonMatchdays);
 
     if (!nextMatchday) {
       setState((current) => ({

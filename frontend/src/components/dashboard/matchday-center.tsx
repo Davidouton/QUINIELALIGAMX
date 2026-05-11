@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { Card } from "@/components/ui/card";
 import { backendFetch } from "@/lib/api/backend";
-import { useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { Match, Matchday, PickResultRow, Season } from "@/types/api";
 
@@ -39,7 +39,7 @@ function getSeasonTag(season: Season | null) {
 export function MatchdayCenter() {
   const [state, setState] = useState<MatchdayCenterState>(initialState);
   const [loading, setLoading] = useState(true);
-  const { seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
+  const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
   useEffect(() => {
     async function loadMatchdayCenter() {
@@ -50,18 +50,13 @@ export function MatchdayCenter() {
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<Matchday[]>("/matchdays", accessToken),
         ]);
-        const preferredSeason =
-          seasons.find((season) => season.id === seasonIdParam) ??
-          seasons.find((season) => season.is_active) ??
-          seasons[0] ??
-          null;
+        const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const activeMatchday = preferredSeason
           ? activeMatchdays.find((matchday) => matchday.season_id === preferredSeason.id) ?? null
-          : activeMatchdays[0] ?? null;
+          : null;
         const selectedMatchday =
           activeMatchday ??
-          matchdays
-            .filter((matchday) => (preferredSeason ? matchday.season_id === preferredSeason.id : true))
+          filterMatchdaysBySeason(matchdays, preferredSeason?.id)
             .slice()
             .sort((left, right) => right.number - left.number)[0] ??
           null;
@@ -69,6 +64,13 @@ export function MatchdayCenter() {
           preferredSeason ??
           seasons.find((season) => season.id === selectedMatchday?.season_id) ??
           null;
+
+        if (selectedSeason) {
+          const nextCompetitionId = selectedSeason.competition_id ?? "";
+          if (selectedSeason.id !== seasonIdParam || competitionId !== nextCompetitionId) {
+            setSeasonId(selectedSeason.id, nextCompetitionId);
+          }
+        }
 
         if (!selectedMatchday) {
           setState((current) => ({
@@ -107,14 +109,13 @@ export function MatchdayCenter() {
     }
 
     void loadMatchdayCenter();
-  }, [seasonIdParam]);
+  }, [competitionId, seasonIdParam, setSeasonId]);
 
   async function handleSeasonChange(seasonId: string) {
-    setSeasonId(seasonId);
     const selectedSeason = state.seasons.find((season) => season.id === seasonId) ?? null;
+    setSeasonId(seasonId, selectedSeason?.competition_id ?? competitionId);
 
-    const seasonMatchdays = state.matchdays
-      .filter((matchday) => !seasonId || matchday.season_id === seasonId)
+    const seasonMatchdays = filterMatchdaysBySeason(state.matchdays, seasonId)
       .sort((left, right) => left.number - right.number);
     const nextMatchday = seasonMatchdays[0] ?? null;
 
@@ -154,8 +155,7 @@ export function MatchdayCenter() {
       const seasons = await backendFetch<Season[]>("/seasons", accessToken);
       const selectedSeason =
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
-        seasons.find((season) => season.is_active) ??
-        null;
+        resolveSeasonForContext(seasons, seasonIdParam, competitionId);
 
       const [matches, pickResults] = await Promise.all([
         backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken),

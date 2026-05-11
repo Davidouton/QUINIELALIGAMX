@@ -2,8 +2,46 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import type { Matchday, Season } from "@/types/api";
+
 const DASHBOARD_SEASON_PARAM = "season";
 const DASHBOARD_COMPETITION_PARAM = "competition";
+
+export function filterSeasonsByCompetition(seasons: Season[], competitionId: string) {
+  if (!competitionId) {
+    return seasons;
+  }
+  return seasons.filter((season) => season.competition_id === competitionId);
+}
+
+export function resolveSeasonForContext(
+  seasons: Season[],
+  seasonId: string,
+  competitionId: string,
+) {
+  const visibleSeasons = filterSeasonsByCompetition(seasons, competitionId);
+  const explicitSeason = seasons.find((season) => season.id === seasonId) ?? null;
+
+  if (explicitSeason && (!competitionId || explicitSeason.competition_id === competitionId)) {
+    return explicitSeason;
+  }
+
+  return (
+    visibleSeasons.find((season) => season.is_active) ??
+    visibleSeasons[0] ??
+    explicitSeason ??
+    seasons.find((season) => season.is_active) ??
+    seasons[0] ??
+    null
+  );
+}
+
+export function filterMatchdaysBySeason(matchdays: Matchday[], seasonId: string | null | undefined) {
+  if (!seasonId) {
+    return [];
+  }
+  return matchdays.filter((matchday) => matchday.season_id === seasonId);
+}
 
 export function useDashboardSeasonParam() {
   const pathname = usePathname();
