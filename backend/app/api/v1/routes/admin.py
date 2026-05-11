@@ -305,7 +305,7 @@ def get_or_create_main_rule_page(db: Session) -> RulePage:
         slug="main",
         title="Reglamento",
         content_markdown="",
-        version_label="Beta 1.0",
+        version_label="Beta 1.3",
     )
     db.add(row)
     db.commit()

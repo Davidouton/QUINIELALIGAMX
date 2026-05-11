@@ -132,7 +132,7 @@ export function DashboardSidebar() {
           <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-medium tracking-[0.16em] text-white/38">
             <span>Powered by Outonpro</span>
               <span className="rounded-[10px] border border-white/[0.05] bg-white/[0.03] px-2 py-1 text-[9px] tracking-[0.14em] text-white/45">
-              Beta 1.1
+              Beta 1.3
             </span>
           </div>
         </div>
@@ -186,7 +186,7 @@ export function DashboardSidebar() {
             <div className="flex items-center gap-2 text-left text-[10px] font-medium tracking-[0.16em] text-white/38">
               <span>Powered by Outonpro</span>
               <span className="rounded-[10px] border border-white/[0.05] bg-white/[0.03] px-2 py-1 text-[9px] tracking-[0.14em] text-white/45">
-                Beta 1.1
+                Beta 1.3
               </span>
             </div>
           </div>
