@@ -90,10 +90,11 @@ def get_registered_users(
 
 @router.get("/me/prize-summary", response_model=PrizeSummaryResponse)
 def get_prize_summary(
+    season_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(get_current_profile),
 ) -> PrizeSummaryResponse:
-    return service.build_prize_summary(db)
+    return service.build_prize_summary(db, season_id=season_id)
 
 
 @router.get("/me/dashboard-summary", response_model=DashboardSummaryResponse)

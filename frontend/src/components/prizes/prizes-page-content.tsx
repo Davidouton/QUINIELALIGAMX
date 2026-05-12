@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { CheckoutSessionResponse, EffectivePricing, Me, PrizeSummary } from "@/types/api";
+import type { CheckoutSessionResponse, EffectivePricing, Me, PrizeSummary, Season } from "@/types/api";
 
 const initialState: PrizeSummary = {
   season_id: null,
@@ -34,9 +35,11 @@ const initialState: PrizeSummary = {
 };
 
 export function PrizesPageContent() {
+  const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
   const [me, setMe] = useState<Me | null>(null);
   const [summary, setSummary] = useState<PrizeSummary>(initialState);
   const [pricing, setPricing] = useState<EffectivePricing | null>(null);
+  const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,12 +49,22 @@ export function PrizesPageContent() {
     async function load() {
       try {
         const accessToken = await getBrowserAccessToken();
+        const seasons = await backendFetch<Season[]>("/seasons", accessToken);
+        const resolvedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        const seasonQuery = resolvedSeason?.id ? `?season_id=${resolvedSeason.id}` : "";
         const [meResponse, summaryResponse] = await Promise.all([
-          backendFetch<Me>("/me", accessToken),
-          backendFetch<PrizeSummary>("/me/prize-summary", accessToken),
+          backendFetch<Me>(`/me${seasonQuery}`, accessToken),
+          backendFetch<PrizeSummary>(`/me/prize-summary${seasonQuery}`, accessToken),
         ]);
+        setSelectedSeason(resolvedSeason);
         setMe(meResponse);
         setSummary(summaryResponse);
+        if (resolvedSeason) {
+          const nextCompetitionId = resolvedSeason.competition_id ?? competitionId;
+          if (resolvedSeason.id !== seasonIdParam || nextCompetitionId !== competitionId) {
+            setSeasonId(resolvedSeason.id, nextCompetitionId);
+          }
+        }
         if (summaryResponse.season_id) {
           try {
             const pricingResponse = await backendFetch<EffectivePricing>(
@@ -74,7 +87,7 @@ export function PrizesPageContent() {
     }
 
     void load();
-  }, []);
+  }, [competitionId, seasonIdParam, setSeasonId]);
 
   async function handleSeasonCheckout() {
     if (!summary.season_id) {
@@ -148,7 +161,7 @@ export function PrizesPageContent() {
     <div className="space-y-6">
       <section>
         <h1 className="text-xl font-semibold text-ink">Premios</h1>
-        <p className="mt-1 text-sm text-steel">{summary.season_name ?? "Sin torneo activo"}</p>
+        <p className="mt-1 text-sm text-steel">{summary.season_name ?? selectedSeason?.name ?? "Sin torneo activo"}</p>
         {summary.season_id ? (
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {activeSeasonMembership?.is_paid ? (

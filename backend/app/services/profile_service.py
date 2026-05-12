@@ -186,32 +186,32 @@ class ProfileService:
             for profile in self.repo.list_registered_options(db, exclude_profile_id=current_profile.id)
         ]
 
-    def build_prize_summary(self, db: Session) -> PrizeSummaryResponse:
-        active_season = db.scalar(select(Season).where(Season.is_active.is_(True)).order_by(Season.created_at.desc()))
-        if active_season is None:
+    def build_prize_summary(self, db: Session, season_id: str | None = None) -> PrizeSummaryResponse:
+        season = self._resolve_season(db, season_id)
+        if season is None:
             return PrizeSummaryResponse()
 
-        did_freeze = self.eligibility_service.freeze_season_if_due(db, active_season)
+        did_freeze = self.eligibility_service.freeze_season_if_due(db, season)
         if did_freeze:
             db.commit()
-            db.refresh(active_season)
+            db.refresh(season)
 
-        memberships = self.membership_repo.list_for_season(db, active_season.id)
+        memberships = self.membership_repo.list_for_season(db, season.id)
         confirmed_participants = sum(1 for membership in memberships if membership.is_active)
 
         season_matchdays = list(
             db.scalars(
                 select(Matchday)
-                .where(Matchday.season_id == active_season.id)
+                .where(Matchday.season_id == season.id)
                 .order_by(Matchday.number.asc())
             )
         )
         start_number = next(
-            (matchday.number for matchday in season_matchdays if matchday.id == active_season.start_matchday_id),
+            (matchday.number for matchday in season_matchdays if matchday.id == season.start_matchday_id),
             None,
         )
         end_number = next(
-            (matchday.number for matchday in season_matchdays if matchday.id == active_season.end_matchday_id),
+            (matchday.number for matchday in season_matchdays if matchday.id == season.end_matchday_id),
             None,
         )
         tournament_matchdays = [
@@ -221,45 +221,45 @@ class ProfileService:
             and (end_number is None or matchday.number <= end_number)
         ]
 
-        gross_pool_amount = Decimal(confirmed_participants) * active_season.entry_fee_amount
+        gross_pool_amount = Decimal(confirmed_participants) * season.entry_fee_amount
         weekly_total_prize_amount = (
-            active_season.weekly_first_place_amount
-            + active_season.weekly_second_place_amount
-            + active_season.weekly_third_place_amount
+            season.weekly_first_place_amount
+            + season.weekly_second_place_amount
+            + season.weekly_third_place_amount
         )
-        admin_commission_amount = gross_pool_amount * (active_season.admin_commission_pct / Decimal("100"))
+        admin_commission_amount = gross_pool_amount * (season.admin_commission_pct / Decimal("100"))
         income_after_commission_amount = gross_pool_amount - admin_commission_amount
         total_weekly_prizes_amount = weekly_total_prize_amount * Decimal(len(tournament_matchdays))
-        reserve_amount = gross_pool_amount * (active_season.reserve_pct / Decimal("100"))
+        reserve_amount = gross_pool_amount * (season.reserve_pct / Decimal("100"))
         distributable_prize_pool_amount = income_after_commission_amount - total_weekly_prizes_amount - reserve_amount
-        first_place_amount = distributable_prize_pool_amount * (active_season.first_place_pct / Decimal("100"))
-        second_place_amount = distributable_prize_pool_amount * (active_season.second_place_pct / Decimal("100"))
-        third_place_amount = distributable_prize_pool_amount * (active_season.third_place_pct / Decimal("100"))
+        first_place_amount = distributable_prize_pool_amount * (season.first_place_pct / Decimal("100"))
+        second_place_amount = distributable_prize_pool_amount * (season.second_place_pct / Decimal("100"))
+        third_place_amount = distributable_prize_pool_amount * (season.third_place_pct / Decimal("100"))
 
         return PrizeSummaryResponse(
-            season_id=active_season.id,
-            season_name=active_season.name,
+            season_id=season.id,
+            season_name=season.name,
             confirmed_participants=confirmed_participants,
-            entry_fee_amount=float(active_season.entry_fee_amount),
+            entry_fee_amount=float(season.entry_fee_amount),
             gross_pool_amount=float(gross_pool_amount),
-            admin_commission_pct=float(active_season.admin_commission_pct),
+            admin_commission_pct=float(season.admin_commission_pct),
             admin_commission_amount=float(admin_commission_amount),
-            reserve_pct=float(active_season.reserve_pct),
+            reserve_pct=float(season.reserve_pct),
             reserve_amount=float(reserve_amount),
             income_after_commission_amount=float(income_after_commission_amount),
             net_income_amount=float(income_after_commission_amount - reserve_amount),
-            weekly_first_place_amount=float(active_season.weekly_first_place_amount),
-            weekly_second_place_amount=float(active_season.weekly_second_place_amount),
-            weekly_third_place_amount=float(active_season.weekly_third_place_amount),
+            weekly_first_place_amount=float(season.weekly_first_place_amount),
+            weekly_second_place_amount=float(season.weekly_second_place_amount),
+            weekly_third_place_amount=float(season.weekly_third_place_amount),
             weekly_total_prize_amount=float(weekly_total_prize_amount),
             tournament_matchdays_count=len(tournament_matchdays),
             total_weekly_prizes_amount=float(total_weekly_prizes_amount),
             distributable_prize_pool_amount=float(distributable_prize_pool_amount),
-            first_place_pct=float(active_season.first_place_pct),
+            first_place_pct=float(season.first_place_pct),
             first_place_amount=float(first_place_amount),
-            second_place_pct=float(active_season.second_place_pct),
+            second_place_pct=float(season.second_place_pct),
             second_place_amount=float(second_place_amount),
-            third_place_pct=float(active_season.third_place_pct),
+            third_place_pct=float(season.third_place_pct),
             third_place_amount=float(third_place_amount),
         )
 
