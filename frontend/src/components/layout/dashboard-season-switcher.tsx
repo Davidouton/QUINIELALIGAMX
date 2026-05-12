@@ -1,31 +1,35 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 
 type StaticCompetitionContext = {
   id: string;
   label: string;
+  defaultSeasonId: string;
 };
 
 const STATIC_COMPETITION_CONTEXTS: StaticCompetitionContext[] = [
   {
     id: "5a04efc8-9d75-49e9-b3ab-513e7627e5ad",
     label: "Liga MX",
+    defaultSeasonId: "ac81643e-0bd5-4215-8f1c-2624b0b0690b",
   },
   {
     id: "b37f2ce6-e27f-4310-a1c9-979f977863ae",
     label: "FIFA WC",
+    defaultSeasonId: "ed43cce6-962c-4dd3-95d0-c4f9785cf8fb",
   },
   {
     id: "bc1bb4fd-f098-43ec-982a-840dc104fd19",
     label: "NFL",
+    defaultSeasonId: "",
   },
 ];
 
 export function DashboardSeasonSwitcher() {
-  const { competitionId, setSeasonId } = useDashboardSeasonParam();
+  const { competitionId, seasonId, setSeasonId } = useDashboardSeasonParam();
   const [isCompetitionMenuOpen, setIsCompetitionMenuOpen] = useState(false);
 
   const activeCompetition = useMemo(() => {
@@ -35,8 +39,18 @@ export function DashboardSeasonSwitcher() {
     );
   }, [competitionId]);
 
+  useEffect(() => {
+    const nextCompetitionId = competitionId || activeCompetition.id;
+    const nextSeasonId = seasonId || activeCompetition.defaultSeasonId;
+    if (nextCompetitionId !== competitionId || nextSeasonId !== seasonId) {
+      setSeasonId(nextSeasonId, nextCompetitionId);
+    }
+  }, [activeCompetition.defaultSeasonId, activeCompetition.id, competitionId, seasonId, setSeasonId]);
+
   function handleCompetitionChange(nextCompetitionId: string) {
-    setSeasonId("", nextCompetitionId);
+    const nextCompetition =
+      STATIC_COMPETITION_CONTEXTS.find((competition) => competition.id === nextCompetitionId) ?? null;
+    setSeasonId(nextCompetition?.defaultSeasonId ?? "", nextCompetitionId);
     setIsCompetitionMenuOpen(false);
   }
 
