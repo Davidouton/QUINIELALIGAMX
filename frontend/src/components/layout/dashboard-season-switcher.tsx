@@ -6,6 +6,10 @@ import { backendFetch } from "@/lib/api/backend";
 import { filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import type { Competition, Season } from "@/types/api";
 
+function readSettledValue<T>(result: PromiseSettledResult<T>, fallback: T) {
+  return result.status === "fulfilled" ? result.value : fallback;
+}
+
 function getCompetitionBadge(competition: Competition) {
   const normalized = competition.name.trim().toLowerCase();
   if (normalized.includes("liga mx")) {
@@ -20,6 +24,35 @@ function getCompetitionBadge(competition: Competition) {
   return competition.name;
 }
 
+function buildCompetitionsFromSeasons(seasons: Season[]) {
+  const seen = new Set<string>();
+  return seasons
+    .filter((season) => season.competition_id && season.competition_name)
+    .map((season, index) => ({
+      id: season.competition_id as string,
+      sport_name: season.competition_sport_name ?? "",
+      name: season.competition_name as string,
+      slug:
+        season.competition_name
+          ?.trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "") ?? `competition-${index + 1}`,
+      provider_league_id: null,
+      is_active: true,
+      sort_order: (index + 1) * 100,
+      created_at: "",
+      updated_at: "",
+    }))
+    .filter((competition) => {
+      if (seen.has(competition.id)) {
+        return false;
+      }
+      seen.add(competition.id);
+      return true;
+    });
+}
+
 export function DashboardSeasonSwitcher() {
   const { competitionId, seasonId, setSeasonId } = useDashboardSeasonParam();
   const [competitions, setCompetitions] = useState<Competition[]>([]);
@@ -31,15 +64,30 @@ export function DashboardSeasonSwitcher() {
   useEffect(() => {
     async function loadSwitcherData() {
       try {
-        const [competitionRows, seasonRows] = await Promise.all([
+        const [competitionResult, seasonResult] = await Promise.allSettled([
           backendFetch<Competition[]>("/competitions"),
           backendFetch<Season[]>("/seasons"),
         ]);
-        setCompetitions(competitionRows);
+        const seasonRows = readSettledValue(seasonResult, []);
+        const competitionRows = readSettledValue(competitionResult, []);
+        const inferredCompetitions = competitionRows.length > 0 ? competitionRows : buildCompetitionsFromSeasons(seasonRows);
+
+        setCompetitions(inferredCompetitions);
         setSeasons(seasonRows);
-        setError(null);
-      } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar las quinielas");
+
+        if (inferredCompetitions.length > 0 || seasonRows.length > 0) {
+          setError(null);
+        } else if (competitionResult.status === "rejected") {
+          setError(competitionResult.reason instanceof Error ? competitionResult.reason.message : "No se pudieron cargar las quinielas");
+        } else if (seasonResult.status === "rejected") {
+          setError(seasonResult.reason instanceof Error ? seasonResult.reason.message : "No se pudieron cargar las quinielas");
+        } else {
+          setError("No se pudieron cargar las quinielas");
+        }
+      } catch {
+        setCompetitions([]);
+        setSeasons([]);
+        setError("No se pudieron cargar las quinielas");
       } finally {
         setLoading(false);
       }
