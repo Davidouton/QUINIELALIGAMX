@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import type { EmailOtpType } from "@supabase/supabase-js";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 
@@ -23,8 +24,39 @@ export default function ResetPasswordPage() {
       setError(authError);
     }
 
-    async function checkSession() {
+    async function bootstrapRecoverySession() {
       const supabase = createSupabaseBrowserClient();
+      const code = searchParams.get("code");
+      const tokenHash = searchParams.get("token_hash");
+      const type = searchParams.get("type") as EmailOtpType | null;
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const hashType = hashParams.get("type");
+
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          setError(exchangeError.message);
+        }
+      } else if (tokenHash && type) {
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+          type,
+          token_hash: tokenHash,
+        });
+        if (verifyError) {
+          setError(verifyError.message);
+        }
+      } else if (accessToken && refreshToken && hashType === "recovery") {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (setSessionError) {
+          setError(setSessionError.message);
+        }
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -33,7 +65,7 @@ export default function ResetPasswordPage() {
       setCheckingSession(false);
     }
 
-    void checkSession();
+    void bootstrapRecoverySession();
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

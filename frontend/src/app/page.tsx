@@ -1,8 +1,32 @@
+"use client";
+
+import { useEffect } from "react";
 import Link from "next/link";
 
 import { env } from "@/lib/env";
 
 export default function HomePage() {
+  useEffect(() => {
+    const search = window.location.search;
+    const hash = window.location.hash;
+    const searchParams = new URLSearchParams(search);
+    const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+    const type = searchParams.get("type");
+    const code = searchParams.get("code");
+    const tokenHash = searchParams.get("token_hash");
+    const hashType = hashParams.get("type");
+    const accessToken = hashParams.get("access_token");
+
+    if (code || (tokenHash && type === "recovery")) {
+      window.location.replace(`/auth/confirm${search}`);
+      return;
+    }
+
+    if (type === "recovery" || hashType === "recovery" || accessToken) {
+      window.location.replace(`/reset-password${search}${hash}`);
+    }
+  }, []);
+
   return (
     <main className="min-h-screen px-6 py-8">
       <section className="surface-card-strong relative mx-auto max-w-7xl overflow-hidden px-8 py-12">
