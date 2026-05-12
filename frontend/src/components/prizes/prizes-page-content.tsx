@@ -131,6 +131,10 @@ export function PrizesPageContent() {
     ],
     [summary],
   );
+  const activeSeasonMembership =
+    summary.season_id && me
+      ? me.season_memberships.find((membership) => membership.season_id === summary.season_id) ?? null
+      : null;
 
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando premios...</p>;
@@ -147,7 +151,7 @@ export function PrizesPageContent() {
         <p className="mt-1 text-sm text-steel">{summary.season_name ?? "Sin torneo activo"}</p>
         {summary.season_id ? (
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            {me?.is_paid_active_season ? (
+            {activeSeasonMembership?.is_paid ? (
               <span className="app-pill-active px-4 text-sm text-ink">Temporada pagada</span>
             ) : pricing ? (
               <button
@@ -162,7 +166,7 @@ export function PrizesPageContent() {
               <span className="app-pill px-4 text-sm">Precio no disponible</span>
             )}
             <p className="text-sm text-steel">
-              {me?.is_paid_active_season
+              {activeSeasonMembership?.is_paid
                 ? "Tu pago de temporada ya esta confirmado."
                 : "El pago se abre en Stripe con el monto vigente que definiste en admin."}
             </p>

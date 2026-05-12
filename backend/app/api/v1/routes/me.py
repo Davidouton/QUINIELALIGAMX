@@ -25,10 +25,11 @@ profile_repo = ProfileRepository()
 
 @router.get("/me", response_model=MeResponse)
 def get_me(
+    season_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(get_current_profile),
 ) -> MeResponse:
-    return service.build_me_response(db, current_profile)
+    return service.build_me_response(db, current_profile, season_id=season_id)
 
 
 @router.put("/me", response_model=MeResponse)

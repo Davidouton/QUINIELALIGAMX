@@ -533,6 +533,26 @@ export interface Me {
   active_season_name: string | null;
   can_participate_active_season: boolean;
   is_paid_active_season: boolean;
+  selected_season_id: string | null;
+  selected_season_name: string | null;
+  can_participate_selected_season: boolean;
+  is_paid_selected_season: boolean;
+  selected_season_membership: UserSeasonMembership | null;
+  season_memberships: UserSeasonMembership[];
+}
+
+export interface UserSeasonMembership {
+  season_id: string;
+  season_name: string;
+  competition_id: string | null;
+  competition_name: string | null;
+  is_active: boolean;
+  is_paid: boolean;
+  eligible_for_scoring: boolean;
+  can_participate: boolean;
+  eligible_locked_at: string | null;
+  activated_at: string | null;
+  notes: string | null;
 }
 
 export interface RegisteredUserOption {

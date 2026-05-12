@@ -562,6 +562,10 @@ export function DashboardHome() {
   const summaryTileClass =
     "flex min-w-0 h-[78px] flex-col justify-between rounded-[16px] bg-transparent p-1.5 sm:h-auto sm:rounded-[30px] sm:p-5";
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
+  const selectedSeasonMembership =
+    state.selectedSeason && state.me
+      ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
+      : null;
 
   function getMatchTeamLabel(teamId: string | null, fallbackName: string) {
     if (!useWorldCupAbbreviation || !teamId) {
@@ -583,10 +587,10 @@ export function DashboardHome() {
                 {state.me ? `Hola, ${state.me.display_name}` : "Dashboard"}
               </h1>
             </div>
-            {state.me?.active_season_name && !state.me.can_participate_active_season ? (
+            {state.me && state.selectedSeason && !selectedSeasonMembership?.can_participate ? (
               <div className="mt-3 max-w-2xl rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
                 Tu cuenta esta activa y puedes entrar al dashboard, pero aun no estas dado de alta en
-                {" "}{state.me.active_season_name}. Cuando admin confirme tu pago, te activa el torneo.
+                {" "}{state.selectedSeason.name}. Cuando admin confirme tu acceso, te activa el torneo.
               </div>
             ) : null}
           </div>

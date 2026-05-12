@@ -697,10 +697,14 @@ export function PickBoard() {
   const previousMatchday = selectedIndex > 0 ? seasonMatchdays[selectedIndex - 1] : null;
   const nextMatchday =
     selectedIndex >= 0 && selectedIndex < seasonMatchdays.length - 1 ? seasonMatchdays[selectedIndex + 1] : null;
+  const selectedSeasonMembership =
+    state.selectedSeason && state.me
+      ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
+      : null;
   const showMembershipWarning =
     state.me !== null &&
-    state.me.active_season_id === state.selectedSeason?.id &&
-    !state.me.can_participate_active_season;
+    state.selectedSeason !== null &&
+    !selectedSeasonMembership?.can_participate;
   const globalCellByKey = Object.fromEntries(
     (state.globalPickBoard?.cells ?? []).map((cell) => [getGlobalCellKey(cell.profile_id, cell.match_id), cell]),
   );

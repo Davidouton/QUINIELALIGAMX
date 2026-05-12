@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import AuthUser
 from app.models.entities import (
+    Competition,
     Match,
     MatchResult,
     Matchday,
@@ -29,6 +30,7 @@ from app.schemas.profile import (
     DashboardSummaryResponse,
     MeResponse,
     MeUpdateRequest,
+    MySeasonMembershipOut,
     PersonalTrophyOut,
     PrizeSummaryResponse,
     RegisteredUserOption,
@@ -100,16 +102,44 @@ class ProfileService:
         db.refresh(updated)
         return updated
 
-    def build_me_response(self, db: Session, profile: Profile) -> MeResponse:
+    def build_me_response(self, db: Session, profile: Profile, season_id: str | None = None) -> MeResponse:
         active_season = db.scalar(select(Season).where(Season.is_active.is_(True)).order_by(Season.created_at.desc()))
         if active_season is not None:
             did_freeze = self.eligibility_service.freeze_season_if_due(db, active_season)
             if did_freeze:
                 db.commit()
                 db.refresh(active_season)
-        membership = (
+        selected_season = db.get(Season, season_id) if season_id else active_season
+        if selected_season is not None and (active_season is None or selected_season.id != active_season.id):
+            did_freeze_selected = self.eligibility_service.freeze_season_if_due(db, selected_season)
+            if did_freeze_selected:
+                db.commit()
+                db.refresh(selected_season)
+
+        active_membership = (
             self.membership_repo.get_for_profile_and_season(db, profile.id, active_season.id)
             if active_season is not None
+            else None
+        )
+        selected_membership = (
+            self.membership_repo.get_for_profile_and_season(db, profile.id, selected_season.id)
+            if selected_season is not None
+            else None
+        )
+        membership_rows = self.membership_repo.list_for_profile(db, profile.id)
+        membership_season_ids = [membership.season_id for membership in membership_rows]
+        seasons_by_id = {
+            season_row.id: season_row
+            for season_row in db.scalars(select(Season).where(Season.id.in_(membership_season_ids))).all()
+        } if membership_season_ids else {}
+        membership_out_rows = [
+            self._season_membership_out(db, membership_row, seasons_by_id.get(membership_row.season_id))
+            for membership_row in membership_rows
+            if seasons_by_id.get(membership_row.season_id) is not None
+        ]
+        selected_membership_out = (
+            self._season_membership_out(db, selected_membership, selected_season)
+            if selected_membership is not None and selected_season is not None
             else None
         )
         return MeResponse(
@@ -135,9 +165,19 @@ class ProfileService:
             can_participate_active_season=bool(
                 profile.is_active
                 and active_season is not None
-                and self.eligibility_service.can_participate(db, active_season, membership)
+                and self.eligibility_service.can_participate(db, active_season, active_membership)
             ),
-            is_paid_active_season=bool(membership and membership.is_paid),
+            is_paid_active_season=bool(active_membership and active_membership.is_paid),
+            selected_season_id=selected_season.id if selected_season is not None else None,
+            selected_season_name=selected_season.name if selected_season is not None else None,
+            can_participate_selected_season=bool(
+                profile.is_active
+                and selected_season is not None
+                and self.eligibility_service.can_participate(db, selected_season, selected_membership)
+            ),
+            is_paid_selected_season=bool(selected_membership and selected_membership.is_paid),
+            selected_season_membership=selected_membership_out,
+            season_memberships=membership_out_rows,
         )
 
     def list_registered_user_options(self, db: Session, current_profile: Profile) -> list[RegisteredUserOption]:
@@ -595,6 +635,29 @@ class ProfileService:
                 )
             )
             existing_keys.add(award_key)
+
+    def _season_membership_out(
+        self,
+        db: Session,
+        membership,
+        season: Season | None,
+    ) -> MySeasonMembershipOut:
+        if membership is None or season is None:
+            raise ValueError("Membership and season are required")
+        competition = db.get(Competition, season.competition_id) if season.competition_id else None
+        return MySeasonMembershipOut(
+            season_id=season.id,
+            season_name=season.name,
+            competition_id=season.competition_id,
+            competition_name=competition.name if competition is not None else None,
+            is_active=bool(membership.is_active),
+            is_paid=bool(membership.is_paid),
+            eligible_for_scoring=bool(membership.eligible_for_scoring),
+            can_participate=bool(self.eligibility_service.can_participate(db, season, membership)),
+            eligible_locked_at=membership.eligible_locked_at,
+            activated_at=membership.activated_at,
+            notes=membership.notes,
+        )
 
     @staticmethod
     def _normalize_optional_text(value: str | None) -> str | None:

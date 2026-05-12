@@ -18,6 +18,20 @@ class ProfileOut(BaseModel):
     created_at: datetime
 
 
+class MySeasonMembershipOut(BaseModel):
+    season_id: str
+    season_name: str
+    competition_id: str | None = None
+    competition_name: str | None = None
+    is_active: bool
+    is_paid: bool
+    eligible_for_scoring: bool = False
+    can_participate: bool = False
+    eligible_locked_at: datetime | None = None
+    activated_at: datetime | None = None
+    notes: str | None = None
+
+
 class MeResponse(ProfileOut):
     favorite_team_id: str | None = None
     contact_phone: str | None = None
@@ -33,6 +47,12 @@ class MeResponse(ProfileOut):
     active_season_name: str | None = None
     can_participate_active_season: bool = False
     is_paid_active_season: bool = False
+    selected_season_id: str | None = None
+    selected_season_name: str | None = None
+    can_participate_selected_season: bool = False
+    is_paid_selected_season: bool = False
+    selected_season_membership: MySeasonMembershipOut | None = None
+    season_memberships: list[MySeasonMembershipOut] = Field(default_factory=list)
 
 
 class RegisteredUserOption(BaseModel):
