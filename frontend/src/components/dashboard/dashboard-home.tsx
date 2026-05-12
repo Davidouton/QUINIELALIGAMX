@@ -244,6 +244,10 @@ function isWorldCupSeason(season: Season | null) {
   return season?.tournament_format === "world_cup";
 }
 
+function readSettledValue<T>(result: PromiseSettledResult<T>, fallback: T) {
+  return result.status === "fulfilled" ? result.value : fallback;
+}
+
 export function DashboardHome() {
   const [state, setState] = useState<DashboardState>(initialState);
   const [loading, setLoading] = useState(true);
@@ -255,7 +259,7 @@ export function DashboardHome() {
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
     try {
       setLoading(true);
-      const accessToken = await getBrowserAccessToken();
+      const accessToken = await getBrowserAccessToken().catch(() => undefined);
       const seasons = seasonsOverride ?? state.seasons;
       const matchdays = matchdaysOverride ?? state.matchdays;
       const selectedMatchday = matchdays.find((matchday) => matchday.id === matchdayId) ?? null;
@@ -280,7 +284,8 @@ export function DashboardHome() {
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
         resolveSeasonForContext(seasons, seasonIdParam, competitionId);
 
-      const [matches, pickResults, matchdayPoints, summary, advancedStats, performanceRace] = await Promise.all([
+      const [matchesResult, pickResultsResult, matchdayPointsResult, summaryResult, advancedStatsResult, performanceRaceResult] =
+        await Promise.allSettled([
         backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken),
         backendFetch<PickResultRow[]>(`/my-pick-results?matchday_id=${selectedMatchday.id}`, accessToken),
         backendFetch<MyMatchdayPointsEntry[]>(
@@ -301,6 +306,13 @@ export function DashboardHome() {
         ),
       ]);
 
+      const matches = readSettledValue(matchesResult, []);
+      const pickResults = readSettledValue(pickResultsResult, []);
+      const matchdayPoints = readSettledValue(matchdayPointsResult, []);
+      const summary = readSettledValue(summaryResult, null);
+      const advancedStats = readSettledValue(advancedStatsResult, null);
+      const performanceRace = readSettledValue(performanceRaceResult, null);
+
       setState((current) => ({
         ...current,
         seasons,
@@ -315,10 +327,17 @@ export function DashboardHome() {
         matchdayPoints,
         error: null,
       }));
-    } catch (error) {
+    } catch {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "No se pudo cargar la jornada seleccionada",
+        selectedMatchday: matchdaysOverride?.find((matchday) => matchday.id === matchdayId) ?? current.selectedMatchday,
+        summary: null,
+        advancedStats: null,
+        performanceRace: null,
+        matches: [],
+        pickResults: [],
+        matchdayPoints: [],
+        error: null,
       }));
     } finally {
       setLoading(false);
@@ -328,9 +347,10 @@ export function DashboardHome() {
   useEffect(() => {
     async function load() {
       try {
-        const accessToken = await getBrowserAccessToken();
+        const accessToken = await getBrowserAccessToken().catch(() => undefined);
 
-        const [me, seasons, matchdays, activeMatchdays, teams, personalTrophies, vipCompetitions] = await Promise.all([
+        const [meResult, seasonsResult, matchdaysResult, activeMatchdaysResult, teamsResult, personalTrophiesResult, vipCompetitionsResult] =
+          await Promise.allSettled([
           backendFetch<Me>("/me", accessToken),
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<Matchday[]>("/matchdays", accessToken),
@@ -339,6 +359,14 @@ export function DashboardHome() {
           backendFetch<PersonalTrophyRecord[]>("/me/trophies", accessToken),
           backendFetch<VipCompetition[]>("/vip", accessToken),
         ]);
+
+        const me = readSettledValue(meResult, null);
+        const seasons = readSettledValue(seasonsResult, []);
+        const matchdays = readSettledValue(matchdaysResult, []);
+        const activeMatchdays = readSettledValue(activeMatchdaysResult, []);
+        const teams = readSettledValue(teamsResult, []);
+        const personalTrophies = readSettledValue(personalTrophiesResult, []);
+        const vipCompetitions = readSettledValue(vipCompetitionsResult, []);
 
         const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
@@ -352,9 +380,15 @@ export function DashboardHome() {
           preferredSeason ??
           seasons.find((season) => season.id === selectedMatchday?.season_id) ??
           null;
-        const leaderboard = selectedSeason
-          ? await backendFetch<LeaderboardEntry[]>(`/leaderboard/overall?season_id=${selectedSeason.id}`, accessToken)
+        const leaderboardResult = selectedSeason
+          ? await Promise.allSettled([
+              backendFetch<LeaderboardEntry[]>(`/leaderboard/overall?season_id=${selectedSeason.id}`, accessToken),
+            ])
           : [];
+        const leaderboard =
+          leaderboardResult.length > 0
+            ? readSettledValue(leaderboardResult[0], [])
+            : [];
 
         if (selectedSeason) {
           const nextCompetitionId = selectedSeason.competition_id ?? "";
@@ -385,7 +419,10 @@ export function DashboardHome() {
       } catch (error) {
         setState((current) => ({
           ...current,
-          error: error instanceof Error ? error.message : "No se pudo cargar el dashboard",
+          error:
+            error instanceof Error
+              ? error.message
+              : "No se pudo cargar el dashboard",
         }));
         setLoading(false);
       }
