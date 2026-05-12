@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import type { Matchday, Season } from "@/types/api";
@@ -56,11 +57,11 @@ export function useDashboardSeasonParam() {
   const seasonId = searchParams.get(DASHBOARD_SEASON_PARAM) ?? "";
   const competitionId = searchParams.get(DASHBOARD_COMPETITION_PARAM) ?? "";
 
-  function buildHrefWithSeason(
+  const buildHrefWithSeason = useCallback((
     href: string,
     seasonOverride?: string,
     competitionOverride?: string,
-  ) {
+  ) => {
     const params = new URLSearchParams();
     const nextSeasonId = seasonOverride ?? seasonId;
     const nextCompetitionId = competitionOverride ?? competitionId;
@@ -72,9 +73,9 @@ export function useDashboardSeasonParam() {
     }
     const query = params.toString();
     return query ? `${href}?${query}` : href;
-  }
+  }, [competitionId, seasonId]);
 
-  function setSeasonId(nextSeasonId: string, nextCompetitionId?: string) {
+  const setSeasonId = useCallback((nextSeasonId: string, nextCompetitionId?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     if (typeof nextCompetitionId === "string") {
       if (nextCompetitionId) {
@@ -89,14 +90,23 @@ export function useDashboardSeasonParam() {
       params.delete(DASHBOARD_SEASON_PARAM);
     }
     const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }
+    const href = query ? `${pathname}?${query}` : pathname;
+    const currentHref = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+    if (href !== currentHref) {
+      router.replace(href, { scroll: false });
+    }
+  }, [pathname, router, searchParams]);
+
+  const setCompetitionId = useCallback(
+    (nextCompetitionId: string) => setSeasonId(seasonId, nextCompetitionId),
+    [seasonId, setSeasonId],
+  );
 
   return {
     seasonId,
     competitionId,
     setSeasonId,
-    setCompetitionId: (nextCompetitionId: string) => setSeasonId(seasonId, nextCompetitionId),
+    setCompetitionId,
     buildHrefWithSeason,
   };
 }
