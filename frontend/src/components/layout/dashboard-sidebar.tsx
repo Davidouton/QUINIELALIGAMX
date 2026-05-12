@@ -139,7 +139,7 @@ export function DashboardSidebar() {
       </div>
 
       <aside
-        className="sticky top-6 hidden h-[calc(100vh-3rem)] w-[280px] shrink-0 overflow-hidden text-ink lg:block"
+        className="sticky top-6 hidden h-[calc(100vh-3rem)] w-[280px] shrink-0 overflow-visible text-ink lg:block"
       >
         <div className="flex h-full w-[280px] flex-col px-4 py-5">
           <div className="mb-5 flex items-center justify-between gap-3">
