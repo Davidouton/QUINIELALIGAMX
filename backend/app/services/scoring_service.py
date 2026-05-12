@@ -1,10 +1,12 @@
 from collections import defaultdict
 from decimal import Decimal
+from decimal import InvalidOperation
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
+    Competition,
     Match,
     MatchResult,
     Matchday,
@@ -52,6 +54,7 @@ class ScoringService:
             lambda: {"total_points": 0, "correct_results": 0, "exact_scores": 0}
         )
         season_cache: dict[str, Season | None] = {}
+        competition_cache: dict[str, Competition | None] = {}
         matchday_cache: dict[str, Matchday | None] = {}
         membership_cache: dict[tuple[str, str], bool] = {}
         eligible_profiles_by_season: dict[str, list[str]] = {}
@@ -70,6 +73,12 @@ class ScoringService:
             season = season_cache[season_id]
             if season is None:
                 continue
+            competition = None
+            if season.competition_id is not None:
+                if season.competition_id not in competition_cache:
+                    competition_cache[season.competition_id] = db.get(Competition, season.competition_id)
+                competition = competition_cache[season.competition_id]
+            is_nfl_match = self._is_nfl_competition(competition)
             official_matchday_ids_by_season[season_id].add(match.matchday_id)
             if season_id not in eligible_profiles_by_season:
                 eligible_profiles_by_season[season_id] = [
@@ -88,12 +97,14 @@ class ScoringService:
             evaluated_picks += 1
             winner = self._resolve_winner(result.home_score, result.away_score)
             result_points = rules["result_correct"] if pick.selection == winner else 0
-            exact_points = (
-                rules["exact_score"]
-                if pick.predicted_home_score == result.home_score
-                and pick.predicted_away_score == result.away_score
-                else 0
-            )
+            exact_points = 0
+            if not is_nfl_match:
+                exact_points = (
+                    rules["exact_score"]
+                    if pick.predicted_home_score == result.home_score
+                    and pick.predicted_away_score == result.away_score
+                    else 0
+                )
             advancing_points = (
                 rules["advancing_team"]
                 if match.stage_type.value not in {"regular", "group"}
@@ -101,7 +112,16 @@ class ScoringService:
                 and pick.advancing_team_id == result.advancing_team_id
                 else 0
             )
-            total_points = result_points + exact_points + advancing_points
+            spread_points = 0
+            if is_nfl_match:
+                spread_points = self._calculate_spread_points(
+                    result.home_score,
+                    result.away_score,
+                    pick.spread_selection,
+                    pick.spread_line_value,
+                    rules["spread_correct"],
+                )
+            total_points = result_points + exact_points + advancing_points + spread_points
 
             db.add(
                 PickPoint(
@@ -112,6 +132,7 @@ class ScoringService:
                     result_points=result_points,
                     exact_score_points=exact_points,
                     advancing_team_points=advancing_points,
+                    spread_points=spread_points,
                     total_points=total_points,
                 )
             )
@@ -313,7 +334,49 @@ class ScoringService:
             "result_correct": stored_rules.get("result_correct", 3),
             "exact_score": stored_rules.get("exact_score", 2),
             "advancing_team": stored_rules.get("advancing_team", 1),
+            "spread_correct": stored_rules.get("spread_correct", 3),
         }
+
+    def _is_nfl_competition(self, competition: Competition | None) -> bool:
+        if competition is None:
+            return False
+        haystack = " ".join(
+            [
+                competition.slug or "",
+                competition.name or "",
+                competition.sport_name or "",
+            ]
+        ).lower()
+        return "nfl" in haystack or "football" in haystack
+
+    def _calculate_spread_points(
+        self,
+        home_score: int,
+        away_score: int,
+        spread_selection: PickSelection | None,
+        spread_line_value: str | None,
+        awarded_points: int,
+    ) -> int:
+        if spread_selection not in {PickSelection.HOME, PickSelection.AWAY} or not spread_line_value:
+            return 0
+        line_decimal = self._parse_line_decimal(spread_line_value)
+        if line_decimal is None:
+            return 0
+        side_score = home_score if spread_selection == PickSelection.HOME else away_score
+        opponent_score = away_score if spread_selection == PickSelection.HOME else home_score
+        margin_with_line = Decimal(side_score) + line_decimal - Decimal(opponent_score)
+        if margin_with_line > 0:
+            return awarded_points
+        return 0
+
+    def _parse_line_decimal(self, raw_value: str) -> Decimal | None:
+        normalized = raw_value.strip().replace("PK", "0").replace("pk", "0")
+        if not normalized:
+            return None
+        try:
+            return Decimal(normalized)
+        except (InvalidOperation, ValueError):
+            return None
 
     def _resolve_winner(self, home_score: int, away_score: int) -> PickSelection:
         if home_score > away_score:

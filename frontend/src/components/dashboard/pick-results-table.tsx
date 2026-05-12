@@ -23,6 +23,20 @@ function getSelectionLabel(selection: PickResultRow["selection"]) {
   return "Sin pick";
 }
 
+function isNflRow(row: PickResultRow) {
+  return row.spread_selection !== null;
+}
+
+function getSpreadLabel(row: PickResultRow) {
+  if (row.spread_selection === "home") {
+    return `${row.home_team_name} ${row.spread_line_value ?? ""}`.trim();
+  }
+  if (row.spread_selection === "away") {
+    return `${row.away_team_name} ${row.spread_line_value ?? ""}`.trim();
+  }
+  return "Sin linea";
+}
+
 function getPointsTone(totalPoints: number, hasPick: boolean, isOfficial: boolean) {
   if (!isOfficial) {
     return "text-steel";
@@ -115,12 +129,25 @@ export function PickResultsTable({
                     <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80">Prediccion</p>
                     {row.has_pick ? (
                       <>
-                        <p className="mt-1 text-[11px] font-semibold leading-none text-ink">
-                          {row.predicted_home_score} - {row.predicted_away_score}
-                        </p>
-                        <p className="mt-1 text-[8px] uppercase tracking-[0.08em] text-steel">
-                          {getSelectionLabel(row.selection)}
-                        </p>
+                        {isNflRow(row) ? (
+                          <>
+                            <p className="mt-1 text-[11px] font-semibold leading-none text-ink">
+                              {getSelectionLabel(row.selection)}
+                            </p>
+                            <p className="mt-1 text-[8px] uppercase tracking-[0.08em] text-steel">
+                              {getSpreadLabel(row)}
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="mt-1 text-[11px] font-semibold leading-none text-ink">
+                              {row.predicted_home_score} - {row.predicted_away_score}
+                            </p>
+                            <p className="mt-1 text-[8px] uppercase tracking-[0.08em] text-steel">
+                              {getSelectionLabel(row.selection)}
+                            </p>
+                          </>
+                        )}
                         {row.is_admin_override ? (
                           <p className="mt-1 text-[9px] text-amber-100">{buildOverrideMessage(row)}</p>
                         ) : null}
@@ -178,12 +205,25 @@ export function PickResultsTable({
                   <td className="px-4 py-2.5 text-center">
                     {row.has_pick ? (
                       <>
-                        <p className="text-xl font-semibold text-ink">
-                          {row.predicted_home_score} - {row.predicted_away_score}
-                        </p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.18em] text-steel">
-                          {getSelectionLabel(row.selection)}
-                        </p>
+                        {isNflRow(row) ? (
+                          <>
+                            <p className="text-xl font-semibold text-ink">
+                              {getSelectionLabel(row.selection)}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-steel">
+                              {getSpreadLabel(row)}
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-xl font-semibold text-ink">
+                              {row.predicted_home_score} - {row.predicted_away_score}
+                            </p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-steel">
+                              {getSelectionLabel(row.selection)}
+                            </p>
+                          </>
+                        )}
                         {row.is_admin_override ? (
                           <p className="mt-2 text-xs text-amber-100">{buildOverrideMessage(row)}</p>
                         ) : null}
@@ -211,7 +251,11 @@ export function PickResultsTable({
                       {row.is_official ? row.total_points : "-"}
                     </p>
                     {row.is_official ? (
-                      <p className="mt-1 text-xs text-steel">{row.result_points} + {row.exact_score_points}</p>
+                      <p className="mt-1 text-xs text-steel">
+                        {isNflRow(row)
+                          ? `${row.result_points} + ${row.spread_points}`
+                          : `${row.result_points} + ${row.exact_score_points}`}
+                      </p>
                     ) : (
                       <p className="mt-1 text-xs text-steel">En espera del final</p>
                     )}

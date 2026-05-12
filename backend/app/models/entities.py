@@ -369,6 +369,11 @@ class UserPick(Base):
         SqlEnum(PickSelection, native_enum=False, values_callable=enum_values),
         nullable=False,
     )
+    spread_selection: Mapped[PickSelection | None] = mapped_column(
+        SqlEnum(PickSelection, native_enum=False, values_callable=enum_values),
+        nullable=True,
+    )
+    spread_line_value: Mapped[str | None] = mapped_column(String(24))
     predicted_home_score: Mapped[int] = mapped_column(Integer)
     predicted_away_score: Mapped[int] = mapped_column(Integer)
     advancing_team_id: Mapped[str | None] = mapped_column(
@@ -777,6 +782,7 @@ class PickPoint(Base):
     result_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     exact_score_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     advancing_team_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    spread_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

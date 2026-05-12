@@ -85,6 +85,8 @@ class MatchService:
             is_locked=now >= ensure_utc(match.picks_lock_at),
             is_ready_for_picks=is_ready_for_picks,
             odds_provider_name=odds.provider_name if odds else None,
+            spread_home_line=odds.spread_home_line if odds else None,
+            spread_away_line=odds.spread_away_line if odds else None,
             home_win_probability=home_probability,
             draw_probability=draw_probability,
             away_win_probability=away_probability,

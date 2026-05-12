@@ -8,6 +8,7 @@ from app.models.entities import PickSelection
 
 class PickBase(BaseModel):
     selection: PickSelection
+    spread_selection: PickSelection | None = None
     predicted_home_score: int = Field(ge=0)
     predicted_away_score: int = Field(ge=0)
     advancing_team_id: str | None = None
@@ -40,6 +41,8 @@ class PickOut(BaseModel):
     predicted_home_score: int
     predicted_away_score: int
     advancing_team_id: str | None = None
+    spread_selection: PickSelection | None = None
+    spread_line_value: str | None = None
     home_team_name: str
     away_team_name: str
     stage_type: str = "regular"
@@ -79,6 +82,8 @@ class PickResultRowOut(BaseModel):
     predicted_home_score: int | None
     predicted_away_score: int | None
     advancing_team_id: str | None = None
+    spread_selection: PickSelection | None = None
+    spread_line_value: str | None = None
     home_score: int | None
     away_score: int | None
     official_advancing_team_id: str | None = None
@@ -90,6 +95,7 @@ class PickResultRowOut(BaseModel):
     result_points: int
     exact_score_points: int
     advancing_team_points: int
+    spread_points: int
     total_points: int
 
     @field_serializer("kickoff_at", "overridden_at")
@@ -120,6 +126,8 @@ class GlobalPickMatchOut(BaseModel):
     kickoff_at: datetime
     is_locked: bool
     is_ready_for_picks: bool = True
+    spread_home_line: str | None = None
+    spread_away_line: str | None = None
 
     @field_serializer("kickoff_at")
     def serialize_match_kickoff(self, value: datetime) -> str:
@@ -135,6 +143,8 @@ class GlobalPickCellOut(BaseModel):
     predicted_home_score: int | None
     predicted_away_score: int | None
     advancing_team_id: str | None = None
+    spread_selection: PickSelection | None = None
+    spread_line_value: str | None = None
 
 
 class GlobalPickBoardOut(BaseModel):

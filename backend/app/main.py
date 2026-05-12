@@ -217,6 +217,8 @@ def run_startup_migrations() -> None:
             pick_column_names = {column["name"] for column in inspector.get_columns("user_picks")}
             missing_pick_columns = {
                 "advancing_team_id": "ALTER TABLE user_picks ADD COLUMN advancing_team_id UUID",
+                "spread_selection": "ALTER TABLE user_picks ADD COLUMN spread_selection VARCHAR(8)",
+                "spread_line_value": "ALTER TABLE user_picks ADD COLUMN spread_line_value VARCHAR(24)",
                 "is_admin_override": (
                     "ALTER TABLE user_picks ADD COLUMN is_admin_override BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
@@ -238,6 +240,13 @@ def run_startup_migrations() -> None:
                     text(
                         "ALTER TABLE pick_points "
                         "ADD COLUMN advancing_team_points INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
+            if "spread_points" not in pick_point_column_names:
+                connection.execute(
+                    text(
+                        "ALTER TABLE pick_points "
+                        "ADD COLUMN spread_points INTEGER NOT NULL DEFAULT 0"
                     )
                 )
 

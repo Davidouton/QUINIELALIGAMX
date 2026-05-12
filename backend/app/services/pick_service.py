@@ -1,12 +1,14 @@
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session
 
 from app.core.datetime import ensure_utc
-from app.models.entities import Match, MatchResult, Matchday, PickSelection, Profile, ScoringRule, Season, SeasonMembership, Team, UserPick
+from app.models.entities import Competition, Match, MatchResult, Matchday, Odds, PickSelection, Profile, ScoringRule, Season, SeasonMembership, Team, UserPick
 from app.repositories.match_repository import MatchRepository
+from app.repositories.odds_repository import OddsRepository
 from app.repositories.pick_repository import PickRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.admin import AdminPickOverrideRequest, AdminPickRowOut
@@ -17,6 +19,7 @@ from app.services.season_eligibility_service import SeasonEligibilityService
 class PickService:
     def __init__(self) -> None:
         self.match_repo = MatchRepository()
+        self.odds_repo = OddsRepository()
         self.pick_repo = PickRepository()
         self.membership_repo = SeasonMembershipRepository()
         self.eligibility_service = SeasonEligibilityService()
@@ -24,19 +27,25 @@ class PickService:
     def create_pick(self, db: Session, profile: Profile, payload: PickCreate) -> PickOut:
         match = self._get_open_match(db, payload.match_id)
         self._ensure_profile_can_pick(db, profile, match)
+        self._validate_pick_payload(db, match, payload)
         advancing_team_id = self._validate_advancing_team_for_match(match, payload)
+        spread_selection, spread_line_value = self._resolve_spread_pick(db, match, payload)
         pick = self.pick_repo.get_for_user_and_match(db, profile.id, payload.match_id)
         if pick is None:
             pick = UserPick(
                 profile_id=profile.id,
                 match_id=payload.match_id,
                 selection=payload.selection,
+                spread_selection=spread_selection,
+                spread_line_value=spread_line_value,
                 predicted_home_score=payload.predicted_home_score,
                 predicted_away_score=payload.predicted_away_score,
                 advancing_team_id=advancing_team_id,
             )
         else:
             pick.selection = payload.selection
+            pick.spread_selection = spread_selection
+            pick.spread_line_value = spread_line_value
             pick.predicted_home_score = payload.predicted_home_score
             pick.predicted_away_score = payload.predicted_away_score
             pick.advancing_team_id = advancing_team_id
@@ -55,8 +64,12 @@ class PickService:
 
         match = self._get_open_match(db, pick.match_id)
         self._ensure_profile_can_pick(db, profile, match)
+        self._validate_pick_payload(db, match, payload)
         advancing_team_id = self._validate_advancing_team_for_match(match, payload)
+        spread_selection, spread_line_value = self._resolve_spread_pick(db, match, payload)
         pick.selection = payload.selection
+        pick.spread_selection = spread_selection
+        pick.spread_line_value = spread_line_value
         pick.predicted_home_score = payload.predicted_home_score
         pick.predicted_away_score = payload.predicted_away_score
         pick.advancing_team_id = advancing_team_id
@@ -111,11 +124,28 @@ class PickService:
                 if pick is not None and pick.overridden_by_profile_id is not None
             ],
         )
+        matchday_season_ids = self._load_season_ids_by_matchday(db, [match.matchday_id for match, _, _ in rows])
+        season_cache = self._load_seasons(db, matchday_season_ids.values())
+        competition_cache = self._load_competitions(
+            db,
+            [
+                season.competition_id
+                for season in season_cache.values()
+                if season is not None and season.competition_id is not None
+            ],
+        )
 
         result_rows: list[PickResultRowOut] = []
         for match, pick, result in rows:
             home_team = teams.get(match.home_team_id)
             away_team = teams.get(match.away_team_id)
+            season = season_cache.get(matchday_season_ids.get(match.matchday_id))
+            competition = (
+                competition_cache.get(season.competition_id)
+                if season is not None and season.competition_id is not None
+                else None
+            )
+            is_nfl_match = self._is_nfl_competition(competition)
             is_official = bool(
                 result
                 and result.is_official
@@ -126,15 +156,18 @@ class PickService:
             result_points = 0
             exact_score_points = 0
             advancing_team_points = 0
+            spread_points = 0
             if pick is not None and is_official and result is not None:
                 winner = self._resolve_winner(result.home_score, result.away_score)
                 result_points = rules["result_correct"] if pick.selection == winner else 0
-                exact_score_points = (
-                    rules["exact_score"]
-                    if pick.predicted_home_score == result.home_score
-                    and pick.predicted_away_score == result.away_score
-                    else 0
-                )
+                exact_score_points = 0
+                if not is_nfl_match:
+                    exact_score_points = (
+                        rules["exact_score"]
+                        if pick.predicted_home_score == result.home_score
+                        and pick.predicted_away_score == result.away_score
+                        else 0
+                    )
                 advancing_team_points = (
                     rules["advancing_team"]
                     if match.stage_type != "group"
@@ -143,6 +176,14 @@ class PickService:
                     and pick.advancing_team_id == result.advancing_team_id
                     else 0
                 )
+                if is_nfl_match:
+                    spread_points = self._calculate_spread_points(
+                        result.home_score,
+                        result.away_score,
+                        pick.spread_selection,
+                        pick.spread_line_value,
+                        rules["spread_correct"],
+                    )
 
             result_rows.append(
                 PickResultRowOut(
@@ -159,6 +200,8 @@ class PickService:
                     predicted_home_score=pick.predicted_home_score if pick is not None else None,
                     predicted_away_score=pick.predicted_away_score if pick is not None else None,
                     advancing_team_id=pick.advancing_team_id if pick is not None else None,
+                    spread_selection=pick.spread_selection if pick is not None else None,
+                    spread_line_value=pick.spread_line_value if pick is not None else None,
                     home_score=result.home_score if result is not None else None,
                     away_score=result.away_score if result is not None else None,
                     official_advancing_team_id=result.advancing_team_id if result is not None else None,
@@ -174,7 +217,8 @@ class PickService:
                     result_points=result_points,
                     exact_score_points=exact_score_points,
                     advancing_team_points=advancing_team_points,
-                    total_points=result_points + exact_score_points + advancing_team_points,
+                    spread_points=spread_points,
+                    total_points=result_points + exact_score_points + advancing_team_points + spread_points,
                 )
             )
 
@@ -197,6 +241,7 @@ class PickService:
                 .order_by(Match.kickoff_at.asc())
             )
         )
+        latest_odds_by_match_id = self.odds_repo.list_latest_by_match_ids(db, [match.id for match in matches])
         teams = self._load_teams(db, matches)
 
         player_rows = db.execute(
@@ -232,6 +277,7 @@ class PickService:
         for match in matches:
             home_team = teams.get(match.home_team_id)
             away_team = teams.get(match.away_team_id)
+            odds = latest_odds_by_match_id.get(match.id)
             match_out.append(
                 GlobalPickMatchOut(
                     match_id=match.id,
@@ -249,6 +295,8 @@ class PickService:
                     kickoff_at=match.kickoff_at,
                     is_locked=now >= ensure_utc(match.picks_lock_at),
                     is_ready_for_picks=self._match_has_confirmed_teams(match),
+                    spread_home_line=odds.spread_home_line if odds is not None else None,
+                    spread_away_line=odds.spread_away_line if odds is not None else None,
                 )
             )
 
@@ -267,6 +315,8 @@ class PickService:
                             predicted_home_score=None,
                             predicted_away_score=None,
                             advancing_team_id=None,
+                            spread_selection=None,
+                            spread_line_value=None,
                         )
                     )
                     continue
@@ -281,6 +331,8 @@ class PickService:
                         predicted_home_score=pick.predicted_home_score if pick is not None else None,
                         predicted_away_score=pick.predicted_away_score if pick is not None else None,
                         advancing_team_id=pick.advancing_team_id if pick is not None else None,
+                        spread_selection=pick.spread_selection if pick is not None else None,
+                        spread_line_value=pick.spread_line_value if pick is not None else None,
                     )
                 )
 
@@ -375,6 +427,8 @@ class PickService:
                         is_locked=now >= ensure_utc(match.picks_lock_at),
                         is_ready_for_picks=self._match_has_confirmed_teams(match),
                         selection=pick.selection if pick is not None else None,
+                        spread_selection=pick.spread_selection if pick is not None else None,
+                        spread_line_value=pick.spread_line_value if pick is not None else None,
                         predicted_home_score=pick.predicted_home_score if pick is not None else None,
                         predicted_away_score=pick.predicted_away_score if pick is not None else None,
                         advancing_team_id=pick.advancing_team_id if pick is not None else None,
@@ -418,18 +472,24 @@ class PickService:
             )
 
         pick = self.pick_repo.get_for_user_and_match(db, profile.id, match.id)
+        self._validate_pick_payload(db, match, payload)
         advancing_team_id = self._validate_advancing_team_for_match(match, payload)
+        spread_selection, spread_line_value = self._resolve_spread_pick(db, match, payload)
         if pick is None:
             pick = UserPick(
                 profile_id=profile.id,
                 match_id=match.id,
                 selection=payload.selection,
+                spread_selection=spread_selection,
+                spread_line_value=spread_line_value,
                 predicted_home_score=payload.predicted_home_score,
                 predicted_away_score=payload.predicted_away_score,
                 advancing_team_id=advancing_team_id,
             )
         else:
             pick.selection = payload.selection
+            pick.spread_selection = spread_selection
+            pick.spread_line_value = spread_line_value
             pick.predicted_home_score = payload.predicted_home_score
             pick.predicted_away_score = payload.predicted_away_score
             pick.advancing_team_id = advancing_team_id
@@ -498,6 +558,75 @@ class PickService:
         pick.overridden_by_profile_id = None
         pick.overridden_at = None
 
+    def _validate_pick_payload(
+        self,
+        db: Session,
+        match: Match,
+        payload: PickCreate | PickUpdate | AdminPickOverrideRequest,
+    ) -> None:
+        if self._is_nfl_match(db, match):
+            if payload.selection == PickSelection.DRAW:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="En NFL debes escoger ganador puro, no empate",
+                )
+            if payload.spread_selection not in {PickSelection.HOME, PickSelection.AWAY}:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="En NFL debes escoger la linea para local o visitante",
+                )
+            return
+
+        if payload.selection == PickSelection.DRAW and payload.predicted_home_score != payload.predicted_away_score:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Draw picks require equal scores")
+        if payload.selection == PickSelection.HOME and payload.predicted_home_score <= payload.predicted_away_score:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Home picks require home score greater than away score",
+            )
+        if payload.selection == PickSelection.AWAY and payload.predicted_home_score >= payload.predicted_away_score:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Away picks require away score greater than home score",
+            )
+
+    def _resolve_spread_pick(
+        self,
+        db: Session,
+        match: Match,
+        payload: PickCreate | PickUpdate | AdminPickOverrideRequest,
+    ) -> tuple[PickSelection | None, str | None]:
+        if not self._is_nfl_match(db, match):
+            return None, None
+
+        latest_odds = self._latest_odds_for_match(db, match)
+        if latest_odds is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Este partido de NFL todavia no tiene linea disponible",
+            )
+
+        if payload.spread_selection == PickSelection.HOME:
+            if not latest_odds.spread_home_line:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La linea del local todavia no esta disponible",
+                )
+            return PickSelection.HOME, latest_odds.spread_home_line
+
+        if payload.spread_selection == PickSelection.AWAY:
+            if not latest_odds.spread_away_line:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La linea del visitante todavia no esta disponible",
+                )
+            return PickSelection.AWAY, latest_odds.spread_away_line
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="En NFL debes escoger una linea valida",
+        )
+
     def _validate_advancing_team_for_match(
         self,
         match: Match,
@@ -540,6 +669,8 @@ class PickService:
             match_id=pick.match_id,
             matchday_id=match.matchday_id,
             selection=pick.selection,
+            spread_selection=pick.spread_selection,
+            spread_line_value=pick.spread_line_value,
             predicted_home_score=pick.predicted_home_score,
             predicted_away_score=pick.predicted_away_score,
             advancing_team_id=pick.advancing_team_id,
@@ -571,6 +702,7 @@ class PickService:
             "result_correct": stored_rules.get("result_correct", 3),
             "exact_score": stored_rules.get("exact_score", 2),
             "advancing_team": stored_rules.get("advancing_team", 1),
+            "spread_correct": stored_rules.get("spread_correct", 3),
         }
 
     def _load_teams(self, db: Session, matches: list[Match]) -> dict[str, Team]:
@@ -584,6 +716,28 @@ class PickService:
             return {}
         teams = db.scalars(select(Team).where(Team.id.in_(team_ids))).all()
         return {team.id: team for team in teams}
+
+    def _load_season_ids_by_matchday(self, db: Session, matchday_ids: list[str]) -> dict[str, str]:
+        clean_ids = sorted({matchday_id for matchday_id in matchday_ids if matchday_id})
+        if not clean_ids:
+            return {}
+        return dict(
+            db.execute(select(Matchday.id, Matchday.season_id).where(Matchday.id.in_(clean_ids))).all()
+        )
+
+    def _load_seasons(self, db: Session, season_ids: list[str | None]) -> dict[str, Season]:
+        clean_ids = sorted({season_id for season_id in season_ids if season_id})
+        if not clean_ids:
+            return {}
+        seasons = db.scalars(select(Season).where(Season.id.in_(clean_ids))).all()
+        return {season.id: season for season in seasons}
+
+    def _load_competitions(self, db: Session, competition_ids: list[str | None]) -> dict[str, Competition]:
+        clean_ids = sorted({competition_id for competition_id in competition_ids if competition_id})
+        if not clean_ids:
+            return {}
+        competitions = db.scalars(select(Competition).where(Competition.id.in_(clean_ids))).all()
+        return {competition.id: competition for competition in competitions}
 
     def _match_has_confirmed_teams(self, match: Match) -> bool:
         return match.home_team_id is not None and match.away_team_id is not None
@@ -600,6 +754,58 @@ class PickService:
             return None
         stripped = value.strip()
         return stripped or None
+
+    def _latest_odds_for_match(self, db: Session, match: Match) -> Odds | None:
+        return self.odds_repo.list_latest_by_match_ids(db, [match.id]).get(match.id)
+
+    def _is_nfl_match(self, db: Session, match: Match) -> bool:
+        season_id = self._season_id_for_match(db, match)
+        season = db.get(Season, season_id)
+        if season is None or season.competition_id is None:
+            return False
+        competition = db.get(Competition, season.competition_id)
+        return self._is_nfl_competition(competition)
+
+    def _is_nfl_competition(self, competition: Competition | None) -> bool:
+        if competition is None:
+            return False
+        haystack = " ".join(
+            [
+                competition.slug or "",
+                competition.name or "",
+                competition.sport_name or "",
+            ]
+        ).lower()
+        return "nfl" in haystack or "football" in haystack
+
+    def _calculate_spread_points(
+        self,
+        home_score: int,
+        away_score: int,
+        spread_selection: PickSelection | None,
+        spread_line_value: str | None,
+        awarded_points: int,
+    ) -> int:
+        if spread_selection not in {PickSelection.HOME, PickSelection.AWAY} or not spread_line_value:
+            return 0
+        line_decimal = self._parse_line_decimal(spread_line_value)
+        if line_decimal is None:
+            return 0
+        side_score = home_score if spread_selection == PickSelection.HOME else away_score
+        opponent_score = away_score if spread_selection == PickSelection.HOME else home_score
+        margin_with_line = Decimal(side_score) + line_decimal - Decimal(opponent_score)
+        if margin_with_line > 0:
+            return awarded_points
+        return 0
+
+    def _parse_line_decimal(self, raw_value: str) -> Decimal | None:
+        normalized = raw_value.strip().replace("PK", "0").replace("pk", "0")
+        if not normalized:
+            return None
+        try:
+            return Decimal(normalized)
+        except (InvalidOperation, ValueError):
+            return None
 
     def _resolve_winner(self, home_score: int, away_score: int) -> PickSelection:
         if home_score > away_score:

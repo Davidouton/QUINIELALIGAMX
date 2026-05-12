@@ -68,6 +68,7 @@ class AdminPickOverrideRequest(BaseModel):
     profile_id: str
     match_id: str
     selection: PickSelection
+    spread_selection: PickSelection | None = None
     predicted_home_score: int = Field(ge=0)
     predicted_away_score: int = Field(ge=0)
     advancing_team_id: str | None = None
@@ -106,6 +107,8 @@ class AdminPickRowOut(BaseModel):
     is_locked: bool
     is_ready_for_picks: bool = True
     selection: PickSelection | None = None
+    spread_selection: PickSelection | None = None
+    spread_line_value: str | None = None
     predicted_home_score: int | None = None
     predicted_away_score: int | None = None
     advancing_team_id: str | None = None

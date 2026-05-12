@@ -27,6 +27,8 @@ class MatchOut(BaseModel):
     is_locked: bool
     is_ready_for_picks: bool = True
     odds_provider_name: str | None = None
+    spread_home_line: str | None = None
+    spread_away_line: str | None = None
     home_win_probability: float | None = None
     draw_probability: float | None = None
     away_win_probability: float | None = None

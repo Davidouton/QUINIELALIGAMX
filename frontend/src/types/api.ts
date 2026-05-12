@@ -59,6 +59,8 @@ export interface Match {
   is_locked: boolean;
   is_ready_for_picks: boolean;
   odds_provider_name: string | null;
+  spread_home_line: string | null;
+  spread_away_line: string | null;
   home_win_probability: number | null;
   draw_probability: number | null;
   away_win_probability: number | null;
@@ -70,6 +72,8 @@ export interface Pick {
   match_id: string;
   matchday_id: string;
   selection: PickSelection;
+  spread_selection: PickSelection | null;
+  spread_line_value: string | null;
   predicted_home_score: number;
   predicted_away_score: number;
   advancing_team_id: string | null;
@@ -106,6 +110,8 @@ export interface PickResultRow {
   predicted_home_score: number | null;
   predicted_away_score: number | null;
   advancing_team_id: string | null;
+  spread_selection: PickSelection | null;
+  spread_line_value: string | null;
   home_score: number | null;
   away_score: number | null;
   official_advancing_team_id: string | null;
@@ -117,6 +123,7 @@ export interface PickResultRow {
   result_points: number;
   exact_score_points: number;
   advancing_team_points: number;
+  spread_points: number;
   total_points: number;
 }
 
@@ -142,6 +149,8 @@ export interface AdminPickRow {
   is_locked: boolean;
   is_ready_for_picks: boolean;
   selection: PickSelection | null;
+  spread_selection: PickSelection | null;
+  spread_line_value: string | null;
   predicted_home_score: number | null;
   predicted_away_score: number | null;
   advancing_team_id: string | null;
@@ -174,6 +183,8 @@ export interface GlobalPickMatch {
   kickoff_at: string;
   is_locked: boolean;
   is_ready_for_picks: boolean;
+  spread_home_line: string | null;
+  spread_away_line: string | null;
 }
 
 export interface GlobalPickCell {
@@ -185,6 +196,8 @@ export interface GlobalPickCell {
   predicted_home_score: number | null;
   predicted_away_score: number | null;
   advancing_team_id: string | null;
+  spread_selection: PickSelection | null;
+  spread_line_value: string | null;
 }
 
 export interface GlobalPickBoard {

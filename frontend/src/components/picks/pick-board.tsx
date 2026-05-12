@@ -9,6 +9,8 @@ import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team } from "@/types/api";
 
 type PickFormState = {
+  winner_selection: PickSelection | "";
+  spread_selection: PickSelection | "";
   predicted_home_score: string;
   predicted_away_score: string;
   advancing_team_id: string;
@@ -67,6 +69,8 @@ function getSeasonTag(season: Season | null) {
 
 function buildFormFromPick(pick?: Pick): PickFormState {
   return {
+    winner_selection: pick?.selection ?? "",
+    spread_selection: pick?.spread_selection ?? "",
     predicted_home_score: pick ? String(pick.predicted_home_score) : "",
     predicted_away_score: pick ? String(pick.predicted_away_score) : "",
     advancing_team_id: pick?.advancing_team_id ?? "",
@@ -81,13 +85,21 @@ function isWorldCupSeason(season: Season | null) {
   return season?.tournament_format === "world_cup";
 }
 
+function isNflSeason(season: Season | null) {
+  const haystack = `${season?.competition_name ?? ""} ${season?.competition_sport_name ?? ""}`.toLowerCase();
+  return haystack.includes("nfl") || haystack.includes("football");
+}
+
 function isMatchReadyForPicks(match: Match) {
   return match.is_ready_for_picks;
 }
 
-function isPickFormComplete(match: Match, form: PickFormState | undefined) {
+function isPickFormComplete(match: Match, form: PickFormState | undefined, nflMode: boolean) {
   if (!isMatchReadyForPicks(match)) {
     return false;
+  }
+  if (nflMode) {
+    return Boolean(form?.winner_selection && form?.spread_selection);
   }
   if (!form || form.predicted_home_score === "" || form.predicted_away_score === "") {
     return false;
@@ -98,7 +110,10 @@ function isPickFormComplete(match: Match, form: PickFormState | undefined) {
   return true;
 }
 
-function deriveSelectionFromForm(form: PickFormState | undefined): PickSelection | null {
+function deriveSelectionFromForm(form: PickFormState | undefined, nflMode: boolean): PickSelection | null {
+  if (nflMode) {
+    return form?.winner_selection || null;
+  }
   if (!form || form.predicted_home_score === "" || form.predicted_away_score === "") {
     return null;
   }
@@ -176,16 +191,32 @@ function getSelectionShortLabel(selection: PickSelection | null) {
   return "-";
 }
 
-function getFormSignature(match: Match, form: PickFormState | undefined) {
-  if (!isPickFormComplete(match, form)) {
+function getNflSideLabel(selection: PickSelection | "" | null, homeLabel: string, awayLabel: string) {
+  if (selection === "home") {
+    return homeLabel;
+  }
+  if (selection === "away") {
+    return awayLabel;
+  }
+  return "Pendiente";
+}
+
+function getFormSignature(match: Match, form: PickFormState | undefined, nflMode: boolean) {
+  if (!isPickFormComplete(match, form, nflMode)) {
     return "";
+  }
+  if (nflMode) {
+    return `${form?.winner_selection ?? ""}:${form?.spread_selection ?? ""}`;
   }
   return `${form?.predicted_home_score}:${form?.predicted_away_score}:${form?.advancing_team_id ?? ""}`;
 }
 
-function getPickSignature(pick: Pick | undefined) {
+function getPickSignature(pick: Pick | undefined, nflMode: boolean) {
   if (!pick) {
     return "";
+  }
+  if (nflMode) {
+    return `${pick.selection}:${pick.spread_selection ?? ""}`;
   }
   return `${pick.predicted_home_score}:${pick.predicted_away_score}:${pick.advancing_team_id ?? ""}`;
 }
@@ -354,6 +385,7 @@ export function PickBoard() {
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const teamById = Object.fromEntries(teams.map((team) => [team.id, team]));
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
+  const useNflMode = isNflSeason(state.selectedSeason);
 
   function getMatchTeamLabel(teamId: string | null, fallbackName: string) {
     if (!useWorldCupAbbreviation || !teamId) {
@@ -471,8 +503,8 @@ export function PickBoard() {
     state.matches.forEach((match) => {
       const form = forms[match.id];
       const existingPick = state.existingPicks.find((pick) => pick.match_id === match.id);
-      const formSignature = getFormSignature(match, form);
-      const savedSignature = getPickSignature(existingPick);
+      const formSignature = getFormSignature(match, form, useNflMode);
+      const savedSignature = getPickSignature(existingPick, useNflMode);
       const currentState = autoSave[match.id];
 
       if (!match.is_ready_for_picks) {
@@ -521,7 +553,7 @@ export function PickBoard() {
       Object.values(timers).forEach((timer) => clearTimeout(timer));
       Object.keys(timers).forEach((key) => delete timers[key]);
     };
-  }, [forms, state.existingPicks, state.matches]);
+  }, [forms, state.existingPicks, state.matches, useNflMode]);
 
   async function loadSelectedMatchday(matchdayId: string) {
     try {
@@ -617,9 +649,9 @@ export function PickBoard() {
     try {
       const currentForm = forms[matchId];
       const match = state.matches.find((row) => row.id === matchId);
-      const selection = deriveSelectionFromForm(currentForm);
+      const selection = deriveSelectionFromForm(currentForm, useNflMode);
 
-      if (!match || !selection || !isPickFormComplete(match, currentForm)) {
+      if (!match || !selection || !isPickFormComplete(match, currentForm, useNflMode)) {
         return;
       }
 
@@ -632,18 +664,26 @@ export function PickBoard() {
       const existing = state.existingPicks.find((pick) => pick.match_id === matchId);
       const method = existing ? "PUT" : "POST";
       const path = existing ? `/picks/${existing.id}` : "/picks";
+      const predictedHomeScore = useNflMode
+        ? (selection === "home" ? 1 : 0)
+        : Number(currentForm.predicted_home_score);
+      const predictedAwayScore = useNflMode
+        ? (selection === "away" ? 1 : 0)
+        : Number(currentForm.predicted_away_score);
       const body = existing
         ? {
             selection,
-            predicted_home_score: Number(currentForm.predicted_home_score),
-            predicted_away_score: Number(currentForm.predicted_away_score),
+            spread_selection: useNflMode ? currentForm.spread_selection || null : null,
+            predicted_home_score: predictedHomeScore,
+            predicted_away_score: predictedAwayScore,
             advancing_team_id: currentForm.advancing_team_id || null,
           }
         : {
             match_id: matchId,
             selection,
-            predicted_home_score: Number(currentForm.predicted_home_score),
-            predicted_away_score: Number(currentForm.predicted_away_score),
+            spread_selection: useNflMode ? currentForm.spread_selection || null : null,
+            predicted_home_score: predictedHomeScore,
+            predicted_away_score: predictedAwayScore,
             advancing_team_id: currentForm.advancing_team_id || null,
           };
 
@@ -822,7 +862,7 @@ export function PickBoard() {
             {state.matches.map((match) => {
               const form = forms[match.id];
               const existingPick = state.existingPicks.find((pick) => pick.match_id === match.id);
-              const derivedSelection = deriveSelectionFromForm(form);
+              const derivedSelection = deriveSelectionFromForm(form, useNflMode);
               const autoSaveState = autoSave[match.id];
               const homeTeam = match.home_team_id ? teamById[match.home_team_id] : undefined;
               const awayTeam = match.away_team_id ? teamById[match.away_team_id] : undefined;
@@ -877,45 +917,104 @@ export function PickBoard() {
                       <p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityCompactDateTime(match.picks_lock_at)}</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">L</p>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={form?.predicted_home_score ?? ""}
-                        onChange={(event) =>
-                          updateForm(match.id, {
-                            predicted_home_score: sanitizeScoreInput(event.target.value),
-                          })
-                        }
-                        onFocus={(event) => event.currentTarget.select()}
-                        disabled={pickDisabled}
-                        placeholder="-"
-                        className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
-                      />
+                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">
+                        {useNflMode ? "ML" : "L"}
+                      </p>
+                      {useNflMode ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => updateForm(match.id, { winner_selection: "home" })}
+                            disabled={pickDisabled}
+                            className={`app-pill h-7 min-w-[52px] px-2 text-[9px] ${form?.winner_selection === "home" ? "app-pill-active text-ink" : ""}`}
+                          >
+                            {getMatchTeamLabel(match.home_team_id, match.home_team_name)}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateForm(match.id, { winner_selection: "away" })}
+                            disabled={pickDisabled}
+                            className={`app-pill h-7 min-w-[52px] px-2 text-[9px] ${form?.winner_selection === "away" ? "app-pill-active text-ink" : ""}`}
+                          >
+                            {getMatchTeamLabel(match.away_team_id, match.away_team_name)}
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={form?.predicted_home_score ?? ""}
+                          onChange={(event) =>
+                            updateForm(match.id, {
+                              predicted_home_score: sanitizeScoreInput(event.target.value),
+                            })
+                          }
+                          onFocus={(event) => event.currentTarget.select()}
+                          disabled={pickDisabled}
+                          placeholder="-"
+                          className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
+                        />
+                      )}
                     </div>
                     <div className="text-center">
-                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">V</p>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={form?.predicted_away_score ?? ""}
-                        onChange={(event) =>
-                          updateForm(match.id, {
-                            predicted_away_score: sanitizeScoreInput(event.target.value),
-                          })
-                        }
-                        onFocus={(event) => event.currentTarget.select()}
-                        disabled={pickDisabled}
-                        placeholder="-"
-                        className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
-                      />
+                      <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">
+                        {useNflMode ? "ATS" : "V"}
+                      </p>
+                      {useNflMode ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => updateForm(match.id, { spread_selection: "home" })}
+                            disabled={pickDisabled || !match.spread_home_line}
+                            className={`app-pill h-7 min-w-[52px] px-2 text-[9px] ${form?.spread_selection === "home" ? "app-pill-active text-ink" : ""}`}
+                          >
+                            {match.spread_home_line ? `${getMatchTeamLabel(match.home_team_id, match.home_team_name)} ${match.spread_home_line}` : "Sin linea"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateForm(match.id, { spread_selection: "away" })}
+                            disabled={pickDisabled || !match.spread_away_line}
+                            className={`app-pill h-7 min-w-[52px] px-2 text-[9px] ${form?.spread_selection === "away" ? "app-pill-active text-ink" : ""}`}
+                          >
+                            {match.spread_away_line ? `${getMatchTeamLabel(match.away_team_id, match.away_team_name)} ${match.spread_away_line}` : "Sin linea"}
+                          </button>
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={form?.predicted_away_score ?? ""}
+                          onChange={(event) =>
+                            updateForm(match.id, {
+                              predicted_away_score: sanitizeScoreInput(event.target.value),
+                            })
+                          }
+                          onFocus={(event) => event.currentTarget.select()}
+                          disabled={pickDisabled}
+                          placeholder="-"
+                          className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
+                        />
+                      )}
                     </div>
                     <div className="text-center">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Pick</p>
                       <p className={`mt-1 text-[10px] font-semibold md:mt-0 ${derivedSelection ? "text-ink" : "text-steel"}`}>
-                        <span className="md:hidden">{getSelectionShortLabel(derivedSelection)}</span>
-                        <span className="hidden md:inline">{getSelectionLabel(derivedSelection)}</span>
+                        <span className="md:hidden">
+                          {useNflMode
+                            ? getSelectionShortLabel(derivedSelection)
+                            : getSelectionShortLabel(derivedSelection)}
+                        </span>
+                        <span className="hidden md:inline">
+                          {useNflMode
+                            ? getNflSideLabel(derivedSelection, match.home_team_name, match.away_team_name)
+                            : getSelectionLabel(derivedSelection)}
+                        </span>
                       </p>
+                      {useNflMode ? (
+                        <p className="mt-1 text-[8px] text-steel">
+                          {getNflSideLabel(form?.spread_selection ?? null, `${match.home_team_name} ${match.spread_home_line ?? ""}`.trim(), `${match.away_team_name} ${match.spread_away_line ?? ""}`.trim())}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="text-center">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Estado</p>
@@ -1040,6 +1139,11 @@ export function PickBoard() {
                               useWorldCupBubbles={useWorldCupAbbreviation}
                             />
                           </div>
+                          {useNflMode ? (
+                            <p className="text-[9px] text-steel">
+                              {match.spread_home_line ?? "-"} / {match.spread_away_line ?? "-"}
+                            </p>
+                          ) : null}
                         </div>
                       </th>
                     ))}
@@ -1057,14 +1161,27 @@ export function PickBoard() {
                           <td key={match.match_id} className="px-3 py-2 text-center">
                             {!match.is_locked || !cell?.is_revealed ? (
                               <span className="text-[10px] font-semibold uppercase text-steel/65">Oculto</span>
-                            ) : cell.has_pick && cell.predicted_home_score !== null && cell.predicted_away_score !== null ? (
+                            ) : cell.has_pick && cell.selection ? (
                               <div className="space-y-1 text-center">
-                                <p className="font-semibold text-ink">
-                                  {cell.predicted_home_score}-{cell.predicted_away_score}
-                                </p>
-                                <p className="text-[10px] font-semibold uppercase text-steel">
-                                  {getSelectionShortLabel(cell.selection)}
-                                </p>
+                                {useNflMode ? (
+                                  <>
+                                    <p className="font-semibold text-ink">
+                                      ML {getSelectionShortLabel(cell.selection)}
+                                    </p>
+                                    <p className="text-[10px] font-semibold uppercase text-steel">
+                                      ATS {getSelectionShortLabel(cell.spread_selection ?? null)}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="font-semibold text-ink">
+                                      {cell.predicted_home_score}-{cell.predicted_away_score}
+                                    </p>
+                                    <p className="text-[10px] font-semibold uppercase text-steel">
+                                      {getSelectionShortLabel(cell.selection)}
+                                    </p>
+                                  </>
+                                )}
                               </div>
                             ) : (
                               <span className="text-[10px] font-semibold uppercase text-steel/65">Sin pick</span>
