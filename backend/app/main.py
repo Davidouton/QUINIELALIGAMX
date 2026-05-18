@@ -1139,9 +1139,11 @@ def run_startup_migrations() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    if settings.run_startup_db_bootstrap:
+    # Only bootstrap tables when explicitly enabled for local/dev flows.
+    if settings.run_startup_db_bootstrap and settings.app_env != "production":
         Base.metadata.create_all(bind=engine)
-    run_startup_migrations()
+    if settings.run_startup_migrations:
+        run_startup_migrations()
     yield
 
 
