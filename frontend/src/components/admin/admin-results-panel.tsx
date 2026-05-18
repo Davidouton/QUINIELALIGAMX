@@ -103,6 +103,8 @@ export function AdminResultsPanel() {
       ),
     [matchdays, selectedSeasonId],
   );
+  const selectedSeasonForTable = selectedSeasonId ? seasonById[selectedSeasonId] ?? null : null;
+  const showAdvancingColumn = selectedSeasonForTable?.tournament_format === "world_cup";
 
   async function loadResults(matchdayId: string, accessToken?: string) {
     const token = accessToken ?? (await getBrowserAccessToken());
@@ -462,7 +464,7 @@ export function AdminResultsPanel() {
 
       <section>
         <div className="no-scrollbar overflow-x-auto overscroll-x-contain touch-pan-x [WebkitOverflowScrolling:touch]">
-          <table className="min-w-[1160px] text-left text-[11px] text-steel">
+          <table className={`${showAdvancingColumn ? "min-w-[1160px]" : "min-w-[1020px]"} text-left text-[11px] text-steel`}>
             <thead className="app-table-head">
               <tr>
                 <th className="px-3 pb-1">Partido</th>
@@ -470,7 +472,7 @@ export function AdminResultsPanel() {
                 <th className="px-3 pb-1">Fase</th>
                 <th className="px-3 pb-1">Local</th>
                 <th className="px-3 pb-1">Visitante</th>
-                <th className="px-3 pb-1">Avanza</th>
+                {showAdvancingColumn ? <th className="px-3 pb-1">Avanza</th> : null}
                 <th className="px-3 pb-1">Oficial</th>
                 <th className="px-3 pb-1">Publicado</th>
                 <th className="px-3 pb-1">Accion</th>
@@ -522,25 +524,6 @@ export function AdminResultsPanel() {
                       />
                     </td>
                     <td className="px-3 py-3 align-middle">
-                      {requiresAdvancingTeam(result, seasonById[selectedSeasonId] ?? null) && result.is_ready_for_picks ? (
-                        <select
-                          value={draft.advancing_team_id}
-                          onChange={(event) =>
-                            updateDraft(result.match_id, { advancing_team_id: event.target.value })
-                          }
-                          className={`${compactControlClass} min-w-[140px]`}
-                        >
-                          <option value="">Selecciona</option>
-                          {result.home_team_id ? <option value={result.home_team_id}>{result.home_team_name}</option> : null}
-                          {result.away_team_id ? <option value={result.away_team_id}>{result.away_team_name}</option> : null}
-                        </select>
-                      ) : requiresAdvancingTeam(result, seasonById[selectedSeasonId] ?? null) ? (
-                        <span className="text-xs text-steel">Pendiente de definir</span>
-                      ) : (
-                        <span className="text-xs text-steel">No aplica</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 align-middle">
                       <input
                         type="number"
                         inputMode="numeric"
@@ -553,6 +536,27 @@ export function AdminResultsPanel() {
                         placeholder="-"
                       />
                     </td>
+                    {showAdvancingColumn ? (
+                      <td className="px-3 py-3 align-middle">
+                        {requiresAdvancingTeam(result, selectedSeasonForTable) && result.is_ready_for_picks ? (
+                          <select
+                            value={draft.advancing_team_id}
+                            onChange={(event) =>
+                              updateDraft(result.match_id, { advancing_team_id: event.target.value })
+                            }
+                            className={`${compactControlClass} min-w-[140px]`}
+                          >
+                            <option value="">Selecciona</option>
+                            {result.home_team_id ? <option value={result.home_team_id}>{result.home_team_name}</option> : null}
+                            {result.away_team_id ? <option value={result.away_team_id}>{result.away_team_name}</option> : null}
+                          </select>
+                        ) : requiresAdvancingTeam(result, selectedSeasonForTable) ? (
+                          <span className="text-xs text-steel">Pendiente de definir</span>
+                        ) : (
+                          <span className="text-xs text-steel">No aplica</span>
+                        )}
+                      </td>
+                    ) : null}
                     <td className="px-3 py-3 align-middle">
                       <label className="inline-flex items-center gap-2 text-xs text-ink">
                         <input
