@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./quinielamaestra.db"
     run_startup_db_bootstrap: bool = False
     run_startup_migrations: bool = True
+    run_startup_migrations_in_production: bool = False
     allowed_origins: str = "http://localhost:3000"
     frontend_site_url: str = "http://localhost:3000"
     supabase_url: str = "https://your-project.supabase.co"
