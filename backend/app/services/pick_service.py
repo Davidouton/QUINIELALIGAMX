@@ -6,7 +6,7 @@ from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session
 
 from app.core.datetime import ensure_utc
-from app.models.entities import Competition, Match, MatchResult, Matchday, Odds, PickSelection, Profile, ScoringRule, Season, SeasonMembership, Team, UserPick
+from app.models.entities import Competition, Match, MatchResult, Matchday, Odds, PickSelection, Profile, ScoringRule, Season, SeasonMembership, Team, TournamentFormat, UserPick
 from app.repositories.match_repository import MatchRepository
 from app.repositories.odds_repository import OddsRepository
 from app.repositories.pick_repository import PickRepository
@@ -28,7 +28,7 @@ class PickService:
         match = self._get_open_match(db, payload.match_id)
         self._ensure_profile_can_pick(db, profile, match)
         self._validate_pick_payload(db, match, payload)
-        advancing_team_id = self._validate_advancing_team_for_match(match, payload)
+        advancing_team_id = self._validate_advancing_team_for_match(db, match, payload)
         spread_selection, spread_line_value = self._resolve_spread_pick(db, match, payload)
         pick = self.pick_repo.get_for_user_and_match(db, profile.id, payload.match_id)
         if pick is None:
@@ -65,7 +65,7 @@ class PickService:
         match = self._get_open_match(db, pick.match_id)
         self._ensure_profile_can_pick(db, profile, match)
         self._validate_pick_payload(db, match, payload)
-        advancing_team_id = self._validate_advancing_team_for_match(match, payload)
+        advancing_team_id = self._validate_advancing_team_for_match(db, match, payload)
         spread_selection, spread_line_value = self._resolve_spread_pick(db, match, payload)
         pick.selection = payload.selection
         pick.spread_selection = spread_selection
@@ -170,8 +170,7 @@ class PickService:
                     )
                 advancing_team_points = (
                     rules["advancing_team"]
-                    if match.stage_type != "group"
-                    and match.stage_type != "regular"
+                    if self._requires_advancing_team_for_season(match, season)
                     and pick.advancing_team_id is not None
                     and pick.advancing_team_id == result.advancing_team_id
                     else 0
@@ -473,7 +472,7 @@ class PickService:
 
         pick = self.pick_repo.get_for_user_and_match(db, profile.id, match.id)
         self._validate_pick_payload(db, match, payload)
-        advancing_team_id = self._validate_advancing_team_for_match(match, payload)
+        advancing_team_id = self._validate_advancing_team_for_match(db, match, payload)
         spread_selection, spread_line_value = self._resolve_spread_pick(db, match, payload)
         if pick is None:
             pick = UserPick(
@@ -629,10 +628,11 @@ class PickService:
 
     def _validate_advancing_team_for_match(
         self,
+        db: Session,
         match: Match,
         payload: PickCreate | PickUpdate | AdminPickOverrideRequest,
     ) -> str | None:
-        if match.stage_type.value in {"regular", "group"}:
+        if not self._requires_advancing_team(db, match):
             return None
         if not self._match_has_confirmed_teams(match):
             raise HTTPException(
@@ -757,6 +757,18 @@ class PickService:
 
     def _latest_odds_for_match(self, db: Session, match: Match) -> Odds | None:
         return self.odds_repo.list_latest_by_match_ids(db, [match.id]).get(match.id)
+
+    def _requires_advancing_team(self, db: Session, match: Match) -> bool:
+        season_id = self._season_id_for_match(db, match)
+        season = db.get(Season, season_id)
+        return self._requires_advancing_team_for_season(match, season)
+
+    def _requires_advancing_team_for_season(self, match: Match, season: Season | None) -> bool:
+        return (
+            season is not None
+            and season.tournament_format == TournamentFormat.WORLD_CUP
+            and match.stage_type.value not in {"regular", "group"}
+        )
 
     def _is_nfl_match(self, db: Session, match: Match) -> bool:
         season_id = self._season_id_for_match(db, match)

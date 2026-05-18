@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Match, MatchResult, MatchStatus, Profile, PublishedMatchday, RawMatchResult, Team
+from app.models.entities import Match, MatchResult, MatchStatus, Matchday, Profile, PublishedMatchday, RawMatchResult, Season, Team, TournamentFormat
 from app.schemas.admin import AdminResultRowOut, AdminResultUpdateRequest
 from app.schemas.result import PublishedResultOut, ResultOut
 
@@ -20,13 +20,14 @@ class ResultService:
 
     def _validate_advancing_team_for_match(
         self,
+        db: Session,
         match: Match,
         home_score: int,
         away_score: int,
         advancing_team_id: str | None,
     ) -> str | None:
         self._ensure_match_ready_for_results(match)
-        if match.stage_type in {"regular", "group"}:
+        if not self._requires_advancing_team(db, match):
             return None
         if advancing_team_id not in {match.home_team_id, match.away_team_id}:
             raise HTTPException(
@@ -112,6 +113,7 @@ class ResultService:
         result.home_score = payload.home_score
         result.away_score = payload.away_score
         result.advancing_team_id = self._validate_advancing_team_for_match(
+            db,
             match,
             payload.home_score,
             payload.away_score,
@@ -262,6 +264,17 @@ class ResultService:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Este partido todavia no tiene a los dos equipos definidos",
+        )
+
+    def _requires_advancing_team(self, db: Session, match: Match) -> bool:
+        matchday = db.get(Matchday, match.matchday_id)
+        if matchday is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
+        season = db.get(Season, matchday.season_id)
+        return (
+            season is not None
+            and season.tournament_format == TournamentFormat.WORLD_CUP
+            and match.stage_type.value not in {"regular", "group"}
         )
 
     def _participant_name(self, team: Team | None, placeholder: str | None, fallback: str) -> str:

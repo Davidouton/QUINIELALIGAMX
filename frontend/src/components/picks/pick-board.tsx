@@ -85,6 +85,10 @@ function isWorldCupSeason(season: Season | null) {
   return season?.tournament_format === "world_cup";
 }
 
+function requiresAdvancingTeam(match: Match, season: Season | null) {
+  return isWorldCupSeason(season) && isKnockoutMatch(match);
+}
+
 function isNflSeason(season: Season | null) {
   const haystack = `${season?.competition_name ?? ""} ${season?.competition_sport_name ?? ""}`.toLowerCase();
   return haystack.includes("nfl") || haystack.includes("football");
@@ -94,7 +98,12 @@ function isMatchReadyForPicks(match: Match) {
   return match.is_ready_for_picks;
 }
 
-function isPickFormComplete(match: Match, form: PickFormState | undefined, nflMode: boolean) {
+function isPickFormComplete(
+  match: Match,
+  form: PickFormState | undefined,
+  nflMode: boolean,
+  worldCupMode: boolean,
+) {
   if (!isMatchReadyForPicks(match)) {
     return false;
   }
@@ -104,7 +113,7 @@ function isPickFormComplete(match: Match, form: PickFormState | undefined, nflMo
   if (!form || form.predicted_home_score === "" || form.predicted_away_score === "") {
     return false;
   }
-  if (isKnockoutMatch(match) && !form.advancing_team_id) {
+  if (worldCupMode && isKnockoutMatch(match) && !form.advancing_team_id) {
     return false;
   }
   return true;
@@ -201,8 +210,13 @@ function getNflSideLabel(selection: PickSelection | "" | null, homeLabel: string
   return "Pendiente";
 }
 
-function getFormSignature(match: Match, form: PickFormState | undefined, nflMode: boolean) {
-  if (!isPickFormComplete(match, form, nflMode)) {
+function getFormSignature(
+  match: Match,
+  form: PickFormState | undefined,
+  nflMode: boolean,
+  worldCupMode: boolean,
+) {
+  if (!isPickFormComplete(match, form, nflMode, worldCupMode)) {
     return "";
   }
   if (nflMode) {
@@ -385,6 +399,7 @@ export function PickBoard() {
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const teamById = Object.fromEntries(teams.map((team) => [team.id, team]));
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
+  const useWorldCupMode = isWorldCupSeason(state.selectedSeason);
   const useNflMode = isNflSeason(state.selectedSeason);
 
   function getMatchTeamLabel(teamId: string | null, fallbackName: string) {
@@ -503,7 +518,7 @@ export function PickBoard() {
     state.matches.forEach((match) => {
       const form = forms[match.id];
       const existingPick = state.existingPicks.find((pick) => pick.match_id === match.id);
-      const formSignature = getFormSignature(match, form, useNflMode);
+      const formSignature = getFormSignature(match, form, useNflMode, useWorldCupMode);
       const savedSignature = getPickSignature(existingPick, useNflMode);
       const currentState = autoSave[match.id];
 
@@ -553,7 +568,7 @@ export function PickBoard() {
       Object.values(timers).forEach((timer) => clearTimeout(timer));
       Object.keys(timers).forEach((key) => delete timers[key]);
     };
-  }, [forms, state.existingPicks, state.matches, useNflMode]);
+  }, [forms, state.existingPicks, state.matches, useNflMode, useWorldCupMode]);
 
   async function loadSelectedMatchday(matchdayId: string) {
     try {
@@ -651,7 +666,7 @@ export function PickBoard() {
       const match = state.matches.find((row) => row.id === matchId);
       const selection = deriveSelectionFromForm(currentForm, useNflMode);
 
-      if (!match || !selection || !isPickFormComplete(match, currentForm, useNflMode)) {
+      if (!match || !selection || !isPickFormComplete(match, currentForm, useNflMode, useWorldCupMode)) {
         return;
       }
 
@@ -1054,7 +1069,7 @@ export function PickBoard() {
                       </p>
                     </div>
                   </div>
-                  {isKnockoutMatch(match) && match.is_ready_for_picks ? (
+                  {requiresAdvancingTeam(match, state.selectedSeason) && match.is_ready_for_picks ? (
                     <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-steel">
                         Equipo que avanza
@@ -1079,7 +1094,7 @@ export function PickBoard() {
                         90 min + clasificado correcto = hasta 6 puntos.
                       </p>
                     </div>
-                  ) : isKnockoutMatch(match) ? (
+                  ) : requiresAdvancingTeam(match, state.selectedSeason) ? (
                     <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[10px] text-amber-100">
                       Este cruce todavia esta sembrado con placeholders. Los picks se habilitan en cuanto queden definidos ambos equipos.
                     </div>

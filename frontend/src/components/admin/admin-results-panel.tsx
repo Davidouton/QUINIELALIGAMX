@@ -39,6 +39,10 @@ function isKnockoutResult(result: AdminResultRow) {
   return result.stage_type !== "regular" && result.stage_type !== "group";
 }
 
+function requiresAdvancingTeam(result: AdminResultRow, season: Season | null) {
+  return season?.tournament_format === "world_cup" && isKnockoutResult(result);
+}
+
 function isResultReady(result: AdminResultRow) {
   return result.is_ready_for_picks;
 }
@@ -178,7 +182,8 @@ export function AdminResultsPanel() {
       setError("Primero define ambos equipos antes de capturar resultado.");
       return;
     }
-    if (row && isKnockoutResult(row) && !draft.advancing_team_id) {
+    const selectedSeason = seasonById[selectedSeasonId] ?? null;
+    if (row && requiresAdvancingTeam(row, selectedSeason) && !draft.advancing_team_id) {
       setError("En eliminatoria directa tambien debes seleccionar el equipo que avanza.");
       return;
     }
@@ -193,7 +198,7 @@ export function AdminResultsPanel() {
         body: JSON.stringify({
           home_score: Number(draft.home_score),
           away_score: Number(draft.away_score),
-          advancing_team_id: draft.advancing_team_id || null,
+          advancing_team_id: row && requiresAdvancingTeam(row, selectedSeason) ? draft.advancing_team_id || null : null,
           is_official: draft.is_official,
         }),
       });
@@ -517,7 +522,7 @@ export function AdminResultsPanel() {
                       />
                     </td>
                     <td className="px-3 py-3 align-middle">
-                      {isKnockoutResult(result) && result.is_ready_for_picks ? (
+                      {requiresAdvancingTeam(result, seasonById[selectedSeasonId] ?? null) && result.is_ready_for_picks ? (
                         <select
                           value={draft.advancing_team_id}
                           onChange={(event) =>
@@ -529,7 +534,7 @@ export function AdminResultsPanel() {
                           {result.home_team_id ? <option value={result.home_team_id}>{result.home_team_name}</option> : null}
                           {result.away_team_id ? <option value={result.away_team_id}>{result.away_team_name}</option> : null}
                         </select>
-                      ) : isKnockoutResult(result) ? (
+                      ) : requiresAdvancingTeam(result, seasonById[selectedSeasonId] ?? null) ? (
                         <span className="text-xs text-steel">Pendiente de definir</span>
                       ) : (
                         <span className="text-xs text-steel">No aplica</span>

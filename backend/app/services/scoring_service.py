@@ -17,6 +17,7 @@ from app.models.entities import (
     Season,
     StandingsMatchday,
     StandingsOverall,
+    TournamentFormat,
     TrophyAsset,
     UserPick,
     WeeklyLeader,
@@ -107,7 +108,8 @@ class ScoringService:
                 )
             advancing_points = (
                 rules["advancing_team"]
-                if match.stage_type.value not in {"regular", "group"}
+                if season.tournament_format == TournamentFormat.WORLD_CUP
+                and match.stage_type.value not in {"regular", "group"}
                 and pick.advancing_team_id is not None
                 and pick.advancing_team_id == result.advancing_team_id
                 else 0
