@@ -335,14 +335,12 @@ export function AdminResultsPanel() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      const response = await backendFetch<{ evaluated_picks: number; weekly_leaders: number; weekly_awards: number }>(
+      await backendFetch<{ status: string }>(
         "/admin/results/recalculate",
         accessToken,
         { method: "POST" },
       );
-      setMessage(
-        `${response.evaluated_picks} picks evaluados. ${response.weekly_leaders} lideres semanales actualizados. ${response.weekly_awards} awards semanales regenerados.`,
-      );
+      setMessage("Recalculo iniciado. El scoring se actualizara en segundo plano.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo recalcular el scoring");
     } finally {

@@ -6,13 +6,13 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import delete, func, inspect, select, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_roles
 from app.core.config import get_settings
-from app.core.database import engine, get_db
+from app.core.database import SessionLocal, engine, get_db
 from app.models.entities import (
     HistoricalChampion,
     Match,
@@ -112,6 +112,14 @@ BACKEND_DIR = REPO_ROOT / "backend"
 RAW_ODDS_TABLE = "lmx_odds_5d"
 DEFAULT_RESULT_CORRECT_POINTS = 3
 DEFAULT_EXACT_SCORE_POINTS = 2
+
+
+def run_scoring_recalculate_background() -> None:
+    db = SessionLocal()
+    try:
+        ScoringService().recalculate(db)
+    finally:
+        db.close()
 
 
 def ensure_matchday_can_be_saved(
@@ -1900,18 +1908,21 @@ def pull_admin_odds(
 
 @router.post("/results/recalculate")
 def recalculate_results(
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
-) -> dict[str, int]:
-    return ScoringService().recalculate(db)
+) -> dict[str, str]:
+    background_tasks.add_task(run_scoring_recalculate_background)
+    return {"status": "recalculate_started"}
 
 
 @router.post("/matchdays/{matchday_id}/publish")
 def publish_matchday(
     matchday_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
-) -> dict[str, int | str]:
+) -> dict[str, str]:
     matchday = matchday_repo.get_by_id(db, matchday_id)
     if matchday is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
@@ -1930,9 +1941,9 @@ def publish_matchday(
     matchday.status = MatchdayStatus.PUBLISHED
     db.add(matchday)
     db.commit()
-    recalculate_summary = ScoringService().recalculate(db)
+    background_tasks.add_task(run_scoring_recalculate_background)
     return {
         "status": "published",
         "matchday_id": matchday_id,
-        **recalculate_summary,
+        "recalculate_status": "recalculate_started",
     }
