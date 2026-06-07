@@ -1,8 +1,10 @@
 import { env } from "@/lib/env";
 
-const BACKEND_FETCH_TIMEOUT_MS = 15000;
+const BACKEND_FETCH_GET_TIMEOUT_MS = 15000;
+const BACKEND_FETCH_MUTATION_TIMEOUT_MS = 60000;
 const BACKEND_FETCH_RETRY_DELAY_MS = 350;
 const BACKEND_FETCH_MAX_ATTEMPTS = 2;
+const LOCAL_BACKEND_PATTERN = /(^https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/i;
 
 function normalizeHeaders(headers?: HeadersInit) {
   if (!headers) {
@@ -29,16 +31,33 @@ function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function isFrontendRunningLocally() {
+  if (typeof window === "undefined") return true;
+  return /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+}
+
+function isBackendMisconfiguredForDeployedFrontend() {
+  return !isFrontendRunningLocally() && LOCAL_BACKEND_PATTERN.test(env.apiBaseUrl);
+}
+
 export async function backendFetch<T>(
   path: string,
   accessToken?: string,
   init?: RequestInit,
 ): Promise<T> {
+  if (isBackendMisconfiguredForDeployedFrontend()) {
+    throw new Error(
+      "NEXT_PUBLIC_API_BASE_URL sigue apuntando a localhost. Configura la URL publica del backend y vuelve a desplegar el frontend.",
+    );
+  }
+
   const method = (init?.method ?? "GET").toUpperCase();
+  const timeoutMs =
+    method === "GET" ? BACKEND_FETCH_GET_TIMEOUT_MS : BACKEND_FETCH_MUTATION_TIMEOUT_MS;
 
   for (let attempt = 1; attempt <= BACKEND_FETCH_MAX_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), BACKEND_FETCH_TIMEOUT_MS);
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
     const headers: Record<string, string> = {
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),

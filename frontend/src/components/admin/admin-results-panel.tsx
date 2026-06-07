@@ -47,8 +47,12 @@ function isResultReady(result: AdminResultRow) {
   return result.is_ready_for_picks;
 }
 
+function shouldAutoMarkOfficial(nextHomeScore: string, nextAwayScore: string, currentDraft: ResultDraft) {
+  return !currentDraft.is_official && nextHomeScore !== "" && nextAwayScore !== "";
+}
+
 function getStatusPillClass(isPositive: boolean) {
-    return isPositive
+  return isPositive
     ? "inline-flex h-8 items-center justify-center rounded-[12px] border border-emerald-300/30 bg-emerald-400/16 px-3 text-[11px] font-semibold text-emerald-50"
     : "inline-flex h-8 items-center justify-center rounded-[12px] border border-red-300/35 bg-red-500/16 px-3 text-[11px] font-semibold text-red-50";
 }
@@ -173,20 +177,58 @@ export function AdminResultsPanel() {
     await loadResults(selectedMatchdayId, accessToken);
   }
 
-  async function handleSave(matchId: string) {
-    const draft = drafts[matchId];
+  function applySavedRows(savedRows: AdminResultRow[]) {
+    setResults((currentRows) =>
+      currentRows.map((currentRow) => {
+        const savedRow = savedRows.find((row) => row.match_id === currentRow.match_id);
+        return savedRow ?? currentRow;
+      }),
+    );
+    setDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      ...Object.fromEntries(savedRows.map((row) => [row.match_id, buildDraft(row)])),
+    }));
+  }
+
+  async function saveResultRow(row: AdminResultRow, draft: ResultDraft, accessToken: string) {
+    const selectedSeason = seasonById[selectedSeasonId] ?? null;
+    return backendFetch<AdminResultRow>(`/admin/results/${row.match_id}`, accessToken, {
+      method: "PUT",
+      body: JSON.stringify({
+        home_score: Number(draft.home_score),
+        away_score: Number(draft.away_score),
+        advancing_team_id: requiresAdvancingTeam(row, selectedSeason)
+          ? draft.advancing_team_id || null
+          : null,
+        is_official: draft.is_official,
+      }),
+    });
+  }
+
+  function getSaveValidationError(row: AdminResultRow, draft: ResultDraft | undefined) {
     if (!draft || draft.home_score === "" || draft.away_score === "") {
-      setError("Captura marcador local y visitante antes de guardar.");
-      return;
+      return "Captura marcador local y visitante antes de guardar.";
     }
-    const row = results.find((result) => result.match_id === matchId);
-    if (row && !isResultReady(row)) {
-      setError("Primero define ambos equipos antes de capturar resultado.");
-      return;
+    if (!isResultReady(row)) {
+      return "Primero define ambos equipos antes de capturar resultado.";
     }
     const selectedSeason = seasonById[selectedSeasonId] ?? null;
-    if (row && requiresAdvancingTeam(row, selectedSeason) && !draft.advancing_team_id) {
-      setError("En eliminatoria directa tambien debes seleccionar el equipo que avanza.");
+    if (requiresAdvancingTeam(row, selectedSeason) && !draft.advancing_team_id) {
+      return "En eliminatoria directa tambien debes seleccionar el equipo que avanza.";
+    }
+    return null;
+  }
+
+  async function handleSave(matchId: string) {
+    const draft = drafts[matchId];
+    const row = results.find((result) => result.match_id === matchId);
+    if (!row) {
+      setError("No se encontro el partido seleccionado.");
+      return;
+    }
+    const validationError = getSaveValidationError(row, draft);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
@@ -195,18 +237,14 @@ export function AdminResultsPanel() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      await backendFetch(`/admin/results/${matchId}`, accessToken, {
-        method: "PUT",
-        body: JSON.stringify({
-          home_score: Number(draft.home_score),
-          away_score: Number(draft.away_score),
-          advancing_team_id: row && requiresAdvancingTeam(row, selectedSeason) ? draft.advancing_team_id || null : null,
-          is_official: draft.is_official,
-        }),
-      });
-      await refreshCurrentRows(accessToken);
-      const currentRow = results.find((result) => result.match_id === matchId);
-      if (currentRow?.is_published) {
+      const savedRow = await saveResultRow(row, draft, accessToken);
+      applySavedRows([savedRow]);
+      try {
+        await refreshCurrentRows(accessToken);
+      } catch {
+        // The saved row is already reflected locally; a later reload can reconcile the full table.
+      }
+      if (savedRow.is_published) {
         setMessage("Resultado guardado. Esta jornada ya esta publicada, asi que el cambio ya es visible en la app.");
       } else {
         setMessage("Resultado guardado.");
@@ -318,12 +356,31 @@ export function AdminResultsPanel() {
       return;
     }
 
+    const rowsToSave = results.filter((row) => {
+      const draft = drafts[row.match_id];
+      if (!draft || draft.home_score === "" || draft.away_score === "") {
+        return false;
+      }
+      const savedDraft = buildDraft(row);
+      return (
+        draft.home_score !== savedDraft.home_score ||
+        draft.away_score !== savedDraft.away_score ||
+        draft.advancing_team_id !== savedDraft.advancing_team_id ||
+        draft.is_official !== savedDraft.is_official
+      );
+    });
+    const invalidRow = rowsToSave.find((row) => getSaveValidationError(row, drafts[row.match_id]));
+    if (invalidRow) {
+      setError(getSaveValidationError(invalidRow, drafts[invalidRow.match_id]));
+      return;
+    }
+
     const isAlreadyPublished =
       results.some((result) => result.is_published) || selectedMatchday?.status === "published";
     const confirmed = window.confirm(
       isAlreadyPublished
-        ? "Esta jornada ya estaba publicada. Si continuas, cualquier ajuste reciente quedara actualizado en la app. Continuar?"
-        : "Vas a publicar esta jornada en la app. Luego podras corregir resultados y esos cambios tambien se reflejaran. Continuar?",
+        ? "Esta jornada ya estaba publicada. Si continuas, se guardaran los marcadores editados y quedaran actualizados en la app. Continuar?"
+        : "Vas a publicar esta jornada en la app. Se guardaran primero los marcadores editados. Continuar?",
     );
     if (!confirmed) {
       return;
@@ -334,11 +391,21 @@ export function AdminResultsPanel() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
+      if (rowsToSave.length > 0) {
+        const savedRows = await Promise.all(
+          rowsToSave.map((row) => saveResultRow(row, drafts[row.match_id], accessToken)),
+        );
+        applySavedRows(savedRows);
+      }
       await backendFetch(`/admin/matchdays/${selectedMatchdayId}/publish`, accessToken, {
         method: "POST",
       });
       await refreshCurrentRows(accessToken);
-      setMessage(isAlreadyPublished ? "Publicacion actualizada." : "Jornada publicada.");
+      setMessage(
+        isAlreadyPublished
+          ? "Publicacion actualizada."
+          : "Jornada publicada.",
+      );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo publicar la jornada");
     } finally {
@@ -348,7 +415,9 @@ export function AdminResultsPanel() {
 
   const selectedMatchday = matchdayById[selectedMatchdayId];
   const selectedSeason = selectedMatchday ? seasonById[selectedMatchday.season_id] : null;
-  const officialCount = results.filter((result) => result.is_official).length;
+  const officialCount = results.filter(
+    (result) => drafts[result.match_id]?.is_official ?? result.is_official,
+  ).length;
   const publishedCount = results.filter((result) => result.is_published).length;
   const isSelectedMatchdayPublished =
     publishedCount > 0 || selectedMatchday?.status === "published";
@@ -517,7 +586,15 @@ export function AdminResultsPanel() {
                         min={0}
                         step={1}
                         value={draft.home_score}
-                        onChange={(event) => updateDraft(result.match_id, { home_score: event.target.value })}
+                        onChange={(event) => {
+                          const nextHomeScore = event.target.value;
+                          updateDraft(result.match_id, {
+                            home_score: nextHomeScore,
+                            is_official: shouldAutoMarkOfficial(nextHomeScore, draft.away_score, draft)
+                              ? true
+                              : draft.is_official,
+                          });
+                        }}
                         disabled={!result.is_ready_for_picks}
                         className={`${compactControlClass} w-20`}
                         placeholder="-"
@@ -530,7 +607,15 @@ export function AdminResultsPanel() {
                         min={0}
                         step={1}
                         value={draft.away_score}
-                        onChange={(event) => updateDraft(result.match_id, { away_score: event.target.value })}
+                        onChange={(event) => {
+                          const nextAwayScore = event.target.value;
+                          updateDraft(result.match_id, {
+                            away_score: nextAwayScore,
+                            is_official: shouldAutoMarkOfficial(draft.home_score, nextAwayScore, draft)
+                              ? true
+                              : draft.is_official,
+                          });
+                        }}
                         disabled={!result.is_ready_for_picks}
                         className={`${compactControlClass} w-20`}
                         placeholder="-"
