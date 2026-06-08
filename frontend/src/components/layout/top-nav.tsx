@@ -6,11 +6,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
+import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const canViewAdmin = useAdminVisibility();
+  const { buildHrefWithSeason } = useDashboardSeasonParam();
 
   async function handleSignOut() {
     const supabase = createSupabaseBrowserClient();
@@ -27,7 +29,7 @@ export function TopNav() {
         </Link>
         <nav className="flex items-center gap-3 text-sm text-steel">
           <Link
-            href="/dashboard"
+            href={buildHrefWithSeason("/dashboard")}
             prefetch={false}
             className={cn(
               "app-pill-ghost",
@@ -37,7 +39,7 @@ export function TopNav() {
             Dashboard
           </Link>
           <Link
-            href="/dashboard/picks"
+            href={buildHrefWithSeason("/dashboard/picks")}
             prefetch={false}
             className={cn(
               "app-pill-ghost",
@@ -47,7 +49,7 @@ export function TopNav() {
             Picks Center
           </Link>
           <Link
-            href="/dashboard/vip"
+            href={buildHrefWithSeason("/dashboard/vip")}
             prefetch={false}
             className={cn(
               "app-pill-ghost",
@@ -57,7 +59,7 @@ export function TopNav() {
             VIP
           </Link>
           <Link
-            href="/dashboard/leaderboard"
+            href={buildHrefWithSeason("/dashboard/leaderboard")}
             prefetch={false}
             className={cn(
               "app-pill-ghost",
@@ -68,7 +70,7 @@ export function TopNav() {
             Leaderboard
           </Link>
           <Link
-            href="/dashboard/settings"
+            href={buildHrefWithSeason("/dashboard/settings")}
             prefetch={false}
             className={cn(
               "app-pill-ghost",
@@ -79,7 +81,7 @@ export function TopNav() {
           </Link>
           {canViewAdmin ? (
             <Link
-              href="/dashboard/admin"
+              href={buildHrefWithSeason("/dashboard/admin")}
               prefetch={false}
               className={cn(
                 "app-pill-ghost",

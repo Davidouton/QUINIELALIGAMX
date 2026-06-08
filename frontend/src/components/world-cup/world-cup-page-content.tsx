@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import type { Season, WorldCupBoard, WorldCupBracketMatch } from "@/types/api";
 
@@ -61,6 +62,7 @@ function getAdvancingTeamName(match: WorldCupBracketMatch) {
 }
 
 export function WorldCupPageContent() {
+  const { competitionId, seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [board, setBoard] = useState<WorldCupBoard | null>(null);
@@ -83,8 +85,16 @@ export function WorldCupPageContent() {
           setError(null);
           return;
         }
-        const nextSeasonId = wcSeasons.find((season) => season.is_active)?.id ?? wcSeasons[0].id;
+        const nextSeason =
+          wcSeasons.find((season) => season.id === seasonIdParam) ??
+          wcSeasons.find((season) => season.is_active) ??
+          wcSeasons[0];
+        const nextSeasonId = nextSeason.id;
+        const nextCompetitionId = nextSeason.competition_id ?? "";
         setSelectedSeasonId(nextSeasonId);
+        if (seasonIdParam !== nextSeasonId || competitionId !== nextCompetitionId) {
+          setSeasonId(nextSeasonId, nextCompetitionId);
+        }
         const boardResponse = await backendFetch<WorldCupBoard>(`/world-cup/board?season_id=${nextSeasonId}`);
         setBoard(boardResponse);
         setError(null);
@@ -96,12 +106,14 @@ export function WorldCupPageContent() {
     }
 
     void loadInitial();
-  }, []);
+  }, [competitionId, seasonIdParam, setSeasonId]);
 
   async function handleSeasonChange(seasonId: string) {
     setSelectedSeasonId(seasonId);
     setLoading(true);
     try {
+      const selectedSeason = seasons.find((season) => season.id === seasonId);
+      setSeasonId(seasonId, selectedSeason?.competition_id ?? "");
       const boardResponse = await backendFetch<WorldCupBoard>(`/world-cup/board?season_id=${seasonId}`);
       setBoard(boardResponse);
       setError(null);
