@@ -6,7 +6,22 @@ from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session
 
 from app.core.datetime import ensure_utc
-from app.models.entities import Competition, Match, MatchResult, Matchday, Odds, PickSelection, Profile, ScoringRule, Season, SeasonMembership, Team, TournamentFormat, UserPick
+from app.models.entities import (
+    Competition,
+    Match,
+    MatchResult,
+    MatchStatus,
+    Matchday,
+    Odds,
+    PickSelection,
+    Profile,
+    ScoringRule,
+    Season,
+    SeasonMembership,
+    Team,
+    TournamentFormat,
+    UserPick,
+)
 from app.repositories.match_repository import MatchRepository
 from app.repositories.odds_repository import OddsRepository
 from app.repositories.pick_repository import PickRepository
@@ -292,7 +307,7 @@ class PickService:
                     group_label=match.group_label,
                     bracket_slot=match.bracket_slot,
                     kickoff_at=match.kickoff_at,
-                    is_locked=now >= ensure_utc(match.picks_lock_at),
+                    is_locked=self._is_match_locked(db, match, now),
                     is_ready_for_picks=self._match_has_confirmed_teams(match),
                     spread_home_line=odds.spread_home_line if odds is not None else None,
                     spread_away_line=odds.spread_away_line if odds is not None else None,
@@ -401,6 +416,7 @@ class PickService:
         for match in matches:
             home_team = teams.get(match.home_team_id)
             away_team = teams.get(match.away_team_id)
+            is_locked = self._is_match_locked(db, match, now)
             for player in players:
                 pick = pick_map.get((player.id, match.id))
                 result_rows.append(
@@ -423,7 +439,7 @@ class PickService:
                         picks_lock_at=match.picks_lock_at,
                         match_status=match.status,
                         has_pick=pick is not None,
-                        is_locked=now >= ensure_utc(match.picks_lock_at),
+                        is_locked=is_locked,
                         is_ready_for_picks=self._match_has_confirmed_teams(match),
                         selection=pick.selection if pick is not None else None,
                         spread_selection=pick.spread_selection if pick is not None else None,
@@ -517,7 +533,7 @@ class PickService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Este partido todavia no tiene a los dos equipos definidos",
             )
-        if datetime.now(UTC) >= ensure_utc(match.picks_lock_at):
+        if self._is_match_locked(db, match):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pick window closed")
         return match
 
@@ -682,7 +698,7 @@ class PickService:
             home_placeholder=match.home_placeholder,
             away_placeholder=match.away_placeholder,
             kickoff_at=match.kickoff_at,
-            is_locked=datetime.now(UTC) >= ensure_utc(match.picks_lock_at),
+            is_locked=self._is_match_locked(db, match),
             is_ready_for_picks=self._match_has_confirmed_teams(match),
             is_admin_override=pick.is_admin_override,
             admin_override_note=pick.admin_override_note,
@@ -692,6 +708,22 @@ class PickService:
             created_at=pick.created_at,
             updated_at=pick.updated_at,
         )
+
+    def _is_match_locked(self, db: Session, match: Match, now: datetime | None = None) -> bool:
+        return (
+            match.status == MatchStatus.FINAL
+            or self._match_has_official_result(db, match.id)
+            or (now or datetime.now(UTC)) >= ensure_utc(match.picks_lock_at)
+        )
+
+    @staticmethod
+    def _match_has_official_result(db: Session, match_id: str) -> bool:
+        return db.scalar(
+            select(MatchResult.id).where(
+                MatchResult.match_id == match_id,
+                MatchResult.is_official.is_(True),
+            )
+        ) is not None
 
     def _load_rules(self, db: Session) -> dict[str, int]:
         stored_rules = {

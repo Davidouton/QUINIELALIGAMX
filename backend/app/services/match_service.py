@@ -6,7 +6,17 @@ from sqlalchemy.orm import Session
 
 from app.core.match_keys import build_match_key
 from app.core.datetime import ensure_utc
-from app.models.entities import Match, MatchStageType, Matchday, Odds, Team, WorldCupGroup, WorldCupGroupTeam
+from app.models.entities import (
+    Match,
+    MatchResult,
+    MatchStageType,
+    MatchStatus,
+    Matchday,
+    Odds,
+    Team,
+    WorldCupGroup,
+    WorldCupGroupTeam,
+)
 from app.repositories.match_repository import MatchRepository
 from app.repositories.odds_repository import OddsRepository
 from app.schemas.match import MatchOut
@@ -19,10 +29,19 @@ class MatchService:
 
     def list_matches(self, db: Session, matchday_id: str | None = None) -> list[MatchOut]:
         matches = self.repo.list_matches(db, matchday_id=matchday_id)
+        match_ids = [match.id for match in matches]
         latest_odds_by_match_id = self.odds_repo.list_latest_by_match_ids(
             db,
-            [match.id for match in matches],
+            match_ids,
         )
+        official_result_match_ids = set(
+            db.scalars(
+                select(MatchResult.match_id).where(
+                    MatchResult.match_id.in_(match_ids),
+                    MatchResult.is_official.is_(True),
+                )
+            )
+        ) if match_ids else set()
         inferred_group_labels = self._infer_group_labels(db, matches)
         return [
             self._to_match_out(
@@ -30,6 +49,7 @@ class MatchService:
                 match,
                 latest_odds_by_match_id.get(match.id),
                 inferred_group_label=inferred_group_labels.get(match.id),
+                has_official_result=match.id in official_result_match_ids,
             )
             for match in matches
         ]
@@ -40,11 +60,18 @@ class MatchService:
             return None
         latest_odds_by_match_id = self.odds_repo.list_latest_by_match_ids(db, [match.id])
         inferred_group_labels = self._infer_group_labels(db, [match])
+        has_official_result = db.scalar(
+            select(MatchResult.id).where(
+                MatchResult.match_id == match.id,
+                MatchResult.is_official.is_(True),
+            )
+        ) is not None
         return self._to_match_out(
             db,
             match,
             latest_odds_by_match_id.get(match.id),
             inferred_group_label=inferred_group_labels.get(match.id),
+            has_official_result=has_official_result,
         )
 
     def _to_match_out(
@@ -54,6 +81,7 @@ class MatchService:
         odds: Odds | None = None,
         *,
         inferred_group_label: str | None = None,
+        has_official_result: bool = False,
     ) -> MatchOut:
         home_team = db.get(Team, match.home_team_id) if match.home_team_id else None
         away_team = db.get(Team, match.away_team_id) if match.away_team_id else None
@@ -82,7 +110,7 @@ class MatchService:
             picks_lock_at=match.picks_lock_at,
             status=match.status,
             venue=match.venue,
-            is_locked=now >= ensure_utc(match.picks_lock_at),
+            is_locked=self._is_match_locked(match, has_official_result, now),
             is_ready_for_picks=is_ready_for_picks,
             odds_provider_name=odds.provider_name if odds else None,
             spread_home_line=odds.spread_home_line if odds else None,
@@ -90,6 +118,14 @@ class MatchService:
             home_win_probability=home_probability,
             draw_probability=draw_probability,
             away_win_probability=away_probability,
+        )
+
+    @staticmethod
+    def _is_match_locked(match: Match, has_official_result: bool, now: datetime) -> bool:
+        return (
+            match.status == MatchStatus.FINAL
+            or has_official_result
+            or now >= ensure_utc(match.picks_lock_at)
         )
 
     def _infer_group_labels(self, db: Session, matches: list[Match]) -> dict[str, str]:
