@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
@@ -26,52 +26,68 @@ export function LeaderboardPageContent() {
   const [loading, setLoading] = useState(true);
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
+  const loadLeaderboard = useCallback(async () => {
+    setLoading(true);
+    try {
+      const accessToken = await getBrowserAccessToken();
+
+      const [activeMatchdays, seasons] = await Promise.all([
+        backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
+        backendFetch<Season[]>("/seasons", accessToken),
+      ]);
+      const selectedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+      const overall =
+        selectedSeason
+          ? await backendFetch<LeaderboardEntry[]>(
+              `/leaderboard/overall?season_id=${selectedSeason.id}`,
+              accessToken,
+            )
+          : [];
+      const activeMatchday =
+        (selectedSeason
+          ? activeMatchdays.find((matchday) => matchday.season_id === selectedSeason.id) ??
+            filterMatchdaysBySeason(activeMatchdays, selectedSeason.id)[0] ??
+            null
+          : null);
+
+      if (selectedSeason && selectedSeason.id !== seasonIdParam) {
+        setSeasonId(selectedSeason.id, selectedSeason.competition_id ?? "");
+      }
+
+      setState({
+        activeMatchday,
+        selectedSeason,
+        overall,
+        error: null,
+      });
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "No se pudo cargar la tabla general",
+      }));
+    } finally {
+      setLoading(false);
+    }
+  }, [competitionId, seasonIdParam, setSeasonId]);
+
   useEffect(() => {
-    async function loadLeaderboard() {
-      try {
-        const accessToken = await getBrowserAccessToken();
+    void loadLeaderboard();
+  }, [loadLeaderboard]);
 
-        const [activeMatchdays, seasons] = await Promise.all([
-          backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
-          backendFetch<Season[]>("/seasons", accessToken),
-        ]);
-        const selectedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
-        const overall =
-          selectedSeason
-            ? await backendFetch<LeaderboardEntry[]>(
-                `/leaderboard/overall?season_id=${selectedSeason.id}`,
-                accessToken,
-              )
-            : [];
-        const activeMatchday =
-          (selectedSeason
-            ? activeMatchdays.find((matchday) => matchday.season_id === selectedSeason.id) ??
-              filterMatchdaysBySeason(activeMatchdays, selectedSeason.id)[0] ??
-              null
-            : null);
-
-        if (selectedSeason && selectedSeason.id !== seasonIdParam) {
-          setSeasonId(selectedSeason.id, selectedSeason.competition_id ?? "");
-        }
-
-        setState({
-          activeMatchday,
-          selectedSeason,
-          overall,
-          error: null,
-        });
-      } catch (error) {
-        setState((current) => ({
-          ...current,
-          error: error instanceof Error ? error.message : "No se pudo cargar la tabla general",
-        }));
-      } finally {
-        setLoading(false);
+  useEffect(() => {
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadLeaderboard();
       }
     }
 
-    void loadLeaderboard();
-  }, [competitionId, seasonIdParam, setSeasonId]);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [loadLeaderboard]);
 
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando tabla general...</p>;
@@ -91,6 +107,14 @@ export function LeaderboardPageContent() {
               {state.selectedSeason ? `Tabla general de ${state.selectedSeason.name}` : "Tabla general del torneo"}
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => void loadLeaderboard()}
+            disabled={loading}
+            className="app-pill h-10 px-4 text-xs font-semibold disabled:opacity-60 xl:hidden"
+          >
+            {loading ? "Actualizando..." : "Actualizar tabla"}
+          </button>
           <div className="grid gap-4 sm:grid-cols-3 xl:min-w-[520px]">
             <div className="space-y-1">
               <p className="text-[10px] uppercase tracking-[0.24em] text-steel">Lider</p>
@@ -115,7 +139,17 @@ export function LeaderboardPageContent() {
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-4">
           <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Tabla general</p>
-          <p className="text-xs text-steel">{state.overall.length} participantes</p>
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-steel">{state.overall.length} participantes</p>
+            <button
+              type="button"
+              onClick={() => void loadLeaderboard()}
+              disabled={loading}
+              className="app-pill hidden h-9 px-4 text-xs font-semibold disabled:opacity-60 xl:inline-flex"
+            >
+              {loading ? "Actualizando..." : "Actualizar tabla"}
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
