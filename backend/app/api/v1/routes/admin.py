@@ -895,6 +895,7 @@ def update_user_billing(
 def upsert_user_season_membership(
     profile_id: str,
     payload: UserSeasonMembershipUpdateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminUserOut:
@@ -932,6 +933,7 @@ def upsert_user_season_membership(
         membership.eligible_locked_at = None
     season_membership_repo.save(db, membership)
     db.commit()
+    background_tasks.add_task(run_scoring_recalculate_background)
     return build_admin_user_out(db, profile, season)
 
 
