@@ -546,33 +546,34 @@ export function AdminVipPanel() {
                 </div>
               </div>
               {approvedMemberships.length > 0 ? (
-                <div className="space-y-3">
+                <div className="overflow-x-auto rounded-[8px] border border-white/[0.06]">
+                  <div className="grid min-w-[520px] grid-cols-[minmax(0,1fr)_120px_160px] gap-3 border-b border-white/[0.06] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-steel">
+                    <span>Jugador</span>
+                    <span>Pago</span>
+                    <span className="text-right">Acciones</span>
+                  </div>
                   {approvedMemberships.map((membership) => (
                     <div
                       key={membership.id}
-                      className="flex flex-col gap-3 rounded-[12px] border border-white/[0.06] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
+                      className="grid min-w-[520px] grid-cols-[minmax(0,1fr)_120px_160px] items-center gap-3 border-b border-white/[0.04] px-4 py-3 last:border-b-0"
                     >
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-semibold text-ink">{membership.display_name}</p>
-                          <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
-                            membership.is_paid
-                              ? "bg-mint/15 text-mint"
-                              : "bg-amber-400/15 text-amber-100"
-                          }`}>
-                            {getPaymentLabel(membership.is_paid)}
-                          </span>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-ink">{membership.display_name}</p>
                         <p className="mt-1 text-xs text-steel">
                           Miembro aprobado de {selectedVip.name}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <span className={`text-sm font-semibold ${membership.is_paid ? "text-mint" : "text-amber-100"}`}>
+                        {getPaymentLabel(membership.is_paid)}
+                      </span>
+                      <div className="flex justify-end gap-3">
                         <button
                           type="button"
                           disabled={processingMembershipId === membership.id}
                           onClick={() => void handleToggleVipPayment(membership.id, membership.is_paid)}
-                          className={`app-pill px-3 ${membership.is_paid ? "text-coral" : "text-mint"}`}
+                          className={`text-sm font-semibold transition disabled:opacity-50 ${
+                            membership.is_paid ? "text-coral hover:text-coral/80" : "text-mint hover:text-mint/80"
+                          }`}
                         >
                           {processingMembershipId === membership.id
                             ? "..."
@@ -584,7 +585,7 @@ export function AdminVipPanel() {
                           type="button"
                           disabled={processingMembershipId === membership.id}
                           onClick={() => void handleDecision(membership.id, "remove")}
-                          className="app-pill px-3 text-coral"
+                          className="text-sm font-semibold text-coral transition hover:text-coral/80 disabled:opacity-50"
                         >
                           {processingMembershipId === membership.id ? "Sacando..." : "Sacar"}
                         </button>
