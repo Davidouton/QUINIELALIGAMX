@@ -239,7 +239,7 @@ export function AdminVipPanel() {
         `/admin/vip/${selectedVip.id}/memberships/${membershipId}/payment`,
         accessToken,
         {
-          method: "POST",
+          method: "PUT",
           body: JSON.stringify({ is_paid: !isPaid }),
         },
       );

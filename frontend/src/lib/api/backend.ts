@@ -31,6 +31,19 @@ function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function getErrorMessage(errorText: string) {
+  if (!errorText) return "Backend request failed";
+  try {
+    const parsed = JSON.parse(errorText) as { detail?: unknown };
+    if (typeof parsed.detail === "string") {
+      return parsed.detail;
+    }
+  } catch {
+    // Keep the raw backend text when it is not JSON.
+  }
+  return errorText;
+}
+
 function isFrontendRunningLocally() {
   if (typeof window === "undefined") return true;
   return /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
@@ -95,7 +108,7 @@ export async function backendFetch<T>(
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(errorText || "Backend request failed");
+      throw new Error(getErrorMessage(errorText));
     }
 
     return response.json() as Promise<T>;
