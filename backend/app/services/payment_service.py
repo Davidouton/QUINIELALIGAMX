@@ -584,6 +584,7 @@ class PaymentService:
                 requested_at=now,
             )
         membership.status = VipMembershipStatus.APPROVED
+        membership.is_paid = True
         membership.decided_at = now
         membership.admin_note = "Pago confirmado via Stripe"
         db.add(membership)

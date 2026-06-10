@@ -26,6 +26,7 @@ class VipMembershipOut(BaseModel):
     profile_id: str
     display_name: str
     status: VipMembershipStatus
+    is_paid: bool = False
     requested_at: datetime
     decided_at: datetime | None = None
     decided_by_profile_id: str | None = None
@@ -82,6 +83,11 @@ class AdminVipUpsertRequest(BaseModel):
 
 
 class AdminVipMembershipDecisionRequest(BaseModel):
+    admin_note: str | None = None
+
+
+class AdminVipMembershipPaymentRequest(BaseModel):
+    is_paid: bool
     admin_note: str | None = None
 
 

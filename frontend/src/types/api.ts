@@ -238,6 +238,7 @@ export interface VipMembership {
   profile_id: string;
   display_name: string;
   status: VipMembershipStatus;
+  is_paid: boolean;
   requested_at: string;
   decided_at: string | null;
   decided_by_profile_id: string | null;

@@ -575,6 +575,7 @@ class VipMembership(Base):
         nullable=False,
         index=True,
     )
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by_profile_id: Mapped[str | None] = mapped_column(

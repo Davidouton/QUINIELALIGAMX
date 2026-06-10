@@ -542,6 +542,7 @@ def run_startup_migrations() -> None:
                       vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
                       profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
                       status VARCHAR(24) NOT NULL DEFAULT 'pending',
+                      is_paid BOOLEAN NOT NULL DEFAULT FALSE,
                       requested_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                       decided_at TIMESTAMP WITH TIME ZONE,
                       decided_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
@@ -559,6 +560,12 @@ def run_startup_migrations() -> None:
                     "ON vip_memberships(vip_competition_id, profile_id)"
                 )
             )
+        else:
+            vip_membership_column_names = {column["name"] for column in inspector.get_columns("vip_memberships")}
+            if "is_paid" not in vip_membership_column_names:
+                connection.execute(
+                    text("ALTER TABLE vip_memberships ADD COLUMN is_paid BOOLEAN NOT NULL DEFAULT FALSE")
+                )
 
         if "pricing_rules" not in table_names:
             connection.execute(

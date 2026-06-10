@@ -38,6 +38,10 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
+function getPaymentLabel(isPaid: boolean) {
+  return isPaid ? "Pagado" : "Pendiente";
+}
+
 function toFormState(vip: AdminVipCompetition | null, seasons: Season[]): FormState {
   if (!vip) {
     return {
@@ -213,6 +217,32 @@ export function AdminVipPanel() {
       );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la membresia VIP");
+    } finally {
+      setProcessingMembershipId(null);
+    }
+  }
+
+  async function handleToggleVipPayment(membershipId: string, isPaid: boolean) {
+    if (!selectedVip) {
+      return;
+    }
+    setProcessingMembershipId(membershipId);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const updatedVip = await backendFetch<AdminVipCompetition>(
+        `/admin/vip/${selectedVip.id}/memberships/${membershipId}/payment`,
+        accessToken,
+        {
+          method: "PUT",
+          body: JSON.stringify({ is_paid: !isPaid }),
+        },
+      );
+      setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+      setMessage(!isPaid ? "Pago VIP confirmado." : "Pago VIP marcado pendiente.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar el pago VIP");
     } finally {
       setProcessingMembershipId(null);
     }
@@ -519,19 +549,42 @@ export function AdminVipPanel() {
                       className="flex flex-col gap-3 rounded-[12px] border border-white/[0.06] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
                     >
                       <div>
-                        <p className="text-sm font-semibold text-ink">{membership.display_name}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-ink">{membership.display_name}</p>
+                          <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                            membership.is_paid
+                              ? "bg-mint/15 text-mint"
+                              : "bg-amber-400/15 text-amber-100"
+                          }`}>
+                            {getPaymentLabel(membership.is_paid)}
+                          </span>
+                        </div>
                         <p className="mt-1 text-xs text-steel">
                           Miembro aprobado de {selectedVip.name}
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        disabled={processingMembershipId === membership.id}
-                        onClick={() => void handleDecision(membership.id, "remove")}
-                        className="app-pill px-3 text-coral"
-                      >
-                        {processingMembershipId === membership.id ? "Sacando..." : "Sacar"}
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={processingMembershipId === membership.id}
+                          onClick={() => void handleToggleVipPayment(membership.id, membership.is_paid)}
+                          className={`app-pill px-3 ${membership.is_paid ? "text-coral" : "text-mint"}`}
+                        >
+                          {processingMembershipId === membership.id
+                            ? "..."
+                            : membership.is_paid
+                              ? "Pago pend."
+                              : "Marcar pag."}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={processingMembershipId === membership.id}
+                          onClick={() => void handleDecision(membership.id, "remove")}
+                          className="app-pill px-3 text-coral"
+                        >
+                          {processingMembershipId === membership.id ? "Sacando..." : "Sacar"}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

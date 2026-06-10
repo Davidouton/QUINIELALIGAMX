@@ -94,6 +94,7 @@ from app.schemas.team import TeamOut
 from app.schemas.vip import (
     AdminVipCompetitionOut,
     AdminVipMembershipDecisionRequest,
+    AdminVipMembershipPaymentRequest,
     AdminVipUpsertRequest,
 )
 from app.services.match_service import MatchService
@@ -2056,6 +2057,24 @@ def remove_admin_vip_membership(
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
     vip_service.remove_membership(
+        db,
+        vip_id=vip_id,
+        membership_id=membership_id,
+        current_profile=current_profile,
+        payload=payload,
+    )
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+
+
+@router.put("/vip/{vip_id}/memberships/{membership_id}/payment", response_model=AdminVipCompetitionOut)
+def update_admin_vip_membership_payment(
+    vip_id: str,
+    membership_id: str,
+    payload: AdminVipMembershipPaymentRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.update_membership_payment(
         db,
         vip_id=vip_id,
         membership_id=membership_id,

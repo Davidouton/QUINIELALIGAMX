@@ -304,6 +304,65 @@ def test_admin_can_remove_approved_vip_member(admin_client: TestClient) -> None:
     assert removed_membership["admin_note"] == "Pago reversado"
 
 
+def test_admin_can_track_vip_member_payment(admin_client: TestClient) -> None:
+    create_response = admin_client.post(
+        "/api/v1/admin/vip",
+        json={
+            "name": "VIP Pagos",
+            "entry_fee_amount": 500,
+            "admin_commission_pct": 0,
+            "first_place_pct": 100,
+            "second_place_pct": 0,
+            "third_place_pct": 0,
+            "matchday_ids": [MATCHDAY_ID],
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_response.status_code == 201
+    vip_id = create_response.json()["id"]
+
+    db = SessionLocal()
+    try:
+        membership = VipMembership(
+            vip_competition_id=vip_id,
+            profile_id=PROFILE_LEADER_ID,
+            status=VipMembershipStatus.APPROVED,
+            is_paid=False,
+        )
+        db.add(membership)
+        db.commit()
+        membership_id = membership.id
+    finally:
+        db.close()
+
+    paid_response = admin_client.put(
+        f"/api/v1/admin/vip/{vip_id}/memberships/{membership_id}/payment",
+        json={"is_paid": True},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert paid_response.status_code == 200
+    paid_membership = next(
+        membership for membership in paid_response.json()["memberships"] if membership["id"] == membership_id
+    )
+    assert paid_membership["is_paid"] is True
+    assert paid_membership["admin_note"] == "Pago VIP confirmado por admin"
+
+    pending_response = admin_client.put(
+        f"/api/v1/admin/vip/{vip_id}/memberships/{membership_id}/payment",
+        json={"is_paid": False, "admin_note": "Pendiente transferencia"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert pending_response.status_code == 200
+    pending_membership = next(
+        membership for membership in pending_response.json()["memberships"] if membership["id"] == membership_id
+    )
+    assert pending_membership["is_paid"] is False
+    assert pending_membership["admin_note"] == "Pendiente transferencia"
+
+
 def test_admin_cannot_create_vip_with_prize_split_over_100(admin_client: TestClient) -> None:
     response = admin_client.post(
         "/api/v1/admin/vip",
