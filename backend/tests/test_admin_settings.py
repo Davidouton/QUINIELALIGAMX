@@ -317,6 +317,38 @@ def test_admin_can_bulk_create_users_with_passwords(
     assert membership.is_paid is True
 
 
+def test_admin_bulk_import_updates_existing_user_password(
+    admin_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, str]] = []
+
+    class FakeSupabaseAdminService:
+        def update_user_password(self, *, auth_user_id: str, password: str) -> None:
+            calls.append((auth_user_id, password))
+
+    monkeypatch.setattr(admin_routes, "supabase_admin_service", FakeSupabaseAdminService())
+
+    response = admin_client.post(
+        "/api/v1/admin/users/bulk",
+        json={
+            "season_id": SEASON_ID,
+            "send_invites": False,
+            "csv_text": (
+                "email,display_name,password,is_paid,modality,notes\n"
+                "user@example.com,Usuario Existente,nueva123,true,pre_pago,Reset bulk\n"
+            ),
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created_or_updated"] == 1
+    assert payload["failed"] == 0
+    assert calls == [("11111111-1111-1111-1111-111111111111", "nueva123")]
+
+
 def test_admin_can_update_user_billing_modality_and_aval(admin_client: TestClient) -> None:
     response = admin_client.put(
         f"/api/v1/admin/users/{PROFILE_USER_ID}/billing",

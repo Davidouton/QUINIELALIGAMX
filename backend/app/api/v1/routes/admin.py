@@ -946,6 +946,14 @@ def create_or_update_admin_user(
             profile = profile_repo.create_from_auth_user(db, auth_user)
     else:
         profile = existing_profile
+        if payload.password:
+            try:
+                supabase_admin_service.update_user_password(
+                    auth_user_id=profile.auth_user_id,
+                    password=payload.password,
+                )
+            except SupabaseAdminError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if aval_profile_id == profile.id:
         raise HTTPException(
