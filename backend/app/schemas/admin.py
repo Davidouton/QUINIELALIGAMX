@@ -42,6 +42,26 @@ class AdminUserPasswordUpdateRequest(BaseModel):
     password: str = Field(min_length=6, max_length=72)
 
 
+class AdminUserBulkCreateRequest(BaseModel):
+    season_id: str
+    csv_text: str = Field(min_length=1)
+    send_invites: bool = False
+
+
+class AdminUserBulkCreateRowOut(BaseModel):
+    row_number: int
+    email: str | None = None
+    display_name: str | None = None
+    status: str
+    detail: str | None = None
+
+
+class AdminUserBulkCreateResponse(BaseModel):
+    created_or_updated: int
+    failed: int
+    rows: list[AdminUserBulkCreateRowOut]
+
+
 class UserSeasonMembershipUpdateRequest(BaseModel):
     season_id: str
     is_active: bool = False

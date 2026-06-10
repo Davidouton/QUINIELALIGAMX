@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 import re
 import subprocess
@@ -7,6 +9,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import delete, func, inspect, select, text
 from sqlalchemy.orm import Session
 
@@ -49,6 +52,9 @@ from app.schemas.admin import (
     AdminResultUpdateRequest,
     AdminSettingsOut,
     AdminSettingsUpdateRequest,
+    AdminUserBulkCreateRequest,
+    AdminUserBulkCreateResponse,
+    AdminUserBulkCreateRowOut,
     AdminUserBillingUpdateRequest,
     AdminUserCreateRequest,
     AdminUserOut,
@@ -844,9 +850,57 @@ def list_users(
     return [build_admin_user_out(db, profile, season) for profile in profile_repo.list_all(db)]
 
 
-@router.post("/users", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)
-def create_user(
+def _get_csv_value(row: dict[str, str | None], *keys: str) -> str | None:
+    normalized = {
+        str(key).strip().lower(): value
+        for key, value in row.items()
+        if key is not None
+    }
+    for key in keys:
+        value = normalized.get(key)
+        if value is not None and value.strip():
+            return value.strip()
+    return None
+
+
+def _parse_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "si", "sí", "yes", "y", "pagado"}
+
+
+def _bulk_payload_from_row(
+    row: dict[str, str | None],
+    *,
+    season_id: str,
+    send_invites: bool,
+) -> AdminUserCreateRequest:
+    email = _get_csv_value(row, "email", "correo", "mail")
+    display_name = _get_csv_value(row, "display_name", "nombre", "name", "usuario")
+    password = _get_csv_value(row, "password", "clave", "contrasena", "contraseña")
+    if not email:
+        raise ValueError("Falta email")
+    if not display_name:
+        raise ValueError("Falta display_name/nombre")
+    if not password and not send_invites:
+        raise ValueError("Falta password; activa invitaciones si quieres enviar correo")
+
+    return AdminUserCreateRequest(
+        email=email or "",
+        display_name=display_name or "",
+        password=password,
+        season_id=season_id,
+        is_active=_parse_bool(_get_csv_value(row, "is_active", "activo", "alta"), True),
+        is_paid=_parse_bool(_get_csv_value(row, "is_paid", "pagado", "paid"), False),
+        modality=_get_csv_value(row, "modality", "modalidad") or "pre_pago",
+        aval_profile_id=_get_csv_value(row, "aval_profile_id", "aval_id"),
+        notes=_get_csv_value(row, "notes", "notas", "nota"),
+    )
+
+
+def create_or_update_admin_user(
     payload: AdminUserCreateRequest,
+    *,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminUserOut:
@@ -932,6 +986,75 @@ def create_user(
     db.commit()
     db.refresh(profile)
     return build_admin_user_out(db, profile, season)
+
+
+@router.post("/users", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: AdminUserCreateRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminUserOut:
+    return create_or_update_admin_user(payload, db=db, current_profile=current_profile)
+
+
+@router.post("/users/bulk", response_model=AdminUserBulkCreateResponse)
+def bulk_create_users(
+    payload: AdminUserBulkCreateRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminUserBulkCreateResponse:
+    season = season_repo.get_by_id(db, payload.season_id)
+    if season is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+
+    reader = csv.DictReader(io.StringIO(payload.csv_text.strip()))
+    if not reader.fieldnames:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV sin encabezados")
+
+    rows: list[AdminUserBulkCreateRowOut] = []
+    created_or_updated = 0
+    for index, raw_row in enumerate(reader, start=2):
+        email = _get_csv_value(raw_row, "email", "correo", "mail")
+        display_name = _get_csv_value(raw_row, "display_name", "nombre", "name", "usuario")
+        try:
+            user_payload = _bulk_payload_from_row(
+                raw_row,
+                season_id=payload.season_id,
+                send_invites=payload.send_invites,
+            )
+            created = create_or_update_admin_user(
+                user_payload,
+                db=db,
+                current_profile=current_profile,
+            )
+            created_or_updated += 1
+            rows.append(
+                AdminUserBulkCreateRowOut(
+                    row_number=index,
+                    email=created.email,
+                    display_name=created.display_name,
+                    status="ok",
+                    detail="Creado o actualizado",
+                )
+            )
+        except (HTTPException, ValueError, ValidationError) as exc:
+            db.rollback()
+            detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+            rows.append(
+                AdminUserBulkCreateRowOut(
+                    row_number=index,
+                    email=email,
+                    display_name=display_name,
+                    status="error",
+                    detail=str(detail),
+                )
+            )
+
+    return AdminUserBulkCreateResponse(
+        created_or_updated=created_or_updated,
+        failed=len(rows) - created_or_updated,
+        rows=rows,
+    )
 
 
 @router.put("/users/{profile_id}/access", response_model=AdminUserOut)

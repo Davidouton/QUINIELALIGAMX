@@ -16,6 +16,20 @@ type PasswordDraft = {
   password: string;
 };
 
+type BulkImportRow = {
+  row_number: number;
+  email: string | null;
+  display_name: string | null;
+  status: string;
+  detail: string | null;
+};
+
+type BulkImportResponse = {
+  created_or_updated: number;
+  failed: number;
+  rows: BulkImportRow[];
+};
+
 type NewUserDraft = {
   email: string;
   display_name: string;
@@ -96,6 +110,9 @@ export function AdminUsersPanel() {
   const [billingDrafts, setBillingDrafts] = useState<Record<string, BillingDraft>>({});
   const [passwordDrafts, setPasswordDrafts] = useState<Record<string, PasswordDraft>>({});
   const [newUserDraft, setNewUserDraft] = useState<NewUserDraft>(initialNewUserDraft);
+  const [bulkCsv, setBulkCsv] = useState("");
+  const [bulkSendInvites, setBulkSendInvites] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkImportResponse | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -407,6 +424,46 @@ export function AdminUsersPanel() {
     }
   }
 
+  async function handleBulkImport() {
+    if (!selectedSeasonId) {
+      setError("Selecciona un torneo primero.");
+      return;
+    }
+    if (!bulkCsv.trim()) {
+      setError("Pega un CSV con usuarios antes de importar.");
+      return;
+    }
+
+    setSavingKey("bulk-users");
+    setError(null);
+    setMessage(null);
+    setBulkResult(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const result = await backendFetch<BulkImportResponse>("/admin/users/bulk", accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          season_id: selectedSeasonId,
+          csv_text: bulkCsv,
+          send_invites: bulkSendInvites,
+        }),
+      });
+      setBulkResult(result);
+      await loadUsers(selectedSeasonId, accessToken);
+      setMessage(
+        `Bulk terminado: ${result.created_or_updated} usuario${
+          result.created_or_updated === 1 ? "" : "s"
+        } creado${result.created_or_updated === 1 ? "" : "s"} o actualizado${
+          result.failed > 0 ? `, ${result.failed} con error` : ""
+        }.`,
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo importar el CSV");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) ?? null;
   const activeCount = users.filter((user) => user.selected_season_membership?.is_active).length;
   const paidCount = users.filter((user) => user.selected_season_membership?.is_paid).length;
@@ -563,6 +620,62 @@ export function AdminUsersPanel() {
             </button>
           </div>
         </div>
+
+        <div className="grid gap-3 px-2 py-3 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Bulk CSV</span>
+            <textarea
+              value={bulkCsv}
+              onChange={(event) => setBulkCsv(event.target.value)}
+              placeholder={
+                "email,display_name,password,is_paid,modality,notes\nusuario@correo.com,Usuario Demo,temporal123,true,pre_pago,Alta inicial"
+              }
+              className="field-control min-h-[118px] resize-y font-mono text-[12px]"
+            />
+          </label>
+          <div className="flex flex-col gap-2">
+            <label className="flex min-h-10 items-center gap-2 text-sm text-steel">
+              <input
+                checked={bulkSendInvites}
+                onChange={(event) => setBulkSendInvites(event.target.checked)}
+                type="checkbox"
+                className="h-4 w-4 accent-emerald-400"
+              />
+              Invitar filas sin password
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleBulkImport()}
+              disabled={savingKey === "bulk-users" || loading || !selectedSeasonId || !bulkCsv.trim()}
+              className={actionPositiveClass}
+            >
+              {savingKey === "bulk-users" ? "Importando..." : "Importar CSV"}
+            </button>
+            <p className="text-[10px] leading-4 text-steel/80">
+              Columnas: email, display_name, password, is_paid, modality, notes.
+            </p>
+          </div>
+        </div>
+
+        {bulkResult ? (
+          <div className="px-2 text-left text-[11px] text-steel">
+            <p className="font-semibold text-ink">
+              Resultado bulk: {bulkResult.created_or_updated} OK / {bulkResult.failed} errores
+            </p>
+            {bulkResult.rows.filter((row) => row.status === "error").length > 0 ? (
+              <div className="mt-2 grid gap-1">
+                {bulkResult.rows
+                  .filter((row) => row.status === "error")
+                  .slice(0, 8)
+                  .map((row) => (
+                    <p key={`${row.row_number}-${row.email ?? "sin-email"}`} className="text-coral">
+                      Fila {row.row_number}: {row.email ?? row.display_name ?? "sin datos"} - {row.detail}
+                    </p>
+                  ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

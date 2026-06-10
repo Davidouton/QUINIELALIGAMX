@@ -266,6 +266,57 @@ def test_admin_can_update_user_password(
     assert calls == [("11111111-1111-1111-1111-111111111111", "temporal123")]
 
 
+def test_admin_can_bulk_create_users_with_passwords(
+    admin_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSupabaseAdminService:
+        def create_user(self, *, email: str, display_name: str, password: str) -> AuthUser:
+            return AuthUser(
+                auth_user_id="30000000-0000-0000-0000-000000000002",
+                email=email,
+                raw_claims={"user_metadata": {"display_name": display_name}},
+            )
+
+    monkeypatch.setattr(admin_routes, "supabase_admin_service", FakeSupabaseAdminService())
+
+    response = admin_client.post(
+        "/api/v1/admin/users/bulk",
+        json={
+            "season_id": SEASON_ID,
+            "send_invites": False,
+            "csv_text": (
+                "email,display_name,password,is_paid,modality,notes\n"
+                "bulk@example.com,Usuario Bulk,temporal123,true,pre_pago,Alta bulk\n"
+                "sinpass@example.com,Sin Password,,true,pre_pago,Debe fallar\n"
+            ),
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created_or_updated"] == 1
+    assert payload["failed"] == 1
+    assert payload["rows"][0]["status"] == "ok"
+    assert payload["rows"][1]["status"] == "error"
+
+    db = SessionLocal()
+    try:
+        profile = db.query(Profile).filter_by(email="bulk@example.com").one()
+        membership = (
+            db.query(SeasonMembership)
+            .filter_by(profile_id=profile.id, season_id=SEASON_ID)
+            .one()
+        )
+    finally:
+        db.close()
+
+    assert profile.display_name == "Usuario Bulk"
+    assert membership.is_active is True
+    assert membership.is_paid is True
+
+
 def test_admin_can_update_user_billing_modality_and_aval(admin_client: TestClient) -> None:
     response = admin_client.put(
         f"/api/v1/admin/users/{PROFILE_USER_ID}/billing",
