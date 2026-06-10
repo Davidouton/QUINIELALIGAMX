@@ -69,10 +69,10 @@ export default function LoginPage() {
           <p className="eyebrow">Beto's Bet</p>
           <div className="mt-5 flex items-center justify-center gap-4">
             <div className="flex h-20 w-20 items-center justify-center rounded-[22px] border border-white/10 bg-night/30 p-3">
-              {env.betoImageUrl ? (
+              {env.tournamentLogoUrl ? (
                 <img
-                  src={env.betoImageUrl}
-                  alt="Beto"
+                  src={env.tournamentLogoUrl}
+                  alt="Tournament logo"
                   className="h-14 w-14 object-contain"
                 />
               ) : (

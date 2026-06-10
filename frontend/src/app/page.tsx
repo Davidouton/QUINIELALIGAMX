@@ -44,10 +44,10 @@ export default function HomePage() {
 
           <div className="mt-10 flex flex-col items-center gap-5 md:flex-row md:gap-8">
             <div className="flex min-h-[180px] min-w-[180px] items-center justify-center rounded-[30px] border border-white/10 bg-night/30 p-6 backdrop-blur-md">
-              {env.betoImageUrl ? (
+              {env.tournamentLogoUrl ? (
                 <img
-                  src={env.betoImageUrl}
-                  alt="Beto"
+                  src={env.tournamentLogoUrl}
+                  alt="Tournament logo"
                   className="h-36 w-36 object-contain"
                 />
               ) : (

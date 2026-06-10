@@ -5,7 +5,7 @@ export const env = {
   appName: process.env.NEXT_PUBLIC_APP_NAME ?? "QuinielaMaestra",
   apiBaseUrl: rawApiBaseUrl.replace(/\/+$/, ""),
   worldCupLogoUrl: process.env.NEXT_PUBLIC_WORLD_CUP_LOGO_URL ?? "",
-  betoImageUrl: process.env.NEXT_PUBLIC_BETO_IMAGE_URL ?? "",
+  tournamentLogoUrl: process.env.NEXT_PUBLIC_TOURNAMENT_LOGO_URL ?? "",
   whatsappGeneralUrl: process.env.NEXT_PUBLIC_WHATSAPP_GENERAL_URL ?? "",
   whatsappConversationUrl: process.env.NEXT_PUBLIC_WHATSAPP_CONVERSATION_URL ?? "",
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
