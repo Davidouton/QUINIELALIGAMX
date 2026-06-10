@@ -35,7 +35,7 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-5xl flex-col items-center text-center">
           <p className="eyebrow">FIFA World Cup · Quiniela Oficial</p>
           <h1 className="headline-glow mt-6 text-5xl font-semibold leading-[0.92] text-ink md:text-7xl">
-            Beto's Bet
+            Quiniela Pro MXB
           </h1>
           <p className="mt-4 max-w-2xl text-lg text-steel">
             La quiniela de FIFA World Cup con picks, resultados oficiales, tabla general y toda la energia
