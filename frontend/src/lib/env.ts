@@ -2,7 +2,7 @@ const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:
 const rawSiteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 export const env = {
-  appName: process.env.NEXT_PUBLIC_APP_NAME ?? "Quinielon",
+  appName: process.env.NEXT_PUBLIC_APP_NAME ?? "Quinielón",
   apiBaseUrl: rawApiBaseUrl.replace(/\/+$/, ""),
   worldCupLogoUrl: process.env.NEXT_PUBLIC_WORLD_CUP_LOGO_URL ?? "",
   whatsappGeneralUrl: process.env.NEXT_PUBLIC_WHATSAPP_GENERAL_URL ?? "",

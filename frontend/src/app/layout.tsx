@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Quinielon",
+  title: "Quinielón",
   description: "Quiniela profesional de FIFA World Cup con picks, resultados y leaderboards.",
 };
 
