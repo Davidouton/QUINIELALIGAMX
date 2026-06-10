@@ -30,6 +30,10 @@ const initialForm: FormState = {
   matchdayIds: [],
 };
 
+const flatFieldClass =
+  "field-control h-9 rounded-[6px] border-white/[0.08] bg-transparent px-3 text-sm";
+const flatLabelClass = "text-[10px] font-semibold uppercase tracking-[0.18em] text-steel";
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("es-MX", {
     style: "currency",
@@ -235,7 +239,7 @@ export function AdminVipPanel() {
         `/admin/vip/${selectedVip.id}/memberships/${membershipId}/payment`,
         accessToken,
         {
-          method: "PUT",
+          method: "POST",
           body: JSON.stringify({ is_paid: !isPaid }),
         },
       );
@@ -327,27 +331,18 @@ export function AdminVipPanel() {
               </button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-steel">Nombre</span>
+            <div className="grid gap-x-4 gap-y-3 lg:grid-cols-4">
+              <label className="grid gap-1 lg:col-span-2">
+                <span className={flatLabelClass}>Nombre</span>
                 <input
                   value={form.name}
                   onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                  className="field-control w-full"
+                  className={flatFieldClass}
                   placeholder="VIP Clausura"
                 />
               </label>
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-steel">Costo entrada</span>
-                <input
-                  value={form.entryFeeAmount}
-                  onChange={(event) => setForm((current) => ({ ...current, entryFeeAmount: event.target.value.replace(/[^\d.]/g, "") }))}
-                  className="field-control w-full"
-                  placeholder="500"
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-steel">Temporada</span>
+              <label className="grid gap-1 lg:col-span-2">
+                <span className={flatLabelClass}>Temporada</span>
                 <select
                   value={form.seasonId}
                   onChange={(event) =>
@@ -361,7 +356,7 @@ export function AdminVipPanel() {
                       ),
                     }))
                   }
-                  className="field-control w-full"
+                  className={flatFieldClass}
                 >
                   {seasons.map((season) => (
                     <option key={season.id} value={season.id}>
@@ -370,91 +365,98 @@ export function AdminVipPanel() {
                   ))}
                 </select>
               </label>
-              <div className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-steel">Visibilidad</span>
+              <label className="grid gap-1">
+                <span className={flatLabelClass}>Costo entrada</span>
+                <input
+                  value={form.entryFeeAmount}
+                  onChange={(event) => setForm((current) => ({ ...current, entryFeeAmount: event.target.value.replace(/[^\d.]/g, "") }))}
+                  className={flatFieldClass}
+                  placeholder="500"
+                />
+              </label>
+              <div className="grid gap-1">
+                <span className={flatLabelClass}>Visibilidad</span>
                 <button
                   type="button"
                   aria-pressed={form.isActive}
                   onClick={() => setForm((current) => ({ ...current, isActive: !current.isActive }))}
-                  className={`field-control flex items-center justify-center gap-2 text-sm ${
-                    form.isActive ? "border-mint/40 bg-mint/10 text-mint" : "border-coral/40 bg-coral/10 text-coral"
+                  className={`h-9 rounded-[6px] border px-3 text-left text-sm font-semibold transition ${
+                    form.isActive
+                      ? "border-mint/30 bg-mint/10 text-mint hover:border-mint/50"
+                      : "border-coral/30 bg-coral/10 text-coral hover:border-coral/50"
                   }`}
                 >
-                  <span className={`h-2 w-2 rounded-full ${form.isActive ? "bg-mint" : "bg-coral"}`} />
                   {form.isActive ? "Visible" : "Oculta"}
                 </button>
               </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-steel">% comision admin</span>
+              <label className="grid gap-1">
+                <span className={flatLabelClass}>% comision admin</span>
                 <input
                   value={form.adminCommissionPct}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, adminCommissionPct: event.target.value.replace(/[^\d.]/g, "") }))
                   }
-                  className="field-control w-full"
+                  className={flatFieldClass}
                   placeholder="10"
                 />
               </label>
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-steel">% 1er lugar</span>
+              <label className="grid gap-1">
+                <span className={flatLabelClass}>% 1er lugar</span>
                 <input
                   value={form.firstPlacePct}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, firstPlacePct: event.target.value.replace(/[^\d.]/g, "") }))
                   }
-                  className="field-control w-full"
+                  className={flatFieldClass}
                   placeholder="50"
                 />
               </label>
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-steel">% 2do lugar</span>
+              <label className="grid gap-1">
+                <span className={flatLabelClass}>% 2do lugar</span>
                 <input
                   value={form.secondPlacePct}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, secondPlacePct: event.target.value.replace(/[^\d.]/g, "") }))
                   }
-                  className="field-control w-full"
+                  className={flatFieldClass}
                   placeholder="30"
                 />
               </label>
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-steel">% 3er lugar</span>
+              <label className="grid gap-1">
+                <span className={flatLabelClass}>% 3er lugar</span>
                 <input
                   value={form.thirdPlacePct}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, thirdPlacePct: event.target.value.replace(/[^\d.]/g, "") }))
                   }
-                  className="field-control w-full"
+                  className={flatFieldClass}
                   placeholder="20"
                 />
               </label>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Bolsa total</p>
-                <p className="mt-2 text-lg font-semibold text-ink">
+            <div className="grid overflow-hidden rounded-[6px] border border-white/[0.08] sm:grid-cols-2 xl:grid-cols-4">
+              <div className="border-b border-white/[0.06] px-4 py-3 xl:border-b-0 xl:border-r">
+                <p className={flatLabelClass}>Bolsa total</p>
+                <p className="mt-1 text-base font-semibold text-ink">
                   {formatCurrency(selectedVip?.gross_pool_amount ?? 0)}
                 </p>
               </div>
-              <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Comision</p>
-                <p className="mt-2 text-lg font-semibold text-ink">
+              <div className="border-b border-white/[0.06] px-4 py-3 sm:border-l xl:border-b-0 xl:border-r xl:border-l-0">
+                <p className={flatLabelClass}>Comision</p>
+                <p className="mt-1 text-base font-semibold text-ink">
                   {formatCurrency(selectedVip?.admin_commission_amount ?? 0)}
                 </p>
               </div>
-              <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Bolsa premios</p>
-                <p className="mt-2 text-lg font-semibold text-ink">
+              <div className="border-b border-white/[0.06] px-4 py-3 sm:border-b-0 xl:border-r">
+                <p className={flatLabelClass}>Bolsa premios</p>
+                <p className="mt-1 text-base font-semibold text-ink">
                   {formatCurrency(selectedVip?.distributable_prize_pool_amount ?? 0)}
                 </p>
               </div>
-              <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                <p className="text-[10px] uppercase tracking-[0.18em] text-steel">% reparto</p>
-                <p className={`mt-2 text-lg font-semibold ${payoutPct > 100 ? "text-coral" : "text-ink"}`}>
+              <div className="px-4 py-3 sm:border-l xl:border-l-0">
+                <p className={flatLabelClass}>% reparto</p>
+                <p className={`mt-1 text-base font-semibold ${payoutPct > 100 ? "text-coral" : "text-ink"}`}>
                   {payoutPct.toFixed(2)}%
                 </p>
               </div>

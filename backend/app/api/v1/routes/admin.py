@@ -2066,6 +2066,7 @@ def remove_admin_vip_membership(
     return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
 
 
+@router.post("/vip/{vip_id}/memberships/{membership_id}/payment", response_model=AdminVipCompetitionOut)
 @router.put("/vip/{vip_id}/memberships/{membership_id}/payment", response_model=AdminVipCompetitionOut)
 def update_admin_vip_membership_payment(
     vip_id: str,

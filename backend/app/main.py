@@ -1150,10 +1150,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     if settings.run_startup_db_bootstrap and settings.app_env != "production":
         Base.metadata.create_all(bind=engine)
 
-    should_run_startup_migrations = settings.run_startup_migrations and (
-        settings.app_env != "production" or settings.run_startup_migrations_in_production
-    )
-    if should_run_startup_migrations:
+    if settings.run_startup_migrations:
         run_startup_migrations()
     yield
 
