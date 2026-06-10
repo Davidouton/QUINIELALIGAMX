@@ -67,20 +67,6 @@ export default function HomePage() {
               Iniciar sesion
             </Link>
           </div>
-
-          <div className="mt-12 grid w-full gap-4 md:grid-cols-2">
-            {[
-              "Cierre automatico de picks por partido",
-              "Tabla general y lider semanal",
-              "Resultados oficiales publicados por admin",
-              "Dashboard listo para temporada completa",
-            ].map((item) => (
-              <div key={item} className="stat-tile text-left">
-                <p className="text-sm uppercase tracking-[0.25em] text-steel">V1</p>
-                <p className="mt-4 text-xl font-medium text-ink">{item}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
     </main>
