@@ -42,20 +42,7 @@ export default function HomePage() {
             del torneo en una sola experiencia.
           </p>
 
-          <div className="mt-10 flex flex-col items-center gap-5 md:flex-row md:gap-8">
-            <div className="flex min-h-[180px] min-w-[180px] items-center justify-center rounded-[30px] border border-white/10 bg-night/30 p-6 backdrop-blur-md">
-              {env.tournamentLogoUrl ? (
-                <img
-                  src={env.tournamentLogoUrl}
-                  alt="Tournament logo"
-                  className="h-36 w-36 object-contain"
-                />
-              ) : (
-                <div className="flex h-36 w-36 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-2xl font-semibold text-steel">
-                  Beto
-                </div>
-              )}
-            </div>
+          <div className="mt-10 flex justify-center">
             <div className="flex min-h-[180px] min-w-[180px] items-center justify-center rounded-[30px] border border-white/10 bg-night/30 p-6 backdrop-blur-md">
               {env.worldCupLogoUrl ? (
                 <img
