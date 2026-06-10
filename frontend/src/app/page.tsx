@@ -34,7 +34,7 @@ export default function HomePage() {
       <section className="surface-card-strong relative mx-auto max-w-7xl overflow-hidden px-8 py-12">
         <div className="mx-auto flex max-w-5xl flex-col items-center text-center">
           <h1 className="headline-glow text-5xl font-semibold leading-[0.92] text-ink md:text-7xl">
-            Quiniela Pro MXB
+            Quinielon
           </h1>
 
           <div className="mt-10 flex justify-center">
