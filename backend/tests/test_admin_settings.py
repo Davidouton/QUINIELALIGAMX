@@ -1,16 +1,31 @@
 from collections.abc import Generator
-
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from conftest import (
+    MATCH_ONE_ID,
+    MATCHDAY_ID,
+    PROFILE_LEADER_ID,
+    PROFILE_USER_ID,
+    SEASON_ID,
+    SessionLocal,
+)
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_profile
+from app.api.v1.routes import admin as admin_routes
 from app.core.datetime import ensure_utc
+from app.core.security import AuthUser
 from app.main import app
-from app.models.entities import Match, Matchday, Profile, RoleCode, ScoringRule, Season, SeasonMembership
-
-from conftest import MATCH_ONE_ID, MATCHDAY_ID, PROFILE_LEADER_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
+from app.models.entities import (
+    Match,
+    Matchday,
+    Profile,
+    RoleCode,
+    ScoringRule,
+    Season,
+    SeasonMembership,
+)
 
 
 @pytest.fixture
@@ -174,6 +189,58 @@ def test_admin_can_update_user_season_membership(admin_client: TestClient) -> No
         db.close()
 
     assert membership.is_active is False
+    assert membership.is_paid is True
+
+
+def test_admin_can_create_invited_user_with_season_membership(
+    admin_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSupabaseAdminService:
+        def invite_user(self, *, email: str, display_name: str) -> AuthUser:
+            return AuthUser(
+                auth_user_id="30000000-0000-0000-0000-000000000001",
+                email=email,
+                raw_claims={"user_metadata": {"display_name": display_name}},
+            )
+
+    monkeypatch.setattr(admin_routes, "supabase_admin_service", FakeSupabaseAdminService())
+
+    response = admin_client.post(
+        "/api/v1/admin/users",
+        json={
+            "email": "nuevo@example.com",
+            "display_name": "Usuario Nuevo",
+            "season_id": SEASON_ID,
+            "is_active": True,
+            "is_paid": True,
+            "modality": "pre_pago",
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["email"] == "nuevo@example.com"
+    assert payload["display_name"] == "Usuario Nuevo"
+    assert payload["selected_season_membership"]["is_active"] is True
+    assert payload["selected_season_membership"]["is_paid"] is True
+    assert payload["selected_season_membership"]["eligible_for_scoring"] is True
+
+    db = SessionLocal()
+    try:
+        profile = db.query(Profile).filter_by(email="nuevo@example.com").one()
+        membership = (
+            db.query(SeasonMembership)
+            .filter_by(profile_id=profile.id, season_id=SEASON_ID)
+            .one()
+        )
+    finally:
+        db.close()
+
+    assert profile.auth_user_id == "30000000-0000-0000-0000-000000000001"
+    assert profile.display_name == "Usuario Nuevo"
+    assert membership.is_active is True
     assert membership.is_paid is True
 
 

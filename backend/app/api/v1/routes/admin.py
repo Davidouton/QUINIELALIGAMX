@@ -14,16 +14,16 @@ from app.api.deps import require_roles
 from app.core.config import get_settings
 from app.core.database import SessionLocal, engine, get_db
 from app.models.entities import (
+    Competition,
     HistoricalChampion,
     Match,
     Matchday,
     MatchdayStatus,
-    Competition,
     Profile,
     ProfileTrophyAward,
     PublishedMatchday,
-    RulePage,
     RoleCode,
+    RulePage,
     ScoringRule,
     Season,
     SeasonMembership,
@@ -36,31 +36,32 @@ from app.providers.api_football_provider import ApiFootballProvider
 from app.providers.mock_provider import MockSportsDataProvider
 from app.providers.results_api_provider import ResultsApiProvider
 from app.providers.the_odds_scores_provider import TheOddsScoresProvider
-from app.repositories.matchday_repository import MatchdayRepository
 from app.repositories.match_repository import MatchRepository
+from app.repositories.matchday_repository import MatchdayRepository
 from app.repositories.profile_repository import ProfileRepository
-from app.repositories.season_repository import SeasonRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
+from app.repositories.season_repository import SeasonRepository
 from app.repositories.team_repository import TeamRepository
 from app.schemas.admin import (
-    AdminUserBillingUpdateRequest,
     AdminPickOverrideRequest,
     AdminPickRowOut,
-    AdminUserOut,
     AdminResultRowOut,
     AdminResultUpdateRequest,
-    AdminUserSeasonMembershipOut,
     AdminSettingsOut,
     AdminSettingsUpdateRequest,
+    AdminUserBillingUpdateRequest,
+    AdminUserCreateRequest,
+    AdminUserOut,
+    AdminUserSeasonMembershipOut,
     CompetitionCreateRequest,
     CompetitionUpdateRequest,
     HistoricalChampionCreateRequest,
     HistoricalChampionOut,
     HistoricalChampionUpdateRequest,
     MatchCreateRequest,
-    MatchUpdateRequest,
     MatchdayCreateRequest,
     MatchdayUpdateRequest,
+    MatchUpdateRequest,
     OddsPreviewRow,
     OddsPullResponse,
     OddsSnapshotOption,
@@ -76,19 +77,24 @@ from app.schemas.admin import (
     UserAccessUpdateRequest,
     UserSeasonMembershipUpdateRequest,
 )
+from app.schemas.competition import CompetitionOut
 from app.schemas.match import MatchOut
 from app.schemas.matchday import MatchdayOut
 from app.schemas.profile import ProfileOut
-from app.schemas.competition import CompetitionOut
 from app.schemas.rules import RulePageOut, RulePageUpdateRequest
 from app.schemas.season import SeasonOut
 from app.schemas.team import TeamOut
-from app.schemas.vip import AdminVipCompetitionOut, AdminVipMembershipDecisionRequest, AdminVipUpsertRequest
+from app.schemas.vip import (
+    AdminVipCompetitionOut,
+    AdminVipMembershipDecisionRequest,
+    AdminVipUpsertRequest,
+)
 from app.services.match_service import MatchService
 from app.services.pick_service import PickService
 from app.services.result_service import ResultService
 from app.services.scoring_service import ScoringService
 from app.services.season_eligibility_service import SeasonEligibilityService
+from app.services.supabase_admin_service import SupabaseAdminError, SupabaseAdminService
 from app.services.sync_matches import sync_matches
 from app.services.sync_odds import sync_odds
 from app.services.sync_results import sync_results
@@ -106,6 +112,7 @@ result_service = ResultService()
 pick_service = PickService()
 season_eligibility_service = SeasonEligibilityService()
 vip_service = VipService()
+supabase_admin_service = SupabaseAdminService()
 REPO_ROOT = Path(__file__).resolve().parents[5]
 APPS_API_DIR = REPO_ROOT / "apps" / "api"
 BACKEND_DIR = REPO_ROOT / "backend"
@@ -834,6 +841,96 @@ def list_users(
             db.commit()
             db.refresh(season)
     return [build_admin_user_out(db, profile, season) for profile in profile_repo.list_all(db)]
+
+
+@router.post("/users", response_model=AdminUserOut, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: AdminUserCreateRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminUserOut:
+    email = payload.email.strip().lower()
+    display_name = payload.display_name.strip()
+    if not display_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nombre requerido")
+
+    season = season_repo.get_by_id(db, payload.season_id)
+    if season is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+
+    modality = normalize_optional_text(payload.modality) or "pre_pago"
+    if modality not in {"pre_pago", "aval"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Modalidad invalida")
+
+    aval_profile_id = normalize_optional_text(payload.aval_profile_id)
+    if modality == "aval" and not aval_profile_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selecciona un aval para esta modalidad",
+        )
+    if aval_profile_id and profile_repo.get_by_id(db, aval_profile_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aval no encontrado")
+
+    existing_profile = db.scalar(select(Profile).where(func.lower(Profile.email) == email))
+    if existing_profile is None:
+        try:
+            auth_user = (
+                supabase_admin_service.create_user(
+                    email=email,
+                    display_name=display_name,
+                    password=payload.password,
+                )
+                if payload.password
+                else supabase_admin_service.invite_user(email=email, display_name=display_name)
+            )
+        except SupabaseAdminError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+        profile = profile_repo.get_by_auth_user_id(db, auth_user.auth_user_id)
+        if profile is None:
+            profile = profile_repo.create_from_auth_user(db, auth_user)
+    else:
+        profile = existing_profile
+
+    if aval_profile_id == profile.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes seleccionarlo como su propio aval",
+        )
+
+    profile.email = email
+    profile.display_name = display_name
+    profile.modality = modality
+    profile.aval_profile_id = aval_profile_id if modality == "aval" else None
+    profile.is_active = payload.is_active
+    db.add(profile)
+    db.flush()
+
+    did_freeze = season_eligibility_service.freeze_season_if_due(db, season)
+    if did_freeze:
+        db.flush()
+        db.refresh(season)
+
+    membership = season_membership_repo.get_for_profile_and_season(db, profile.id, season.id)
+    if membership is None:
+        membership = SeasonMembership(season_id=season.id, profile_id=profile.id)
+    membership.is_active = payload.is_active
+    membership.is_paid = payload.is_paid
+    membership.notes = normalize_optional_text(payload.notes)
+    if payload.is_active:
+        membership.activated_at = datetime.now(UTC)
+        membership.activated_by_profile_id = current_profile.id
+    if not season_eligibility_service.is_locked(db, season):
+        membership.eligible_for_scoring = membership.is_active
+        membership.eligible_locked_at = None
+    elif membership.eligible_locked_at is None:
+        membership.eligible_for_scoring = False
+        membership.eligible_locked_at = datetime.now(UTC)
+    season_membership_repo.save(db, membership)
+
+    db.commit()
+    db.refresh(profile)
+    return build_admin_user_out(db, profile, season)
 
 
 @router.put("/users/{profile_id}/access", response_model=AdminUserOut)

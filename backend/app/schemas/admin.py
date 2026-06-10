@@ -1,9 +1,16 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.core.datetime import mexico_city_to_utc
-from app.models.entities import MatchStageType, MatchStatus, MatchdayStatus, PickSelection, RoleCode, TournamentFormat
+from app.models.entities import (
+    MatchdayStatus,
+    MatchStageType,
+    MatchStatus,
+    PickSelection,
+    RoleCode,
+    TournamentFormat,
+)
 
 
 class RoleUpdateRequest(BaseModel):
@@ -17,6 +24,18 @@ class UserAccessUpdateRequest(BaseModel):
 class AdminUserBillingUpdateRequest(BaseModel):
     modality: str = "pre_pago"
     aval_profile_id: str | None = None
+
+
+class AdminUserCreateRequest(BaseModel):
+    email: EmailStr
+    display_name: str
+    password: str | None = Field(default=None, min_length=6, max_length=72)
+    season_id: str
+    is_active: bool = True
+    is_paid: bool = False
+    modality: str = "pre_pago"
+    aval_profile_id: str | None = None
+    notes: str | None = None
 
 
 class UserSeasonMembershipUpdateRequest(BaseModel):

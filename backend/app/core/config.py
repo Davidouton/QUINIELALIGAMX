@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     frontend_site_url: str = "http://localhost:3000"
     supabase_url: str = "https://your-project.supabase.co"
     supabase_anon_key: str = "replace-me"
+    supabase_service_role_key: str = ""
     supabase_jwt_secret: str = ""
     resend_api_key: str = ""
     resend_from_email: str = ""

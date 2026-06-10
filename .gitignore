@@ -1,6 +1,7 @@
 # OS / editor
 .DS_Store
 .vscode/
+.tools/
 
 # Node / Next.js
 node_modules/
@@ -33,4 +34,3 @@ apps/api/.env
 *.db
 backend/test.db
 apps/api/test.db
-

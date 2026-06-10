@@ -12,6 +12,26 @@ type BillingDraft = {
   aval_profile_id: string;
 };
 
+type NewUserDraft = {
+  email: string;
+  display_name: string;
+  password: string;
+  is_paid: boolean;
+  modality: string;
+  aval_profile_id: string;
+  notes: string;
+};
+
+const initialNewUserDraft: NewUserDraft = {
+  email: "",
+  display_name: "",
+  password: "",
+  is_paid: false,
+  modality: "pre_pago",
+  aval_profile_id: "",
+  notes: "",
+};
+
 const squareActionButtonClass =
   "inline-flex h-8 w-full items-center justify-center whitespace-nowrap rounded-[12px] border px-3 text-[10px] font-semibold tracking-[0.02em] transition disabled:opacity-60";
 
@@ -70,6 +90,7 @@ export function AdminUsersPanel() {
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [billingDrafts, setBillingDrafts] = useState<Record<string, BillingDraft>>({});
+  const [newUserDraft, setNewUserDraft] = useState<NewUserDraft>(initialNewUserDraft);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
@@ -101,8 +122,10 @@ export function AdminUsersPanel() {
       backendFetch<Season[]>("/seasons", accessToken),
     ]);
     setMe(meResponse);
-    const defaultSeasonId = seasonRows.find((season) => season.is_active)?.id ?? seasonRows[0]?.id ?? "";
-    setSeasons(seasonRows);
+    const worldCupSeasons = seasonRows.filter((season) => season.tournament_format === "world_cup");
+    const visibleSeasons = worldCupSeasons.length > 0 ? worldCupSeasons : seasonRows;
+    const defaultSeasonId = visibleSeasons.find((season) => season.is_active)?.id ?? visibleSeasons[0]?.id ?? "";
+    setSeasons(visibleSeasons);
     setSelectedSeasonId(defaultSeasonId);
     await loadUsers(defaultSeasonId, accessToken);
   }
@@ -259,6 +282,56 @@ export function AdminUsersPanel() {
     }));
   }
 
+  function updateNewUserDraft(patch: Partial<NewUserDraft>) {
+    setNewUserDraft((current) => ({
+      ...current,
+      ...patch,
+    }));
+  }
+
+  async function handleCreateUser() {
+    if (!selectedSeasonId) {
+      setError("Selecciona un torneo primero.");
+      return;
+    }
+    if (!newUserDraft.email.trim() || !newUserDraft.display_name.trim()) {
+      setError("Captura nombre y correo del usuario.");
+      return;
+    }
+    if (newUserDraft.modality === "aval" && !newUserDraft.aval_profile_id) {
+      setError("Selecciona un aval para crear usuario con modalidad aval.");
+      return;
+    }
+
+    setSavingKey("create-user");
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const createdUser = await backendFetch<AdminUser>("/admin/users", accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          email: newUserDraft.email.trim(),
+          display_name: newUserDraft.display_name.trim(),
+          password: newUserDraft.password.trim() || null,
+          season_id: selectedSeasonId,
+          is_active: true,
+          is_paid: newUserDraft.is_paid,
+          modality: newUserDraft.modality,
+          aval_profile_id: newUserDraft.modality === "aval" ? newUserDraft.aval_profile_id : null,
+          notes: newUserDraft.notes.trim() || null,
+        }),
+      });
+      setNewUserDraft(initialNewUserDraft);
+      await loadUsers(selectedSeasonId, accessToken);
+      setMessage(`${createdUser.display_name}: usuario creado y alta enviada para ${selectedSeason?.name ?? "el torneo"}.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo crear el usuario");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
   async function handleSaveBilling(user: AdminUser) {
     const draft = billingDrafts[user.id] ?? {
       modality: user.modality ?? "pre_pago",
@@ -356,6 +429,98 @@ export function AdminUsersPanel() {
       </div>
 
       <section className="space-y-4">
+        <div className="grid gap-3 px-2 py-3 lg:grid-cols-[1fr_1fr_180px_150px_170px_1fr_auto] lg:items-end">
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Nombre</span>
+            <input
+              value={newUserDraft.display_name}
+              onChange={(event) => updateNewUserDraft({ display_name: event.target.value })}
+              placeholder="Nombre visible"
+              className="field-control"
+            />
+          </label>
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Correo</span>
+            <input
+              value={newUserDraft.email}
+              onChange={(event) => updateNewUserDraft({ email: event.target.value })}
+              type="email"
+              placeholder="correo@dominio.com"
+              className="field-control"
+            />
+          </label>
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Password opcional</span>
+            <input
+              value={newUserDraft.password}
+              onChange={(event) => updateNewUserDraft({ password: event.target.value })}
+              type="password"
+              placeholder="Invita si queda vacio"
+              className="field-control"
+            />
+          </label>
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Modalidad</span>
+            <select
+              value={newUserDraft.modality}
+              onChange={(event) =>
+                updateNewUserDraft({
+                  modality: event.target.value,
+                  aval_profile_id: event.target.value === "aval" ? newUserDraft.aval_profile_id : "",
+                })
+              }
+              className="field-control"
+            >
+              <option value="pre_pago">Pre-pago</option>
+              <option value="aval">Aval</option>
+            </select>
+          </label>
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Aval</span>
+            <select
+              value={newUserDraft.aval_profile_id}
+              onChange={(event) => updateNewUserDraft({ aval_profile_id: event.target.value })}
+              className="field-control"
+              disabled={newUserDraft.modality !== "aval"}
+            >
+              <option value="">{newUserDraft.modality === "aval" ? "Selecciona aval" : "No aplica"}</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Notas</span>
+            <input
+              value={newUserDraft.notes}
+              onChange={(event) => updateNewUserDraft({ notes: event.target.value })}
+              placeholder="Opcional"
+              className="field-control"
+            />
+          </label>
+          <div className="flex flex-col gap-2">
+            <label className="flex h-10 items-center gap-2 text-sm text-steel">
+              <input
+                checked={newUserDraft.is_paid}
+                onChange={(event) => updateNewUserDraft({ is_paid: event.target.checked })}
+                type="checkbox"
+                className="h-4 w-4 accent-emerald-400"
+              />
+              Pagado
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleCreateUser()}
+              disabled={savingKey === "create-user" || loading || !selectedSeasonId}
+              className={actionPositiveClass}
+            >
+              {savingKey === "create-user" ? "Creando..." : "Crear usuario"}
+            </button>
+          </div>
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">
