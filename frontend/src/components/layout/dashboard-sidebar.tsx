@@ -11,11 +11,25 @@ import { cn } from "@/lib/utils";
 import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
 
 const baseLinks = [
+  { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
   { href: "/dashboard/world-cup", label: "Mundial", shortLabel: "WC" },
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
+  { href: "/dashboard/vip", label: "VIP" },
+  { href: "/dashboard/picks", label: "Picks Center" },
+  { href: "/dashboard/leaderboard", label: "Ranking" },
+  { href: "/dashboard/hall-of-fame", label: "Salon de la Fama" },
+  { href: "/dashboard/rules", label: "Reglamento" },
+  { href: "/dashboard/settings", label: "Settings" },
 ];
 
 const primaryMobileLinks = [
+  { href: "/dashboard/quiniela-plus", label: "Q+" },
   { href: "/dashboard/world-cup", label: "WC" },
+  { href: "/dashboard", label: "Inicio" },
+  { href: "/dashboard/prizes", label: "Premios" },
+  { href: "/dashboard/vip", label: "VIP" },
+  { href: "/dashboard/picks", label: "Picks" },
 ];
 
 function renderLinkLabel(label: string) {
@@ -100,7 +114,7 @@ export function DashboardSidebar() {
         </div>
 
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-night/95 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3 backdrop-blur-xl">
-          <div className="grid grid-cols-1 gap-2">
+          <div className="grid grid-cols-6 gap-2">
             {primaryMobileLinks.map((link) => (
               <Link
                 key={link.href}
