@@ -23,9 +23,9 @@ export default function LoginPage() {
     setShowRegisteredMessage(searchParams.get("registered") === "1");
     if (searchParams.get("reset") === "1") {
       setAuthMessage("Contrasena actualizada. Inicia sesion con tu nueva clave.");
-      return;
+    } else {
+      setAuthMessage(searchParams.get("error"));
     }
-    setAuthMessage(searchParams.get("error"));
 
     async function checkSession() {
       const session = await getBrowserSession();
