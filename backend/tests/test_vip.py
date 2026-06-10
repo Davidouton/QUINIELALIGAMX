@@ -247,6 +247,63 @@ def test_admin_cannot_create_vip_with_mixed_season_matchdays(admin_client: TestC
     assert "misma temporada" in response.text
 
 
+def test_admin_can_remove_approved_vip_member(admin_client: TestClient) -> None:
+    create_response = admin_client.post(
+        "/api/v1/admin/vip",
+        json={
+            "name": "VIP Removibles",
+            "entry_fee_amount": 500,
+            "admin_commission_pct": 0,
+            "first_place_pct": 100,
+            "second_place_pct": 0,
+            "third_place_pct": 0,
+            "matchday_ids": [MATCHDAY_ID],
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_response.status_code == 201
+    vip_id = create_response.json()["id"]
+
+    db = SessionLocal()
+    try:
+        membership = VipMembership(
+            vip_competition_id=vip_id,
+            profile_id=PROFILE_LEADER_ID,
+            status=VipMembershipStatus.APPROVED,
+        )
+        db.add(membership)
+        db.add(
+            StandingsMatchday(
+                matchday_id=MATCHDAY_ID,
+                profile_id=PROFILE_LEADER_ID,
+                total_points=7,
+                correct_results=2,
+                exact_scores=1,
+                rank_position=1,
+            )
+        )
+        db.commit()
+        membership_id = membership.id
+    finally:
+        db.close()
+
+    remove_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/memberships/{membership_id}/remove",
+        json={"admin_note": "Pago reversado"},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert remove_response.status_code == 200
+    payload = remove_response.json()
+    assert payload["approved_members_count"] == 0
+    assert payload["gross_pool_amount"] == 0
+    assert payload["leaderboard"] == []
+    removed_membership = next(membership for membership in payload["memberships"] if membership["id"] == membership_id)
+    assert removed_membership["status"] == "rejected"
+    assert removed_membership["admin_note"] == "Pago reversado"
+
+
 def test_admin_cannot_create_vip_with_prize_split_over_100(admin_client: TestClient) -> None:
     response = admin_client.post(
         "/api/v1/admin/vip",

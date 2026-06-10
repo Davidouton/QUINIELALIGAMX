@@ -2047,6 +2047,24 @@ def reject_admin_vip_membership(
     return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
 
 
+@router.post("/vip/{vip_id}/memberships/{membership_id}/remove", response_model=AdminVipCompetitionOut)
+def remove_admin_vip_membership(
+    vip_id: str,
+    membership_id: str,
+    payload: AdminVipMembershipDecisionRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.remove_membership(
+        db,
+        vip_id=vip_id,
+        membership_id=membership_id,
+        current_profile=current_profile,
+        payload=payload,
+    )
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+
+
 @router.put("/results/{match_id}", response_model=AdminResultRowOut)
 def update_admin_result(
     match_id: str,

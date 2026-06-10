@@ -87,6 +87,10 @@ export function AdminVipPanel() {
     () => selectedVip?.memberships.filter((membership) => membership.status === "pending") ?? [],
     [selectedVip],
   );
+  const approvedMemberships = useMemo(
+    () => selectedVip?.memberships.filter((membership) => membership.status === "approved") ?? [],
+    [selectedVip],
+  );
   const payoutPct =
     Number(form.firstPlacePct || 0) + Number(form.secondPlacePct || 0) + Number(form.thirdPlacePct || 0);
 
@@ -176,9 +180,15 @@ export function AdminVipPanel() {
     }
   }
 
-  async function handleDecision(membershipId: string, action: "approve" | "reject") {
+  async function handleDecision(membershipId: string, action: "approve" | "reject" | "remove") {
     if (!selectedVip) {
       return;
+    }
+    if (action === "remove") {
+      const confirmed = window.confirm("Vas a sacar a este jugador de la VIP. Ya no contara en bolsa ni leaderboard. Continuar?");
+      if (!confirmed) {
+        return;
+      }
     }
     setProcessingMembershipId(membershipId);
     setError(null);
@@ -194,9 +204,15 @@ export function AdminVipPanel() {
         },
       );
       setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
-      setMessage(action === "approve" ? "Solicitud aprobada." : "Solicitud rechazada.");
+      setMessage(
+        action === "approve"
+          ? "Solicitud aprobada."
+          : action === "remove"
+            ? "Jugador removido de la VIP."
+            : "Solicitud rechazada.",
+      );
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la solicitud");
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la membresia VIP");
     } finally {
       setProcessingMembershipId(null);
     }
@@ -254,6 +270,9 @@ export function AdminVipPanel() {
                   <p className="mt-1 text-sm font-semibold text-ink">{vip.pending_requests_count}</p>
                 </div>
               </div>
+              {!vip.is_active ? (
+                <p className="mt-3 text-xs text-steel">Oculta para usuarios</p>
+              ) : null}
             </button>
           ))}
 
@@ -327,7 +346,9 @@ export function AdminVipPanel() {
                   checked={form.isActive}
                   onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))}
                 />
-                <span className="text-sm text-ink">Visible para usuarios</span>
+                <span className="text-sm text-ink">
+                  {form.isActive ? "Visible para usuarios" : "Oculta para usuarios"}
+                </span>
               </label>
             </div>
 
@@ -479,6 +500,46 @@ export function AdminVipPanel() {
               <p className="text-sm text-steel">Crea o selecciona una VIP para revisar solicitudes.</p>
             )}
           </section>
+
+          {selectedVip ? (
+            <section className="space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.22em] text-steel">Miembros</p>
+                  <h3 className="mt-2 text-lg font-semibold text-ink">
+                    {approvedMemberships.length} aprobados
+                  </h3>
+                </div>
+              </div>
+              {approvedMemberships.length > 0 ? (
+                <div className="space-y-3">
+                  {approvedMemberships.map((membership) => (
+                    <div
+                      key={membership.id}
+                      className="flex flex-col gap-3 rounded-[12px] border border-white/[0.06] px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-ink">{membership.display_name}</p>
+                        <p className="mt-1 text-xs text-steel">
+                          Miembro aprobado de {selectedVip.name}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={processingMembershipId === membership.id}
+                        onClick={() => void handleDecision(membership.id, "remove")}
+                        className="app-pill px-3 text-coral"
+                      >
+                        {processingMembershipId === membership.id ? "Sacando..." : "Sacar"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-steel">No hay miembros aprobados en esta VIP.</p>
+              )}
+            </section>
+          ) : null}
 
           {selectedVip ? (
             <section className="space-y-3">

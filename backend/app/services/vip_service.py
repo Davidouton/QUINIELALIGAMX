@@ -250,6 +250,29 @@ class VipService:
         db.refresh(membership)
         return membership
 
+    def remove_membership(
+        self,
+        db: Session,
+        vip_id: str,
+        membership_id: str,
+        current_profile: Profile,
+        payload: AdminVipMembershipDecisionRequest,
+    ) -> VipMembership:
+        membership = db.get(VipMembership, membership_id)
+        if membership is None or membership.vip_competition_id != vip_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Miembro VIP no encontrado")
+        if membership.status != VipMembershipStatus.APPROVED:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Solo puedes sacar miembros aprobados")
+
+        membership.status = VipMembershipStatus.REJECTED
+        membership.decided_at = datetime.now(UTC)
+        membership.decided_by_profile_id = current_profile.id
+        membership.admin_note = payload.admin_note.strip() if payload.admin_note else "Removido por admin"
+        db.add(membership)
+        db.commit()
+        db.refresh(membership)
+        return membership
+
     def get_membership_out(self, db: Session, membership: VipMembership) -> VipMembershipOut:
         profile_names = self._profile_names(
             db,

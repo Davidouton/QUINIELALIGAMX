@@ -39,6 +39,7 @@ type PickBoardState = {
 };
 
 type PickBoardTab = "mine" | "global";
+type PickMatchScope = "matchday" | "today";
 
 const AUTO_SAVE_DELAY_MS = 2000;
 const compactPickControlClass =
@@ -368,6 +369,25 @@ function formatMexicoCityCompactDateTime(value: string) {
   return `${values.day}/${values.month}/${values.year} ${values.hour}:${values.minute}`;
 }
 
+function getMexicoCityDateKey(value: Date | string) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isTodayScheduledMatch(match: Match) {
+  return match.status === "scheduled" && getMexicoCityDateKey(match.kickoff_at) === getMexicoCityDateKey(new Date());
+}
+
 function buildOverrideMessage(pick: Pick) {
   const base = pick.overridden_by_display_name
     ? `Pick ajustado por ${pick.overridden_by_display_name}.`
@@ -395,6 +415,7 @@ export function PickBoard() {
   const [forms, setForms] = useState<FormsMap>({});
   const [autoSave, setAutoSave] = useState<AutoSaveMap>({});
   const [activeTab, setActiveTab] = useState<PickBoardTab>("mine");
+  const [matchScope, setMatchScope] = useState<PickMatchScope>("matchday");
   const [loading, setLoading] = useState(true);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const teamById = Object.fromEntries(teams.map((team) => [team.id, team]));
@@ -763,6 +784,12 @@ export function PickBoard() {
   const globalCellByKey = Object.fromEntries(
     (state.globalPickBoard?.cells ?? []).map((cell) => [getGlobalCellKey(cell.profile_id, cell.match_id), cell]),
   );
+  const visibleMatches = matchScope === "today" ? state.matches.filter(isTodayScheduledMatch) : state.matches;
+  const visibleMatchIds = new Set(visibleMatches.map((match) => match.id));
+  const visibleGlobalMatches =
+    matchScope === "today"
+      ? state.globalPickBoard?.matches.filter((match) => visibleMatchIds.has(match.match_id)) ?? []
+      : state.globalPickBoard?.matches ?? [];
 
   return (
     <div className="space-y-6">
@@ -848,17 +875,36 @@ export function PickBoard() {
             VIP
           </Link>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Mostrar</span>
+          <button
+            type="button"
+            onClick={() => setMatchScope("matchday")}
+            className={matchScope === "matchday" ? pickBoardButtonActiveClass : pickBoardButtonClass}
+          >
+            Toda la jornada
+          </button>
+          <button
+            type="button"
+            onClick={() => setMatchScope("today")}
+            className={matchScope === "today" ? pickBoardButtonActiveClass : pickBoardButtonClass}
+          >
+            Juegos de hoy
+          </button>
+        </div>
       </div>
 
       {state.error ? <p className="text-sm text-coral">{state.error}</p> : null}
 
-      {activeTab === "mine" && state.matches.length === 0 ? (
+      {activeTab === "mine" && visibleMatches.length === 0 ? (
         <p className="text-sm text-steel">
-          No hay partidos disponibles para capturar picks en la jornada seleccionada.
+          {matchScope === "today"
+            ? "No hay juegos programados para hoy en la jornada seleccionada."
+            : "No hay partidos disponibles para capturar picks en la jornada seleccionada."}
         </p>
       ) : null}
 
-      {activeTab === "mine" && state.matches.length > 0 ? (
+      {activeTab === "mine" && visibleMatches.length > 0 ? (
         <section className="space-y-3">
           <div className="flex justify-end">
             <p className="text-[10px] text-steel">Se guarda automatico 2 segundos despues del ultimo cambio.</p>
@@ -874,7 +920,7 @@ export function PickBoard() {
             <p className="text-center">Guardado</p>
           </div>
           <div className="space-y-2 md:space-y-0">
-            {state.matches.map((match) => {
+            {visibleMatches.map((match) => {
               const form = forms[match.id];
               const existingPick = state.existingPicks.find((pick) => pick.match_id === match.id);
               const derivedSelection = deriveSelectionFromForm(form, useNflMode);
@@ -1120,21 +1166,25 @@ export function PickBoard() {
             </p>
           </div>
 
-          {!state.globalPickBoard || state.globalPickBoard.players.length === 0 ? (
-            <p className="text-sm text-steel">Todavia no hay jugadores activos para mostrar en esta jornada.</p>
+          {!state.globalPickBoard || state.globalPickBoard.players.length === 0 || visibleGlobalMatches.length === 0 ? (
+            <p className="text-sm text-steel">
+              {matchScope === "today"
+                ? "No hay juegos de hoy para mostrar en picks globales."
+                : "Todavia no hay jugadores activos para mostrar en esta jornada."}
+            </p>
           ) : (
             <div className="no-scrollbar overflow-x-auto touch-pan-x">
               <table className="min-w-[760px] table-fixed text-left text-[11px] text-steel">
                 <colgroup>
                   <col className="w-[180px]" />
-                  {state.globalPickBoard.matches.map((match) => (
+                  {visibleGlobalMatches.map((match) => (
                     <col key={match.match_id} className="w-[140px]" />
                   ))}
                 </colgroup>
                 <thead className="app-table-head">
                   <tr>
                     <th className="sticky left-0 z-10 bg-[rgba(12,24,42,0.72)] px-3 py-2 text-left backdrop-blur-sm">Jugador</th>
-                    {state.globalPickBoard.matches.map((match) => (
+                    {visibleGlobalMatches.map((match) => (
                       <th key={match.match_id} className="px-3 py-2 text-center">
                         <div className="space-y-1">
                           <div className="flex items-center justify-center gap-2">
@@ -1170,7 +1220,7 @@ export function PickBoard() {
                       <td className="sticky left-0 z-10 bg-[rgba(12,24,42,0.72)] px-3 py-2 text-left backdrop-blur-sm">
                         <p className="truncate font-medium text-ink">{player.display_name}</p>
                       </td>
-                      {state.globalPickBoard?.matches.map((match) => {
+                      {visibleGlobalMatches.map((match) => {
                         const cell = globalCellByKey[getGlobalCellKey(player.profile_id, match.match_id)];
                         return (
                           <td key={match.match_id} className="px-3 py-2 text-center">
