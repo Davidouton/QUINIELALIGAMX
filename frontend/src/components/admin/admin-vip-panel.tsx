@@ -370,16 +370,20 @@ export function AdminVipPanel() {
                   ))}
                 </select>
               </label>
-              <label className="flex items-center gap-3 rounded-[12px] border border-white/[0.06] px-4 py-3">
-                <input
-                  type="checkbox"
-                  checked={form.isActive}
-                  onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))}
-                />
-                <span className="text-sm text-ink">
-                  {form.isActive ? "Visible para usuarios" : "Oculta para usuarios"}
-                </span>
-              </label>
+              <div className="space-y-2">
+                <span className="text-xs uppercase tracking-[0.18em] text-steel">Visibilidad</span>
+                <button
+                  type="button"
+                  aria-pressed={form.isActive}
+                  onClick={() => setForm((current) => ({ ...current, isActive: !current.isActive }))}
+                  className={`field-control flex items-center justify-center gap-2 text-sm ${
+                    form.isActive ? "border-mint/40 bg-mint/10 text-mint" : "border-coral/40 bg-coral/10 text-coral"
+                  }`}
+                >
+                  <span className={`h-2 w-2 rounded-full ${form.isActive ? "bg-mint" : "bg-coral"}`} />
+                  {form.isActive ? "Visible" : "Oculta"}
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
