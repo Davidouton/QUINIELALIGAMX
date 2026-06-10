@@ -38,6 +38,10 @@ class AdminUserCreateRequest(BaseModel):
     notes: str | None = None
 
 
+class AdminUserPasswordUpdateRequest(BaseModel):
+    password: str = Field(min_length=6, max_length=72)
+
+
 class UserSeasonMembershipUpdateRequest(BaseModel):
     season_id: str
     is_active: bool = False

@@ -85,3 +85,15 @@ class SupabaseAdminService:
             )
         self._raise_for_error(response)
         return self._parse_auth_user(response.json())
+
+    def update_user_password(self, *, auth_user_id: str, password: str) -> None:
+        payload = {
+            "password": password,
+        }
+        with httpx.Client(timeout=15.0) as client:
+            response = client.put(
+                self._auth_url(f"/admin/users/{auth_user_id}"),
+                headers=self._headers(),
+                json=payload,
+            )
+        self._raise_for_error(response)

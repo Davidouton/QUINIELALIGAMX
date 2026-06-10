@@ -52,6 +52,7 @@ from app.schemas.admin import (
     AdminUserBillingUpdateRequest,
     AdminUserCreateRequest,
     AdminUserOut,
+    AdminUserPasswordUpdateRequest,
     AdminUserSeasonMembershipOut,
     CompetitionCreateRequest,
     CompetitionUpdateRequest,
@@ -984,6 +985,34 @@ def update_user_billing(
     db.add(profile)
     db.commit()
     db.refresh(profile)
+    season = get_selected_season(db)
+    return build_admin_user_out(db, profile, season)
+
+
+@router.put("/users/{profile_id}/password", response_model=AdminUserOut)
+def update_user_password(
+    profile_id: str,
+    payload: AdminUserPasswordUpdateRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminUserOut:
+    profile = profile_repo.get_by_id(db, profile_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not profile.auth_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El usuario no esta vinculado a Supabase Auth",
+        )
+
+    try:
+        supabase_admin_service.update_user_password(
+            auth_user_id=profile.auth_user_id,
+            password=payload.password,
+        )
+    except SupabaseAdminError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     season = get_selected_season(db)
     return build_admin_user_out(db, profile, season)
 

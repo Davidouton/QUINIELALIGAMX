@@ -12,6 +12,10 @@ type BillingDraft = {
   aval_profile_id: string;
 };
 
+type PasswordDraft = {
+  password: string;
+};
+
 type NewUserDraft = {
   email: string;
   display_name: string;
@@ -90,6 +94,7 @@ export function AdminUsersPanel() {
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [billingDrafts, setBillingDrafts] = useState<Record<string, BillingDraft>>({});
+  const [passwordDrafts, setPasswordDrafts] = useState<Record<string, PasswordDraft>>({});
   const [newUserDraft, setNewUserDraft] = useState<NewUserDraft>(initialNewUserDraft);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -112,6 +117,9 @@ export function AdminUsersPanel() {
           },
         ]),
       ),
+    );
+    setPasswordDrafts(
+      Object.fromEntries(rows.map((user) => [user.id, { password: "" }])),
     );
   }
 
@@ -282,6 +290,16 @@ export function AdminUsersPanel() {
     }));
   }
 
+  function updatePasswordDraft(userId: string, patch: Partial<PasswordDraft>) {
+    setPasswordDrafts((current) => ({
+      ...current,
+      [userId]: {
+        password: current[userId]?.password ?? "",
+        ...patch,
+      },
+    }));
+  }
+
   function updateNewUserDraft(patch: Partial<NewUserDraft>) {
     setNewUserDraft((current) => ({
       ...current,
@@ -359,6 +377,31 @@ export function AdminUsersPanel() {
       setMessage(`${user.display_name}: modalidad de cobro actualizada.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la modalidad");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function handleUpdatePassword(user: AdminUser) {
+    const password = passwordDrafts[user.id]?.password.trim() ?? "";
+    if (password.length < 6) {
+      setError("La clave temporal debe tener al menos 6 caracteres.");
+      return;
+    }
+
+    setSavingKey(`password:${user.id}`);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch<AdminUser>(`/admin/users/${user.id}/password`, accessToken, {
+        method: "PUT",
+        body: JSON.stringify({ password }),
+      });
+      updatePasswordDraft(user.id, { password: "" });
+      setMessage(`${user.display_name}: clave temporal actualizada.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la clave");
     } finally {
       setSavingKey(null);
     }
@@ -571,7 +614,7 @@ export function AdminUsersPanel() {
             <div className="px-2 pb-2 text-[10px] text-steel/80">
               Roles: Usuario / Admin / SAdmin
             </div>
-            <table className="min-w-[1250px] table-fixed text-center text-[11px] text-steel">
+            <table className="min-w-[1450px] table-fixed text-center text-[11px] text-steel">
               <colgroup>
                 <col className="w-[156px]" />
                 <col className="w-[92px]" />
@@ -579,6 +622,7 @@ export function AdminUsersPanel() {
                 <col className="w-[78px]" />
                 <col className="w-[84px]" />
                 <col className="w-[88px]" />
+                <col className="w-[210px]" />
                 <col className="w-[210px]" />
                 <col className="w-[210px]" />
                 <col className="w-[360px]" />
@@ -595,6 +639,7 @@ export function AdminUsersPanel() {
                   <th className="px-1 py-2 font-medium">Puntua</th>
                   <th className="px-1 py-2 font-medium">Modalidad</th>
                   <th className="px-1 py-2 font-medium">Aval</th>
+                  <th className="px-1 py-2 font-medium">Clave</th>
                   <th className="px-2 py-2 font-medium">Acciones</th>
                 </tr>
               </thead>
@@ -612,6 +657,7 @@ export function AdminUsersPanel() {
                     modality: user.modality ?? "pre_pago",
                     aval_profile_id: user.aval_profile_id ?? "",
                   };
+                  const passwordDraft = passwordDrafts[user.id] ?? { password: "" };
                   const avalOptions = users
                     .filter((optionUser) => optionUser.id !== user.id)
                     .sort((left, right) => left.display_name.localeCompare(right.display_name));
@@ -680,6 +726,31 @@ export function AdminUsersPanel() {
                             </option>
                           ))}
                         </select>
+                      </td>
+                      <td className="px-1 py-2 align-top">
+                        <div className="flex flex-col gap-2">
+                          <input
+                            value={passwordDraft.password}
+                            onChange={(event) =>
+                              updatePasswordDraft(user.id, { password: event.target.value })
+                            }
+                            type="password"
+                            placeholder="Clave temporal"
+                            className="field-control h-8 w-full text-[11px]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void handleUpdatePassword(user)}
+                            disabled={
+                              savingKey === `password:${user.id}` ||
+                              passwordDraft.password.trim().length < 6
+                            }
+                            className={actionNeutralClass}
+                            title="Cambiar clave sin enviar correo"
+                          >
+                            {savingKey === `password:${user.id}` ? "..." : "Cambiar clave"}
+                          </button>
+                        </div>
                       </td>
                       <td className="px-2 py-2 align-top">
                         <div className="flex flex-nowrap items-center gap-2 text-left">
@@ -753,7 +824,7 @@ export function AdminUsersPanel() {
                 })}
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-8 text-sm text-steel">
+                    <td colSpan={10} className="px-4 py-8 text-sm text-steel">
                       No hubo coincidencias para ese filtro.
                     </td>
                   </tr>
