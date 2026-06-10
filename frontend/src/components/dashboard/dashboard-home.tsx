@@ -511,8 +511,8 @@ export function DashboardHome() {
   }
 
   const favoriteTeam = state.teams.find((team) => team.id === state.me?.favorite_team_id) ?? null;
-  const headerLogoUrl = favoriteTeam?.crest_url ?? env.ligaMxLogoUrl;
-  const headerLogoLabel = favoriteTeam?.name ?? "Liga MX";
+  const headerLogoUrl = favoriteTeam?.crest_url ?? env.worldCupLogoUrl;
+  const headerLogoLabel = favoriteTeam?.name ?? "FIFA World Cup";
   const weeklyLeader = state.leaderboard[0];
   const matchesWithProbabilities = state.matches.filter(
     (match) =>
@@ -604,7 +604,7 @@ export function DashboardHome() {
               />
             ) : (
               <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm font-semibold text-steel sm:h-24 sm:w-24 sm:text-2xl">
-                MX
+                WC
               </div>
             )}
           </div>

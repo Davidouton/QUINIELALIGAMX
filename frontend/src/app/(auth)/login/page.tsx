@@ -80,14 +80,14 @@ export default function LoginPage() {
               )}
             </div>
             <div className="flex h-20 w-20 items-center justify-center rounded-[22px] border border-white/10 bg-night/30 p-3">
-              {env.ligaMxLogoUrl ? (
+              {env.worldCupLogoUrl ? (
                 <img
-                  src={env.ligaMxLogoUrl}
-                  alt="Liga MX"
+                  src={env.worldCupLogoUrl}
+                  alt="FIFA World Cup"
                   className="h-14 w-14 object-contain"
                 />
               ) : (
-                <span className="text-sm font-semibold text-steel">MX</span>
+                <span className="text-sm font-semibold text-steel">WC</span>
               )}
             </div>
           </div>

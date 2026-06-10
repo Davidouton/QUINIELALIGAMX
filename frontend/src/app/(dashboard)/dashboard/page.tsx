@@ -1,6 +1,5 @@
-import { DashboardHome } from "@/components/dashboard/dashboard-home";
+import { redirect } from "next/navigation";
 
 export default function DashboardPage() {
-  return <DashboardHome />;
+  redirect("/dashboard/world-cup");
 }
-

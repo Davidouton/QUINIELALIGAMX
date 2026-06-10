@@ -31,12 +31,12 @@ export default function HomePage() {
     <main className="min-h-screen px-6 py-8">
       <section className="surface-card-strong relative mx-auto max-w-7xl overflow-hidden px-8 py-12">
         <div className="mx-auto flex max-w-5xl flex-col items-center text-center">
-          <p className="eyebrow">Liga MX · Quiniela Oficial</p>
+          <p className="eyebrow">FIFA World Cup · Quiniela Oficial</p>
           <h1 className="headline-glow mt-6 text-5xl font-semibold leading-[0.92] text-ink md:text-7xl">
             Beto's Bet
           </h1>
           <p className="mt-4 max-w-2xl text-lg text-steel">
-            La quiniela de Liga MX con picks, resultados oficiales, tabla general y toda la energia
+            La quiniela de FIFA World Cup con picks, resultados oficiales, tabla general y toda la energia
             del torneo en una sola experiencia.
           </p>
 
@@ -55,15 +55,15 @@ export default function HomePage() {
               )}
             </div>
             <div className="flex min-h-[180px] min-w-[180px] items-center justify-center rounded-[30px] border border-white/10 bg-night/30 p-6 backdrop-blur-md">
-              {env.ligaMxLogoUrl ? (
+              {env.worldCupLogoUrl ? (
                 <img
-                  src={env.ligaMxLogoUrl}
-                  alt="Liga MX"
+                  src={env.worldCupLogoUrl}
+                  alt="FIFA World Cup"
                   className="h-32 w-32 object-contain"
                 />
               ) : (
                 <div className="flex h-32 w-32 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-2xl font-semibold text-steel">
-                  MX
+                  WC
                 </div>
               )}
             </div>

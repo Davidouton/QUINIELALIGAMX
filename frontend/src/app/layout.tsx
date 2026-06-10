@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "QuinielaMaestra",
-  description: "Quiniela profesional de Liga MX con picks, resultados y leaderboards.",
+  description: "Quiniela profesional de FIFA World Cup con picks, resultados y leaderboards.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
