@@ -135,6 +135,18 @@ body::after {
     color: rgba(var(--app-placeholder-rgb), 0.72);
   }
 
+  select.field-control option,
+  select.field-control optgroup {
+    background-color: #f8fafc;
+    color: #0f172a;
+  }
+
+  select.field-control option:checked,
+  select.field-control option:hover {
+    background-color: #e2e8f0;
+    color: #0f172a;
+  }
+
   .field-control:focus {
     border-color: rgb(var(--app-accent-rgb));
     --tw-ring-color: rgba(var(--app-accent-rgb), 0.25);
