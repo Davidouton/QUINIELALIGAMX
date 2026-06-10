@@ -8,7 +8,7 @@ function getSafeNextPath(request: NextRequest, type: EmailOtpType | null) {
   if (nextPath?.startsWith("/")) {
     return nextPath;
   }
-  if (type === "recovery") {
+  if (type === "recovery" || type === "invite") {
     return "/reset-password";
   }
   return "/dashboard";

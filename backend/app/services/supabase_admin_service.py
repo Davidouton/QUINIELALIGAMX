@@ -63,7 +63,7 @@ class SupabaseAdminService:
         payload = {
             "email": email,
             "data": {"display_name": display_name},
-            "redirect_to": self.settings.frontend_site_url.rstrip("/"),
+            "redirect_to": f"{self.settings.frontend_site_url.rstrip('/')}/reset-password",
         }
         with httpx.Client(timeout=15.0) as client:
             response = client.post(self._auth_url("/invite"), headers=self._headers(), json=payload)

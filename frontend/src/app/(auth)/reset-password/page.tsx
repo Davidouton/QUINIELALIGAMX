@@ -33,6 +33,7 @@ export default function ResetPasswordPage() {
       const accessToken = hashParams.get("access_token");
       const refreshToken = hashParams.get("refresh_token");
       const hashType = hashParams.get("type");
+      const isHashPasswordSetup = hashType === "recovery" || hashType === "invite";
 
       if (code) {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
@@ -47,7 +48,7 @@ export default function ResetPasswordPage() {
         if (verifyError) {
           setError(verifyError.message);
         }
-      } else if (accessToken && refreshToken && hashType === "recovery") {
+      } else if (accessToken && refreshToken && isHashPasswordSetup) {
         const { error: setSessionError } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,

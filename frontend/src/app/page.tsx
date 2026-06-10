@@ -16,13 +16,15 @@ export default function HomePage() {
     const tokenHash = searchParams.get("token_hash");
     const hashType = hashParams.get("type");
     const accessToken = hashParams.get("access_token");
+    const isPasswordSetup = type === "recovery" || type === "invite";
+    const isHashPasswordSetup = hashType === "recovery" || hashType === "invite";
 
-    if (code || (tokenHash && type === "recovery")) {
+    if (code || (tokenHash && isPasswordSetup)) {
       window.location.replace(`/auth/confirm${search}`);
       return;
     }
 
-    if (type === "recovery" || hashType === "recovery" || accessToken) {
+    if (isPasswordSetup || isHashPasswordSetup || accessToken) {
       window.location.replace(`/reset-password${search}${hash}`);
     }
   }, []);
