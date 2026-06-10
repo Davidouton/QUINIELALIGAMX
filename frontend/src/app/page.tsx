@@ -37,16 +37,16 @@ export default function HomePage() {
             El Quinielón
           </h1>
 
-          <div className="mt-10 flex justify-center">
-            <div className="flex min-h-[220px] min-w-[220px] items-center justify-center rounded-[30px] border border-white/10 bg-night/30 p-6 backdrop-blur-md">
+          <div className="mt-8 flex justify-center">
+            <div className="flex h-52 w-52 items-center justify-center rounded-full bg-white p-2 shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
               {env.worldCupLogoUrl ? (
                 <img
                   src={env.worldCupLogoUrl}
                   alt="FIFA World Cup"
-                  className="h-44 w-44 object-contain"
+                  className="h-full w-full object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.16)]"
                 />
               ) : (
-                <div className="flex h-44 w-44 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-2xl font-semibold text-steel">
+                <div className="flex h-full w-full items-center justify-center rounded-full text-2xl font-semibold text-night">
                   WC
                 </div>
               )}

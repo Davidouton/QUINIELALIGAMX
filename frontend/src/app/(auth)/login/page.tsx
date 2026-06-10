@@ -68,15 +68,15 @@ export default function LoginPage() {
         <div className="mb-8 flex flex-col items-center text-center">
           <p className="eyebrow">El Quinielón</p>
           <div className="mt-5 flex items-center justify-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-[22px] border border-white/10 bg-night/30 p-3">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white p-1 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
               {env.worldCupLogoUrl ? (
                 <img
                   src={env.worldCupLogoUrl}
                   alt="FIFA World Cup"
-                  className="h-14 w-14 object-contain"
+                  className="h-full w-full object-contain"
                 />
               ) : (
-                <span className="text-sm font-semibold text-steel">WC</span>
+                <span className="text-sm font-semibold text-night">WC</span>
               )}
             </div>
           </div>
