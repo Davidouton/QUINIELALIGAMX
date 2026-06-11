@@ -5,11 +5,14 @@ from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, aliased
 
+from app.core.datetime import ensure_utc
 from app.models.entities import (
+    Match,
     Matchday,
     Profile,
     Season,
     StandingsMatchday,
+    Team,
     VipCompetition,
     VipCompetitionMatchday,
     VipMembership,
@@ -29,6 +32,9 @@ from app.services.scoring_service import ScoringService
 
 
 class VipService:
+    def get_join_lock(self, db: Session, vip_id: str) -> dict[str, object]:
+        return self._join_lock_for_vip(db, vip_id)
+
     def list_public_vips(self, db: Session, profile: Profile) -> list[VipCompetitionOut]:
         vip_rows = list(
             db.scalars(
@@ -45,6 +51,7 @@ class VipService:
         for vip in vip_rows:
             memberships = bundle["memberships_by_vip"].get(vip.id, [])
             my_membership = next((membership for membership in memberships if membership.profile_id == profile.id), None)
+            join_lock = bundle["join_locks_by_vip"].get(vip.id, {})
             result.append(
                 VipCompetitionOut(
                     id=vip.id,
@@ -67,6 +74,9 @@ class VipService:
                     second_place_amount=float(self._second_place_amount(vip, memberships)),
                     third_place_amount=float(self._third_place_amount(vip, memberships)),
                     remaining_pool_amount=float(self._remaining_pool_amount(vip, memberships)),
+                    join_locked=bool(join_lock.get("locked", False)),
+                    join_lock_at=join_lock.get("lock_at"),
+                    join_lock_match_label=join_lock.get("match_label"),
                     my_membership=self._membership_out(my_membership, bundle["profile_names"]) if my_membership else None,
                     leaderboard=self._build_leaderboard(
                         vip.id,
@@ -83,6 +93,15 @@ class VipService:
         vip = db.get(VipCompetition, vip_id)
         if vip is None or not vip.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+
+        join_lock = self._join_lock_for_vip(db, vip_id)
+        if join_lock["locked"]:
+            lock_at_text = join_lock["lock_at"].strftime("%d/%m/%Y %H:%M") if join_lock["lock_at"] else "la fecha limite"
+            match_label = join_lock["match_label"] or "el primer partido de la VIP"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Las solicitudes VIP cerraron con {match_label} el {lock_at_text}",
+            )
 
         membership = db.scalar(
             select(VipMembership).where(
@@ -165,6 +184,9 @@ class VipService:
                 second_place_amount=float(self._second_place_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
                 third_place_amount=float(self._third_place_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
                 remaining_pool_amount=float(self._remaining_pool_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
+                join_locked=bool(bundle["join_locks_by_vip"].get(vip.id, {}).get("locked", False)),
+                join_lock_at=bundle["join_locks_by_vip"].get(vip.id, {}).get("lock_at"),
+                join_lock_match_label=bundle["join_locks_by_vip"].get(vip.id, {}).get("match_label"),
                 leaderboard=self._build_leaderboard(
                     vip.id,
                     bundle["matchdays_by_vip"].get(vip.id, []),
@@ -326,9 +348,11 @@ class VipService:
             .order_by(Matchday.number.asc(), Matchday.name.asc())
         ).all()
         matchdays_by_vip: dict[str, list[VipMatchdayOut]] = {}
+        matchday_ids_by_vip: dict[str, list[str]] = {}
         season_ids: set[str] = set()
         for link, matchday in matchday_rows:
             season_ids.add(matchday.season_id)
+            matchday_ids_by_vip.setdefault(link.vip_competition_id, []).append(matchday.id)
             matchdays_by_vip.setdefault(link.vip_competition_id, []).append(
                 VipMatchdayOut(
                     id=matchday.id,
@@ -369,10 +393,78 @@ class VipService:
 
         return {
             "matchdays_by_vip": matchdays_by_vip,
+            "join_locks_by_vip": self._join_locks_for_vips(db, matchday_ids_by_vip),
             "memberships_by_vip": memberships_by_vip,
             "profile_names": profile_names,
             "season_names": season_names,
         }
+
+    def _join_lock_for_vip(self, db: Session, vip_id: str) -> dict[str, object]:
+        matchday_ids = [
+            row.matchday_id
+            for row in db.scalars(
+                select(VipCompetitionMatchday).where(VipCompetitionMatchday.vip_competition_id == vip_id)
+            ).all()
+        ]
+        return self._join_locks_for_vips(db, {vip_id: matchday_ids}).get(
+            vip_id,
+            {"locked": False, "lock_at": None, "match_label": None},
+        )
+
+    def _join_locks_for_vips(
+        self,
+        db: Session,
+        matchday_ids_by_vip: dict[str, list[str]],
+    ) -> dict[str, dict[str, object]]:
+        all_matchday_ids = sorted({matchday_id for ids in matchday_ids_by_vip.values() for matchday_id in ids})
+        if not all_matchday_ids:
+            return {}
+
+        home_team = aliased(Team)
+        away_team = aliased(Team)
+        rows = db.execute(
+            select(
+                Match,
+                Matchday,
+                home_team.name,
+                away_team.name,
+            )
+            .join(Matchday, Matchday.id == Match.matchday_id)
+            .outerjoin(home_team, home_team.id == Match.home_team_id)
+            .outerjoin(away_team, away_team.id == Match.away_team_id)
+            .where(Match.matchday_id.in_(all_matchday_ids))
+            .order_by(Matchday.number.asc(), Match.kickoff_at.asc(), Match.id.asc())
+        ).all()
+
+        rows_by_matchday: dict[str, list[tuple[Match, Matchday, str | None, str | None]]] = {}
+        for match, matchday, home_name, away_name in rows:
+            rows_by_matchday.setdefault(matchday.id, []).append((match, matchday, home_name, away_name))
+
+        now = datetime.now(UTC)
+        result: dict[str, dict[str, object]] = {}
+        for vip_id, matchday_ids in matchday_ids_by_vip.items():
+            selected_row = next(
+                (
+                    rows_by_matchday[matchday_id][0]
+                    for matchday_id in matchday_ids
+                    if rows_by_matchday.get(matchday_id)
+                ),
+                None,
+            )
+            if selected_row is None:
+                result[vip_id] = {"locked": False, "lock_at": None, "match_label": None}
+                continue
+
+            match, _, home_name, away_name = selected_row
+            lock_at = ensure_utc(match.picks_lock_at)
+            home_label = home_name or match.home_placeholder or "Local"
+            away_label = away_name or match.away_placeholder or "Visitante"
+            result[vip_id] = {
+                "locked": now >= lock_at,
+                "lock_at": lock_at,
+                "match_label": f"{home_label} vs {away_label}",
+            }
+        return result
 
     def _build_leaderboard(
         self,

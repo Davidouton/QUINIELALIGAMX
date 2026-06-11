@@ -378,6 +378,14 @@ class PaymentService:
         assert isinstance(scope, VipCompetition)
         if not scope.is_active:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP no esta activa")
+        from app.services.vip_service import VipService
+
+        join_lock = VipService().get_join_lock(db, scope.id)
+        if join_lock["locked"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La ventana de pago para esta VIP ya cerro",
+            )
         membership = db.scalar(
             select(VipMembership).where(
                 VipMembership.vip_competition_id == scope.id,

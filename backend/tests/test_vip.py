@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_current_profile
 from app.main import app
 from app.models.entities import (
+    Match,
     Matchday,
     MatchdayStatus,
     Profile,
@@ -17,7 +18,7 @@ from app.models.entities import (
     VipMembershipStatus,
 )
 
-from conftest import MATCHDAY_ID, PROFILE_LEADER_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
+from conftest import MATCHDAY_ID, MATCH_ONE_ID, PROFILE_LEADER_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
 
 
 @pytest.fixture
@@ -361,6 +362,64 @@ def test_admin_can_track_vip_member_payment(admin_client: TestClient) -> None:
     )
     assert pending_membership["is_paid"] is False
     assert pending_membership["admin_note"] == "Pendiente transferencia"
+
+
+def test_vip_requests_lock_at_first_match_lock(admin_client: TestClient) -> None:
+    create_response = admin_client.post(
+        "/api/v1/admin/vip",
+        json={
+            "name": "VIP Cierre",
+            "entry_fee_amount": 500,
+            "admin_commission_pct": 0,
+            "first_place_pct": 100,
+            "second_place_pct": 0,
+            "third_place_pct": 0,
+            "matchday_ids": [MATCHDAY_ID],
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_response.status_code == 201
+    vip_id = create_response.json()["id"]
+
+    def override_user_profile() -> Profile:
+        db = SessionLocal()
+        try:
+            profile = db.get(Profile, PROFILE_USER_ID)
+            assert profile is not None
+            return profile
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_current_profile] = override_user_profile
+
+    list_response = admin_client.get("/api/v1/vip", headers={"Authorization": "Bearer test-token"})
+    assert list_response.status_code == 200
+    public_vip = next(row for row in list_response.json() if row["id"] == vip_id)
+    assert public_vip["join_locked"] is False
+    assert public_vip["join_lock_match_label"] == "America vs Chivas"
+    assert public_vip["join_lock_at"] is not None
+
+    db = SessionLocal()
+    try:
+        match = db.get(Match, MATCH_ONE_ID)
+        assert match is not None
+        match.picks_lock_at = datetime.now(UTC) - timedelta(minutes=5)
+        db.add(match)
+        db.commit()
+    finally:
+        db.close()
+
+    request_response = admin_client.post(
+        f"/api/v1/vip/{vip_id}/request",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert request_response.status_code == 400
+    assert "America vs Chivas" in request_response.text
+
+    locked_list_response = admin_client.get("/api/v1/vip", headers={"Authorization": "Bearer test-token"})
+    locked_vip = next(row for row in locked_list_response.json() if row["id"] == vip_id)
+    assert locked_vip["join_locked"] is True
 
 
 def test_admin_cannot_create_vip_with_prize_split_over_100(admin_client: TestClient) -> None:

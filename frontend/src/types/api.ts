@@ -267,6 +267,9 @@ export interface VipCompetition {
   second_place_amount: number;
   third_place_amount: number;
   remaining_pool_amount: number;
+  join_locked: boolean;
+  join_lock_at: string | null;
+  join_lock_match_label: string | null;
   my_membership: VipMembership | null;
   leaderboard: VipLeaderboardEntry[];
 }
@@ -300,6 +303,9 @@ export interface AdminVipCompetition {
   second_place_amount: number;
   third_place_amount: number;
   remaining_pool_amount: number;
+  join_locked: boolean;
+  join_lock_at: string | null;
+  join_lock_match_label: string | null;
   leaderboard: VipLeaderboardEntry[];
 }
 

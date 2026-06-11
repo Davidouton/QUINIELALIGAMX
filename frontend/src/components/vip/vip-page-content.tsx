@@ -52,6 +52,17 @@ function statusCopy(status: VipMembershipStatus | null) {
   return { label: "Disponible", tone: "text-steel" };
 }
 
+function getVipJoinLockCopy(vip: VipCompetition) {
+  if (!vip.join_lock_at || !vip.join_lock_match_label) {
+    return null;
+  }
+  const formattedDate = formatMexicoDate(vip.join_lock_at);
+  if (!formattedDate) {
+    return null;
+  }
+  return `${vip.join_locked ? "Cerrada" : "Cierra"} con ${vip.join_lock_match_label} · ${formattedDate}`;
+}
+
 export function VipPageContent() {
   const [vips, setVips] = useState<VipCompetition[]>([]);
   const [pricingByVipId, setPricingByVipId] = useState<Record<string, EffectivePricing>>({});
@@ -169,7 +180,9 @@ export function VipPageContent() {
           {vips.map((vip) => {
             const status = statusCopy(vip.my_membership?.status ?? null);
             const pricing = pricingByVipId[vip.id] ?? null;
-            const disabled = vip.my_membership?.status === "approved";
+            const lockCopy = getVipJoinLockCopy(vip);
+            const hasMembership = Boolean(vip.my_membership);
+            const disabled = vip.my_membership?.status === "approved" || (!hasMembership && vip.join_locked);
             return (
               <div
                 key={vip.id}
@@ -222,6 +235,11 @@ export function VipPageContent() {
                   <p className="text-xs text-steel">
                     Jornadas {vip.matchdays.map((matchday) => matchday.number).join(", ")}
                   </p>
+                  {lockCopy ? (
+                    <p className={`text-xs ${vip.join_locked ? "text-coral" : "text-steel"}`}>
+                      {lockCopy}
+                    </p>
+                  ) : null}
                   <button
                     type="button"
                     disabled={disabled || requestingVipId === vip.id || payingVipId === vip.id}
@@ -236,6 +254,8 @@ export function VipPageContent() {
                         ? "Enviando"
                         : vip.my_membership?.status === "approved"
                           ? "Dentro"
+                          : !hasMembership && vip.join_locked
+                            ? "Cerrada"
                           : pricing
                             ? `Pagar acceso · ${formatCurrency(pricing.amount)}`
                             : vip.my_membership?.status === "pending"
@@ -284,7 +304,9 @@ export function VipPageContent() {
 
               {selectedVip.my_membership?.status !== "approved" ? (
                 <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                  {selectedVipPricing ? (
+                  {selectedVip.join_locked && !selectedVip.my_membership ? (
+                    <span className="app-pill px-4 text-sm text-coral">Solicitud cerrada</span>
+                  ) : selectedVipPricing ? (
                     <button
                       type="button"
                       onClick={() => void handleVipCheckout(selectedVip.id)}
@@ -306,7 +328,9 @@ export function VipPageContent() {
                     </button>
                   )}
                   <p className="text-sm text-steel">
-                    {selectedVipPricing
+                    {getVipJoinLockCopy(selectedVip)
+                      ? getVipJoinLockCopy(selectedVip)
+                      : selectedVipPricing
                       ? "El precio vigente se cobra en Stripe y tu acceso se activa cuando el backend confirme el pago."
                       : "Todavia no hay una regla de precio activa para esta VIP, asi que solo queda la solicitud manual."}
                   </p>

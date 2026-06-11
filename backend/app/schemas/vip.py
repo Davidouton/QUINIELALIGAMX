@@ -55,6 +55,9 @@ class VipCompetitionOut(BaseModel):
     second_place_amount: float = 0
     third_place_amount: float = 0
     remaining_pool_amount: float = 0
+    join_locked: bool = False
+    join_lock_at: datetime | None = None
+    join_lock_match_label: str | None = None
     my_membership: VipMembershipOut | None = None
     leaderboard: list[VipLeaderboardEntryOut] = []
 
@@ -115,4 +118,7 @@ class AdminVipCompetitionOut(BaseModel):
     second_place_amount: float = 0
     third_place_amount: float = 0
     remaining_pool_amount: float = 0
+    join_locked: bool = False
+    join_lock_at: datetime | None = None
+    join_lock_match_label: str | None = None
     leaderboard: list[VipLeaderboardEntryOut] = []
