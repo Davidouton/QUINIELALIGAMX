@@ -349,7 +349,7 @@ def test_admin_can_track_vip_member_payment(admin_client: TestClient) -> None:
     assert paid_membership["is_paid"] is True
     assert paid_membership["admin_note"] == "Pago VIP confirmado por admin"
 
-    pending_response = admin_client.put(
+    pending_response = admin_client.post(
         f"/api/v1/admin/vip/{vip_id}/memberships/{membership_id}/payment",
         json={"is_paid": False, "admin_note": "Pendiente transferencia"},
         headers={"Authorization": "Bearer test-token"},

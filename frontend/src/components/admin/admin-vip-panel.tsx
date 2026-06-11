@@ -46,6 +46,10 @@ function getPaymentLabel(isPaid: boolean) {
   return isPaid ? "Pagado" : "Pendiente";
 }
 
+function getCaughtMessage(caughtError: unknown, fallback: string) {
+  return caughtError instanceof Error ? caughtError.message : fallback;
+}
+
 function toFormState(vip: AdminVipCompetition | null, seasons: Season[]): FormState {
   if (!vip) {
     return {
@@ -157,6 +161,7 @@ export function AdminVipPanel() {
   }
 
   async function handleSave() {
+    const isUpdate = Boolean(selectedVipId);
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -180,9 +185,10 @@ export function AdminVipPanel() {
       });
       await loadPanel();
       setSelectedVipId(savedVip.id);
-      setMessage(selectedVipId ? "VIP actualizada." : "VIP creada.");
+      setMessage(isUpdate ? "VIP actualizada." : "VIP creada.");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar la VIP");
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo guardar la VIP");
+      setError(`${isUpdate ? "Guardar VIP" : "Crear VIP"}: ${errorMessage}`);
     } finally {
       setSaving(false);
     }
@@ -220,9 +226,35 @@ export function AdminVipPanel() {
             : "Solicitud rechazada.",
       );
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la membresia VIP");
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo actualizar la membresia VIP");
+      setError(`Membresia VIP: ${errorMessage}`);
     } finally {
       setProcessingMembershipId(null);
+    }
+  }
+
+  async function requestVipPaymentUpdate(accessToken: string | undefined, membershipId: string, isPaid: boolean) {
+    if (!selectedVip) {
+      throw new Error("Selecciona una VIP");
+    }
+
+    const path = `/admin/vip/${selectedVip.id}/memberships/${membershipId}/payment`;
+    const body = JSON.stringify({ is_paid: !isPaid });
+
+    try {
+      return await backendFetch<AdminVipCompetition>(path, accessToken, {
+        method: "PUT",
+        body,
+      });
+    } catch (caughtError) {
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo actualizar el pago VIP");
+      if (errorMessage !== "Not Found") {
+        throw caughtError;
+      }
+      return backendFetch<AdminVipCompetition>(path, accessToken, {
+        method: "POST",
+        body,
+      });
     }
   }
 
@@ -235,18 +267,16 @@ export function AdminVipPanel() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      const updatedVip = await backendFetch<AdminVipCompetition>(
-        `/admin/vip/${selectedVip.id}/memberships/${membershipId}/payment`,
-        accessToken,
-        {
-          method: "PUT",
-          body: JSON.stringify({ is_paid: !isPaid }),
-        },
-      );
+      const updatedVip = await requestVipPaymentUpdate(accessToken, membershipId, isPaid);
       setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
       setMessage(!isPaid ? "Pago VIP confirmado." : "Pago VIP marcado pendiente.");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar el pago VIP");
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo actualizar el pago VIP");
+      setError(
+        errorMessage === "Not Found"
+          ? "Pago VIP: el backend desplegado aun no trae la ruta de pago. Revisa/reinicia el deploy del backend."
+          : `Pago VIP: ${errorMessage}`,
+      );
     } finally {
       setProcessingMembershipId(null);
     }
