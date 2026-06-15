@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS public.lmx_odds_5d (
   window_start DATE NOT NULL,
   window_end DATE NOT NULL,
   provider_name TEXT NOT NULL DEFAULT 'the_odds_api',
+  sport_key TEXT,
   fixture_id TEXT NOT NULL,
   match_date TIMESTAMPTZ NOT NULL,
   home_team TEXT NOT NULL,
@@ -96,6 +97,7 @@ CREATE TABLE IF NOT EXISTS public.lmx_odds_5d (
 ALTER_TABLE_STATEMENTS = (
     "ALTER TABLE public.lmx_odds_5d ALTER COLUMN fixture_id TYPE TEXT USING fixture_id::text",
     "ALTER TABLE public.lmx_odds_5d ADD COLUMN IF NOT EXISTS provider_name TEXT NOT NULL DEFAULT 'the_odds_api'",
+    "ALTER TABLE public.lmx_odds_5d ADD COLUMN IF NOT EXISTS sport_key TEXT",
     "ALTER TABLE public.lmx_odds_5d ADD COLUMN IF NOT EXISTS home_code TEXT",
     "ALTER TABLE public.lmx_odds_5d ADD COLUMN IF NOT EXISTS away_code TEXT",
     "ALTER TABLE public.lmx_odds_5d ADD COLUMN IF NOT EXISTS source_match_key TEXT",
@@ -120,6 +122,7 @@ INSERT INTO public.lmx_odds_5d (
   window_start,
   window_end,
   provider_name,
+  sport_key,
   fixture_id,
   match_date,
   home_team,
@@ -144,6 +147,7 @@ INSERT INTO public.lmx_odds_5d (
   :window_start,
   :window_end,
   :provider_name,
+  :sport_key,
   :fixture_id,
   :match_date,
   :home_team,
@@ -169,6 +173,7 @@ DO UPDATE SET
   window_start = EXCLUDED.window_start,
   window_end = EXCLUDED.window_end,
   provider_name = EXCLUDED.provider_name,
+  sport_key = EXCLUDED.sport_key,
   match_date = EXCLUDED.match_date,
   home_team = EXCLUDED.home_team,
   away_team = EXCLUDED.away_team,
@@ -197,7 +202,7 @@ class Settings:
     regions: str
     markets: str
     odds_format: str
-    bookmaker_key: str
+    bookmaker_keys: list[str]
     lookahead_days: int
     timeout_seconds: float
 
@@ -232,6 +237,10 @@ def get_required_env(*keys: str) -> str:
     raise RuntimeError(f"Falta configurar {joined} para jalar The Odds API.")
 
 
+def parse_bookmaker_keys(value: str) -> list[str]:
+    return [part.strip().lower() for part in value.split(",") if part.strip()]
+
+
 def load_settings() -> Settings:
     return Settings(
         api_key=get_required_env("THE_ODDS_API_KEY", "ODDS_API_KEY"),
@@ -240,7 +249,7 @@ def load_settings() -> Settings:
         regions=os.getenv("THE_ODDS_API_REGIONS", "us"),
         markets=os.getenv("THE_ODDS_API_MARKETS", "h2h,spreads,totals"),
         odds_format=os.getenv("THE_ODDS_API_ODDS_FORMAT", "american"),
-        bookmaker_key=os.getenv("THE_ODDS_API_BOOKMAKER", "draftkings").strip().lower(),
+        bookmaker_keys=parse_bookmaker_keys(os.getenv("THE_ODDS_API_BOOKMAKER", "draftkings")),
         lookahead_days=max(int(os.getenv("ODDS_LOOKAHEAD_DAYS", "5")), 0),
         timeout_seconds=max(float(os.getenv("ODDS_REQUEST_TIMEOUT_SECONDS", "30")), 5.0),
     )
@@ -259,8 +268,9 @@ def fetch_events(settings: Settings) -> tuple[list[dict[str, Any]], str | None, 
         "regions": settings.regions,
         "markets": settings.markets,
         "oddsFormat": settings.odds_format,
-        "bookmakers": settings.bookmaker_key,
     }
+    if settings.bookmaker_keys:
+        params["bookmakers"] = ",".join(settings.bookmaker_keys)
 
     with httpx.Client(timeout=settings.timeout_seconds, follow_redirects=True) as client:
         response = client.get(url, params=params)
@@ -284,7 +294,23 @@ def fetch_events(settings: Settings) -> tuple[list[dict[str, Any]], str | None, 
         )
 
 
-def extract_market_values(event: dict[str, Any], bookmaker_key: str) -> dict[str, Decimal | None]:
+def select_bookmaker(event: dict[str, Any], bookmaker_keys: list[str]) -> dict[str, Any] | None:
+    bookmakers = list(event.get("bookmakers", []))
+    if not bookmakers:
+        return None
+
+    def has_h2h(candidate: dict[str, Any]) -> bool:
+        return any(market.get("key") == "h2h" for market in candidate.get("markets", []))
+
+    for bookmaker_key in bookmaker_keys:
+        candidate = next((bookmaker for bookmaker in bookmakers if bookmaker.get("key") == bookmaker_key), None)
+        if candidate is not None and has_h2h(candidate):
+            return candidate
+
+    return next((bookmaker for bookmaker in bookmakers if has_h2h(bookmaker)), bookmakers[0])
+
+
+def extract_market_values(event: dict[str, Any], bookmaker: dict[str, Any] | None) -> dict[str, Decimal | None]:
     values: dict[str, Decimal | None] = {
         "ml_home": None,
         "ml_draw": None,
@@ -298,10 +324,6 @@ def extract_market_values(event: dict[str, Any], bookmaker_key: str) -> dict[str
         "under_value": None,
     }
 
-    bookmaker = next(
-        (candidate for candidate in event.get("bookmakers", []) if candidate.get("key") == bookmaker_key),
-        None,
-    )
     if bookmaker is None:
         return values
 
@@ -378,7 +400,8 @@ def build_rows(settings: Settings, events: list[dict[str, Any]]) -> tuple[list[d
         if away_code is None:
             unmapped_teams.add(away_team)
 
-        market_values = extract_market_values(event, settings.bookmaker_key)
+        bookmaker = select_bookmaker(event, settings.bookmaker_keys)
+        market_values = extract_market_values(event, bookmaker)
         source_match_key = build_source_match_key(home_code, away_code, match_date)
         rows.append(
             {
@@ -386,6 +409,7 @@ def build_rows(settings: Settings, events: list[dict[str, Any]]) -> tuple[list[d
                 "window_start": window_start,
                 "window_end": window_end,
                 "provider_name": PROVIDER_NAME,
+                "sport_key": settings.sport,
                 "fixture_id": str(event_id),
                 "match_date": match_date,
                 "home_team": home_team,
@@ -393,7 +417,7 @@ def build_rows(settings: Settings, events: list[dict[str, Any]]) -> tuple[list[d
                 "home_code": home_code,
                 "away_code": away_code,
                 "source_match_key": source_match_key,
-                "bookmaker_name": settings.bookmaker_key,
+                "bookmaker_name": str(bookmaker.get("key") or "unknown") if bookmaker is not None else "unknown",
                 **market_values,
             }
         )
@@ -413,7 +437,7 @@ def ensure_raw_table(table_name: str) -> None:
             connection.execute(text(statement))
 
 
-def replace_snapshot_rows(table_name: str, snapshot_date: date, bookmaker_key: str, rows: list[dict[str, Any]]) -> int:
+def replace_snapshot_rows(table_name: str, snapshot_date: date, sport_key: str, rows: list[dict[str, Any]]) -> int:
     with engine.begin() as connection:
         connection.execute(
             text(
@@ -421,13 +445,13 @@ def replace_snapshot_rows(table_name: str, snapshot_date: date, bookmaker_key: s
                 DELETE FROM public.{table_name}
                 WHERE snapshot_date = :snapshot_date
                   AND provider_name = :provider_name
-                  AND bookmaker_name = :bookmaker_name
+                  AND COALESCE(sport_key, '') = :sport_key
                 """
             ),
             {
                 "snapshot_date": snapshot_date,
                 "provider_name": PROVIDER_NAME,
-                "bookmaker_name": bookmaker_key,
+                "sport_key": sport_key,
             },
         )
         for row in rows:
@@ -441,13 +465,13 @@ def replace_snapshot_rows(table_name: str, snapshot_date: date, bookmaker_key: s
                     FROM public.{table_name}
                     WHERE snapshot_date = :snapshot_date
                       AND provider_name = :provider_name
-                      AND bookmaker_name = :bookmaker_name
+                      AND COALESCE(sport_key, '') = :sport_key
                     """
                 ),
                 {
                     "snapshot_date": snapshot_date,
                     "provider_name": PROVIDER_NAME,
-                    "bookmaker_name": bookmaker_key,
+                    "sport_key": sport_key,
                 },
             ).scalar_one()
         )
@@ -459,11 +483,12 @@ def main() -> int:
     events, credits_used, credits_remaining = fetch_events(settings)
     rows, unmapped_teams, snapshot_date = build_rows(settings, events)
     ensure_raw_table(args.table)
-    raw_rows_processed = replace_snapshot_rows(args.table, snapshot_date, settings.bookmaker_key, rows)
+    raw_rows_processed = replace_snapshot_rows(args.table, snapshot_date, settings.sport, rows)
+    bookmaker_label = ",".join(settings.bookmaker_keys) if settings.bookmaker_keys else "all"
 
     print(
         f"Raw odds pull complete for snapshot {snapshot_date.isoformat()}: "
-        f"{raw_rows_processed} rows upserted for {settings.bookmaker_key}. "
+        f"{raw_rows_processed} rows upserted for {settings.sport}/{bookmaker_label}. "
         f"Credits used={credits_used or 'n/a'}, remaining={credits_remaining or 'n/a'}."
     )
     if unmapped_teams:

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, engine
 from app.core.datetime import MEXICO_CITY_TZ, ensure_utc
 from app.core.team_matching import EQUIVALENT_TEAM_CODES, TEAM_CODE_ALIASES, normalize_text
-from app.models.entities import Match, MatchStatus, Matchday, MatchdayStatus, Odds, Season, Team
+from app.models.entities import Match, MatchStatus, Matchday, MatchdayStatus, Odds, Season, Team, TournamentFormat
 
 RAW_TABLE_NAME = "lmx_odds_5d"
 LEGACY_PROVIDER_NAME = "api_football"
@@ -24,6 +24,7 @@ LEGACY_PROVIDER_NAME = "api_football"
 @dataclass
 class RawOddsRow:
     provider_name: str
+    sport_key: str | None
     bookmaker_name: str
     fixture_id: str | None
     match_date: datetime
@@ -140,7 +141,27 @@ def find_team(
     return by_name.get(normalized_name)
 
 
-def ensure_active_season(db: Session, reference_date: datetime) -> tuple[Season, bool]:
+def ensure_active_season(db: Session, reference_date: datetime, sport_key: str | None = None) -> tuple[Season, bool]:
+    if sport_key == "soccer_fifa_world_cup":
+        world_cup = db.scalar(
+            select(Season)
+            .where(Season.tournament_format == TournamentFormat.WORLD_CUP)
+            .order_by(Season.is_active.desc(), Season.created_at.desc())
+        )
+        if world_cup is not None:
+            return world_cup, False
+
+        year = ensure_utc(reference_date).astimezone(MEXICO_CITY_TZ).year
+        season = Season(
+            name=f"Mundial {year}",
+            slug=f"mundial-{year}",
+            tournament_format=TournamentFormat.WORLD_CUP,
+            is_active=False,
+        )
+        db.add(season)
+        db.flush()
+        return season, True
+
     active = db.scalar(select(Season).where(Season.is_active.is_(True)).order_by(Season.created_at.desc()))
     if active is not None:
         return active, False
@@ -199,12 +220,18 @@ def get_latest_snapshot_date(table_name: str) -> str | None:
         return result.scalar_one_or_none()
 
 
-def load_raw_rows(table_name: str, snapshot_date: str | None, lookup: dict[str, str]) -> list[RawOddsRow]:
+def load_raw_rows(
+    table_name: str,
+    snapshot_date: str | None,
+    lookup: dict[str, str],
+    sport_key: str | None = None,
+) -> list[RawOddsRow]:
     inspector = inspect(engine)
     column_names = {column["name"] for column in inspector.get_columns(table_name, schema="public")}
 
     optional_columns = {
         "provider_name": "provider_name",
+        "sport_key": "sport_key",
         "home_code": "home_code",
         "away_code": "away_code",
         "source_match_key": "source_match_key",
@@ -240,6 +267,9 @@ def load_raw_rows(table_name: str, snapshot_date: str | None, lookup: dict[str, 
     if snapshot_date:
         query += " WHERE snapshot_date = :snapshot_date"
         params["snapshot_date"] = snapshot_date
+    if sport_key and "sport_key" in column_names:
+        query += " AND sport_key = :sport_key" if params else " WHERE sport_key = :sport_key"
+        params["sport_key"] = sport_key
     query += " ORDER BY match_date ASC, home_team ASC, away_team ASC"
 
     rows: list[RawOddsRow] = []
@@ -255,6 +285,7 @@ def load_raw_rows(table_name: str, snapshot_date: str | None, lookup: dict[str, 
             rows.append(
                 RawOddsRow(
                     provider_name=str(row["provider_name"]),
+                    sport_key=str(row["sport_key"]) if row["sport_key"] is not None else None,
                     bookmaker_name=str(row["bookmaker_name"]),
                     fixture_id=str(row["fixture_id"]) if row["fixture_id"] is not None else None,
                     match_date=row["match_date"],
@@ -344,6 +375,7 @@ def upsert_match_odds(db: Session, match: Match, row: RawOddsRow) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Sync raw odds rows into QuinielaMaestra odds table")
     parser.add_argument("--snapshot-date", help="Snapshot date in YYYY-MM-DD. Defaults to latest snapshot.")
+    parser.add_argument("--sport-key", help="Only sync raw rows for this The Odds API sport key.")
     parser.add_argument("--table", default=RAW_TABLE_NAME, help="Raw odds table name in public schema.")
     return parser.parse_args()
 
@@ -357,12 +389,12 @@ def main() -> int:
 
     with SessionLocal() as db:
         lookup = load_team_lookup(db)
-        raw_rows = load_raw_rows(args.table, snapshot_date, lookup)
+        raw_rows = load_raw_rows(args.table, snapshot_date, lookup, sport_key=args.sport_key)
         if not raw_rows:
             print(f"No raw odds rows found for snapshot {snapshot_date}.")
             return 0
 
-        season, created_season = ensure_active_season(db, raw_rows[0].match_date)
+        season, created_season = ensure_active_season(db, raw_rows[0].match_date, sport_key=args.sport_key)
         matchday, created_matchday = ensure_snapshot_matchday(db, season, raw_rows)
         teams_by_code, teams_by_name = load_team_registry(db)
         match_lookup = build_match_lookup(db)

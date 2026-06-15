@@ -350,10 +350,20 @@ def extract_snapshot_date(text: str) -> str | None:
     return None
 
 
-def get_raw_odds_snapshot_count(snapshot_date: str, table_name: str = RAW_ODDS_TABLE) -> int | None:
+def get_raw_odds_snapshot_count(
+    snapshot_date: str,
+    table_name: str = RAW_ODDS_TABLE,
+    sport_key: str | None = None,
+) -> int | None:
     inspector = inspect(engine)
     if not inspector.has_table(table_name, schema="public"):
         return None
+
+    has_sport_key = any(column["name"] == "sport_key" for column in inspector.get_columns(table_name, schema="public"))
+    sport_filter = "AND sport_key = :sport_key" if sport_key and has_sport_key else ""
+    params = {"snapshot_date": snapshot_date}
+    if sport_key and has_sport_key:
+        params["sport_key"] = sport_key
 
     with engine.begin() as connection:
         raw_rows_processed = connection.execute(
@@ -362,9 +372,10 @@ def get_raw_odds_snapshot_count(snapshot_date: str, table_name: str = RAW_ODDS_T
                 SELECT COUNT(*)
                 FROM public.{table_name}
                 WHERE snapshot_date = :snapshot_date
+                {sport_filter}
                 """
             ),
-            {"snapshot_date": snapshot_date},
+            params,
         ).scalar_one()
 
     return int(raw_rows_processed)
@@ -383,10 +394,20 @@ def get_latest_raw_odds_snapshot_date(table_name: str = RAW_ODDS_TABLE) -> str |
     return str(snapshot_date) if snapshot_date is not None else None
 
 
-def get_raw_odds_preview(snapshot_date: str, table_name: str = RAW_ODDS_TABLE) -> list[OddsPreviewRow]:
+def get_raw_odds_preview(
+    snapshot_date: str,
+    table_name: str = RAW_ODDS_TABLE,
+    sport_key: str | None = None,
+) -> list[OddsPreviewRow]:
     inspector = inspect(engine)
     if not inspector.has_table(table_name, schema="public"):
         return []
+
+    has_sport_key = any(column["name"] == "sport_key" for column in inspector.get_columns(table_name, schema="public"))
+    sport_filter = "AND sport_key = :sport_key" if sport_key and has_sport_key else ""
+    params = {"snapshot_date": snapshot_date}
+    if sport_key and has_sport_key:
+        params["sport_key"] = sport_key
 
     with engine.begin() as connection:
         rows = connection.execute(
@@ -401,10 +422,11 @@ def get_raw_odds_preview(snapshot_date: str, table_name: str = RAW_ODDS_TABLE) -
                   ml_away
                 FROM public.{table_name}
                 WHERE snapshot_date = :snapshot_date
+                {sport_filter}
                 ORDER BY match_date ASC, home_team ASC, away_team ASC
                 """
             ),
-            {"snapshot_date": snapshot_date},
+            params,
         ).mappings()
 
         return [
@@ -542,7 +564,7 @@ def run_script(command: list[str], cwd: Path, env: dict[str, str] | None = None)
     )
 
 
-def run_odds_pull_pipeline(script_env: dict[str, str]) -> OddsPullResponse:
+def run_odds_pull_pipeline(script_env: dict[str, str], *, sport_key: str | None = None) -> OddsPullResponse:
     pull_result = run_script([sys.executable, "scripts/pull_odds_raw.py"], BACKEND_DIR, env=script_env)
     pull_output = "\n".join(part for part in [pull_result.stdout.strip(), pull_result.stderr.strip()] if part).strip()
 
@@ -564,7 +586,7 @@ def run_odds_pull_pipeline(script_env: dict[str, str]) -> OddsPullResponse:
             detail=f"El extractor raw no devolvio una fecha de snapshot usable.\n{pull_output or 'Sin salida del script.'}",
         )
 
-    raw_rows_processed = get_raw_odds_snapshot_count(snapshot_date)
+    raw_rows_processed = get_raw_odds_snapshot_count(snapshot_date, sport_key=sport_key)
     if raw_rows_processed is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -584,7 +606,13 @@ def run_odds_pull_pipeline(script_env: dict[str, str]) -> OddsPullResponse:
         )
 
     sync_result = run_script(
-        [sys.executable, "scripts/sync_odds_from_raw.py", "--snapshot-date", snapshot_date],
+        [
+            sys.executable,
+            "scripts/sync_odds_from_raw.py",
+            "--snapshot-date",
+            snapshot_date,
+            *(["--sport-key", sport_key] if sport_key else []),
+        ],
         BACKEND_DIR,
         env=script_env,
     )
@@ -605,7 +633,7 @@ def run_odds_pull_pipeline(script_env: dict[str, str]) -> OddsPullResponse:
         raw_rows_processed=raw_rows_processed,
         matched=extract_int(r":\s*(\d+)\s+matched", sync_output),
         unmatched=extract_int(r",\s*(\d+)\s+unmatched", sync_output),
-        preview_rows=get_raw_odds_preview(snapshot_date),
+        preview_rows=get_raw_odds_preview(snapshot_date, sport_key=sport_key),
         pull_output=pull_output,
         sync_output=sync_output,
     )
@@ -2212,9 +2240,13 @@ def pull_admin_world_cup_odds(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> OddsPullResponse:
     script_env = build_odds_script_env()
-    script_env["THE_ODDS_API_SPORT"] = "soccer_fifa_world_cup"
+    sport_key = "soccer_fifa_world_cup"
+    script_env["THE_ODDS_API_SPORT"] = sport_key
+    script_env["THE_ODDS_API_REGIONS"] = "us,uk,eu,au"
+    script_env["THE_ODDS_API_MARKETS"] = "h2h"
+    script_env["THE_ODDS_API_BOOKMAKER"] = ""
     script_env["ODDS_LOOKAHEAD_DAYS"] = "0"
-    return run_odds_pull_pipeline(script_env)
+    return run_odds_pull_pipeline(script_env, sport_key=sport_key)
 
 
 @router.post("/results/recalculate")
