@@ -153,9 +153,9 @@ export function QuinielaPlusPageContent() {
                   <th className="px-4 py-3 font-semibold">Jornada</th>
                   <th className="px-4 py-3 font-semibold">Fecha</th>
                   <th className="px-4 py-3 font-semibold">Partido</th>
-                  <th className="px-4 py-3 text-right font-semibold">Local</th>
-                  <th className="px-4 py-3 text-right font-semibold">Empate</th>
-                  <th className="px-4 py-3 text-right font-semibold">Visita</th>
+                  <th className="px-4 py-3 text-right font-semibold text-moss">Local gana</th>
+                  <th className="px-4 py-3 text-right font-semibold text-gold">Empate</th>
+                  <th className="px-4 py-3 text-right font-semibold text-coral">Local pierde</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.06]">
@@ -176,10 +176,10 @@ export function QuinielaPlusPageContent() {
                     <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-moss">
                       {formatProbability(match.home_win_probability)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-amber-100">
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-gold">
                       {formatProbability(match.draw_probability)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-sky-100">
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-coral">
                       {formatProbability(match.away_win_probability)}
                     </td>
                   </tr>
