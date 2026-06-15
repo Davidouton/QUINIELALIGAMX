@@ -32,6 +32,8 @@ const primaryMobileLinks = [
   { href: "/dashboard/picks", label: "Picks" },
 ];
 
+const appVersionLabel = "v 1.06";
+
 function renderLinkLabel(label: string) {
   if (label !== "Quiniela +") {
     return label;
@@ -131,8 +133,8 @@ export function DashboardSidebar() {
           </div>
           <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-medium tracking-[0.16em] text-steel">
             <span>Powered by Outonpro</span>
-              <span className="rounded-[10px] border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-[9px] tracking-[0.14em] text-steel">
-              Beta 1.3
+            <span className="rounded-[10px] border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-[9px] tracking-[0.14em] text-steel">
+              {appVersionLabel}
             </span>
           </div>
         </div>
@@ -186,7 +188,7 @@ export function DashboardSidebar() {
             <div className="flex items-center gap-2 text-left text-[10px] font-medium tracking-[0.16em] text-steel">
               <span>Powered by Outonpro</span>
               <span className="rounded-[10px] border border-white/[0.08] bg-white/[0.05] px-2 py-1 text-[9px] tracking-[0.14em] text-steel">
-                Beta 1.3
+                {appVersionLabel}
               </span>
             </div>
           </div>

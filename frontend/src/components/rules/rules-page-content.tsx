@@ -38,7 +38,7 @@ export function RulesPageContent() {
       <section>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold text-ink">{rulePage?.title || "Reglamento"}</h1>
-          {rulePage?.version_label ? (
+          {rulePage?.version_label && rulePage.version_label !== "Beta 1.3" ? (
             <span className="app-pill h-9 px-3 text-[10px] uppercase tracking-[0.2em] text-steel">
               {rulePage.version_label}
             </span>

@@ -577,9 +577,6 @@ export function DashboardHome() {
   return (
     <div className="space-y-6 sm:space-y-8">
       <section className="relative px-1 py-2 sm:px-0 sm:py-1">
-        <span className="absolute right-0 top-0 shrink-0 rounded-full border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.12em] text-steel sm:right-0 sm:top-0 sm:px-2 sm:text-[9px]">
-          Beta 1.3
-        </span>
         <div className="flex items-center justify-between gap-2 sm:gap-3 lg:items-center">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center">

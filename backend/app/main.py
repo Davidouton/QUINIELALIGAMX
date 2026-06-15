@@ -1134,7 +1134,7 @@ def run_startup_migrations() -> None:
             text(
                 """
                 INSERT INTO rules_pages (id, slug, title, content_markdown, version_label)
-                SELECT :id, 'main', 'Reglamento', '', 'Beta 1.3'
+                SELECT :id, 'main', 'Reglamento', '', 'v 1.06'
                 WHERE NOT EXISTS (
                   SELECT 1 FROM rules_pages WHERE slug = 'main'
                 )
