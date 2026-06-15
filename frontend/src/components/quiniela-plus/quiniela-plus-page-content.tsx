@@ -31,23 +31,39 @@ function buildMatchdayLabel(match: QuinielaPlusOddsSneakPeekMatch) {
     : `Jornada ${match.matchday_number}`;
 }
 
-function TeamBadge({ name, shortName, crestUrl }: { name: string; shortName: string; crestUrl: string | null }) {
+function getTeamInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((segment) => segment[0]?.toUpperCase() ?? "")
+    .join("")
+    .slice(0, 3);
+}
+
+function TeamBubble({ name, shortName, crestUrl }: { name: string; shortName: string; crestUrl: string | null }) {
+  const fallback = shortName || getTeamInitials(name);
+  if (crestUrl) {
+    return (
+      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06]">
+        <img src={crestUrl} alt={name} className="h-full w-full object-cover" />
+      </span>
+    );
+  }
+
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      {crestUrl ? (
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06]">
-          <img src={crestUrl} alt={name} className="h-full w-full object-cover" />
-        </div>
-      ) : (
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[9px] font-semibold text-steel">
-          {shortName.slice(0, 1)}
-        </span>
-      )}
-      <div className="min-w-0">
-        <p className="truncate font-semibold text-ink">{name}</p>
-        <p className="text-[10px] uppercase tracking-[0.14em] text-steel">{shortName}</p>
-      </div>
-    </div>
+    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[8px] font-semibold text-ink">
+      {fallback.slice(0, 2)}
+    </span>
+  );
+}
+
+function TeamInline({ name, shortName, crestUrl }: { name: string; shortName: string; crestUrl: string | null }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <TeamBubble name={name} shortName={shortName} crestUrl={crestUrl} />
+      <span className="truncate font-semibold text-ink">{name}</span>
+    </span>
   );
 }
 
@@ -165,49 +181,58 @@ export function QuinielaPlusPageContent() {
       </section>
 
       {visibleMatches.length > 0 ? (
-        <section className="overflow-hidden rounded-[16px] border border-white/[0.06] bg-white/[0.03]">
+        <section className="overflow-hidden rounded-[12px] border border-white/[0.06] bg-white/[0.025]">
           <div className="overflow-x-auto">
-            <table className="min-w-[760px] w-full text-left text-sm">
-              <thead className="border-b border-white/[0.06] text-[11px] uppercase tracking-[0.16em] text-steel">
+            <table className="min-w-[820px] w-full table-fixed text-left text-xs text-steel">
+              <colgroup>
+                <col className="w-[96px]" />
+                <col className="w-[130px]" />
+                <col className="w-[360px]" />
+                <col className="w-[78px]" />
+                <col className="w-[78px]" />
+                <col className="w-[78px]" />
+              </colgroup>
+              <thead className="border-b border-white/[0.06] text-[10px] uppercase tracking-[0.14em] text-steel">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Jornada</th>
-                  <th className="px-4 py-3 font-semibold">Fecha</th>
-                  <th className="px-4 py-3 font-semibold">Partido</th>
-                  <th className="px-4 py-3 text-right font-semibold text-moss">Local gana</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gold">Empate</th>
-                  <th className="px-4 py-3 text-right font-semibold text-coral">Local pierde</th>
+                  <th className="px-3 py-2 font-semibold">Jornada</th>
+                  <th className="px-3 py-2 font-semibold">Fecha</th>
+                  <th className="px-3 py-2 font-semibold">Partido</th>
+                  <th className="px-3 py-2 text-right font-semibold text-moss">Local</th>
+                  <th className="px-3 py-2 text-right font-semibold text-gold">Empate</th>
+                  <th className="px-3 py-2 text-right font-semibold text-coral">Visitante</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.06]">
                 {visibleMatches.map((match) => (
                   <tr key={match.match_id} className="transition hover:bg-white/[0.03]">
-                    <td className="whitespace-nowrap px-4 py-3 text-xs uppercase tracking-[0.14em] text-steel">
+                    <td className="whitespace-nowrap px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-steel">
                       {buildMatchdayLabel(match)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-xs text-steel">
+                    <td className="whitespace-nowrap px-3 py-2 text-[11px] text-steel">
                       {formatMexicoCityDateTime(match.kickoff_at)}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="grid min-w-[210px] gap-2">
-                        <TeamBadge
+                    <td className="px-3 py-2">
+                      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                        <TeamInline
                           name={match.home_team_name}
                           shortName={match.home_team_short_name}
                           crestUrl={match.home_team_crest_url}
                         />
-                        <TeamBadge
+                        <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
+                        <TeamInline
                           name={match.away_team_name}
                           shortName={match.away_team_short_name}
                           crestUrl={match.away_team_crest_url}
                         />
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-moss">
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-moss">
                       {formatProbability(match.home_win_probability)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-gold">
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-gold">
                       {formatProbability(match.draw_probability)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-coral">
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-coral">
                       {formatProbability(match.away_win_probability)}
                     </td>
                   </tr>
