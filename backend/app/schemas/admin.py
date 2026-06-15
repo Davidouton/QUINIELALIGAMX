@@ -271,6 +271,31 @@ class OddsPullResponse(BaseModel):
     sync_output: str
 
 
+class OddsUnmatchedTeamOut(BaseModel):
+    raw_team_name: str
+    raw_team_code: str | None = None
+    side: str
+    team_exists: bool
+
+
+class OddsUnmatchedMatchOut(BaseModel):
+    snapshot_date: str
+    match_date: str
+    home_team: str
+    home_code: str | None = None
+    away_team: str
+    away_code: str | None = None
+    source_match_key: str | None = None
+    missing: list[OddsUnmatchedTeamOut] = []
+
+
+class OddsUnmatchedResponse(BaseModel):
+    sport_key: str
+    snapshot_date: str | None = None
+    unmatched_count: int = 0
+    matches: list[OddsUnmatchedMatchOut] = []
+
+
 class SeasonCreateRequest(BaseModel):
     name: str
     slug: str

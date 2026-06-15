@@ -426,7 +426,11 @@ export interface QuinielaPlusOddsSneakPeekMatch {
   matchday_number: number;
   matchday_name: string;
   home_team_name: string;
+  home_team_short_name: string;
+  home_team_crest_url: string | null;
   away_team_name: string;
+  away_team_short_name: string;
+  away_team_crest_url: string | null;
   kickoff_at: string;
   odds_provider_name: string;
   home_win_probability: number;
@@ -872,6 +876,31 @@ export interface OddsPullResult {
   preview_rows: OddsPreviewRow[];
   pull_output: string;
   sync_output: string;
+}
+
+export interface OddsUnmatchedTeam {
+  raw_team_name: string;
+  raw_team_code: string | null;
+  side: string;
+  team_exists: boolean;
+}
+
+export interface OddsUnmatchedMatch {
+  snapshot_date: string;
+  match_date: string;
+  home_team: string;
+  home_code: string | null;
+  away_team: string;
+  away_code: string | null;
+  source_match_key: string | null;
+  missing: OddsUnmatchedTeam[];
+}
+
+export interface OddsUnmatchedResponse {
+  sport_key: string;
+  snapshot_date: string | null;
+  unmatched_count: number;
+  matches: OddsUnmatchedMatch[];
 }
 
 export interface AdminSettings {

@@ -31,6 +31,26 @@ function buildMatchdayLabel(match: QuinielaPlusOddsSneakPeekMatch) {
     : `Jornada ${match.matchday_number}`;
 }
 
+function TeamBadge({ name, shortName, crestUrl }: { name: string; shortName: string; crestUrl: string | null }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {crestUrl ? (
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06]">
+          <img src={crestUrl} alt={name} className="h-full w-full object-cover" />
+        </div>
+      ) : (
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-[9px] font-semibold text-steel">
+          {shortName.slice(0, 1)}
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-ink">{name}</p>
+        <p className="text-[10px] uppercase tracking-[0.14em] text-steel">{shortName}</p>
+      </div>
+    </div>
+  );
+}
+
 export function QuinielaPlusPageContent() {
   const [oddsSneakPeek, setOddsSneakPeek] = useState<QuinielaPlusOddsSneakPeek | null>(null);
   const [loading, setLoading] = useState(true);
@@ -168,9 +188,17 @@ export function QuinielaPlusPageContent() {
                       {formatMexicoCityDateTime(match.kickoff_at)}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-ink">{match.home_team_name}</p>
-                        <p className="truncate text-steel">{match.away_team_name}</p>
+                      <div className="grid min-w-[210px] gap-2">
+                        <TeamBadge
+                          name={match.home_team_name}
+                          shortName={match.home_team_short_name}
+                          crestUrl={match.home_team_crest_url}
+                        />
+                        <TeamBadge
+                          name={match.away_team_name}
+                          shortName={match.away_team_short_name}
+                          crestUrl={match.away_team_crest_url}
+                        />
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-moss">

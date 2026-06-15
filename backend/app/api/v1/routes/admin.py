@@ -72,6 +72,9 @@ from app.schemas.admin import (
     OddsPreviewRow,
     OddsPullResponse,
     OddsSnapshotOption,
+    OddsUnmatchedMatchOut,
+    OddsUnmatchedResponse,
+    OddsUnmatchedTeamOut,
     RoleUpdateRequest,
     SeasonCreateRequest,
     SeasonUpdateRequest,
@@ -442,6 +445,105 @@ def get_raw_odds_preview(
         ]
 
 
+def get_world_cup_unmatched_odds(table_name: str = RAW_ODDS_TABLE) -> OddsUnmatchedResponse:
+    sport_key = "soccer_fifa_world_cup"
+    inspector = inspect(engine)
+    if not inspector.has_table(table_name, schema="public"):
+        return OddsUnmatchedResponse(sport_key=sport_key)
+
+    column_names = {column["name"] for column in inspector.get_columns(table_name, schema="public")}
+    if "sport_key" not in column_names:
+        return OddsUnmatchedResponse(sport_key=sport_key)
+
+    with engine.begin() as connection:
+        snapshot_date = connection.execute(
+            text(
+                f"""
+                SELECT MAX(snapshot_date)::text
+                FROM public.{table_name}
+                WHERE sport_key = :sport_key
+                """
+            ),
+            {"sport_key": sport_key},
+        ).scalar_one_or_none()
+        if snapshot_date is None:
+            return OddsUnmatchedResponse(sport_key=sport_key)
+
+        rows = connection.execute(
+            text(
+                f"""
+                WITH raw AS (
+                  SELECT *
+                  FROM public.{table_name}
+                  WHERE snapshot_date = :snapshot_date
+                    AND sport_key = :sport_key
+                ),
+                team_codes AS (
+                  SELECT UPPER(short_name) AS code
+                  FROM teams
+                )
+                SELECT
+                  raw.snapshot_date::text AS snapshot_date,
+                  raw.match_date,
+                  raw.home_team,
+                  raw.home_code,
+                  raw.away_team,
+                  raw.away_code,
+                  raw.source_match_key,
+                  home.code IS NOT NULL AS home_exists,
+                  away.code IS NOT NULL AS away_exists
+                FROM raw
+                LEFT JOIN team_codes home ON home.code = UPPER(raw.home_code)
+                LEFT JOIN team_codes away ON away.code = UPPER(raw.away_code)
+                WHERE home.code IS NULL OR away.code IS NULL
+                ORDER BY raw.match_date ASC, raw.home_team ASC, raw.away_team ASC
+                """
+            ),
+            {"snapshot_date": snapshot_date, "sport_key": sport_key},
+        ).mappings()
+
+    matches: list[OddsUnmatchedMatchOut] = []
+    for row in rows:
+        missing: list[OddsUnmatchedTeamOut] = []
+        if not row["home_exists"]:
+            missing.append(
+                OddsUnmatchedTeamOut(
+                    raw_team_name=str(row["home_team"]),
+                    raw_team_code=str(row["home_code"]) if row["home_code"] is not None else None,
+                    side="home",
+                    team_exists=False,
+                )
+            )
+        if not row["away_exists"]:
+            missing.append(
+                OddsUnmatchedTeamOut(
+                    raw_team_name=str(row["away_team"]),
+                    raw_team_code=str(row["away_code"]) if row["away_code"] is not None else None,
+                    side="away",
+                    team_exists=False,
+                )
+            )
+        matches.append(
+            OddsUnmatchedMatchOut(
+                snapshot_date=str(row["snapshot_date"]),
+                match_date=row["match_date"].isoformat(),
+                home_team=str(row["home_team"]),
+                home_code=str(row["home_code"]) if row["home_code"] is not None else None,
+                away_team=str(row["away_team"]),
+                away_code=str(row["away_code"]) if row["away_code"] is not None else None,
+                source_match_key=str(row["source_match_key"]) if row["source_match_key"] is not None else None,
+                missing=missing,
+            )
+        )
+
+    return OddsUnmatchedResponse(
+        sport_key=sport_key,
+        snapshot_date=str(snapshot_date),
+        unmatched_count=len(matches),
+        matches=matches,
+    )
+
+
 def list_raw_odds_snapshots(table_name: str = RAW_ODDS_TABLE, limit: int = 30) -> list[OddsSnapshotOption]:
     inspector = inspect(engine)
     if not inspector.has_table(table_name, schema="public"):
@@ -505,6 +607,13 @@ def get_latest_admin_odds(
         pull_output="Snapshot cargado desde public.lmx_odds_5d.",
         sync_output="",
     )
+
+
+@router.get("/odds/world-cup-unmatched", response_model=OddsUnmatchedResponse)
+def get_admin_world_cup_unmatched_odds(
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> OddsUnmatchedResponse:
+    return get_world_cup_unmatched_odds()
 
 
 def load_env_values(path: Path) -> dict[str, str]:

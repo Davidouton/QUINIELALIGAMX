@@ -94,7 +94,11 @@ class QuinielaPlusOddsSneakPeekMatchOut(BaseModel):
     matchday_number: int
     matchday_name: str
     home_team_name: str
+    home_team_short_name: str
+    home_team_crest_url: str | None = None
     away_team_name: str
+    away_team_short_name: str
+    away_team_crest_url: str | None = None
     kickoff_at: datetime
     odds_provider_name: str
     home_win_probability: float

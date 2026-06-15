@@ -4,8 +4,10 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import type {
   OddsPullResult,
+  OddsUnmatchedResponse,
   QuinielaPlusAdminConsole,
   QuinielaPlusBillingPeriod,
   QuinielaPlusLeague,
@@ -90,7 +92,9 @@ export function AdminQuinielaPlusPanel() {
   const [leagueSaving, setLeagueSaving] = useState(false);
   const [planSaving, setPlanSaving] = useState(false);
   const [oddsLoading, setOddsLoading] = useState(false);
+  const [unmatchedLoading, setUnmatchedLoading] = useState(false);
   const [oddsResult, setOddsResult] = useState<OddsPullResult | null>(null);
+  const [unmatchedOdds, setUnmatchedOdds] = useState<OddsUnmatchedResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -251,6 +255,7 @@ export function AdminQuinielaPlusPanel() {
         method: "POST",
       });
       setOddsResult(result);
+      await loadUnmatchedOdds();
       setMessage(
         `Odds Mundial cargados para hoy + 2 dias: ${result.raw_rows_processed ?? 0} raw, ${result.matched ?? 0} ligados, ${
           result.unmatched ?? 0
@@ -260,6 +265,20 @@ export function AdminQuinielaPlusPanel() {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los odds del Mundial");
     } finally {
       setOddsLoading(false);
+    }
+  }
+
+  async function loadUnmatchedOdds() {
+    setUnmatchedLoading(true);
+    setError(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const result = await backendFetch<OddsUnmatchedResponse>("/admin/odds/world-cup-unmatched", accessToken);
+      setUnmatchedOdds(result);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el diagnostico de unmatched");
+    } finally {
+      setUnmatchedLoading(false);
     }
   }
 
@@ -311,6 +330,77 @@ export function AdminQuinielaPlusPanel() {
             </div>
           </div>
         ) : null}
+
+        <div className="mt-5 border-t border-white/[0.06] pt-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Unmatched Mundial</p>
+              <p className="mt-2 max-w-3xl text-sm text-steel">
+                Revisa equipos que llegaron desde The Odds API pero no existen con ese codigo en la tabla de equipos.
+              </p>
+            </div>
+            <button type="button" onClick={loadUnmatchedOdds} disabled={unmatchedLoading} className="app-pill px-4 disabled:opacity-60">
+              {unmatchedLoading ? "Revisando..." : "Ver unmatched"}
+            </button>
+          </div>
+
+          {unmatchedOdds ? (
+            <div className="mt-4 overflow-hidden rounded-[14px] border border-white/[0.06] bg-white/[0.02]">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-3 text-xs text-steel">
+                <span>Snapshot: {unmatchedOdds.snapshot_date ?? "-"}</span>
+                <span>{unmatchedOdds.unmatched_count} pendientes</span>
+              </div>
+              {unmatchedOdds.matches.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-[780px] w-full text-left text-sm">
+                    <thead className="border-b border-white/[0.06] text-[11px] uppercase tracking-[0.16em] text-steel">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Partido raw</th>
+                        <th className="px-4 py-3 font-semibold">Fecha</th>
+                        <th className="px-4 py-3 font-semibold">Falta</th>
+                        <th className="px-4 py-3 font-semibold">Source key</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.06]">
+                      {unmatchedOdds.matches.map((match) => (
+                        <tr key={`${match.source_match_key ?? match.match_date}-${match.home_team}-${match.away_team}`}>
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-ink">
+                              {match.home_team} ({match.home_code ?? "-"})
+                            </p>
+                            <p className="text-steel">
+                              {match.away_team} ({match.away_code ?? "-"})
+                            </p>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-xs text-steel">
+                            {formatMexicoCityDateTime(match.match_date)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              {match.missing.map((missing) => (
+                                <span
+                                  key={`${missing.side}-${missing.raw_team_name}`}
+                                  className="rounded-full border border-coral/25 bg-coral/10 px-3 py-1 text-xs font-semibold text-coral"
+                                >
+                                  {missing.raw_team_name} / {missing.raw_team_code ?? "sin codigo"}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-xs text-steel">
+                            {match.source_match_key ?? "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="px-4 py-4 text-sm text-moss">No hay unmatched en el ultimo snapshot mundialista.</p>
+              )}
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
