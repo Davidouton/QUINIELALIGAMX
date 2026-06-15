@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.models.entities import (
     CommerceSettings,
+    Match,
+    Matchday,
+    Odds,
     Payment,
     Profile,
     QuinielaPlusBillingPeriod,
@@ -16,7 +19,11 @@ from app.models.entities import (
     QuinielaPlusMembershipLeague,
     QuinielaPlusMembershipStatus,
     QuinielaPlusPlan,
+    Season,
+    Team,
+    TournamentFormat,
 )
+from app.repositories.odds_repository import OddsRepository
 from app.schemas.quiniela_plus import (
     QuinielaPlusAdminConsoleResponse,
     QuinielaPlusAdminSettingsOut,
@@ -26,12 +33,17 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusLeagueUpsertRequest,
     QuinielaPlusMembershipLeagueOut,
     QuinielaPlusMembershipOut,
+    QuinielaPlusOddsSneakPeekMatchOut,
+    QuinielaPlusOddsSneakPeekOut,
     QuinielaPlusPlanOut,
     QuinielaPlusPlanUpsertRequest,
 )
 
 
 class QuinielaPlusService:
+    def __init__(self) -> None:
+        self.odds_repo = OddsRepository()
+
     def list_catalog(self, db: Session, profile: Profile) -> QuinielaPlusCatalogResponse:
         self._refresh_expired_memberships(db, profile.id)
         settings = self._get_or_create_settings(db)
@@ -57,6 +69,59 @@ class QuinielaPlusService:
             plans=[self._to_plan_out(row) for row in plans],
             active_memberships=memberships,
         )
+
+    def get_odds_sneak_peek(self, db: Session, limit: int = 6) -> QuinielaPlusOddsSneakPeekOut:
+        now = datetime.now(UTC)
+        candidate_rows = db.execute(
+            select(Match, Matchday)
+            .join(Matchday, Matchday.id == Match.matchday_id)
+            .join(Season, Season.id == Matchday.season_id)
+            .where(
+                Season.tournament_format == TournamentFormat.WORLD_CUP,
+                Match.kickoff_at >= now,
+                Match.home_team_id.is_not(None),
+                Match.away_team_id.is_not(None),
+            )
+            .order_by(Match.kickoff_at.asc(), Match.created_at.asc())
+            .limit(30)
+        ).all()
+        latest_odds_by_match_id = self.odds_repo.list_latest_by_match_ids(
+            db,
+            [match.id for match, _ in candidate_rows],
+        )
+
+        rows: list[QuinielaPlusOddsSneakPeekMatchOut] = []
+        for match, matchday in candidate_rows:
+            odds = latest_odds_by_match_id.get(match.id)
+            home_probability, draw_probability, away_probability = self._build_devigged_probabilities(odds)
+            if (
+                odds is None
+                or not odds.provider_name
+                or home_probability is None
+                or draw_probability is None
+                or away_probability is None
+            ):
+                continue
+            home_team = db.get(Team, match.home_team_id)
+            away_team = db.get(Team, match.away_team_id)
+            rows.append(
+                QuinielaPlusOddsSneakPeekMatchOut(
+                    match_id=match.id,
+                    matchday_id=match.matchday_id,
+                    matchday_name=matchday.name,
+                    home_team_name=home_team.name if home_team is not None else match.home_placeholder or "Local",
+                    away_team_name=away_team.name if away_team is not None else match.away_placeholder or "Visitante",
+                    kickoff_at=match.kickoff_at,
+                    odds_provider_name=odds.provider_name,
+                    home_win_probability=home_probability,
+                    draw_probability=draw_probability,
+                    away_win_probability=away_probability,
+                )
+            )
+            if len(rows) >= limit:
+                break
+
+        return QuinielaPlusOddsSneakPeekOut(matches=rows)
 
     def get_admin_console(self, db: Session) -> QuinielaPlusAdminConsoleResponse:
         settings = self._get_or_create_settings(db)
@@ -392,6 +457,42 @@ class QuinielaPlusService:
         if only_active:
             query = query.where(QuinielaPlusMembership.status == QuinielaPlusMembershipStatus.ACTIVE)
         return list(db.scalars(query))
+
+    def _build_devigged_probabilities(
+        self,
+        odds: Odds | None,
+    ) -> tuple[float | None, float | None, float | None]:
+        if (
+            odds is None
+            or odds.home_value is None
+            or odds.draw_value is None
+            or odds.away_value is None
+        ):
+            return None, None, None
+
+        raw_home = self._odds_to_implied_probability(odds.home_value)
+        raw_draw = self._odds_to_implied_probability(odds.draw_value)
+        raw_away = self._odds_to_implied_probability(odds.away_value)
+        if raw_home is None or raw_draw is None or raw_away is None:
+            return None, None, None
+
+        total = raw_home + raw_draw + raw_away
+        if total <= 0:
+            return None, None, None
+
+        return float(raw_home / total), float(raw_draw / total), float(raw_away / total)
+
+    def _odds_to_implied_probability(self, value: Decimal | None) -> Decimal | None:
+        if value is None:
+            return None
+        if value >= Decimal("100"):
+            return Decimal("100") / (value + Decimal("100"))
+        if value <= Decimal("-100"):
+            absolute_value = abs(value)
+            return absolute_value / (absolute_value + Decimal("100"))
+        if value > Decimal("1"):
+            return Decimal("1") / value
+        return None
 
     def _ensure_plan_combo_available(
         self,

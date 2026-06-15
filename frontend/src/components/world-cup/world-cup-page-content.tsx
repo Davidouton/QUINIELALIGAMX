@@ -5,16 +5,37 @@ import { useEffect, useMemo, useState } from "react";
 import { backendFetch } from "@/lib/api/backend";
 import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
-import type { Season, WorldCupBoard, WorldCupBracketMatch } from "@/types/api";
+import type {
+  Season,
+  WorldCupBoard,
+  WorldCupBracketMatch,
+  WorldCupNewsArticle,
+  WorldCupNewsFeed,
+  WorldCupOfficialResult,
+} from "@/types/api";
 
 const stageTitles = {
+  group: "Fase de grupos",
+  regular: "Regular",
   round_of_32: "Dieciseisavos",
   round_of_16: "Octavos",
+  quarterfinal: "Cuartos de final",
   quarterfinals: "Cuartos de final",
+  semifinal: "Semifinales",
   semifinals: "Semifinales",
   third_place: "Tercer lugar",
   final: "Final",
 } as const;
+
+type WorldCupSection = "groups" | "official-results" | "news";
+type ResultsGrouping = "matchday" | "day";
+type NewsCategory = "all" | "official" | "mexico";
+
+const newsCategoryLabels: Record<NewsCategory, string> = {
+  all: "Todo",
+  official: "Oficial FIFA",
+  mexico: "Mexico",
+};
 
 function TeamMiniBadge({
   name,
@@ -61,6 +82,94 @@ function getAdvancingTeamName(match: WorldCupBracketMatch) {
   return "Clasificado";
 }
 
+function getOfficialAdvancingTeamName(match: WorldCupOfficialResult) {
+  if (!match.advancing_team_id) {
+    return null;
+  }
+  if (match.advancing_team_id === match.home_team_id) {
+    return match.home_team_name;
+  }
+  if (match.advancing_team_id === match.away_team_id) {
+    return match.away_team_name;
+  }
+  return "Clasificado";
+}
+
+function getStageTitle(stageType: WorldCupOfficialResult["stage_type"]) {
+  return stageTitles[stageType as keyof typeof stageTitles] ?? "Partido";
+}
+
+function getMexicoCityDateKey(value: string) {
+  const date = new Date(value);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function formatMexicoCityDay(value: string) {
+  return new Intl.DateTimeFormat("es-MX", {
+    timeZone: "America/Mexico_City",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(value));
+}
+
+function formatNewsDate(value: string | null) {
+  if (!value) {
+    return "Fecha pendiente";
+  }
+  return new Intl.DateTimeFormat("es-MX", {
+    timeZone: "America/Mexico_City",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function groupResultsByMatchday(results: WorldCupOfficialResult[]) {
+  const grouped = new Map<string, { key: string; label: string; sort: number; results: WorldCupOfficialResult[] }>();
+  for (const result of results) {
+    const existing = grouped.get(result.matchday_id);
+    if (existing) {
+      existing.results.push(result);
+    } else {
+      grouped.set(result.matchday_id, {
+        key: result.matchday_id,
+        label: result.matchday_name.trim().toLowerCase().startsWith("jornada")
+          ? result.matchday_name
+          : `Jornada ${result.matchday_number}`,
+        sort: result.matchday_number,
+        results: [result],
+      });
+    }
+  }
+  return [...grouped.values()].sort((left, right) => left.sort - right.sort);
+}
+
+function groupResultsByDay(results: WorldCupOfficialResult[]) {
+  const grouped = new Map<string, { key: string; label: string; sort: string; results: WorldCupOfficialResult[] }>();
+  for (const result of results) {
+    const key = getMexicoCityDateKey(result.kickoff_at);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.results.push(result);
+    } else {
+      grouped.set(key, {
+        key,
+        label: formatMexicoCityDay(result.kickoff_at),
+        sort: key,
+        results: [result],
+      });
+    }
+  }
+  return [...grouped.values()].sort((left, right) => left.sort.localeCompare(right.sort));
+}
+
 export function WorldCupPageContent() {
   const { competitionId, seasonId: seasonIdParam, setSeasonId } = useDashboardSeasonParam();
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -68,11 +177,21 @@ export function WorldCupPageContent() {
   const [board, setBoard] = useState<WorldCupBoard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<WorldCupSection>("groups");
+  const [resultsGrouping, setResultsGrouping] = useState<ResultsGrouping>("matchday");
+  const [newsCategory, setNewsCategory] = useState<NewsCategory>("all");
+  const [newsArticles, setNewsArticles] = useState<WorldCupNewsArticle[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsError, setNewsError] = useState<string | null>(null);
 
   const worldCupSeasons = useMemo(
     () => seasons.filter((season) => season.tournament_format === "world_cup"),
     [seasons],
   );
+  const officialResultGroups = useMemo(() => {
+    const results = board?.official_results ?? [];
+    return resultsGrouping === "matchday" ? groupResultsByMatchday(results) : groupResultsByDay(results);
+  }, [board?.official_results, resultsGrouping]);
 
   useEffect(() => {
     async function loadInitial() {
@@ -107,6 +226,40 @@ export function WorldCupPageContent() {
 
     void loadInitial();
   }, [competitionId, seasonIdParam, setSeasonId]);
+
+  useEffect(() => {
+    if (activeSection !== "news") {
+      return;
+    }
+
+    let isCurrent = true;
+    async function loadNews() {
+      setNewsLoading(true);
+      try {
+        const feed = await backendFetch<WorldCupNewsFeed>(`/world-cup/news?category=${newsCategory}`);
+        if (!isCurrent) {
+          return;
+        }
+        setNewsArticles(feed.articles);
+        setNewsError(null);
+      } catch (caughtError) {
+        if (!isCurrent) {
+          return;
+        }
+        setNewsError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el feed mundialista");
+        setNewsArticles([]);
+      } finally {
+        if (isCurrent) {
+          setNewsLoading(false);
+        }
+      }
+    }
+
+    void loadNews();
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeSection, newsCategory]);
 
   async function handleSeasonChange(seasonId: string) {
     setSelectedSeasonId(seasonId);
@@ -164,6 +317,33 @@ export function WorldCupPageContent() {
 
       {board ? (
         <>
+          <section className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveSection("groups")}
+              className={activeSection === "groups" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+            >
+              Grupos
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection("official-results")}
+              className={
+                activeSection === "official-results" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"
+              }
+            >
+              Resultados oficiales
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection("news")}
+              className={activeSection === "news" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+            >
+              Noticias
+            </button>
+          </section>
+
+          {activeSection === "groups" ? (
           <section className="space-y-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Grupos</p>
@@ -225,6 +405,153 @@ export function WorldCupPageContent() {
               ))}
             </div>
           </section>
+          ) : null}
+
+          {activeSection === "official-results" ? (
+            <section className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Resultados oficiales</p>
+                  <p className="mt-2 text-sm text-steel">
+                    Marcadores publicados para esta temporada mundialista, agrupados por jornada o por dia.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setResultsGrouping("matchday")}
+                    className={resultsGrouping === "matchday" ? "app-pill-active px-3" : "app-pill px-3"}
+                  >
+                    Por jornada
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResultsGrouping("day")}
+                    className={resultsGrouping === "day" ? "app-pill-active px-3" : "app-pill px-3"}
+                  >
+                    Por dia
+                  </button>
+                </div>
+              </div>
+
+              {officialResultGroups.length === 0 ? (
+                <p className="text-sm text-steel">Todavia no hay resultados oficiales publicados para esta temporada.</p>
+              ) : (
+                <div className={resultsGrouping === "day" ? "no-scrollbar flex gap-4 overflow-x-auto pb-2 touch-pan-x" : "space-y-4"}>
+                  {officialResultGroups.map((group) => (
+                    <div
+                      key={group.key}
+                      className={
+                        resultsGrouping === "day"
+                          ? "w-[300px] shrink-0 rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4 sm:w-[360px]"
+                          : "rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4"
+                      }
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <h2 className="text-base font-semibold text-ink">{group.label}</h2>
+                        <span className="text-xs uppercase tracking-[0.16em] text-steel">
+                          {group.results.length} partidos
+                        </span>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {group.results.map((result) => (
+                          <div key={result.match_id} className="rounded-md border border-white/[0.06] bg-black/10 p-3">
+                            <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.14em] text-steel">
+                              <span>{getStageTitle(result.stage_type)}</span>
+                              <span>{formatMexicoCityDateTime(result.kickoff_at)}</span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                              <TeamMiniBadge
+                                name={result.home_team_name}
+                                shortName={result.home_team_short_name}
+                                crestUrl={result.home_team_crest_url}
+                              />
+                              <span className="rounded-md border border-moss/30 bg-moss/10 px-2 py-1 text-sm font-semibold text-ink">
+                                {result.home_score ?? "-"}-{result.away_score ?? "-"}
+                              </span>
+                              <div className="min-w-0 justify-self-end">
+                                <TeamMiniBadge
+                                  name={result.away_team_name}
+                                  shortName={result.away_team_short_name}
+                                  crestUrl={result.away_team_crest_url}
+                                />
+                              </div>
+                            </div>
+                            {result.group_label || result.bracket_slot || getOfficialAdvancingTeamName(result) ? (
+                              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-steel">
+                                {result.group_label ? <span>Grupo {result.group_label}</span> : null}
+                                {result.bracket_slot ? <span>{result.bracket_slot}</span> : null}
+                                {getOfficialAdvancingTeamName(result) ? (
+                                  <span className="font-semibold text-moss">Avanza: {getOfficialAdvancingTeamName(result)}</span>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
+
+          {activeSection === "news" ? (
+            <section className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Noticias</p>
+                  <p className="mt-2 text-sm text-steel">
+                    Feed mundialista en espanol con enlaces a la nota original.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {(Object.keys(newsCategoryLabels) as NewsCategory[]).map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => setNewsCategory(category)}
+                      className={newsCategory === category ? "app-pill-active px-3" : "app-pill px-3"}
+                    >
+                      {newsCategoryLabels[category]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {newsError ? <p className="text-sm text-coral">{newsError}</p> : null}
+              {newsLoading ? <p className="text-sm text-steel">Cargando noticias del Mundial...</p> : null}
+
+              {!newsLoading && newsArticles.length === 0 && !newsError ? (
+                <p className="text-sm text-steel">No encontramos noticias disponibles en este momento.</p>
+              ) : null}
+
+              {newsArticles.length > 0 ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {newsArticles.map((article) => (
+                    <article key={article.id} className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-steel">
+                        <span>{article.source}</span>
+                        <span>{formatNewsDate(article.published_at)}</span>
+                      </div>
+                      <h2 className="mt-3 text-base font-semibold leading-snug text-ink">{article.title}</h2>
+                      {article.summary ? (
+                        <p className="mt-2 line-clamp-3 text-sm leading-6 text-steel">{article.summary}</p>
+                      ) : null}
+                      <a
+                        href={article.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-4 inline-flex rounded-md border border-moss/30 bg-moss/10 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-moss transition hover:bg-moss/15"
+                      >
+                        Abrir nota
+                      </a>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           <section className="space-y-4">
             <div>

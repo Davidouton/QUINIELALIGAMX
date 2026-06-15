@@ -185,6 +185,10 @@ export interface GlobalPickMatch {
   is_ready_for_picks: boolean;
   spread_home_line: string | null;
   spread_away_line: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  official_advancing_team_id: string | null;
+  is_official: boolean;
 }
 
 export interface GlobalPickCell {
@@ -416,6 +420,24 @@ export interface QuinielaPlusCatalog {
   active_memberships: QuinielaPlusMembership[];
 }
 
+export interface QuinielaPlusOddsSneakPeekMatch {
+  match_id: string;
+  matchday_id: string;
+  matchday_name: string;
+  home_team_name: string;
+  away_team_name: string;
+  kickoff_at: string;
+  odds_provider_name: string;
+  home_win_probability: number;
+  draw_probability: number;
+  away_win_probability: number;
+}
+
+export interface QuinielaPlusOddsSneakPeek {
+  title: string;
+  matches: QuinielaPlusOddsSneakPeekMatch[];
+}
+
 export interface QuinielaPlusAdminSettings {
   checkout_enabled: boolean;
   checkout_message: string | null;
@@ -486,16 +508,57 @@ export interface WorldCupBracketMatch {
   is_ready_for_picks: boolean;
 }
 
+export interface WorldCupOfficialResult {
+  match_id: string;
+  matchday_id: string;
+  matchday_number: number;
+  matchday_name: string;
+  stage_type: MatchStageType;
+  group_label: string | null;
+  bracket_slot: string | null;
+  home_team_id: string | null;
+  home_placeholder: string | null;
+  home_team_name: string;
+  home_team_short_name: string;
+  home_team_crest_url: string | null;
+  away_team_id: string | null;
+  away_placeholder: string | null;
+  away_team_name: string;
+  away_team_short_name: string;
+  away_team_crest_url: string | null;
+  kickoff_at: string;
+  home_score: number | null;
+  away_score: number | null;
+  advancing_team_id: string | null;
+  is_official: boolean;
+}
+
 export interface WorldCupBoard {
   season_id: string;
   season_name: string;
   groups: WorldCupGroup[];
+  official_results: WorldCupOfficialResult[];
   round_of_32: WorldCupBracketMatch[];
   round_of_16: WorldCupBracketMatch[];
   quarterfinals: WorldCupBracketMatch[];
   semifinals: WorldCupBracketMatch[];
   third_place: WorldCupBracketMatch[];
   final: WorldCupBracketMatch[];
+}
+
+export interface WorldCupNewsArticle {
+  id: string;
+  category: string;
+  source: string;
+  title: string;
+  summary: string | null;
+  url: string;
+  published_at: string | null;
+}
+
+export interface WorldCupNewsFeed {
+  category: string;
+  articles: WorldCupNewsArticle[];
 }
 
 export interface MyMatchdayPointsEntry {

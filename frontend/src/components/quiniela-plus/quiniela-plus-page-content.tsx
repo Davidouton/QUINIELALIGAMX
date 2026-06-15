@@ -10,6 +10,7 @@ import type {
   QuinielaPlusBillingPeriod,
   QuinielaPlusCatalog,
   QuinielaPlusLeague,
+  QuinielaPlusOddsSneakPeek,
   QuinielaPlusPlan,
 } from "@/types/api";
 
@@ -31,6 +32,13 @@ function formatCurrency(value: number, currency: string) {
   }).format(value);
 }
 
+function formatProbability(value: number) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "percent",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
 function planBundleLabel(plan: QuinielaPlusPlan) {
   if (plan.includes_all_leagues) {
     return "Todas las ligas";
@@ -41,6 +49,7 @@ function planBundleLabel(plan: QuinielaPlusPlan) {
 
 export function QuinielaPlusPageContent() {
   const [catalog, setCatalog] = useState<QuinielaPlusCatalog | null>(null);
+  const [oddsSneakPeek, setOddsSneakPeek] = useState<QuinielaPlusOddsSneakPeek | null>(null);
   const [activePeriod, setActivePeriod] = useState<QuinielaPlusBillingPeriod>("monthly");
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [selectedLeagueIds, setSelectedLeagueIds] = useState<string[]>([]);
@@ -53,8 +62,12 @@ export function QuinielaPlusPageContent() {
     async function loadCatalog() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const response = await backendFetch<QuinielaPlusCatalog>("/quiniela-plus/catalog", accessToken);
+        const [response, sneakPeekResponse] = await Promise.all([
+          backendFetch<QuinielaPlusCatalog>("/quiniela-plus/catalog", accessToken),
+          backendFetch<QuinielaPlusOddsSneakPeek>("/quiniela-plus/odds-sneak-peek", accessToken),
+        ]);
         setCatalog(response);
+        setOddsSneakPeek(sneakPeekResponse);
         const firstPeriod = periodOrder.find((period) => response.plans.some((plan) => plan.billing_period === period));
         if (firstPeriod) {
           setActivePeriod(firstPeriod);
@@ -164,6 +177,61 @@ export function QuinielaPlusPageContent() {
         <p className="max-w-3xl text-sm text-steel">
           Elige un periodo, arma tu bundle de ligas y deja todo listo para activar cobro cuando cierres el tema fiscal.
         </p>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-moss">Sneak peek</p>
+            <h2 className="mt-2 text-lg font-semibold text-ink">Probabilidades sin vig</h2>
+            <p className="mt-1 max-w-3xl text-sm text-steel">
+              Estimacion justa por partido despues de quitar el margen de la casa.
+            </p>
+          </div>
+          <span className="app-pill-active px-3 text-xs text-ink">Mundial</span>
+        </div>
+
+        {oddsSneakPeek?.matches.length ? (
+          <div className="no-scrollbar flex gap-3 overflow-x-auto pb-1 touch-pan-x">
+            {oddsSneakPeek.matches.map((match) => (
+              <article
+                key={match.match_id}
+                className="w-[300px] shrink-0 rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4 sm:w-[360px]"
+              >
+                <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.14em] text-steel">
+                  <span>{match.matchday_name}</span>
+                  <span>{match.odds_provider_name}</span>
+                </div>
+                <p className="mt-2 text-xs text-steel">{formatMexicoCityDateTime(match.kickoff_at)}</p>
+
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-semibold text-ink">{match.home_team_name}</span>
+                    <span className="text-sm font-semibold text-moss">
+                      {formatProbability(match.home_win_probability)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-semibold text-ink">Empate</span>
+                    <span className="text-sm font-semibold text-amber-100">
+                      {formatProbability(match.draw_probability)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate text-sm font-semibold text-ink">{match.away_team_name}</span>
+                    <span className="text-sm font-semibold text-sky-100">
+                      {formatProbability(match.away_win_probability)}
+                    </span>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-steel">
+            Todavia no hay odds mundialistas sincronizados para mostrar el sneak peek.
+          </p>
+        )}
       </section>
 
       {catalog.active_memberships.length > 0 ? (

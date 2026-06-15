@@ -255,7 +255,17 @@ class PickService:
                 .order_by(Match.kickoff_at.asc())
             )
         )
-        latest_odds_by_match_id = self.odds_repo.list_latest_by_match_ids(db, [match.id for match in matches])
+        match_ids = [match.id for match in matches]
+        latest_odds_by_match_id = self.odds_repo.list_latest_by_match_ids(db, match_ids)
+        result_rows = []
+        if match_ids:
+            result_rows = db.scalars(
+                select(MatchResult).where(
+                    MatchResult.match_id.in_(match_ids),
+                    MatchResult.is_official.is_(True),
+                )
+            ).all()
+        official_results_by_match_id = {result.match_id: result for result in result_rows}
         teams = self._load_teams(db, matches)
 
         player_rows = db.execute(
@@ -292,6 +302,7 @@ class PickService:
             home_team = teams.get(match.home_team_id)
             away_team = teams.get(match.away_team_id)
             odds = latest_odds_by_match_id.get(match.id)
+            official_result = official_results_by_match_id.get(match.id)
             match_out.append(
                 GlobalPickMatchOut(
                     match_id=match.id,
@@ -311,6 +322,10 @@ class PickService:
                     is_ready_for_picks=self._match_has_confirmed_teams(match),
                     spread_home_line=odds.spread_home_line if odds is not None else None,
                     spread_away_line=odds.spread_away_line if odds is not None else None,
+                    home_score=official_result.home_score if official_result is not None else None,
+                    away_score=official_result.away_score if official_result is not None else None,
+                    official_advancing_team_id=official_result.advancing_team_id if official_result is not None else None,
+                    is_official=official_result is not None,
                 )
             )
 

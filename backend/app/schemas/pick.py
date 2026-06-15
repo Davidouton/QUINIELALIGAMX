@@ -128,6 +128,10 @@ class GlobalPickMatchOut(BaseModel):
     is_ready_for_picks: bool = True
     spread_home_line: str | None = None
     spread_away_line: str | None = None
+    home_score: int | None = None
+    away_score: int | None = None
+    official_advancing_team_id: str | None = None
+    is_official: bool = False
 
     @field_serializer("kickoff_at")
     def serialize_match_kickoff(self, value: datetime) -> str:

@@ -11,6 +11,7 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusLeagueOut,
     QuinielaPlusLeagueUpsertRequest,
     QuinielaPlusMembershipOut,
+    QuinielaPlusOddsSneakPeekOut,
     QuinielaPlusPlanOut,
     QuinielaPlusPlanUpsertRequest,
 )
@@ -34,6 +35,14 @@ def list_my_memberships(
     current_profile: Profile = Depends(get_current_profile),
 ) -> list[QuinielaPlusMembershipOut]:
     return service.list_memberships(db, current_profile)
+
+
+@router.get("/quiniela-plus/odds-sneak-peek", response_model=QuinielaPlusOddsSneakPeekOut)
+def get_odds_sneak_peek(
+    db: Session = Depends(get_db),
+    _: Profile = Depends(get_current_profile),
+) -> QuinielaPlusOddsSneakPeekOut:
+    return service.get_odds_sneak_peek(db)
 
 
 @router.get("/quiniela-plus/admin/console", response_model=QuinielaPlusAdminConsoleResponse)

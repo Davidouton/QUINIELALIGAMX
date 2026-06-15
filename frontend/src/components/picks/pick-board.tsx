@@ -201,6 +201,13 @@ function getSelectionShortLabel(selection: PickSelection | null) {
   return "-";
 }
 
+function getOfficialResultLabel(match: GlobalPickBoard["matches"][number]) {
+  if (!match.is_official || match.home_score === null || match.away_score === null) {
+    return "Pendiente";
+  }
+  return `${match.home_score}-${match.away_score}`;
+}
+
 function getNflSideLabel(selection: PickSelection | "" | null, homeLabel: string, awayLabel: string) {
   if (selection === "home") {
     return homeLabel;
@@ -384,8 +391,8 @@ function getMexicoCityDateKey(value: Date | string) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function isTodayScheduledMatch(match: Match) {
-  return match.status === "scheduled" && getMexicoCityDateKey(match.kickoff_at) === getMexicoCityDateKey(new Date());
+function isTodayMatch(match: Match) {
+  return getMexicoCityDateKey(match.kickoff_at) === getMexicoCityDateKey(new Date());
 }
 
 function buildOverrideMessage(pick: Pick) {
@@ -784,7 +791,7 @@ export function PickBoard() {
   const globalCellByKey = Object.fromEntries(
     (state.globalPickBoard?.cells ?? []).map((cell) => [getGlobalCellKey(cell.profile_id, cell.match_id), cell]),
   );
-  const visibleMatches = matchScope === "today" ? state.matches.filter(isTodayScheduledMatch) : state.matches;
+  const visibleMatches = matchScope === "today" ? state.matches.filter(isTodayMatch) : state.matches;
   const visibleMatchIds = new Set(visibleMatches.map((match) => match.id));
   const visibleGlobalMatches =
     matchScope === "today"
@@ -1215,6 +1222,24 @@ export function PickBoard() {
                   </tr>
                 </thead>
                 <tbody>
+                  <tr className="border-b border-white/[0.06] bg-white/[0.025]">
+                    <td className="sticky left-0 z-10 bg-[rgba(12,24,42,0.82)] px-3 py-2 text-left backdrop-blur-sm">
+                      <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-steel">
+                        Resultado oficial
+                      </p>
+                    </td>
+                    {visibleGlobalMatches.map((match) => (
+                      <td key={match.match_id} className="px-3 py-2 text-center">
+                        {match.is_official && match.home_score !== null && match.away_score !== null ? (
+                          <span className="inline-flex min-w-14 justify-center rounded-md border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 text-[11px] font-semibold text-emerald-100">
+                            {getOfficialResultLabel(match)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold uppercase text-steel/65">Pendiente</span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
                   {state.globalPickBoard.players.map((player) => (
                     <tr key={player.profile_id} className="app-table-row border-b last:border-b-0">
                       <td className="sticky left-0 z-10 bg-[rgba(12,24,42,0.72)] px-3 py-2 text-left backdrop-blur-sm">

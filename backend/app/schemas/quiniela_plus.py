@@ -88,6 +88,24 @@ class QuinielaPlusCatalogResponse(BaseModel):
     active_memberships: list[QuinielaPlusMembershipOut] = []
 
 
+class QuinielaPlusOddsSneakPeekMatchOut(BaseModel):
+    match_id: str
+    matchday_id: str
+    matchday_name: str
+    home_team_name: str
+    away_team_name: str
+    kickoff_at: datetime
+    odds_provider_name: str
+    home_win_probability: float
+    draw_probability: float
+    away_win_probability: float
+
+
+class QuinielaPlusOddsSneakPeekOut(BaseModel):
+    title: str = "Probabilidades sin vig"
+    matches: list[QuinielaPlusOddsSneakPeekMatchOut] = []
+
+
 class QuinielaPlusAdminSettingsOut(BaseModel):
     checkout_enabled: bool = False
     checkout_message: str | None = None
