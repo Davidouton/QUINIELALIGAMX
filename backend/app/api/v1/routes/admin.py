@@ -2245,7 +2245,8 @@ def pull_admin_world_cup_odds(
     script_env["THE_ODDS_API_REGIONS"] = "us,uk,eu,au"
     script_env["THE_ODDS_API_MARKETS"] = "h2h"
     script_env["THE_ODDS_API_BOOKMAKER"] = ""
-    script_env["ODDS_LOOKAHEAD_DAYS"] = "0"
+    script_env["ODDS_WINDOW_START_OFFSET_DAYS"] = "0"
+    script_env["ODDS_LOOKAHEAD_DAYS"] = "2"
     return run_odds_pull_pipeline(script_env, sport_key=sport_key)
 
 

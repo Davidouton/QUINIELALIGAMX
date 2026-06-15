@@ -252,7 +252,7 @@ export function AdminQuinielaPlusPanel() {
       });
       setOddsResult(result);
       setMessage(
-        `Odds Mundial cargados: ${result.raw_rows_processed ?? 0} raw, ${result.matched ?? 0} ligados, ${
+        `Odds Mundial cargados para hoy + 2 dias: ${result.raw_rows_processed ?? 0} raw, ${result.matched ?? 0} ligados, ${
           result.unmatched ?? 0
         } pendientes.`,
       );
@@ -282,12 +282,12 @@ export function AdminQuinielaPlusPanel() {
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Odds Mundial</p>
             <p className="mt-2 max-w-3xl text-sm text-steel">
-              Carga los odds de hoy desde The Odds API y los sincroniza contra los partidos del Mundial para el sneak
-              peek de Quiniela +.
+              Carga los odds de hoy y los proximos 2 dias desde The Odds API, y los sincroniza contra los partidos del
+              Mundial para el sneak peek de Quiniela +.
             </p>
           </div>
           <button type="button" onClick={handleWorldCupOddsPull} disabled={oddsLoading} className="secondary-button disabled:opacity-60">
-            {oddsLoading ? "Cargando odds..." : "Cargar odds de hoy"}
+            {oddsLoading ? "Cargando odds..." : "Cargar hoy + 2 dias"}
           </button>
         </div>
 

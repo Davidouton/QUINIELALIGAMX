@@ -203,6 +203,7 @@ class Settings:
     markets: str
     odds_format: str
     bookmaker_keys: list[str]
+    window_start_offset_days: int
     lookahead_days: int
     timeout_seconds: float
 
@@ -250,6 +251,7 @@ def load_settings() -> Settings:
         markets=os.getenv("THE_ODDS_API_MARKETS", "h2h,spreads,totals"),
         odds_format=os.getenv("THE_ODDS_API_ODDS_FORMAT", "american"),
         bookmaker_keys=parse_bookmaker_keys(os.getenv("THE_ODDS_API_BOOKMAKER", "draftkings")),
+        window_start_offset_days=max(int(os.getenv("ODDS_WINDOW_START_OFFSET_DAYS", "0")), 0),
         lookahead_days=max(int(os.getenv("ODDS_LOOKAHEAD_DAYS", "5")), 0),
         timeout_seconds=max(float(os.getenv("ODDS_REQUEST_TIMEOUT_SECONDS", "30")), 5.0),
     )
@@ -376,8 +378,8 @@ def extract_market_values(event: dict[str, Any], bookmaker: dict[str, Any] | Non
 def build_rows(settings: Settings, events: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], set[str], date]:
     now_local = datetime.now(MEXICO_CITY_TZ)
     snapshot_date = now_local.date()
-    window_start = snapshot_date
-    window_end = snapshot_date + timedelta(days=settings.lookahead_days)
+    window_start = snapshot_date + timedelta(days=settings.window_start_offset_days)
+    window_end = window_start + timedelta(days=settings.lookahead_days)
     rows: list[dict[str, Any]] = []
     unmapped_teams: set[str] = set()
 
