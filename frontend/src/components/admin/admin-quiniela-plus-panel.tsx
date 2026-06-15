@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
+  OddsPullResult,
   QuinielaPlusAdminConsole,
   QuinielaPlusBillingPeriod,
   QuinielaPlusLeague,
@@ -88,6 +89,8 @@ export function AdminQuinielaPlusPanel() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [leagueSaving, setLeagueSaving] = useState(false);
   const [planSaving, setPlanSaving] = useState(false);
+  const [oddsLoading, setOddsLoading] = useState(false);
+  const [oddsResult, setOddsResult] = useState<OddsPullResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -237,6 +240,29 @@ export function AdminQuinielaPlusPanel() {
     }
   }
 
+  async function handleWorldCupOddsPull() {
+    setOddsLoading(true);
+    setError(null);
+    setMessage(null);
+    setOddsResult(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const result = await backendFetch<OddsPullResult>("/admin/odds/pull-world-cup", accessToken, {
+        method: "POST",
+      });
+      setOddsResult(result);
+      setMessage(
+        `Odds Mundial cargados: ${result.raw_rows_processed ?? 0} raw, ${result.matched ?? 0} ligados, ${
+          result.unmatched ?? 0
+        } pendientes.`,
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los odds del Mundial");
+    } finally {
+      setOddsLoading(false);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando Quiniela + admin...</p>;
   }
@@ -249,6 +275,42 @@ export function AdminQuinielaPlusPanel() {
           Configura el catalogo de ligas, los bundles por periodo y el switch global del checkout para activarlo cuando
           cierres el frente fiscal.
         </p>
+      </section>
+
+      <section className="rounded-[18px] border border-white/[0.06] bg-white/[0.03] p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Odds Mundial</p>
+            <p className="mt-2 max-w-3xl text-sm text-steel">
+              Carga los odds de hoy desde The Odds API y los sincroniza contra los partidos del Mundial para el sneak
+              peek de Quiniela +.
+            </p>
+          </div>
+          <button type="button" onClick={handleWorldCupOddsPull} disabled={oddsLoading} className="secondary-button disabled:opacity-60">
+            {oddsLoading ? "Cargando odds..." : "Cargar odds de hoy"}
+          </button>
+        </div>
+
+        {oddsResult ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Snapshot</p>
+              <p className="mt-2 text-sm font-semibold text-ink">{oddsResult.snapshot_date ?? "-"}</p>
+            </div>
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Raw</p>
+              <p className="mt-2 text-sm font-semibold text-ink">{oddsResult.raw_rows_processed ?? 0}</p>
+            </div>
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Ligados</p>
+              <p className="mt-2 text-sm font-semibold text-moss">{oddsResult.matched ?? 0}</p>
+            </div>
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Pendientes</p>
+              <p className="mt-2 text-sm font-semibold text-gold">{oddsResult.unmatched ?? 0}</p>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">

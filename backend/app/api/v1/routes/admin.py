@@ -542,6 +542,75 @@ def run_script(command: list[str], cwd: Path, env: dict[str, str] | None = None)
     )
 
 
+def run_odds_pull_pipeline(script_env: dict[str, str]) -> OddsPullResponse:
+    pull_result = run_script([sys.executable, "scripts/pull_odds_raw.py"], BACKEND_DIR, env=script_env)
+    pull_output = "\n".join(part for part in [pull_result.stdout.strip(), pull_result.stderr.strip()] if part).strip()
+
+    if pull_result.returncode != 0:
+        if "ODDS-API sin creditos" in pull_output:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="ODDS-API sin creditos.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"No se pudo bajar odds raw desde The Odds API.\n{pull_output or 'Sin salida del script.'}",
+        )
+
+    snapshot_date = extract_snapshot_date(pull_output)
+    if snapshot_date is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"El extractor raw no devolvio una fecha de snapshot usable.\n{pull_output or 'Sin salida del script.'}",
+        )
+
+    raw_rows_processed = get_raw_odds_snapshot_count(snapshot_date)
+    if raw_rows_processed is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="El extractor raw termino, pero la tabla public.lmx_odds_5d sigue sin existir.",
+        )
+
+    if raw_rows_processed == 0:
+        return OddsPullResponse(
+            status="success",
+            snapshot_date=snapshot_date,
+            raw_rows_processed=0,
+            matched=0,
+            unmatched=0,
+            preview_rows=[],
+            pull_output=pull_output,
+            sync_output="No hubo filas raw dentro de la ventana configurada; se omitio la sincronizacion.",
+        )
+
+    sync_result = run_script(
+        [sys.executable, "scripts/sync_odds_from_raw.py", "--snapshot-date", snapshot_date],
+        BACKEND_DIR,
+        env=script_env,
+    )
+    sync_output = "\n".join(part for part in [sync_result.stdout.strip(), sync_result.stderr.strip()] if part).strip()
+
+    if sync_result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Los odds raw se bajaron, pero no se pudieron sincronizar.\n"
+                f"{pull_output or 'Sin salida del pull.'}\n\n{sync_output or 'Sin salida del script de sync.'}"
+            ),
+        )
+
+    return OddsPullResponse(
+        status="success",
+        snapshot_date=snapshot_date,
+        raw_rows_processed=raw_rows_processed,
+        matched=extract_int(r":\s*(\d+)\s+matched", sync_output),
+        unmatched=extract_int(r",\s*(\d+)\s+unmatched", sync_output),
+        preview_rows=get_raw_odds_preview(snapshot_date),
+        pull_output=pull_output,
+        sync_output=sync_output,
+    )
+
+
 def get_provider() -> MockSportsDataProvider:
     return MockSportsDataProvider()
 
@@ -2135,72 +2204,17 @@ def pull_admin_odds(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> OddsPullResponse:
     script_env = build_odds_script_env()
-    pull_result = run_script([sys.executable, "scripts/pull_odds_raw.py"], BACKEND_DIR, env=script_env)
-    pull_output = "\n".join(part for part in [pull_result.stdout.strip(), pull_result.stderr.strip()] if part).strip()
+    return run_odds_pull_pipeline(script_env)
 
-    if pull_result.returncode != 0:
-        if "ODDS-API sin creditos" in pull_output:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="ODDS-API sin creditos.",
-            )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"No se pudo bajar odds raw desde The Odds API.\n{pull_output or 'Sin salida del script.'}",
-        )
 
-    snapshot_date = extract_snapshot_date(pull_output)
-    if snapshot_date is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"El extractor raw no devolvio una fecha de snapshot usable.\n{pull_output or 'Sin salida del script.'}",
-        )
-
-    raw_rows_processed = get_raw_odds_snapshot_count(snapshot_date)
-    if raw_rows_processed is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="El extractor raw termino, pero la tabla public.lmx_odds_5d sigue sin existir.",
-        )
-
-    if raw_rows_processed == 0:
-        return OddsPullResponse(
-            status="success",
-            snapshot_date=snapshot_date,
-            raw_rows_processed=0,
-            matched=0,
-            unmatched=0,
-            preview_rows=[],
-            pull_output=pull_output,
-            sync_output="No hubo filas raw dentro de la ventana configurada; se omitio la sincronizacion.",
-        )
-
-    sync_result = run_script(
-        [sys.executable, "scripts/sync_odds_from_raw.py", "--snapshot-date", snapshot_date],
-        BACKEND_DIR,
-        env=script_env,
-    )
-    sync_output = "\n".join(part for part in [sync_result.stdout.strip(), sync_result.stderr.strip()] if part).strip()
-
-    if sync_result.returncode != 0:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Los odds raw se bajaron, pero no se pudieron sincronizar.\n"
-                f"{pull_output or 'Sin salida del pull.'}\n\n{sync_output or 'Sin salida del script de sync.'}"
-            ),
-        )
-
-    return OddsPullResponse(
-        status="success",
-        snapshot_date=snapshot_date,
-        raw_rows_processed=raw_rows_processed,
-        matched=extract_int(r":\s*(\d+)\s+matched", sync_output),
-        unmatched=extract_int(r",\s*(\d+)\s+unmatched", sync_output),
-        preview_rows=get_raw_odds_preview(snapshot_date),
-        pull_output=pull_output,
-        sync_output=sync_output,
-    )
+@router.post("/odds/pull-world-cup", response_model=OddsPullResponse)
+def pull_admin_world_cup_odds(
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> OddsPullResponse:
+    script_env = build_odds_script_env()
+    script_env["THE_ODDS_API_SPORT"] = "soccer_fifa_world_cup"
+    script_env["ODDS_LOOKAHEAD_DAYS"] = "0"
+    return run_odds_pull_pipeline(script_env)
 
 
 @router.post("/results/recalculate")

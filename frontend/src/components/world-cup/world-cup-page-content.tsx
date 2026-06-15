@@ -177,8 +177,9 @@ export function WorldCupPageContent() {
   const [board, setBoard] = useState<WorldCupBoard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<WorldCupSection>("groups");
+  const [activeSection, setActiveSection] = useState<WorldCupSection>("official-results");
   const [resultsGrouping, setResultsGrouping] = useState<ResultsGrouping>("matchday");
+  const [selectedResultsGroupKey, setSelectedResultsGroupKey] = useState("");
   const [newsCategory, setNewsCategory] = useState<NewsCategory>("all");
   const [newsArticles, setNewsArticles] = useState<WorldCupNewsArticle[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
@@ -192,6 +193,8 @@ export function WorldCupPageContent() {
     const results = board?.official_results ?? [];
     return resultsGrouping === "matchday" ? groupResultsByMatchday(results) : groupResultsByDay(results);
   }, [board?.official_results, resultsGrouping]);
+  const selectedOfficialResultGroup =
+    officialResultGroups.find((group) => group.key === selectedResultsGroupKey) ?? officialResultGroups[0] ?? null;
 
   useEffect(() => {
     async function loadInitial() {
@@ -226,6 +229,15 @@ export function WorldCupPageContent() {
 
     void loadInitial();
   }, [competitionId, seasonIdParam, setSeasonId]);
+
+  useEffect(() => {
+    setSelectedResultsGroupKey((current) => {
+      if (officialResultGroups.some((group) => group.key === current)) {
+        return current;
+      }
+      return officialResultGroups[0]?.key ?? "";
+    });
+  }, [officialResultGroups]);
 
   useEffect(() => {
     if (activeSection !== "news") {
@@ -320,19 +332,19 @@ export function WorldCupPageContent() {
           <section className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => setActiveSection("groups")}
-              className={activeSection === "groups" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
-            >
-              Grupos
-            </button>
-            <button
-              type="button"
               onClick={() => setActiveSection("official-results")}
               className={
                 activeSection === "official-results" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"
               }
             >
               Resultados oficiales
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection("groups")}
+              className={activeSection === "groups" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+            >
+              Grupos
             </button>
             <button
               type="button"
@@ -437,24 +449,35 @@ export function WorldCupPageContent() {
               {officialResultGroups.length === 0 ? (
                 <p className="text-sm text-steel">Todavia no hay resultados oficiales publicados para esta temporada.</p>
               ) : (
-                <div className={resultsGrouping === "day" ? "no-scrollbar flex gap-4 overflow-x-auto pb-2 touch-pan-x" : "space-y-4"}>
-                  {officialResultGroups.map((group) => (
+                <div className="space-y-4">
+                  <label className="block max-w-[360px] space-y-2 text-sm">
+                    <span className="text-steel">{resultsGrouping === "day" ? "Dia" : "Jornada"}</span>
+                    <select
+                      value={selectedOfficialResultGroup?.key ?? ""}
+                      onChange={(event) => setSelectedResultsGroupKey(event.target.value)}
+                      className="field-control"
+                    >
+                      {officialResultGroups.map((group) => (
+                        <option key={group.key} value={group.key}>
+                          {group.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {selectedOfficialResultGroup ? (
                     <div
-                      key={group.key}
-                      className={
-                        resultsGrouping === "day"
-                          ? "w-[300px] shrink-0 rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4 sm:w-[360px]"
-                          : "rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4"
-                      }
+                      key={selectedOfficialResultGroup.key}
+                      className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <h2 className="text-base font-semibold text-ink">{group.label}</h2>
+                        <h2 className="text-base font-semibold text-ink">{selectedOfficialResultGroup.label}</h2>
                         <span className="text-xs uppercase tracking-[0.16em] text-steel">
-                          {group.results.length} partidos
+                          {selectedOfficialResultGroup.results.length} partidos
                         </span>
                       </div>
-                      <div className="mt-4 space-y-3">
-                        {group.results.map((result) => (
+                      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                        {selectedOfficialResultGroup.results.map((result) => (
                           <div key={result.match_id} className="rounded-md border border-white/[0.06] bg-black/10 p-3">
                             <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.14em] text-steel">
                               <span>{getStageTitle(result.stage_type)}</span>
@@ -490,7 +513,7 @@ export function WorldCupPageContent() {
                         ))}
                       </div>
                     </div>
-                  ))}
+                  ) : null}
                 </div>
               )}
             </section>

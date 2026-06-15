@@ -91,6 +91,7 @@ class QuinielaPlusCatalogResponse(BaseModel):
 class QuinielaPlusOddsSneakPeekMatchOut(BaseModel):
     match_id: str
     matchday_id: str
+    matchday_number: int
     matchday_name: str
     home_team_name: str
     away_team_name: str

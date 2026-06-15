@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -15,11 +14,12 @@ from sqlalchemy import text
 
 from app.core.database import engine
 from app.core.datetime import MEXICO_CITY_TZ, ensure_utc
+from app.core.team_matching import TEAM_CODE_ALIASES, normalize_text
 
 RAW_TABLE_NAME = "lmx_odds_5d"
 PROVIDER_NAME = "the_odds_api"
 DRAW_ALIASES = {"draw", "tie", "empate"}
-TEAM_CODE_MAP = {
+LEGACY_TEAM_CODE_MAP = {
     "club america": "AME",
     "america": "AME",
     "guadalajara": "GDL",
@@ -56,6 +56,7 @@ TEAM_CODE_MAP = {
     "atletico san luis": "SLP",
     "san luis": "SLP",
 }
+TEAM_CODE_MAP = {**LEGACY_TEAM_CODE_MAP, **TEAM_CODE_ALIASES}
 
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS public.lmx_odds_5d (
@@ -201,12 +202,6 @@ class Settings:
     timeout_seconds: float
 
 
-def normalize_text(value: str | None) -> str:
-    normalized = unicodedata.normalize("NFKD", (value or "").strip().lower())
-    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
-    return " ".join(ascii_only.split())
-
-
 def map_team_code(name: str | None) -> str | None:
     return TEAM_CODE_MAP.get(normalize_text(name))
 
@@ -246,7 +241,7 @@ def load_settings() -> Settings:
         markets=os.getenv("THE_ODDS_API_MARKETS", "h2h,spreads,totals"),
         odds_format=os.getenv("THE_ODDS_API_ODDS_FORMAT", "american"),
         bookmaker_key=os.getenv("THE_ODDS_API_BOOKMAKER", "draftkings").strip().lower(),
-        lookahead_days=max(int(os.getenv("ODDS_LOOKAHEAD_DAYS", "5")), 1),
+        lookahead_days=max(int(os.getenv("ODDS_LOOKAHEAD_DAYS", "5")), 0),
         timeout_seconds=max(float(os.getenv("ODDS_REQUEST_TIMEOUT_SECONDS", "30")), 5.0),
     )
 

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal, engine
 from app.core.datetime import MEXICO_CITY_TZ, ensure_utc
-from app.core.team_matching import TEAM_CODE_ALIASES, normalize_text
+from app.core.team_matching import EQUIVALENT_TEAM_CODES, TEAM_CODE_ALIASES, normalize_text
 from app.models.entities import Match, MatchStatus, Matchday, MatchdayStatus, Odds, Season, Team
 
 RAW_TABLE_NAME = "lmx_odds_5d"
@@ -89,6 +89,7 @@ def mexico_city_day_bounds(match_date: datetime) -> tuple[datetime, datetime]:
 def load_team_lookup(db: Session) -> dict[str, str]:
     lookup: dict[str, str] = {}
     teams = list(db.scalars(select(Team).order_by(Team.name.asc())))
+    actual_codes = {team.short_name.upper() for team in teams}
     for team in teams:
       # short_name is the canonical code we want back.
         code = team.short_name.upper()
@@ -97,7 +98,11 @@ def load_team_lookup(db: Session) -> dict[str, str]:
         lookup[normalize_text(team.slug)] = code
 
     for alias, code in TEAM_CODE_ALIASES.items():
-        lookup.setdefault(normalize_text(alias), code)
+        resolved_code = next(
+            (candidate for candidate in EQUIVALENT_TEAM_CODES.get(code, (code,)) if candidate in actual_codes),
+            code,
+        )
+        lookup.setdefault(normalize_text(alias), resolved_code)
     return lookup
 
 
@@ -128,7 +133,11 @@ def find_team(
     normalized_name = normalize_text(team_name)
     normalized_code = (team_code or fallback_team_code(team_name)).upper()
 
-    return by_code.get(normalized_code) or by_name.get(normalized_name)
+    for candidate in EQUIVALENT_TEAM_CODES.get(normalized_code, (normalized_code,)):
+        team = by_code.get(candidate)
+        if team is not None:
+            return team
+    return by_name.get(normalized_name)
 
 
 def ensure_active_season(db: Session, reference_date: datetime) -> tuple[Season, bool]:

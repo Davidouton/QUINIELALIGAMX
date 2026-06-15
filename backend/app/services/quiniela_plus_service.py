@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.datetime import MEXICO_CITY_TZ
 from app.models.entities import (
     CommerceSettings,
     Match,
@@ -70,15 +71,16 @@ class QuinielaPlusService:
             active_memberships=memberships,
         )
 
-    def get_odds_sneak_peek(self, db: Session, limit: int = 6) -> QuinielaPlusOddsSneakPeekOut:
-        now = datetime.now(UTC)
+    def get_odds_sneak_peek(self, db: Session, limit: int = 40) -> QuinielaPlusOddsSneakPeekOut:
+        today_start = datetime.now(MEXICO_CITY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+        window_start = today_start.astimezone(UTC)
         candidate_rows = db.execute(
             select(Match, Matchday)
             .join(Matchday, Matchday.id == Match.matchday_id)
             .join(Season, Season.id == Matchday.season_id)
             .where(
                 Season.tournament_format == TournamentFormat.WORLD_CUP,
-                Match.kickoff_at >= now,
+                Match.kickoff_at >= window_start,
                 Match.home_team_id.is_not(None),
                 Match.away_team_id.is_not(None),
             )
@@ -108,6 +110,7 @@ class QuinielaPlusService:
                 QuinielaPlusOddsSneakPeekMatchOut(
                     match_id=match.id,
                     matchday_id=match.matchday_id,
+                    matchday_number=matchday.number,
                     matchday_name=matchday.name,
                     home_team_name=home_team.name if home_team is not None else match.home_placeholder or "Local",
                     away_team_name=away_team.name if away_team is not None else match.away_placeholder or "Visitante",

@@ -423,6 +423,7 @@ export interface QuinielaPlusCatalog {
 export interface QuinielaPlusOddsSneakPeekMatch {
   match_id: string;
   matchday_id: string;
+  matchday_number: number;
   matchday_name: string;
   home_team_name: string;
   away_team_name: string;
