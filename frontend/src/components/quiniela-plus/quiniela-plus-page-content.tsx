@@ -145,37 +145,48 @@ export function QuinielaPlusPageContent() {
       </section>
 
       {visibleMatches.length > 0 ? (
-        <section className="grid gap-3 lg:grid-cols-2">
-          {visibleMatches.map((match) => (
-            <article key={match.match_id} className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] uppercase tracking-[0.14em] text-steel">
-                <span>{buildMatchdayLabel(match)}</span>
-                <span>{match.odds_provider_name}</span>
-              </div>
-              <p className="mt-2 text-xs text-steel">{formatMexicoCityDateTime(match.kickoff_at)}</p>
-
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="truncate text-sm font-semibold text-ink">{match.home_team_name}</span>
-                  <span className="text-sm font-semibold text-moss">
-                    {formatProbability(match.home_win_probability)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="truncate text-sm font-semibold text-ink">Empate</span>
-                  <span className="text-sm font-semibold text-amber-100">
-                    {formatProbability(match.draw_probability)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="truncate text-sm font-semibold text-ink">{match.away_team_name}</span>
-                  <span className="text-sm font-semibold text-sky-100">
-                    {formatProbability(match.away_win_probability)}
-                  </span>
-                </div>
-              </div>
-            </article>
-          ))}
+        <section className="overflow-hidden rounded-[16px] border border-white/[0.06] bg-white/[0.03]">
+          <div className="overflow-x-auto">
+            <table className="min-w-[760px] w-full text-left text-sm">
+              <thead className="border-b border-white/[0.06] text-[11px] uppercase tracking-[0.16em] text-steel">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">Jornada</th>
+                  <th className="px-4 py-3 font-semibold">Fecha</th>
+                  <th className="px-4 py-3 font-semibold">Partido</th>
+                  <th className="px-4 py-3 text-right font-semibold">Local</th>
+                  <th className="px-4 py-3 text-right font-semibold">Empate</th>
+                  <th className="px-4 py-3 text-right font-semibold">Visita</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.06]">
+                {visibleMatches.map((match) => (
+                  <tr key={match.match_id} className="transition hover:bg-white/[0.03]">
+                    <td className="whitespace-nowrap px-4 py-3 text-xs uppercase tracking-[0.14em] text-steel">
+                      {buildMatchdayLabel(match)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-xs text-steel">
+                      {formatMexicoCityDateTime(match.kickoff_at)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-ink">{match.home_team_name}</p>
+                        <p className="truncate text-steel">{match.away_team_name}</p>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-moss">
+                      {formatProbability(match.home_win_probability)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-amber-100">
+                      {formatProbability(match.draw_probability)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-sky-100">
+                      {formatProbability(match.away_win_probability)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : (
         <section className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4">
