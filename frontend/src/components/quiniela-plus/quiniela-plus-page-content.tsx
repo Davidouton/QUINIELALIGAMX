@@ -67,6 +67,21 @@ function TeamInline({ name, shortName, crestUrl }: { name: string; shortName: st
   );
 }
 
+function getProbabilityTone(
+  value: number,
+  probabilities: [number, number, number],
+) {
+  const sorted = [...probabilities].sort((left, right) => right - left);
+  const rank = sorted.findIndex((candidate) => candidate === value);
+  if (rank === 0) {
+    return "text-moss";
+  }
+  if (rank === 1) {
+    return "text-gold";
+  }
+  return "text-coral";
+}
+
 export function QuinielaPlusPageContent() {
   const [oddsSneakPeek, setOddsSneakPeek] = useState<QuinielaPlusOddsSneakPeek | null>(null);
   const [loading, setLoading] = useState(true);
@@ -197,46 +212,53 @@ export function QuinielaPlusPageContent() {
                   <th className="px-3 py-2 font-semibold">Jornada</th>
                   <th className="px-3 py-2 font-semibold">Fecha</th>
                   <th className="px-3 py-2 font-semibold">Partido</th>
-                  <th className="px-3 py-2 text-right font-semibold text-moss">Local</th>
-                  <th className="px-3 py-2 text-right font-semibold text-gold">Empate</th>
-                  <th className="px-3 py-2 text-right font-semibold text-coral">Visitante</th>
+                  <th className="px-3 py-2 text-right font-semibold">Local</th>
+                  <th className="px-3 py-2 text-right font-semibold">Empate</th>
+                  <th className="px-3 py-2 text-right font-semibold">Visitante</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.06]">
-                {visibleMatches.map((match) => (
-                  <tr key={match.match_id} className="transition hover:bg-white/[0.03]">
-                    <td className="whitespace-nowrap px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-steel">
-                      {buildMatchdayLabel(match)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-[11px] text-steel">
-                      {formatMexicoCityDateTime(match.kickoff_at)}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                        <TeamInline
-                          name={match.home_team_name}
-                          shortName={match.home_team_short_name}
-                          crestUrl={match.home_team_crest_url}
-                        />
-                        <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
-                        <TeamInline
-                          name={match.away_team_name}
-                          shortName={match.away_team_short_name}
-                          crestUrl={match.away_team_crest_url}
-                        />
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-moss">
-                      {formatProbability(match.home_win_probability)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-gold">
-                      {formatProbability(match.draw_probability)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-coral">
-                      {formatProbability(match.away_win_probability)}
-                    </td>
-                  </tr>
-                ))}
+                {visibleMatches.map((match) => {
+                  const probabilities: [number, number, number] = [
+                    match.home_win_probability,
+                    match.draw_probability,
+                    match.away_win_probability,
+                  ];
+                  return (
+                    <tr key={match.match_id} className="transition hover:bg-white/[0.03]">
+                      <td className="whitespace-nowrap px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-steel">
+                        {buildMatchdayLabel(match)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-[11px] text-steel">
+                        {formatMexicoCityDateTime(match.kickoff_at)}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                          <TeamInline
+                            name={match.home_team_name}
+                            shortName={match.home_team_short_name}
+                            crestUrl={match.home_team_crest_url}
+                          />
+                          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
+                          <TeamInline
+                            name={match.away_team_name}
+                            shortName={match.away_team_short_name}
+                            crestUrl={match.away_team_crest_url}
+                          />
+                        </div>
+                      </td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(match.home_win_probability, probabilities)}`}>
+                        {formatProbability(match.home_win_probability)}
+                      </td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(match.draw_probability, probabilities)}`}>
+                        {formatProbability(match.draw_probability)}
+                      </td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(match.away_win_probability, probabilities)}`}>
+                        {formatProbability(match.away_win_probability)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
