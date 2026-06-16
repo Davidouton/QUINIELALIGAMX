@@ -136,9 +136,9 @@ class QuinielaPlusService:
 
         return QuinielaPlusOddsSneakPeekOut(matches=rows)
 
-    def get_user_distribution(self, db: Session, limit: int = 40) -> QuinielaPlusUserDistributionOut:
+    def get_user_distribution(self, db: Session, limit: int | None = None) -> QuinielaPlusUserDistributionOut:
         now = datetime.now(UTC)
-        match_rows = db.execute(
+        match_query = (
             select(Match, Matchday)
             .join(Matchday, Matchday.id == Match.matchday_id)
             .join(Season, Season.id == Matchday.season_id)
@@ -147,9 +147,11 @@ class QuinielaPlusService:
                 Match.home_team_id.is_not(None),
                 Match.away_team_id.is_not(None),
             )
-            .order_by(Match.kickoff_at.desc(), Match.created_at.desc())
-            .limit(limit)
-        ).all()
+            .order_by(Match.kickoff_at.asc(), Match.created_at.asc())
+        )
+        if limit is not None:
+            match_query = match_query.limit(limit)
+        match_rows = db.execute(match_query).all()
 
         match_ids = [match.id for match, _ in match_rows]
         if not match_ids:
