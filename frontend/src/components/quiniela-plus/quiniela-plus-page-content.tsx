@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
@@ -15,6 +15,8 @@ import type {
 type OddsScope = "today" | "matchday";
 type QuinielaPlusTab = "probabilities" | "user-distribution";
 type MatchdaySourceMatch = Pick<QuinielaPlusOddsSneakPeekMatch, "matchday_id" | "matchday_name" | "matchday_number" | "kickoff_at">;
+const TODAY_DISTRIBUTION_POLL_MS = 10_000;
+const MATCHDAY_DISTRIBUTION_POLL_MS = 45_000;
 
 function formatProbability(value: number) {
   return new Intl.NumberFormat("es-MX", {
@@ -30,6 +32,17 @@ function getMexicoCityDateKey(value: string | Date) {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(value));
+}
+
+function formatUpdatedAt(value: Date | null) {
+  if (!value) {
+    return "Sin actualizar";
+  }
+  return new Intl.DateTimeFormat("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(value);
 }
 
 function buildMatchdayLabel(match: MatchdaySourceMatch) {
@@ -93,13 +106,42 @@ export function QuinielaPlusPageContent() {
   const [oddsSneakPeek, setOddsSneakPeek] = useState<QuinielaPlusOddsSneakPeek | null>(null);
   const [userDistribution, setUserDistribution] = useState<QuinielaPlusUserDistribution | null>(null);
   const [loading, setLoading] = useState(true);
+  const [distributionRefreshing, setDistributionRefreshing] = useState(false);
+  const [distributionUpdatedAt, setDistributionUpdatedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<QuinielaPlusTab>("probabilities");
   const [oddsScope, setOddsScope] = useState<OddsScope>("today");
   const [selectedMatchdayId, setSelectedMatchdayId] = useState("");
 
+  const refreshUserDistribution = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) {
+        setDistributionRefreshing(true);
+      }
+      try {
+        const accessToken = await getBrowserAccessToken();
+        const distributionResponse = await backendFetch<QuinielaPlusUserDistribution>(
+          "/quiniela-plus/user-distribution",
+          accessToken,
+        );
+        setUserDistribution(distributionResponse);
+        setDistributionUpdatedAt(new Date());
+        setError(null);
+      } catch (caughtError) {
+        if (!silent) {
+          setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la distribucion");
+        }
+      } finally {
+        if (!silent) {
+          setDistributionRefreshing(false);
+        }
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
-    async function loadOdds() {
+    async function loadInitialData() {
       try {
         const accessToken = await getBrowserAccessToken();
         const [oddsResponse, distributionResponse] = await Promise.all([
@@ -108,6 +150,7 @@ export function QuinielaPlusPageContent() {
         ]);
         setOddsSneakPeek(oddsResponse);
         setUserDistribution(distributionResponse);
+        setDistributionUpdatedAt(new Date());
         setError(null);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar las probabilidades");
@@ -116,8 +159,48 @@ export function QuinielaPlusPageContent() {
       }
     }
 
-    void loadOdds();
+    void loadInitialData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "user-distribution") {
+      return;
+    }
+
+    let timeoutId: number | null = null;
+    let cancelled = false;
+
+    const scheduleNextRefresh = () => {
+      const pollMs = oddsScope === "today" ? TODAY_DISTRIBUTION_POLL_MS : MATCHDAY_DISTRIBUTION_POLL_MS;
+      timeoutId = window.setTimeout(async () => {
+        if (cancelled) {
+          return;
+        }
+        if (document.visibilityState === "visible") {
+          await refreshUserDistribution({ silent: true });
+        }
+        scheduleNextRefresh();
+      }, pollMs);
+    };
+
+    void refreshUserDistribution({ silent: true });
+    scheduleNextRefresh();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshUserDistribution({ silent: true });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeTab, oddsScope, refreshUserDistribution]);
 
   const matchdayOptions = useMemo(() => {
     const grouped = new Map<string, { id: string; label: string; number: number }>();
@@ -219,22 +302,40 @@ export function QuinielaPlusPageContent() {
           </button>
         </div>
 
-        {oddsScope === "matchday" && matchdayOptions.length > 0 ? (
-          <label className="w-full max-w-[320px] space-y-2 text-sm sm:w-auto">
-            <span className="text-steel">Jornada</span>
-            <select
-              value={selectedMatchdayId}
-              onChange={(event) => setSelectedMatchdayId(event.target.value)}
-              className="field-control"
+        <div className="flex flex-wrap items-end gap-3">
+          {activeTab === "user-distribution" ? (
+            <div className="text-right text-[11px] text-steel">
+              <p>{oddsScope === "today" ? "Auto 10s" : "Auto 45s"}</p>
+              <p>Actualizado {formatUpdatedAt(distributionUpdatedAt)}</p>
+            </div>
+          ) : null}
+          {activeTab === "user-distribution" ? (
+            <button
+              type="button"
+              onClick={() => refreshUserDistribution()}
+              disabled={distributionRefreshing}
+              className="app-pill h-10 px-4 text-sm disabled:opacity-60"
             >
-              {matchdayOptions.map((matchday) => (
-                <option key={matchday.id} value={matchday.id}>
-                  {matchday.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+              {distributionRefreshing ? "Actualizando..." : "Actualizar"}
+            </button>
+          ) : null}
+          {oddsScope === "matchday" && matchdayOptions.length > 0 ? (
+            <label className="w-full max-w-[320px] space-y-2 text-sm sm:w-auto">
+              <span className="text-steel">Jornada</span>
+              <select
+                value={selectedMatchdayId}
+                onChange={(event) => setSelectedMatchdayId(event.target.value)}
+                className="field-control"
+              >
+                {matchdayOptions.map((matchday) => (
+                  <option key={matchday.id} value={matchday.id}>
+                    {matchday.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
       </section>
 
       {activeTab === "probabilities" && visibleMatches.length > 0 ? (
