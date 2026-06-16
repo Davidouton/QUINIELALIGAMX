@@ -14,6 +14,7 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusOddsSneakPeekOut,
     QuinielaPlusPlanOut,
     QuinielaPlusPlanUpsertRequest,
+    QuinielaPlusUserDistributionOut,
 )
 from app.services.quiniela_plus_service import QuinielaPlusService
 
@@ -43,6 +44,14 @@ def get_odds_sneak_peek(
     _: Profile = Depends(get_current_profile),
 ) -> QuinielaPlusOddsSneakPeekOut:
     return service.get_odds_sneak_peek(db)
+
+
+@router.get("/quiniela-plus/user-distribution", response_model=QuinielaPlusUserDistributionOut)
+def get_user_distribution(
+    db: Session = Depends(get_db),
+    _: Profile = Depends(get_current_profile),
+) -> QuinielaPlusUserDistributionOut:
+    return service.get_user_distribution(db)
 
 
 @router.get("/quiniela-plus/admin/console", response_model=QuinielaPlusAdminConsoleResponse)

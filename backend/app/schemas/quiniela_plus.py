@@ -111,6 +111,45 @@ class QuinielaPlusOddsSneakPeekOut(BaseModel):
     matches: list[QuinielaPlusOddsSneakPeekMatchOut] = []
 
 
+class QuinielaPlusUserSelectionDistributionOut(BaseModel):
+    home_count: int = 0
+    draw_count: int = 0
+    away_count: int = 0
+    home_percentage: float = 0
+    draw_percentage: float = 0
+    away_percentage: float = 0
+
+
+class QuinielaPlusScoreDistributionOut(BaseModel):
+    score_label: str
+    home_score: int
+    away_score: int
+    count: int
+    percentage: float
+
+
+class QuinielaPlusUserDistributionMatchOut(BaseModel):
+    match_id: str
+    matchday_id: str
+    matchday_number: int
+    matchday_name: str
+    home_team_name: str
+    home_team_short_name: str
+    home_team_crest_url: str | None = None
+    away_team_name: str
+    away_team_short_name: str
+    away_team_crest_url: str | None = None
+    kickoff_at: datetime
+    total_picks: int
+    selection_distribution: QuinielaPlusUserSelectionDistributionOut
+    score_distribution: list[QuinielaPlusScoreDistributionOut] = []
+
+
+class QuinielaPlusUserDistributionOut(BaseModel):
+    title: str = "Distribucion de usuarios"
+    matches: list[QuinielaPlusUserDistributionMatchOut] = []
+
+
 class QuinielaPlusAdminSettingsOut(BaseModel):
     checkout_enabled: bool = False
     checkout_message: str | None = None

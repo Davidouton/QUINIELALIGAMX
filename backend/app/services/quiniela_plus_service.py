@@ -3,16 +3,17 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.datetime import MEXICO_CITY_TZ
+from app.core.datetime import MEXICO_CITY_TZ, ensure_utc
 from app.models.entities import (
     CommerceSettings,
     Match,
     Matchday,
     Odds,
     Payment,
+    PickSelection,
     Profile,
     QuinielaPlusBillingPeriod,
     QuinielaPlusLeague,
@@ -23,6 +24,7 @@ from app.models.entities import (
     Season,
     Team,
     TournamentFormat,
+    UserPick,
 )
 from app.repositories.odds_repository import OddsRepository
 from app.schemas.quiniela_plus import (
@@ -38,6 +40,10 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusOddsSneakPeekOut,
     QuinielaPlusPlanOut,
     QuinielaPlusPlanUpsertRequest,
+    QuinielaPlusScoreDistributionOut,
+    QuinielaPlusUserDistributionMatchOut,
+    QuinielaPlusUserDistributionOut,
+    QuinielaPlusUserSelectionDistributionOut,
 )
 
 
@@ -129,6 +135,106 @@ class QuinielaPlusService:
                 break
 
         return QuinielaPlusOddsSneakPeekOut(matches=rows)
+
+    def get_user_distribution(self, db: Session, limit: int = 40) -> QuinielaPlusUserDistributionOut:
+        now = datetime.now(UTC)
+        match_rows = db.execute(
+            select(Match, Matchday)
+            .join(Matchday, Matchday.id == Match.matchday_id)
+            .join(Season, Season.id == Matchday.season_id)
+            .where(
+                Season.tournament_format == TournamentFormat.WORLD_CUP,
+                Match.picks_lock_at <= now,
+                Match.home_team_id.is_not(None),
+                Match.away_team_id.is_not(None),
+            )
+            .order_by(Match.kickoff_at.desc(), Match.created_at.desc())
+            .limit(limit)
+        ).all()
+
+        match_ids = [match.id for match, _ in match_rows]
+        if not match_ids:
+            return QuinielaPlusUserDistributionOut()
+
+        selection_counts: dict[str, dict[PickSelection, int]] = {
+            match_id: {
+                PickSelection.HOME: 0,
+                PickSelection.DRAW: 0,
+                PickSelection.AWAY: 0,
+            }
+            for match_id in match_ids
+        }
+        score_counts: dict[str, list[tuple[int, int, int]]] = {match_id: [] for match_id in match_ids}
+
+        selection_rows = db.execute(
+            select(UserPick.match_id, UserPick.selection, func.count(UserPick.id))
+            .where(UserPick.match_id.in_(match_ids))
+            .group_by(UserPick.match_id, UserPick.selection)
+        ).all()
+        for match_id, selection, count in selection_rows:
+            if match_id in selection_counts:
+                selection_counts[match_id][selection] = int(count)
+
+        score_rows = db.execute(
+            select(
+                UserPick.match_id,
+                UserPick.predicted_home_score,
+                UserPick.predicted_away_score,
+                func.count(UserPick.id).label("pick_count"),
+            )
+            .where(UserPick.match_id.in_(match_ids))
+            .group_by(UserPick.match_id, UserPick.predicted_home_score, UserPick.predicted_away_score)
+            .order_by(UserPick.match_id.asc(), func.count(UserPick.id).desc(), UserPick.predicted_home_score.asc(), UserPick.predicted_away_score.asc())
+        ).all()
+        for match_id, home_score, away_score, count in score_rows:
+            if match_id in score_counts:
+                score_counts[match_id].append((int(home_score), int(away_score), int(count)))
+
+        rows: list[QuinielaPlusUserDistributionMatchOut] = []
+        for match, matchday in match_rows:
+            home_team = db.get(Team, match.home_team_id)
+            away_team = db.get(Team, match.away_team_id)
+            counts = selection_counts[match.id]
+            total_picks = counts[PickSelection.HOME] + counts[PickSelection.DRAW] + counts[PickSelection.AWAY]
+            if total_picks <= 0:
+                continue
+
+            rows.append(
+                QuinielaPlusUserDistributionMatchOut(
+                    match_id=match.id,
+                    matchday_id=match.matchday_id,
+                    matchday_number=matchday.number,
+                    matchday_name=matchday.name,
+                    home_team_name=home_team.name if home_team is not None else match.home_placeholder or "Local",
+                    home_team_short_name=home_team.short_name if home_team is not None else "LOC",
+                    home_team_crest_url=home_team.crest_url if home_team is not None else None,
+                    away_team_name=away_team.name if away_team is not None else match.away_placeholder or "Visitante",
+                    away_team_short_name=away_team.short_name if away_team is not None else "VIS",
+                    away_team_crest_url=away_team.crest_url if away_team is not None else None,
+                    kickoff_at=ensure_utc(match.kickoff_at),
+                    total_picks=total_picks,
+                    selection_distribution=QuinielaPlusUserSelectionDistributionOut(
+                        home_count=counts[PickSelection.HOME],
+                        draw_count=counts[PickSelection.DRAW],
+                        away_count=counts[PickSelection.AWAY],
+                        home_percentage=counts[PickSelection.HOME] / total_picks,
+                        draw_percentage=counts[PickSelection.DRAW] / total_picks,
+                        away_percentage=counts[PickSelection.AWAY] / total_picks,
+                    ),
+                    score_distribution=[
+                        QuinielaPlusScoreDistributionOut(
+                            score_label=f"{home_score}-{away_score}",
+                            home_score=home_score,
+                            away_score=away_score,
+                            count=count,
+                            percentage=count / total_picks,
+                        )
+                        for home_score, away_score, count in score_counts[match.id][:6]
+                    ],
+                )
+            )
+
+        return QuinielaPlusUserDistributionOut(matches=rows)
 
     def get_admin_console(self, db: Session) -> QuinielaPlusAdminConsoleResponse:
         settings = self._get_or_create_settings(db)

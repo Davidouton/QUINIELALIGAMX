@@ -5,9 +5,16 @@ import { useEffect, useMemo, useState } from "react";
 import { backendFetch } from "@/lib/api/backend";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { QuinielaPlusOddsSneakPeek, QuinielaPlusOddsSneakPeekMatch } from "@/types/api";
+import type {
+  QuinielaPlusOddsSneakPeek,
+  QuinielaPlusOddsSneakPeekMatch,
+  QuinielaPlusUserDistribution,
+  QuinielaPlusUserDistributionMatch,
+} from "@/types/api";
 
 type OddsScope = "today" | "matchday";
+type QuinielaPlusTab = "probabilities" | "user-distribution";
+type MatchdaySourceMatch = Pick<QuinielaPlusOddsSneakPeekMatch, "matchday_id" | "matchday_name" | "matchday_number" | "kickoff_at">;
 
 function formatProbability(value: number) {
   return new Intl.NumberFormat("es-MX", {
@@ -25,7 +32,7 @@ function getMexicoCityDateKey(value: string | Date) {
   }).format(new Date(value));
 }
 
-function buildMatchdayLabel(match: QuinielaPlusOddsSneakPeekMatch) {
+function buildMatchdayLabel(match: MatchdaySourceMatch) {
   return match.matchday_name.trim().toLowerCase().startsWith("jornada")
     ? match.matchday_name
     : `Jornada ${match.matchday_number}`;
@@ -84,8 +91,10 @@ function getProbabilityTone(
 
 export function QuinielaPlusPageContent() {
   const [oddsSneakPeek, setOddsSneakPeek] = useState<QuinielaPlusOddsSneakPeek | null>(null);
+  const [userDistribution, setUserDistribution] = useState<QuinielaPlusUserDistribution | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<QuinielaPlusTab>("probabilities");
   const [oddsScope, setOddsScope] = useState<OddsScope>("today");
   const [selectedMatchdayId, setSelectedMatchdayId] = useState("");
 
@@ -93,11 +102,12 @@ export function QuinielaPlusPageContent() {
     async function loadOdds() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const response = await backendFetch<QuinielaPlusOddsSneakPeek>(
-          "/quiniela-plus/odds-sneak-peek",
-          accessToken,
-        );
-        setOddsSneakPeek(response);
+        const [oddsResponse, distributionResponse] = await Promise.all([
+          backendFetch<QuinielaPlusOddsSneakPeek>("/quiniela-plus/odds-sneak-peek", accessToken),
+          backendFetch<QuinielaPlusUserDistribution>("/quiniela-plus/user-distribution", accessToken),
+        ]);
+        setOddsSneakPeek(oddsResponse);
+        setUserDistribution(distributionResponse);
         setError(null);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar las probabilidades");
@@ -111,7 +121,9 @@ export function QuinielaPlusPageContent() {
 
   const matchdayOptions = useMemo(() => {
     const grouped = new Map<string, { id: string; label: string; number: number }>();
-    for (const match of oddsSneakPeek?.matches ?? []) {
+    const sourceMatches: MatchdaySourceMatch[] =
+      activeTab === "probabilities" ? oddsSneakPeek?.matches ?? [] : userDistribution?.matches ?? [];
+    for (const match of sourceMatches) {
       if (!grouped.has(match.matchday_id)) {
         grouped.set(match.matchday_id, {
           id: match.matchday_id,
@@ -121,7 +133,7 @@ export function QuinielaPlusPageContent() {
       }
     }
     return [...grouped.values()].sort((left, right) => left.number - right.number);
-  }, [oddsSneakPeek?.matches]);
+  }, [activeTab, oddsSneakPeek?.matches, userDistribution?.matches]);
 
   useEffect(() => {
     setSelectedMatchdayId((current) => {
@@ -141,6 +153,15 @@ export function QuinielaPlusPageContent() {
     return matches.filter((match) => match.matchday_id === selectedMatchdayId);
   }, [oddsScope, oddsSneakPeek?.matches, selectedMatchdayId]);
 
+  const visibleDistributionMatches = useMemo(() => {
+    const matches = userDistribution?.matches ?? [];
+    if (oddsScope === "today") {
+      const todayKey = getMexicoCityDateKey(new Date());
+      return matches.filter((match) => getMexicoCityDateKey(match.kickoff_at) === todayKey);
+    }
+    return matches.filter((match) => match.matchday_id === selectedMatchdayId);
+  }, [oddsScope, selectedMatchdayId, userDistribution?.matches]);
+
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando probabilidades...</p>;
   }
@@ -153,10 +174,31 @@ export function QuinielaPlusPageContent() {
     <div className="space-y-6">
       <section className="space-y-2">
         <p className="text-[11px] uppercase tracking-[0.28em] text-steel">Quiniela +</p>
-        <h1 className="text-2xl font-semibold text-ink">Probabilidades sin vig</h1>
+        <h1 className="text-2xl font-semibold text-ink">
+          {activeTab === "probabilities" ? "Probabilidades sin vig" : "Distribucion de usuarios"}
+        </h1>
         <p className="max-w-3xl text-sm text-steel">
-          Probabilidad implicita justa por partido, normalizada para quitar el margen de la casa.
+          {activeTab === "probabilities"
+            ? "Probabilidad implicita justa por partido, normalizada para quitar el margen de la casa."
+            : "Picks agregados despues del cierre: porcentaje Local, Empate, Visitante y marcadores mas repetidos."}
         </p>
+      </section>
+
+      <section className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab("probabilities")}
+          className={activeTab === "probabilities" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+        >
+          Probabilidades
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("user-distribution")}
+          className={activeTab === "user-distribution" ? "app-pill-active min-w-[12rem] px-3" : "app-pill min-w-[12rem] px-3"}
+        >
+          Distribucion de usuarios
+        </button>
       </section>
 
       <section className="flex flex-wrap items-end justify-between gap-3">
@@ -195,7 +237,7 @@ export function QuinielaPlusPageContent() {
         ) : null}
       </section>
 
-      {visibleMatches.length > 0 ? (
+      {activeTab === "probabilities" && visibleMatches.length > 0 ? (
         <section className="overflow-hidden rounded-[12px] border border-white/[0.06] bg-white/[0.025]">
           <div className="overflow-x-auto">
             <table className="min-w-[820px] w-full table-fixed text-left text-xs text-steel">
@@ -263,14 +305,108 @@ export function QuinielaPlusPageContent() {
             </table>
           </div>
         </section>
-      ) : (
+      ) : null}
+
+      {activeTab === "user-distribution" && visibleDistributionMatches.length > 0 ? (
+        <section className="overflow-hidden rounded-[12px] border border-white/[0.06] bg-white/[0.025]">
+          <div className="overflow-x-auto">
+            <table className="min-w-[960px] w-full table-fixed text-left text-xs text-steel">
+              <colgroup>
+                <col className="w-[96px]" />
+                <col className="w-[130px]" />
+                <col className="w-[340px]" />
+                <col className="w-[78px]" />
+                <col className="w-[78px]" />
+                <col className="w-[78px]" />
+                <col className="w-[92px]" />
+                <col className="w-[260px]" />
+              </colgroup>
+              <thead className="border-b border-white/[0.06] text-[10px] uppercase tracking-[0.14em] text-steel">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Jornada</th>
+                  <th className="px-3 py-2 font-semibold">Fecha</th>
+                  <th className="px-3 py-2 font-semibold">Partido</th>
+                  <th className="px-3 py-2 text-right font-semibold">Local</th>
+                  <th className="px-3 py-2 text-right font-semibold">Empate</th>
+                  <th className="px-3 py-2 text-right font-semibold">Visitante</th>
+                  <th className="px-3 py-2 text-right font-semibold">Picks</th>
+                  <th className="px-3 py-2 font-semibold">Marcadores</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.06]">
+                {visibleDistributionMatches.map((match) => {
+                  const distribution = match.selection_distribution;
+                  const percentages: [number, number, number] = [
+                    distribution.home_percentage,
+                    distribution.draw_percentage,
+                    distribution.away_percentage,
+                  ];
+                  return (
+                    <tr key={match.match_id} className="transition hover:bg-white/[0.03]">
+                      <td className="whitespace-nowrap px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-steel">
+                        {buildMatchdayLabel(match)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-[11px] text-steel">
+                        {formatMexicoCityDateTime(match.kickoff_at)}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                          <TeamInline
+                            name={match.home_team_name}
+                            shortName={match.home_team_short_name}
+                            crestUrl={match.home_team_crest_url}
+                          />
+                          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
+                          <TeamInline
+                            name={match.away_team_name}
+                            shortName={match.away_team_short_name}
+                            crestUrl={match.away_team_crest_url}
+                          />
+                        </div>
+                      </td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(distribution.home_percentage, percentages)}`}>
+                        {formatProbability(distribution.home_percentage)}
+                      </td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(distribution.draw_percentage, percentages)}`}>
+                        {formatProbability(distribution.draw_percentage)}
+                      </td>
+                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(distribution.away_percentage, percentages)}`}>
+                        {formatProbability(distribution.away_percentage)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-ink">
+                        {match.total_picks}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {match.score_distribution.map((score) => (
+                            <span
+                              key={score.score_label}
+                              className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-semibold text-ink"
+                            >
+                              {score.score_label} · {formatProbability(score.percentage)}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      {((activeTab === "probabilities" && visibleMatches.length === 0) ||
+        (activeTab === "user-distribution" && visibleDistributionMatches.length === 0)) ? (
         <section className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4">
           <p className="text-sm text-steel">
-            No hay odds mundialistas sincronizados para este filtro. Baja odds con `THE_ODDS_API_SPORT=soccer_fifa_world_cup`
-            y luego sincroniza el snapshot contra los partidos del Mundial.
+            {activeTab === "probabilities"
+              ? "No hay odds mundialistas sincronizados para este filtro. Baja odds con `THE_ODDS_API_SPORT=soccer_fifa_world_cup` y luego sincroniza el snapshot contra los partidos del Mundial."
+              : "No hay distribucion de usuarios para este filtro. Los datos aparecen cuando el partido ya cerro picks y hay picks guardados."}
           </p>
         </section>
-      )}
+      ) : null}
     </div>
   );
 }

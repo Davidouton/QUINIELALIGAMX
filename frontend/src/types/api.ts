@@ -443,6 +443,45 @@ export interface QuinielaPlusOddsSneakPeek {
   matches: QuinielaPlusOddsSneakPeekMatch[];
 }
 
+export interface QuinielaPlusUserSelectionDistribution {
+  home_count: number;
+  draw_count: number;
+  away_count: number;
+  home_percentage: number;
+  draw_percentage: number;
+  away_percentage: number;
+}
+
+export interface QuinielaPlusScoreDistribution {
+  score_label: string;
+  home_score: number;
+  away_score: number;
+  count: number;
+  percentage: number;
+}
+
+export interface QuinielaPlusUserDistributionMatch {
+  match_id: string;
+  matchday_id: string;
+  matchday_number: number;
+  matchday_name: string;
+  home_team_name: string;
+  home_team_short_name: string;
+  home_team_crest_url: string | null;
+  away_team_name: string;
+  away_team_short_name: string;
+  away_team_crest_url: string | null;
+  kickoff_at: string;
+  total_picks: number;
+  selection_distribution: QuinielaPlusUserSelectionDistribution;
+  score_distribution: QuinielaPlusScoreDistribution[];
+}
+
+export interface QuinielaPlusUserDistribution {
+  title: string;
+  matches: QuinielaPlusUserDistributionMatch[];
+}
+
 export interface QuinielaPlusAdminSettings {
   checkout_enabled: boolean;
   checkout_message: string | null;
