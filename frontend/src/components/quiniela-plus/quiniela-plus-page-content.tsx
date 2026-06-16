@@ -94,10 +94,10 @@ function getProbabilityTone(
   const sorted = [...probabilities].sort((left, right) => right - left);
   const rank = sorted.findIndex((candidate) => candidate === value);
   if (rank === 0) {
-    return "text-moss";
+    return "text-[#3ff28a]";
   }
   if (rank === 1) {
-    return "text-gold";
+    return "text-[#ffe45c]";
   }
   return "text-coral";
 }
@@ -489,8 +489,8 @@ export function QuinielaPlusPageContent() {
                           <span
                             className={`w-fit rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${
                               match.is_locked
-                                ? "border-moss/25 bg-moss/10 text-moss"
-                                : "border-gold/25 bg-gold/10 text-gold"
+                                ? "border-[#3ff28a]/25 bg-[#3ff28a]/10 text-[#3ff28a]"
+                                : "border-[#ffe45c]/25 bg-[#ffe45c]/10 text-[#ffe45c]"
                             }`}
                           >
                             {match.is_locked ? "Cerrado" : "Abierto"}
@@ -510,16 +510,27 @@ export function QuinielaPlusPageContent() {
                         {match.total_picks}
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1.5">
-                          {match.score_distribution.map((score) => (
-                            <span
-                              key={score.score_label}
-                              className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1 text-[10px] font-semibold text-ink"
-                            >
-                              {score.score_label} · {formatProbability(score.percentage)}
-                            </span>
-                          ))}
-                        </div>
+                        {match.score_distribution.length > 0 ? (
+                          <div className="grid overflow-hidden rounded-[6px] border border-white/[0.06] text-[10px]">
+                            <div className="grid grid-cols-[54px_64px_42px] bg-white/[0.035] text-[9px] font-semibold uppercase tracking-[0.10em] text-steel">
+                              <span className="px-2 py-1">Marc</span>
+                              <span className="px-2 py-1 text-right">%</span>
+                              <span className="px-2 py-1 text-right">Picks</span>
+                            </div>
+                            {match.score_distribution.map((score) => (
+                              <div
+                                key={score.score_label}
+                                className="grid grid-cols-[54px_64px_42px] border-t border-white/[0.05] text-ink"
+                              >
+                                <span className="px-2 py-1 font-semibold">{score.score_label}</span>
+                                <span className="px-2 py-1 text-right font-semibold text-[#ffe45c]">{formatProbability(score.percentage)}</span>
+                                <span className="px-2 py-1 text-right text-steel">{score.count}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-steel">Sin marcadores</span>
+                        )}
                       </td>
                     </tr>
                   );
