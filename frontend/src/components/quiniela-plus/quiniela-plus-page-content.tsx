@@ -511,20 +511,15 @@ export function QuinielaPlusPageContent() {
                       </td>
                       <td className="px-3 py-2">
                         {match.score_distribution.length > 0 ? (
-                          <div className="grid overflow-hidden rounded-[6px] border border-white/[0.06] text-[10px]">
-                            <div className="grid grid-cols-[54px_64px_42px] bg-white/[0.035] text-[9px] font-semibold uppercase tracking-[0.10em] text-steel">
-                              <span className="px-2 py-1">Marc</span>
-                              <span className="px-2 py-1 text-right">%</span>
-                              <span className="px-2 py-1 text-right">Picks</span>
-                            </div>
+                          <div className="grid grid-cols-2 gap-1.5 min-[1500px]:grid-cols-3">
                             {match.score_distribution.map((score) => (
                               <div
                                 key={score.score_label}
-                                className="grid grid-cols-[54px_64px_42px] border-t border-white/[0.05] text-ink"
+                                className="grid grid-cols-[32px_minmax(48px,1fr)_24px] items-center rounded-[5px] border border-white/[0.06] bg-white/[0.025] px-1.5 py-1 text-[10px] text-ink"
                               >
-                                <span className="px-2 py-1 font-semibold">{score.score_label}</span>
-                                <span className="px-2 py-1 text-right font-semibold text-[#ffe45c]">{formatProbability(score.percentage)}</span>
-                                <span className="px-2 py-1 text-right text-steel">{score.count}</span>
+                                <span className="font-semibold">{score.score_label}</span>
+                                <span className="text-right font-semibold text-[#ffe45c]">{formatProbability(score.percentage)}</span>
+                                <span className="text-right text-steel">{score.count}</span>
                               </div>
                             ))}
                           </div>
