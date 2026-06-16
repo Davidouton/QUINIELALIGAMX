@@ -12,4 +12,5 @@ export const env = {
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
   siteUrl: rawSiteUrl.replace(/\/+$/, ""),
+  oneSignalAppId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID ?? "6b197620-d40e-4007-aeeb-a846c66ccaeb",
 };

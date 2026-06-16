@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
 
+import { OneSignalProvider } from "@/components/onesignal/onesignal-provider";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,7 +13,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body>
+        <OneSignalProvider>{children}</OneSignalProvider>
+      </body>
     </html>
   );
 }
