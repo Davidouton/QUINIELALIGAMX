@@ -12,7 +12,7 @@ import type {
   QuinielaPlusUserDistributionMatch,
 } from "@/types/api";
 
-type OddsScope = "today" | "matchday";
+type OddsScope = "today" | "matchday" | "locked";
 type QuinielaPlusTab = "probabilities" | "user-distribution";
 type MatchdaySourceMatch = Pick<QuinielaPlusOddsSneakPeekMatch, "matchday_id" | "matchday_name" | "matchday_number" | "kickoff_at">;
 const TODAY_DISTRIBUTION_POLL_MS = 10_000;
@@ -233,6 +233,9 @@ export function QuinielaPlusPageContent() {
       const todayKey = getMexicoCityDateKey(new Date());
       return matches.filter((match) => getMexicoCityDateKey(match.kickoff_at) === todayKey);
     }
+    if (oddsScope === "locked") {
+      return [];
+    }
     return matches.filter((match) => match.matchday_id === selectedMatchdayId);
   }, [oddsScope, oddsSneakPeek?.matches, selectedMatchdayId]);
 
@@ -241,6 +244,9 @@ export function QuinielaPlusPageContent() {
     if (oddsScope === "today") {
       const todayKey = getMexicoCityDateKey(new Date());
       return matches.filter((match) => getMexicoCityDateKey(match.kickoff_at) === todayKey);
+    }
+    if (oddsScope === "locked") {
+      return matches.filter((match) => match.is_locked);
     }
     return matches.filter((match) => match.matchday_id === selectedMatchdayId);
   }, [oddsScope, selectedMatchdayId, userDistribution?.matches]);
@@ -270,14 +276,20 @@ export function QuinielaPlusPageContent() {
       <section className="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => setActiveTab("probabilities")}
+          onClick={() => {
+            setActiveTab("probabilities");
+            setOddsScope((current) => (current === "locked" ? "today" : current));
+          }}
           className={activeTab === "probabilities" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
         >
           Probabilidades
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab("user-distribution")}
+          onClick={() => {
+            setActiveTab("user-distribution");
+            setOddsScope("locked");
+          }}
           className={activeTab === "user-distribution" ? "app-pill-active min-w-[12rem] px-3" : "app-pill min-w-[12rem] px-3"}
         >
           Distribucion de usuarios
@@ -300,6 +312,15 @@ export function QuinielaPlusPageContent() {
           >
             Por jornada
           </button>
+          {activeTab === "user-distribution" ? (
+            <button
+              type="button"
+              onClick={() => setOddsScope("locked")}
+              className={oddsScope === "locked" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+            >
+              Cerrados
+            </button>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
