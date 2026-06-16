@@ -288,7 +288,7 @@ export function QuinielaPlusPageContent() {
           type="button"
           onClick={() => {
             setActiveTab("user-distribution");
-            setOddsScope("locked");
+            setOddsScope((current) => (current === "locked" ? "today" : current));
           }}
           className={activeTab === "user-distribution" ? "app-pill-active min-w-[12rem] px-3" : "app-pill min-w-[12rem] px-3"}
         >
