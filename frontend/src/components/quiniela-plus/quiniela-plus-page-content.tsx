@@ -263,7 +263,7 @@ export function QuinielaPlusPageContent() {
         <p className="max-w-3xl text-sm text-steel">
           {activeTab === "probabilities"
             ? "Probabilidad implicita justa por partido, normalizada para quitar el margen de la casa."
-            : "Picks agregados despues del cierre: porcentaje Local, Empate, Visitante y marcadores mas repetidos."}
+            : "Picks agregados en vivo: porcentaje Local, Empate, Visitante y marcadores mas repetidos."}
         </p>
       </section>
 
@@ -451,18 +451,29 @@ export function QuinielaPlusPageContent() {
                         {formatMexicoCityDateTime(match.kickoff_at)}
                       </td>
                       <td className="px-3 py-2">
-                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                          <TeamInline
-                            name={match.home_team_name}
-                            shortName={match.home_team_short_name}
-                            crestUrl={match.home_team_crest_url}
-                          />
-                          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
-                          <TeamInline
-                            name={match.away_team_name}
-                            shortName={match.away_team_short_name}
-                            crestUrl={match.away_team_crest_url}
-                          />
+                        <div className="grid gap-1">
+                          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                            <TeamInline
+                              name={match.home_team_name}
+                              shortName={match.home_team_short_name}
+                              crestUrl={match.home_team_crest_url}
+                            />
+                            <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
+                            <TeamInline
+                              name={match.away_team_name}
+                              shortName={match.away_team_short_name}
+                              crestUrl={match.away_team_crest_url}
+                            />
+                          </div>
+                          <span
+                            className={`w-fit rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${
+                              match.is_locked
+                                ? "border-moss/25 bg-moss/10 text-moss"
+                                : "border-gold/25 bg-gold/10 text-gold"
+                            }`}
+                          >
+                            {match.is_locked ? "Cerrado" : "Abierto"}
+                          </span>
                         </div>
                       </td>
                       <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(distribution.home_percentage, percentages)}`}>
@@ -504,7 +515,7 @@ export function QuinielaPlusPageContent() {
           <p className="text-sm text-steel">
             {activeTab === "probabilities"
               ? "No hay odds mundialistas sincronizados para este filtro. Baja odds con `THE_ODDS_API_SPORT=soccer_fifa_world_cup` y luego sincroniza el snapshot contra los partidos del Mundial."
-              : "No hay distribucion de usuarios para este filtro. Los datos aparecen cuando el partido ya cerro picks y hay picks guardados."}
+              : "No hay distribucion de usuarios para este filtro. Los datos aparecen cuando haya picks guardados."}
           </p>
         </section>
       ) : null}

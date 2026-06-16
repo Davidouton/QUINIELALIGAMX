@@ -144,7 +144,6 @@ class QuinielaPlusService:
             .join(Season, Season.id == Matchday.season_id)
             .where(
                 Season.tournament_format == TournamentFormat.WORLD_CUP,
-                Match.picks_lock_at <= now,
                 Match.home_team_id.is_not(None),
                 Match.away_team_id.is_not(None),
             )
@@ -212,6 +211,7 @@ class QuinielaPlusService:
                     away_team_short_name=away_team.short_name if away_team is not None else "VIS",
                     away_team_crest_url=away_team.crest_url if away_team is not None else None,
                     kickoff_at=ensure_utc(match.kickoff_at),
+                    is_locked=ensure_utc(match.picks_lock_at) <= now,
                     total_picks=total_picks,
                     selection_distribution=QuinielaPlusUserSelectionDistributionOut(
                         home_count=counts[PickSelection.HOME],

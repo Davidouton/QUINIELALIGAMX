@@ -140,6 +140,7 @@ class QuinielaPlusUserDistributionMatchOut(BaseModel):
     away_team_short_name: str
     away_team_crest_url: str | None = None
     kickoff_at: datetime
+    is_locked: bool
     total_picks: int
     selection_distribution: QuinielaPlusUserSelectionDistributionOut
     score_distribution: list[QuinielaPlusScoreDistributionOut] = []

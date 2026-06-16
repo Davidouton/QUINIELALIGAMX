@@ -472,6 +472,7 @@ export interface QuinielaPlusUserDistributionMatch {
   away_team_short_name: string;
   away_team_crest_url: string | null;
   kickoff_at: string;
+  is_locked: boolean;
   total_picks: number;
   selection_distribution: QuinielaPlusUserSelectionDistribution;
   score_distribution: QuinielaPlusScoreDistribution[];
