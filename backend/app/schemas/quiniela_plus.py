@@ -1,8 +1,7 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
-
 
 QuinielaPlusBillingPeriodLiteral = Literal["weekly", "monthly", "quarterly", "semiannual", "annual"]
 QuinielaPlusMembershipStatusLiteral = Literal["active", "expired", "cancelled"]
@@ -149,6 +148,48 @@ class QuinielaPlusUserDistributionMatchOut(BaseModel):
 class QuinielaPlusUserDistributionOut(BaseModel):
     title: str = "Distribucion de usuarios"
     matches: list[QuinielaPlusUserDistributionMatchOut] = []
+
+
+class QuinielaPlusAdvancedStatsMatchOut(BaseModel):
+    fixture_id: str
+    date: str
+    kickoff_at: datetime
+    round: str | None = None
+    group: str | None = None
+    home: str
+    away: str
+    home_win_prob: float
+    draw_prob: float
+    away_win_prob: float
+    xg_home: float
+    xg_away: float
+    most_likely_score: str
+    most_likely_score_prob: float
+    implied_odds_home: float
+    implied_odds_draw: float
+    implied_odds_away: float
+    win_margin_implied: float | None = None
+    btts_prob: float
+    over_0_5_prob: float | None = None
+    under_0_5_prob: float | None = None
+    over_1_5_prob: float
+    under_1_5_prob: float
+    over_2_5_prob: float
+    under_2_5_prob: float
+    over_3_5_prob: float
+    under_3_5_prob: float
+    scoreline_probabilities: dict[str, float] = {}
+    h2h: list[dict[str, Any]] = []
+    home_form: list[dict[str, Any]] = []
+    away_form: list[dict[str, Any]] = []
+    home_stats: dict[str, Any] = {}
+    away_stats: dict[str, Any] = {}
+
+
+class QuinielaPlusAdvancedStatsOut(BaseModel):
+    title: str = "Estadisticas avanzadas"
+    generated_at: datetime | None = None
+    matches: list[QuinielaPlusAdvancedStatsMatchOut] = []
 
 
 class QuinielaPlusAdminSettingsOut(BaseModel):

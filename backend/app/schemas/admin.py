@@ -271,6 +271,13 @@ class OddsPullResponse(BaseModel):
     sync_output: str
 
 
+class AdvancedStatsPullResponse(BaseModel):
+    status: str
+    count: int = 0
+    output_path: str
+    pull_output: str
+
+
 class OddsUnmatchedTeamOut(BaseModel):
     raw_team_name: str
     raw_team_code: str | None = None

@@ -483,6 +483,48 @@ export interface QuinielaPlusUserDistribution {
   matches: QuinielaPlusUserDistributionMatch[];
 }
 
+export interface QuinielaPlusAdvancedStatsMatch {
+  fixture_id: string;
+  date: string;
+  kickoff_at: string;
+  round: string | null;
+  group: string | null;
+  home: string;
+  away: string;
+  home_win_prob: number;
+  draw_prob: number;
+  away_win_prob: number;
+  xg_home: number;
+  xg_away: number;
+  most_likely_score: string;
+  most_likely_score_prob: number;
+  implied_odds_home: number;
+  implied_odds_draw: number;
+  implied_odds_away: number;
+  win_margin_implied: number | null;
+  btts_prob: number;
+  over_0_5_prob: number | null;
+  under_0_5_prob: number | null;
+  over_1_5_prob: number;
+  under_1_5_prob: number;
+  over_2_5_prob: number;
+  under_2_5_prob: number;
+  over_3_5_prob: number;
+  under_3_5_prob: number;
+  scoreline_probabilities: Record<string, number>;
+  h2h: Record<string, unknown>[];
+  home_form: Record<string, unknown>[];
+  away_form: Record<string, unknown>[];
+  home_stats: Record<string, unknown>;
+  away_stats: Record<string, unknown>;
+}
+
+export interface QuinielaPlusAdvancedStats {
+  title: string;
+  generated_at: string | null;
+  matches: QuinielaPlusAdvancedStatsMatch[];
+}
+
 export interface QuinielaPlusAdminSettings {
   checkout_enabled: boolean;
   checkout_message: string | null;
@@ -916,6 +958,13 @@ export interface OddsPullResult {
   preview_rows: OddsPreviewRow[];
   pull_output: string;
   sync_output: string;
+}
+
+export interface AdvancedStatsPullResult {
+  status: string;
+  count: number;
+  output_path: string;
+  pull_output: string;
 }
 
 export interface OddsUnmatchedTeam {

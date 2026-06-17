@@ -7,6 +7,7 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusAdminConsoleResponse,
     QuinielaPlusAdminSettingsOut,
     QuinielaPlusAdminSettingsUpdateRequest,
+    QuinielaPlusAdvancedStatsOut,
     QuinielaPlusCatalogResponse,
     QuinielaPlusLeagueOut,
     QuinielaPlusLeagueUpsertRequest,
@@ -52,6 +53,13 @@ def get_user_distribution(
     _: Profile = Depends(get_current_profile),
 ) -> QuinielaPlusUserDistributionOut:
     return service.get_user_distribution(db)
+
+
+@router.get("/quiniela-plus/advanced-stats", response_model=QuinielaPlusAdvancedStatsOut)
+def get_advanced_stats(
+    _: Profile = Depends(get_current_profile),
+) -> QuinielaPlusAdvancedStatsOut:
+    return service.get_advanced_stats()
 
 
 @router.get("/quiniela-plus/admin/console", response_model=QuinielaPlusAdminConsoleResponse)

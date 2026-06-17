@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_roles
 from app.core.config import get_settings
 from app.core.database import SessionLocal, engine, get_db
+from app.core.datetime import MEXICO_CITY_TZ
 from app.models.entities import (
     Competition,
     HistoricalChampion,
@@ -46,6 +47,7 @@ from app.repositories.season_membership_repository import SeasonMembershipReposi
 from app.repositories.season_repository import SeasonRepository
 from app.repositories.team_repository import TeamRepository
 from app.schemas.admin import (
+    AdvancedStatsPullResponse,
     AdminPickOverrideRequest,
     AdminPickRowOut,
     AdminResultRowOut,
@@ -745,6 +747,48 @@ def run_odds_pull_pipeline(script_env: dict[str, str], *, sport_key: str | None 
         preview_rows=get_raw_odds_preview(snapshot_date, sport_key=sport_key),
         pull_output=pull_output,
         sync_output=sync_output,
+    )
+
+
+def run_advanced_stats_pull_pipeline(
+    script_env: dict[str, str],
+    *,
+    target_date: str,
+    days: int,
+) -> AdvancedStatsPullResponse:
+    output_path = "app/data/quiniela_plus_advanced_stats.json"
+    pull_result = run_script(
+        [
+            sys.executable,
+            "scripts/pull_quiniela_plus_advanced_stats.py",
+            "--date",
+            target_date,
+            "--days",
+            str(max(days, 1)),
+            "--output",
+            output_path,
+        ],
+        BACKEND_DIR,
+        env=script_env,
+    )
+    pull_output = "\n".join(
+        part for part in [pull_result.stdout.strip(), pull_result.stderr.strip()] if part
+    ).strip()
+
+    if pull_result.returncode != 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "No se pudo actualizar estadisticas avanzadas.\n"
+                f"{pull_output or 'Sin salida del script.'}"
+            ),
+        )
+
+    return AdvancedStatsPullResponse(
+        status="success",
+        count=extract_int(r"Saved\s+(\d+)\s+advanced stats fixtures", pull_output) or 0,
+        output_path=output_path,
+        pull_output=pull_output,
     )
 
 
@@ -2357,6 +2401,21 @@ def pull_admin_world_cup_odds(
     script_env["ODDS_WINDOW_START_OFFSET_DAYS"] = "0"
     script_env["ODDS_LOOKAHEAD_DAYS"] = "2"
     return run_odds_pull_pipeline(script_env, sport_key=sport_key)
+
+
+@router.post("/quiniela-plus/advanced-stats/pull", response_model=AdvancedStatsPullResponse)
+def pull_admin_quiniela_plus_advanced_stats(
+    target_date: str | None = None,
+    days: int = 2,
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdvancedStatsPullResponse:
+    script_env = build_odds_script_env()
+    effective_date = target_date or datetime.now(MEXICO_CITY_TZ).date().isoformat()
+    return run_advanced_stats_pull_pipeline(
+        script_env,
+        target_date=effective_date,
+        days=days,
+    )
 
 
 @router.post("/results/recalculate")

@@ -1,6 +1,8 @@
+import json
 from calendar import monthrange
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -31,6 +33,8 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusAdminConsoleResponse,
     QuinielaPlusAdminSettingsOut,
     QuinielaPlusAdminSettingsUpdateRequest,
+    QuinielaPlusAdvancedStatsMatchOut,
+    QuinielaPlusAdvancedStatsOut,
     QuinielaPlusCatalogResponse,
     QuinielaPlusLeagueOut,
     QuinielaPlusLeagueUpsertRequest,
@@ -44,6 +48,10 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusUserDistributionMatchOut,
     QuinielaPlusUserDistributionOut,
     QuinielaPlusUserSelectionDistributionOut,
+)
+
+ADVANCED_STATS_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "quiniela_plus_advanced_stats.json"
 )
 
 
@@ -237,6 +245,29 @@ class QuinielaPlusService:
             )
 
         return QuinielaPlusUserDistributionOut(matches=rows)
+
+    def get_advanced_stats(self) -> QuinielaPlusAdvancedStatsOut:
+        if not ADVANCED_STATS_PATH.exists():
+            return QuinielaPlusAdvancedStatsOut()
+
+        with ADVANCED_STATS_PATH.open(encoding="utf-8") as file:
+            payload = json.load(file)
+
+        matches: list[QuinielaPlusAdvancedStatsMatchOut] = []
+        for row in payload.get("fixtures", []):
+            if not isinstance(row, dict):
+                continue
+            normalized = dict(row)
+            normalized["fixture_id"] = str(normalized.get("fixture_id") or "")
+            if not normalized["fixture_id"]:
+                continue
+            matches.append(QuinielaPlusAdvancedStatsMatchOut.model_validate(normalized))
+
+        matches.sort(key=lambda match: match.kickoff_at)
+        return QuinielaPlusAdvancedStatsOut(
+            generated_at=payload.get("generated_at"),
+            matches=matches,
+        )
 
     def get_admin_console(self, db: Session) -> QuinielaPlusAdminConsoleResponse:
         settings = self._get_or_create_settings(db)

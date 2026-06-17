@@ -6,6 +6,7 @@ import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import type {
+  AdvancedStatsPullResult,
   OddsPullResult,
   OddsUnmatchedResponse,
   QuinielaPlusAdminConsole,
@@ -92,8 +93,10 @@ export function AdminQuinielaPlusPanel() {
   const [leagueSaving, setLeagueSaving] = useState(false);
   const [planSaving, setPlanSaving] = useState(false);
   const [oddsLoading, setOddsLoading] = useState(false);
+  const [advancedStatsLoading, setAdvancedStatsLoading] = useState(false);
   const [unmatchedLoading, setUnmatchedLoading] = useState(false);
   const [oddsResult, setOddsResult] = useState<OddsPullResult | null>(null);
+  const [advancedStatsResult, setAdvancedStatsResult] = useState<AdvancedStatsPullResult | null>(null);
   const [unmatchedOdds, setUnmatchedOdds] = useState<OddsUnmatchedResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -268,6 +271,31 @@ export function AdminQuinielaPlusPanel() {
     }
   }
 
+  async function handleAdvancedStatsPull() {
+    setAdvancedStatsLoading(true);
+    setError(null);
+    setMessage(null);
+    setAdvancedStatsResult(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const result = await backendFetch<AdvancedStatsPullResult>(
+        "/admin/quiniela-plus/advanced-stats/pull",
+        accessToken,
+        { method: "POST" },
+      );
+      setAdvancedStatsResult(result);
+      setMessage(`Estadisticas avanzadas actualizadas: ${result.count} partidos cargados.`);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "No se pudieron actualizar las estadisticas avanzadas",
+      );
+    } finally {
+      setAdvancedStatsLoading(false);
+    }
+  }
+
   async function loadUnmatchedOdds() {
     setUnmatchedLoading(true);
     setError(null);
@@ -401,6 +429,47 @@ export function AdminQuinielaPlusPanel() {
             </div>
           ) : null}
         </div>
+      </section>
+
+      <section className="rounded-[18px] border border-white/[0.06] bg-white/[0.03] p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">
+              Estadisticas avanzadas
+            </p>
+            <p className="mt-2 max-w-3xl text-sm text-steel">
+              Actualiza el contexto premium de Quiniela + con xG, marcadores probables, over/under,
+              forma reciente e historial para hoy y manana.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleAdvancedStatsPull}
+            disabled={advancedStatsLoading}
+            className="secondary-button disabled:opacity-60"
+          >
+            {advancedStatsLoading ? "Actualizando..." : "Actualizar hoy + manana"}
+          </button>
+        </div>
+
+        {advancedStatsResult ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Estado</p>
+              <p className="mt-2 text-sm font-semibold text-moss">{advancedStatsResult.status}</p>
+            </div>
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Partidos</p>
+              <p className="mt-2 text-sm font-semibold text-ink">{advancedStatsResult.count}</p>
+            </div>
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Archivo</p>
+              <p className="mt-2 break-all text-xs font-semibold text-ink">
+                {advancedStatsResult.output_path}
+              </p>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
