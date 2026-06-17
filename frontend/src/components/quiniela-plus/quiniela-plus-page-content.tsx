@@ -191,10 +191,10 @@ function getCleanSheetProbability(match: QuinielaPlusAdvancedStatsMatch, team: "
 function PercentBar({ value, tone = "bg-[#4fd19b]" }: { value: number; tone?: string }) {
   return (
     <div className="grid grid-cols-[minmax(80px,1fr)_64px] items-center gap-3">
-      <div className="h-2.5 overflow-hidden rounded-full bg-white/[0.05]">
+      <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
         <div className={`h-full rounded-full ${tone}`} style={{ width: `${Math.min(Math.max(value, 0), 100)}%` }} />
       </div>
-      <span className="text-right text-xs font-semibold text-ink">{formatWholePercent(value)}</span>
+      <span className="text-right text-xs text-ink">{formatWholePercent(value)}</span>
     </div>
   );
 }
@@ -220,13 +220,13 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
         </div>
         <div className="min-w-0">
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 text-sm md:text-base">
-            <span className="truncate text-right font-semibold text-ink">{match.home}</span>
-            <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1 text-xs font-semibold text-steel">
+            <span className="truncate text-right text-ink">{match.home}</span>
+            <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-4 py-1 text-xs text-steel">
               vs
             </span>
-            <span className="truncate font-semibold text-ink">{match.away}</span>
+            <span className="truncate text-ink">{match.away}</span>
           </div>
-          <div className="mt-2 flex flex-wrap justify-center gap-2 text-[11px] font-semibold text-ink">
+          <div className="mt-2 flex flex-wrap justify-center gap-2 text-[11px] text-ink">
             <span className="rounded-[6px] border border-white/[0.08] bg-white/[0.04] px-2 py-1">
               {formatWholePercent(match.home_win_prob)}
             </span>
@@ -238,7 +238,7 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
             </span>
           </div>
         </div>
-        <span className="text-right text-xs font-semibold uppercase tracking-[0.16em] text-steel group-open:text-[#3ff28a]">
+        <span className="text-right text-xs uppercase tracking-[0.16em] text-steel group-open:text-[#3ff28a]">
           Detalle
         </span>
       </summary>
@@ -247,7 +247,7 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
         <div className="grid gap-4 lg:grid-cols-4">
           <div className="rounded-[10px] border border-white/[0.06] bg-white/[0.025] p-4">
             <p className="text-[10px] uppercase tracking-[0.16em] text-steel">xG</p>
-            <p className="mt-2 text-lg font-semibold text-ink">
+            <p className="mt-2 text-lg text-ink">
               {match.home} {formatDecimal(match.xg_home)} - {formatDecimal(match.xg_away)} {match.away}
             </p>
           </div>
@@ -262,7 +262,7 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
           </div>
           <div className="rounded-[10px] border border-white/[0.06] bg-white/[0.025] p-4">
             <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Favorito</p>
-            <p className="mt-2 text-lg font-semibold text-ink">
+            <p className="mt-2 text-lg text-ink">
               {match.home_win_prob >= match.away_win_prob ? match.home : match.away}
             </p>
             <p className="text-xs text-steel">
@@ -273,18 +273,18 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
 
         <div className="grid gap-5 lg:grid-cols-2">
           <div>
-            <h3 className="text-sm font-semibold text-ink">Goles por equipo</h3>
+            <h3 className="text-sm text-ink">Goles por equipo</h3>
             <div className="mt-3 grid gap-4 md:grid-cols-2">
               {[{ name: match.home, rows: homeGoals, tone: "bg-[#6797ff]" }, { name: match.away, rows: awayGoals, tone: "bg-coral" }].map((team) => (
                 <div key={team.name} className="space-y-2">
-                  <p className="text-xs font-semibold text-ink">{team.name}</p>
+                  <p className="text-xs text-ink">{team.name}</p>
                   {team.rows.map((row) => (
                     <div key={row.label} className="grid grid-cols-[24px_minmax(0,1fr)_48px] items-center gap-2 text-xs">
                       <span className="text-steel">{row.label}</span>
-                      <div className="h-6 overflow-hidden rounded-[6px] bg-white/[0.04]">
+                      <div className="h-3 overflow-hidden rounded-full bg-white/[0.04]">
                         <div className={`h-full rounded-[6px] ${team.tone}`} style={{ width: `${Math.min(row.value, 100)}%` }} />
                       </div>
-                      <span className="text-right font-semibold text-ink">{formatWholePercent(row.value)}</span>
+                      <span className="text-right text-ink">{formatWholePercent(row.value)}</span>
                     </div>
                   ))}
                 </div>
@@ -294,36 +294,36 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
 
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-1">
             <div>
-              <h3 className="text-sm font-semibold text-ink">Over / under</h3>
+              <h3 className="text-sm text-ink">Over / under</h3>
               <div className="mt-3 grid gap-3">
                 <div className="grid grid-cols-[90px_minmax(0,1fr)] items-center gap-3 text-sm">
-                  <span className="font-semibold text-ink">Over 1.5</span>
+                  <span className="text-ink">Over 1.5</span>
                   <PercentBar value={match.over_1_5_prob} />
                 </div>
                 <div className="grid grid-cols-[90px_minmax(0,1fr)] items-center gap-3 text-sm">
-                  <span className="font-semibold text-ink">Over 2.5</span>
+                  <span className="text-ink">Over 2.5</span>
                   <PercentBar value={match.over_2_5_prob} />
                 </div>
                 <div className="grid grid-cols-[90px_minmax(0,1fr)] items-center gap-3 text-sm">
-                  <span className="font-semibold text-ink">Over 3.5</span>
+                  <span className="text-ink">Over 3.5</span>
                   <PercentBar value={match.over_3_5_prob} />
                 </div>
               </div>
             </div>
 
             <div>
-              <h3 className="text-sm font-semibold text-ink">Otros mercados</h3>
+              <h3 className="text-sm text-ink">Otros mercados</h3>
               <div className="mt-3 grid gap-3">
                 <div className="grid grid-cols-[minmax(120px,1fr)_minmax(0,1fr)] items-center gap-3 text-sm">
-                  <span className="font-semibold text-ink">Ambos anotan</span>
+                  <span className="text-ink">Ambos anotan</span>
                   <PercentBar value={match.btts_prob} tone="bg-[#ffb52e]" />
                 </div>
                 <div className="grid grid-cols-[minmax(120px,1fr)_minmax(0,1fr)] items-center gap-3 text-sm">
-                  <span className="font-semibold text-ink">{match.home} clean sheet</span>
+                  <span className="text-ink">{match.home} clean sheet</span>
                   <PercentBar value={homeCleanSheet} tone="bg-[#ffb52e]" />
                 </div>
                 <div className="grid grid-cols-[minmax(120px,1fr)_minmax(0,1fr)] items-center gap-3 text-sm">
-                  <span className="font-semibold text-ink">{match.away} clean sheet</span>
+                  <span className="text-ink">{match.away} clean sheet</span>
                   <PercentBar value={awayCleanSheet} tone="bg-[#ffb52e]" />
                 </div>
               </div>
@@ -332,25 +332,29 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
         </div>
 
         <div>
-          <h3 className="text-sm font-semibold text-ink">Probabilidades de marcador</h3>
+          <h3 className="text-sm text-ink">Probabilidades de marcador</h3>
           <div className="mt-3 overflow-x-auto">
             <div className="min-w-[680px]">
-              <div className="mb-2 grid grid-cols-[48px_repeat(6,minmax(72px,1fr))] gap-1 text-center text-xs font-semibold text-steel">
+              <div className="mb-1 grid grid-cols-[48px_repeat(6,minmax(72px,1fr))] gap-1 text-center text-xs text-steel">
+                <span className="text-left">{match.home} goles</span>
+                <span className="col-span-6">{match.away} goles</span>
+              </div>
+              <div className="mb-2 grid grid-cols-[48px_repeat(6,minmax(72px,1fr))] gap-1 text-center text-xs text-steel">
                 <span />
                 {["0", "1", "2", "3", "4", "5+"].map((label) => (
-                  <span key={label}>{match.away} {label}</span>
+                  <span key={label}>{label}</span>
                 ))}
               </div>
               <div className="grid gap-1">
                 {scorelineGrid.map((row, rowIndex) => (
                   <div key={rowIndex} className="grid grid-cols-[48px_repeat(6,minmax(72px,1fr))] gap-1">
-                    <span className="flex items-center justify-center text-xs font-semibold text-steel">{match.home} {row[0].homeLabel}</span>
+                    <span className="flex items-center justify-center text-xs text-steel">{row[0].homeLabel}</span>
                     {row.map((cell) => {
                       const opacity = Math.max(0.08, Math.min(0.85, cell.value / topScorelineValue));
                       return (
                         <div
                           key={cell.key}
-                          className="rounded-[6px] px-2 py-2 text-center text-xs font-semibold text-ink"
+                          className="rounded-[6px] px-2 py-2 text-center text-xs text-ink"
                           style={{ backgroundColor: `rgba(63, 242, 138, ${opacity})` }}
                         >
                           {cell.value > 0 ? formatWholePercent(cell.value) : "-"}
@@ -366,22 +370,22 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
         </div>
 
         <div>
-          <h3 className="text-sm font-semibold text-ink">Margen de victoria</h3>
+          <h3 className="text-sm text-ink">Margen de victoria</h3>
           <div className="mt-3 space-y-2">
             {winMargins.map((row) => (
               <div key={row.label} className="grid grid-cols-[170px_minmax(0,1fr)_58px] items-center gap-3 text-xs">
                 <span className="truncate text-right text-steel">{row.label}</span>
-                <div className="h-7 overflow-hidden rounded-[6px] bg-white/[0.05]">
+                <div className="h-3 overflow-hidden rounded-full bg-white/[0.05]">
                   <div className={`h-full rounded-[6px] ${row.tone}`} style={{ width: `${Math.min(row.value, 100)}%` }} />
                 </div>
-                <span className="text-right font-semibold text-ink">{formatWholePercent(row.value)}</span>
+                <span className="text-right text-ink">{formatWholePercent(row.value)}</span>
               </div>
             ))}
           </div>
         </div>
 
         <div>
-          <h3 className="text-sm font-semibold text-ink">Cuotas implicitas sin margen</h3>
+          <h3 className="text-sm text-ink">Cuotas implicitas sin margen</h3>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             {[
               { label: match.home, odds: match.implied_odds_home, probability: match.home_win_prob },
@@ -389,9 +393,9 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
               { label: match.away, odds: match.implied_odds_away, probability: match.away_win_prob },
             ].map((row) => (
               <div key={row.label} className="rounded-[10px] border border-white/[0.06] bg-white/[0.025] p-4 text-center">
-                <p className="truncate text-sm font-semibold text-steel">{row.label}</p>
+                <p className="truncate text-sm text-steel">{row.label}</p>
                 <p className="mt-2 text-xl font-semibold text-ink">{formatDecimal(row.odds)}</p>
-                <p className="text-xs font-semibold text-steel">{formatWholePercent(row.probability)}</p>
+                <p className="text-xs text-steel">{formatWholePercent(row.probability)}</p>
               </div>
             ))}
           </div>
