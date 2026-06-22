@@ -130,6 +130,15 @@ REPO_ROOT = Path(__file__).resolve().parents[5]
 APPS_API_DIR = REPO_ROOT / "apps" / "api"
 BACKEND_DIR = REPO_ROOT / "backend"
 RAW_ODDS_TABLE = "lmx_odds_5d"
+
+
+def get_script_python() -> str:
+    local_python = BACKEND_DIR / ".venv" / "bin" / "python"
+    if local_python.exists():
+        return str(local_python)
+    return sys.executable
+
+
 DEFAULT_RESULT_CORRECT_POINTS = 3
 DEFAULT_EXACT_SCORE_POINTS = 2
 
@@ -676,7 +685,7 @@ def run_script(command: list[str], cwd: Path, env: dict[str, str] | None = None)
 
 
 def run_odds_pull_pipeline(script_env: dict[str, str], *, sport_key: str | None = None) -> OddsPullResponse:
-    pull_result = run_script([sys.executable, "scripts/pull_odds_raw.py"], BACKEND_DIR, env=script_env)
+    pull_result = run_script([get_script_python(), "scripts/pull_odds_raw.py"], BACKEND_DIR, env=script_env)
     pull_output = "\n".join(part for part in [pull_result.stdout.strip(), pull_result.stderr.strip()] if part).strip()
 
     if pull_result.returncode != 0:
@@ -718,7 +727,7 @@ def run_odds_pull_pipeline(script_env: dict[str, str], *, sport_key: str | None 
 
     sync_result = run_script(
         [
-            sys.executable,
+            get_script_python(),
             "scripts/sync_odds_from_raw.py",
             "--snapshot-date",
             snapshot_date,
@@ -759,7 +768,7 @@ def run_advanced_stats_pull_pipeline(
     output_path = "app/data/quiniela_plus_advanced_stats.json"
     pull_result = run_script(
         [
-            sys.executable,
+            get_script_python(),
             "scripts/pull_quiniela_plus_advanced_stats.py",
             "--date",
             target_date,

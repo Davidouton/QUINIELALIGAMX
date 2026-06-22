@@ -760,109 +760,110 @@ export function QuinielaPlusPageContent() {
       ) : null}
 
       {activeTab === "user-distribution" && visibleDistributionMatches.length > 0 ? (
-        <section className="overflow-hidden rounded-[12px] border border-white/[0.06] bg-white/[0.025]">
-          <div className="overflow-x-auto">
-            <table className="min-w-[960px] w-full table-fixed text-left text-xs text-steel">
-              <colgroup>
-                <col className="w-[96px]" />
-                <col className="w-[130px]" />
-                <col className="w-[340px]" />
-                <col className="w-[78px]" />
-                <col className="w-[78px]" />
-                <col className="w-[78px]" />
-                <col className="w-[92px]" />
-                <col className="w-[260px]" />
-              </colgroup>
-              <thead className="border-b border-white/[0.06] text-[10px] uppercase tracking-[0.14em] text-steel">
-                <tr>
-                  <th className="px-3 py-2 font-semibold">Jornada</th>
-                  <th className="px-3 py-2 font-semibold">Fecha</th>
-                  <th className="px-3 py-2 font-semibold">Partido</th>
-                  <th className="px-3 py-2 text-right font-semibold">Local</th>
-                  <th className="px-3 py-2 text-right font-semibold">Empate</th>
-                  <th className="px-3 py-2 text-right font-semibold">Visitante</th>
-                  <th className="px-3 py-2 text-right font-semibold">Picks</th>
-                  <th className="px-3 py-2 font-semibold">Marcadores</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/[0.06]">
-                {visibleDistributionMatches.map((match) => {
-                  const distribution = match.selection_distribution;
-                  const percentages: [number, number, number] = [
-                    distribution.home_percentage,
-                    distribution.draw_percentage,
-                    distribution.away_percentage,
-                  ];
-                  return (
-                    <tr key={match.match_id} className="transition hover:bg-white/[0.03]">
-                      <td className="whitespace-nowrap px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-steel">
-                        {buildMatchdayLabel(match)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-[11px] text-steel">
-                        {formatMexicoCityDateTime(match.kickoff_at)}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="grid gap-1">
-                          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                            <TeamInline
-                              name={match.home_team_name}
-                              shortName={match.home_team_short_name}
-                              crestUrl={match.home_team_crest_url}
-                            />
-                            <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
-                            <TeamInline
-                              name={match.away_team_name}
-                              shortName={match.away_team_short_name}
-                              crestUrl={match.away_team_crest_url}
-                            />
-                          </div>
-                          <span
-                            className={`w-fit rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${
-                              match.is_locked
-                                ? "border-[#3ff28a]/25 bg-[#3ff28a]/10 text-[#3ff28a]"
-                                : "border-[#ffe45c]/25 bg-[#ffe45c]/10 text-[#ffe45c]"
+        <section className="grid gap-3">
+          {visibleDistributionMatches.map((match) => {
+            const distribution = match.selection_distribution;
+            const percentages: [number, number, number] = [
+              distribution.home_percentage,
+              distribution.draw_percentage,
+              distribution.away_percentage,
+            ];
+            const scoreTotal = match.score_distribution.reduce((total, score) => total + score.count, 0);
+            return (
+              <article
+                key={match.match_id}
+                className="rounded-[12px] border border-white/[0.06] bg-white/[0.025] p-3 transition hover:bg-white/[0.035] md:p-4"
+              >
+                <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.1fr)_minmax(240px,0.9fr)_minmax(280px,1.15fr)] lg:items-start">
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-steel">
+                      <span>{buildMatchdayLabel(match)}</span>
+                      <span className="h-1 w-1 rounded-full bg-steel/50" />
+                      <span>{formatMexicoCityDateTime(match.kickoff_at)}</span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 font-semibold ${
+                          match.is_locked
+                            ? "border-[#3ff28a]/25 bg-[#3ff28a]/10 text-[#3ff28a]"
+                            : "border-[#ffe45c]/25 bg-[#ffe45c]/10 text-[#ffe45c]"
+                        }`}
+                      >
+                        {match.is_locked ? "Cerrado" : "Abierto"}
+                      </span>
+                    </div>
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                      <TeamInline
+                        name={match.home_team_name}
+                        shortName={match.home_team_short_name}
+                        crestUrl={match.home_team_crest_url}
+                      />
+                      <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
+                      <TeamInline
+                        name={match.away_team_name}
+                        shortName={match.away_team_short_name}
+                        crestUrl={match.away_team_crest_url}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5 text-center text-[11px] sm:gap-2">
+                    {[
+                      { label: "Local", value: distribution.home_percentage },
+                      { label: "Empate", value: distribution.draw_percentage },
+                      { label: "Visitante", value: distribution.away_percentage },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                        <p className="text-[9px] uppercase tracking-[0.12em] text-steel">{item.label}</p>
+                        <p className={`mt-1 font-semibold ${getProbabilityTone(item.value, percentages)}`}>
+                          {formatProbability(item.value)}
+                        </p>
+                      </div>
+                    ))}
+                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Picks</p>
+                      <p className="mt-1 font-semibold text-ink">{match.total_picks}</p>
+                    </div>
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-steel">Marcadores</p>
+                      {scoreTotal > 0 ? (
+                        <span className="text-[10px] text-steel">{scoreTotal} con marcador</span>
+                      ) : null}
+                    </div>
+                    {match.score_distribution.length > 0 ? (
+                      <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-1.5">
+                        {match.score_distribution.slice(0, 6).map((score, index) => (
+                          <div
+                            key={score.score_label}
+                            className={`rounded-[7px] border px-2 py-1.5 ${
+                              index === 0
+                                ? "border-[#ffe45c]/25 bg-[#ffe45c]/10"
+                                : "border-white/[0.06] bg-white/[0.025]"
                             }`}
                           >
-                            {match.is_locked ? "Cerrado" : "Abierto"}
-                          </span>
-                        </div>
-                      </td>
-                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(distribution.home_percentage, percentages)}`}>
-                        {formatProbability(distribution.home_percentage)}
-                      </td>
-                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(distribution.draw_percentage, percentages)}`}>
-                        {formatProbability(distribution.draw_percentage)}
-                      </td>
-                      <td className={`whitespace-nowrap px-3 py-2 text-right font-semibold ${getProbabilityTone(distribution.away_percentage, percentages)}`}>
-                        {formatProbability(distribution.away_percentage)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right font-semibold text-ink">
-                        {match.total_picks}
-                      </td>
-                      <td className="px-3 py-2">
-                        {match.score_distribution.length > 0 ? (
-                          <div className="grid grid-cols-2 gap-1.5 min-[1500px]:grid-cols-3">
-                            {match.score_distribution.map((score) => (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-ink">{score.score_label}</span>
+                              <span className="font-semibold text-[#ffe45c]">{formatProbability(score.percentage)}</span>
+                            </div>
+                            <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.06]">
                               <div
-                                key={score.score_label}
-                                className="grid grid-cols-[32px_minmax(48px,1fr)_24px] items-center rounded-[5px] border border-white/[0.06] bg-white/[0.025] px-1.5 py-1 text-[10px] text-ink"
-                              >
-                                <span className="font-semibold">{score.score_label}</span>
-                                <span className="text-right font-semibold text-[#ffe45c]">{formatProbability(score.percentage)}</span>
-                                <span className="text-right text-steel">{score.count}</span>
-                              </div>
-                            ))}
+                                className="h-full rounded-full bg-[#ffe45c]"
+                                style={{ width: `${Math.min(Math.max(score.percentage * 100, 0), 100)}%` }}
+                              />
+                            </div>
+                            <p className="mt-1 text-right text-[10px] text-steel">{score.count} picks</p>
                           </div>
-                        ) : (
-                          <span className="text-[10px] text-steel">Sin marcadores</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-steel">Sin marcadores capturados</span>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
         </section>
       ) : null}
 
