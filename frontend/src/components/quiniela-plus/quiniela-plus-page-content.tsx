@@ -18,9 +18,18 @@ import type {
 type OddsScope = "today" | "matchday" | "locked";
 type QuinielaPlusTab = "probabilities" | "value-lab" | "advanced-stats" | "user-distribution";
 type ValueLabMode = "entries" | "open" | "history" | "all";
+type ValueMarketFilter = "all" | "ml" | "draw" | "btts" | "over" | "under";
 type MatchdaySourceMatch = Pick<QuinielaPlusOddsSneakPeekMatch, "matchday_id" | "matchday_name" | "matchday_number" | "kickoff_at">;
 const TODAY_DISTRIBUTION_POLL_MS = 10_000;
 const MATCHDAY_DISTRIBUTION_POLL_MS = 45_000;
+const VALUE_MARKET_FILTERS: { value: ValueMarketFilter; label: string }[] = [
+  { value: "all", label: "Todos" },
+  { value: "ml", label: "ML" },
+  { value: "draw", label: "Empate" },
+  { value: "btts", label: "BTTS" },
+  { value: "over", label: "Over" },
+  { value: "under", label: "Under" },
+];
 
 function formatProbability(value: number) {
   return new Intl.NumberFormat("es-MX", {
@@ -75,6 +84,24 @@ function valueMarketLabel(marketKey: string, selectionKey: string, lineValue: nu
     return `BTTS ${selectionKey === "yes" ? "Si" : "No"}`;
   }
   return `${marketKey} ${selectionKey}`;
+}
+
+function valueMarketMatches(filter: ValueMarketFilter, marketKey: string, selectionKey: string) {
+  if (filter === "all") return true;
+  if (filter === "ml") return marketKey === "h2h" && selectionKey !== "draw";
+  if (filter === "draw") return marketKey === "h2h" && selectionKey === "draw";
+  if (filter === "btts") return marketKey === "btts_model";
+  if (filter === "over") return marketKey === "total" && selectionKey === "over";
+  if (filter === "under") return marketKey === "total" && selectionKey === "under";
+  return true;
+}
+
+function normalizeSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 function getMexicoCityDateKey(value: string | Date) {
@@ -456,6 +483,8 @@ export function QuinielaPlusPageContent() {
   const [activeTab, setActiveTab] = useState<QuinielaPlusTab>("probabilities");
   const [oddsScope, setOddsScope] = useState<OddsScope>("today");
   const [valueLabMode, setValueLabMode] = useState<ValueLabMode>("entries");
+  const [valueMarketFilter, setValueMarketFilter] = useState<ValueMarketFilter>("all");
+  const [valueTeamQuery, setValueTeamQuery] = useState("");
   const [selectedMatchdayId, setSelectedMatchdayId] = useState("");
 
   const refreshUserDistribution = useCallback(
@@ -607,6 +636,7 @@ export function QuinielaPlusPageContent() {
   const visibleAdvancedStatsMatches = advancedStats?.matches ?? [];
   const valueRecommendations = valueLab?.recommendations ?? [];
   const valueTrackStats = valueLab?.track_stats ?? [];
+  const normalizedValueTeamQuery = normalizeSearch(valueTeamQuery);
   const valueLabSummary = useMemo(() => {
     const settled = valueRecommendations.filter((item) => item.outcome_status === "settled" || item.outcome_status === "push");
     const hits = settled.filter((item) => item.is_hit).length;
@@ -623,7 +653,7 @@ export function QuinielaPlusPageContent() {
       hitRate: settled.length > 0 ? hits / settled.length : null,
     };
   }, [valueRecommendations]);
-  const visibleValueRecommendations = useMemo(() => {
+  const modeValueRecommendations = useMemo(() => {
     if (valueLabMode === "entries") {
       return valueRecommendations.filter((item) => item.outcome_status === "pending" && item.suggested_units > 0);
     }
@@ -635,6 +665,19 @@ export function QuinielaPlusPageContent() {
     }
     return valueRecommendations;
   }, [valueLabMode, valueRecommendations]);
+  const visibleValueRecommendations = useMemo(() => {
+    return modeValueRecommendations.filter((item) => {
+      if (!valueMarketMatches(valueMarketFilter, item.market_key, item.selection_key)) {
+        return false;
+      }
+      if (!normalizedValueTeamQuery) {
+        return true;
+      }
+      const home = normalizeSearch(item.home);
+      const away = normalizeSearch(item.away);
+      return home.includes(normalizedValueTeamQuery) || away.includes(normalizedValueTeamQuery);
+    });
+  }, [modeValueRecommendations, normalizedValueTeamQuery, valueMarketFilter]);
 
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando probabilidades...</p>;
@@ -954,7 +997,7 @@ export function QuinielaPlusPageContent() {
         </section>
       ) : null}
 
-      {activeTab === "value-lab" && visibleValueRecommendations.length > 0 ? (
+      {activeTab === "value-lab" && valueRecommendations.length > 0 ? (
         <section className="space-y-3">
           {valueTrackStats.length > 0 ? (
             <div className="grid gap-2 md:grid-cols-3">
@@ -1034,6 +1077,26 @@ export function QuinielaPlusPageContent() {
               Generado {valueLab?.generated_at ? formatMexicoCityDateTime(valueLab.generated_at) : "sin fecha"}
             </span>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {VALUE_MARKET_FILTERS.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                onClick={() => setValueMarketFilter(filter.value)}
+                className={valueMarketFilter === filter.value ? "app-pill-active px-3 py-2 text-xs" : "app-pill px-3 py-2 text-xs"}
+              >
+                {filter.label}
+              </button>
+            ))}
+            <input
+              type="search"
+              value={valueTeamQuery}
+              onChange={(event) => setValueTeamQuery(event.target.value)}
+              placeholder="País"
+              className="min-h-[38px] min-w-[11rem] rounded-[10px] border border-white/[0.08] bg-white/[0.035] px-3 text-xs font-semibold text-ink outline-none transition placeholder:text-steel focus:border-[#3ff28a]/40"
+            />
+          </div>
+          {visibleValueRecommendations.length > 0 ? (
           <div className="grid gap-3 lg:grid-cols-2">
             {visibleValueRecommendations.map((item) => {
               const isValue = item.recommendation === "paper_value";
@@ -1153,6 +1216,11 @@ export function QuinielaPlusPageContent() {
               );
             })}
           </div>
+          ) : (
+            <section className="rounded-[12px] border border-white/[0.06] bg-white/[0.03] p-4">
+              <p className="text-sm text-steel">No hay tarjetas para ese filtro.</p>
+            </section>
+          )}
         </section>
       ) : null}
 
@@ -1172,7 +1240,7 @@ export function QuinielaPlusPageContent() {
       ) : null}
 
       {((activeTab === "probabilities" && visibleMatches.length === 0) ||
-        (activeTab === "value-lab" && visibleValueRecommendations.length === 0) ||
+        (activeTab === "value-lab" && valueRecommendations.length === 0) ||
         (activeTab === "advanced-stats" && visibleAdvancedStatsMatches.length === 0) ||
         (activeTab === "user-distribution" && visibleDistributionMatches.length === 0)) ? (
         <section className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4">
