@@ -57,6 +57,7 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusUserSelectionDistributionOut,
     QuinielaPlusValueLabOut,
     QuinielaPlusValueRecommendationOut,
+    QuinielaPlusValueTrackStatsOut,
 )
 
 ADVANCED_STATS_PATH = (
@@ -372,13 +373,58 @@ class QuinielaPlusService:
                 for recommendation, stats_match, result in rows
             ]
             retro_cards = self._build_retro_history_cards(db, snapshot.id, 50)
+            all_recommendations = [*recommendations, *retro_cards]
             return QuinielaPlusValueLabOut(
                 generated_at=snapshot.generated_at or snapshot.created_at,
-                recommendations=[*recommendations, *retro_cards],
+                track_stats=[
+                    self._build_track_stats(
+                        "Live",
+                        [item for item in all_recommendations if item.recommendation != "retro_market"],
+                    ),
+                    self._build_track_stats("Retro", retro_cards),
+                    self._build_track_stats("Total", all_recommendations),
+                ],
+                recommendations=all_recommendations,
             )
         except SQLAlchemyError:
             db.rollback()
             return QuinielaPlusValueLabOut()
+
+    def _build_track_stats(
+        self,
+        label: str,
+        recommendations: list[QuinielaPlusValueRecommendationOut],
+    ) -> QuinielaPlusValueTrackStatsOut:
+        open_count = sum(1 for item in recommendations if item.outcome_status == "pending")
+        settled = [
+            item
+            for item in recommendations
+            if item.outcome_status in {"settled", "push"}
+        ]
+        wins = sum(1 for item in settled if item.is_hit is True)
+        losses = sum(1 for item in settled if item.is_hit is False and item.outcome_status != "push")
+        pushes = sum(1 for item in settled if item.outcome_status == "push")
+        tracked = [
+            item
+            for item in settled
+            if item.profit_units is not None
+        ]
+        staked_units = float(len(tracked))
+        profit_units = float(sum(item.profit_units or 0 for item in tracked))
+        decisions = wins + losses
+        return QuinielaPlusValueTrackStatsOut(
+            label=label,
+            total=len(recommendations),
+            open=open_count,
+            wins=wins,
+            losses=losses,
+            pushes=pushes,
+            tracked_bets=len(tracked),
+            staked_units=staked_units,
+            profit_units=profit_units,
+            hit_rate=(wins / decisions) if decisions > 0 else None,
+            roi=(profit_units / staked_units) if staked_units > 0 else None,
+        )
 
     def _build_retro_history_cards(
         self,

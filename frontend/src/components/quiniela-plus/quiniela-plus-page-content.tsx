@@ -601,6 +601,7 @@ export function QuinielaPlusPageContent() {
 
   const visibleAdvancedStatsMatches = advancedStats?.matches ?? [];
   const valueRecommendations = valueLab?.recommendations ?? [];
+  const valueTrackStats = valueLab?.track_stats ?? [];
   const valueLabSummary = useMemo(() => {
     const settled = valueRecommendations.filter((item) => item.outcome_status === "settled" || item.outcome_status === "push");
     const hits = settled.filter((item) => item.is_hit).length;
@@ -943,6 +944,53 @@ export function QuinielaPlusPageContent() {
 
       {activeTab === "value-lab" && visibleValueRecommendations.length > 0 ? (
         <section className="space-y-3">
+          {valueTrackStats.length > 0 ? (
+            <div className="grid gap-2 md:grid-cols-3">
+              {valueTrackStats.map((stats) => (
+                <div
+                  key={stats.label}
+                  className="rounded-[10px] border border-white/[0.06] bg-white/[0.025] px-3 py-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-steel">
+                      {stats.label}
+                    </p>
+                    <p className={`text-xs font-semibold ${
+                      stats.profit_units > 0
+                        ? "text-[#3ff28a]"
+                        : stats.profit_units < 0
+                          ? "text-[#ff8a8a]"
+                          : "text-steel"
+                    }`}>
+                      {formatProfitUnits(stats.profit_units)}
+                    </p>
+                  </div>
+                  <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
+                    <div>
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">W-L-P</p>
+                      <p className="mt-1 font-semibold text-ink">
+                        {stats.wins}-{stats.losses}-{stats.pushes}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Open</p>
+                      <p className="mt-1 font-semibold text-ink">{stats.open}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">U</p>
+                      <p className="mt-1 font-semibold text-ink">{stats.staked_units.toFixed(0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">ROI</p>
+                      <p className="mt-1 font-semibold text-ink">
+                        {stats.roi === null ? "—" : formatSignedPercent(stats.roi)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">

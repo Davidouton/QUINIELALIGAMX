@@ -549,9 +549,24 @@ export interface QuinielaPlusValueRecommendation {
   created_at: string;
 }
 
+export interface QuinielaPlusValueTrackStats {
+  label: string;
+  total: number;
+  open: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  tracked_bets: number;
+  staked_units: number;
+  profit_units: number;
+  hit_rate: number | null;
+  roi: number | null;
+}
+
 export interface QuinielaPlusValueLab {
   title: string;
   generated_at: string | null;
+  track_stats: QuinielaPlusValueTrackStats[];
   recommendations: QuinielaPlusValueRecommendation[];
 }
 

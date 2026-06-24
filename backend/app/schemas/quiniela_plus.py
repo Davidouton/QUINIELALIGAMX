@@ -216,9 +216,24 @@ class QuinielaPlusValueRecommendationOut(BaseModel):
     created_at: datetime
 
 
+class QuinielaPlusValueTrackStatsOut(BaseModel):
+    label: str
+    total: int = 0
+    open: int = 0
+    wins: int = 0
+    losses: int = 0
+    pushes: int = 0
+    tracked_bets: int = 0
+    staked_units: float = 0
+    profit_units: float = 0
+    hit_rate: float | None = None
+    roi: float | None = None
+
+
 class QuinielaPlusValueLabOut(BaseModel):
     title: str = "Value Lab"
     generated_at: datetime | None = None
+    track_stats: list[QuinielaPlusValueTrackStatsOut] = []
     recommendations: list[QuinielaPlusValueRecommendationOut] = []
 
 
