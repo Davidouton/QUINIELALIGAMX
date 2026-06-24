@@ -103,9 +103,23 @@ class WorldCupService:
             team.id: team for team in db.scalars(select(Team).where(Team.id.in_(team_ids)))
         } if team_ids else {}
 
-        groups = self._build_groups(matches, results_by_match_id, teams_by_id, defined_groups, group_team_links)
+        group_label_by_team_id = self._group_label_by_team_id(defined_groups, group_team_links)
+        groups = self._build_groups(
+            matches,
+            results_by_match_id,
+            teams_by_id,
+            defined_groups,
+            group_team_links,
+            group_label_by_team_id,
+        )
         bracket = self._build_bracket(matches, results_by_match_id, teams_by_id)
-        official_results = self._build_official_results(matches, matchdays, results_by_match_id, teams_by_id)
+        official_results = self._build_official_results(
+            matches,
+            matchdays,
+            results_by_match_id,
+            teams_by_id,
+            group_label_by_team_id,
+        )
         return WorldCupBoardOut(
             season_id=season.id,
             season_name=season.name,
@@ -126,17 +140,19 @@ class WorldCupService:
         teams_by_id: dict[str, Team],
         defined_groups: list[WorldCupGroup],
         group_team_links: list[WorldCupGroupTeam],
+        group_label_by_team_id: dict[str, str],
     ) -> list[WorldCupGroupOut]:
-        group_matches = [
-            match
-            for match in matches
+        group_matches: list[tuple[Match, str]] = []
+        for match in matches:
             if (
-                match.stage_type == MatchStageType.GROUP
-                and match.group_label
-                and match.home_team_id is not None
-                and match.away_team_id is not None
-            )
-        ]
+                match.stage_type != MatchStageType.GROUP
+                or match.home_team_id is None
+                or match.away_team_id is None
+            ):
+                continue
+            group_label = self._effective_group_label(match, group_label_by_team_id)
+            if group_label:
+                group_matches.append((match, group_label))
         groups: dict[str, dict[str, dict[str, int | str | None]]] = defaultdict(dict)
         group_ids_by_label = {group.id: group.group_label for group in defined_groups}
 
@@ -166,10 +182,10 @@ class WorldCupService:
                 },
             )
 
-        for match in group_matches:
+        for match, group_label in group_matches:
             for team_id in [match.home_team_id, match.away_team_id]:
                 team = teams_by_id.get(team_id)
-                groups[match.group_label or ""].setdefault(
+                groups[group_label].setdefault(
                     team_id,
                     {
                         "team_id": team_id,
@@ -191,8 +207,8 @@ class WorldCupService:
             if result is None or not result.is_official:
                 continue
 
-            home_row = groups[match.group_label or ""][match.home_team_id]
-            away_row = groups[match.group_label or ""][match.away_team_id]
+            home_row = groups[group_label][match.home_team_id]
+            away_row = groups[group_label][match.away_team_id]
             home_row["played"] += 1
             away_row["played"] += 1
             home_row["goals_for"] += result.home_score
@@ -283,6 +299,7 @@ class WorldCupService:
         matchdays: list[Matchday],
         results_by_match_id: dict[str, MatchResult],
         teams_by_id: dict[str, Team],
+        group_label_by_team_id: dict[str, str],
     ) -> list[WorldCupOfficialResultOut]:
         matchdays_by_id = {matchday.id: matchday for matchday in matchdays}
         rows: list[WorldCupOfficialResultOut] = []
@@ -300,7 +317,7 @@ class WorldCupService:
                     matchday_number=matchday.number if matchday is not None else 0,
                     matchday_name=matchday.name if matchday is not None else "Jornada",
                     stage_type=match.stage_type,
-                    group_label=match.group_label,
+                    group_label=self._effective_group_label(match, group_label_by_team_id),
                     bracket_slot=match.bracket_slot,
                     home_team_id=match.home_team_id,
                     home_placeholder=match.home_placeholder,
@@ -329,6 +346,31 @@ class WorldCupService:
             )
         )
         return rows
+
+    def _group_label_by_team_id(
+        self,
+        defined_groups: list[WorldCupGroup],
+        group_team_links: list[WorldCupGroupTeam],
+    ) -> dict[str, str]:
+        group_labels_by_id = {group.id: group.group_label for group in defined_groups}
+        result: dict[str, str] = {}
+        for link in group_team_links:
+            group_label = group_labels_by_id.get(link.group_id)
+            if group_label:
+                result[link.team_id] = group_label
+        return result
+
+    @staticmethod
+    def _effective_group_label(match: Match, group_label_by_team_id: dict[str, str]) -> str | None:
+        if match.group_label:
+            return match.group_label
+        if match.home_team_id is None or match.away_team_id is None:
+            return None
+        home_group = group_label_by_team_id.get(match.home_team_id)
+        away_group = group_label_by_team_id.get(match.away_team_id)
+        if home_group and home_group == away_group:
+            return home_group
+        return None
 
     def _resolve_season(self, db: Session, season_id: str | None) -> Season:
         query = select(Season).where(Season.tournament_format == TournamentFormat.WORLD_CUP)
