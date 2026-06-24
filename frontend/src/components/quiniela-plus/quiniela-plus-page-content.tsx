@@ -15,7 +15,7 @@ import type {
   QuinielaPlusValueLab,
 } from "@/types/api";
 
-type OddsScope = "today" | "matchday" | "locked";
+type OddsScope = "today" | "tomorrow" | "matchday" | "locked";
 type QuinielaPlusTab = "probabilities" | "value-lab" | "advanced-stats" | "user-distribution";
 type ValueLabMode = "entries" | "open" | "history" | "all";
 type ValueMarketFilter = "all" | "ml" | "draw" | "btts" | "over" | "under";
@@ -118,6 +118,12 @@ function getMexicoCityDateKey(value: string | Date) {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(value));
+}
+
+function getRelativeMexicoCityDateKey(daysToAdd: number) {
+  const value = new Date();
+  value.setDate(value.getDate() + daysToAdd);
+  return getMexicoCityDateKey(value);
 }
 
 function formatUpdatedAt(value: Date | null) {
@@ -588,7 +594,7 @@ export function QuinielaPlusPageContent() {
   }, [activeTab, oddsScope, refreshUserDistribution]);
 
   const matchdayOptions = useMemo(() => {
-    const grouped = new Map<string, { id: string; label: string; number: number }>();
+    const grouped = new Map<string, { id: string; label: string; number: number; kickoffAt: string }>();
     const sourceMatches: MatchdaySourceMatch[] =
       activeTab === "probabilities"
         ? oddsSneakPeek?.matches ?? []
@@ -601,10 +607,14 @@ export function QuinielaPlusPageContent() {
           id: match.matchday_id,
           label: buildMatchdayLabel(match),
           number: match.matchday_number,
+          kickoffAt: match.kickoff_at,
         });
       }
     }
-    return [...grouped.values()].sort((left, right) => left.number - right.number);
+    return [...grouped.values()].sort((left, right) => {
+      const byKickoff = new Date(left.kickoffAt).getTime() - new Date(right.kickoffAt).getTime();
+      return byKickoff === 0 ? left.number - right.number : byKickoff;
+    });
   }, [activeTab, oddsSneakPeek?.matches, userDistribution?.matches]);
 
   useEffect(() => {
@@ -619,8 +629,12 @@ export function QuinielaPlusPageContent() {
   const visibleMatches = useMemo(() => {
     const matches = oddsSneakPeek?.matches ?? [];
     if (oddsScope === "today") {
-      const todayKey = getMexicoCityDateKey(new Date());
+      const todayKey = getRelativeMexicoCityDateKey(0);
       return matches.filter((match) => getMexicoCityDateKey(match.kickoff_at) === todayKey);
+    }
+    if (oddsScope === "tomorrow") {
+      const tomorrowKey = getRelativeMexicoCityDateKey(1);
+      return matches.filter((match) => getMexicoCityDateKey(match.kickoff_at) === tomorrowKey);
     }
     if (oddsScope === "locked") {
       return [];
@@ -631,8 +645,12 @@ export function QuinielaPlusPageContent() {
   const visibleDistributionMatches = useMemo(() => {
     const matches = userDistribution?.matches ?? [];
     if (oddsScope === "today") {
-      const todayKey = getMexicoCityDateKey(new Date());
+      const todayKey = getRelativeMexicoCityDateKey(0);
       return matches.filter((match) => getMexicoCityDateKey(match.kickoff_at) === todayKey);
+    }
+    if (oddsScope === "tomorrow") {
+      const tomorrowKey = getRelativeMexicoCityDateKey(1);
+      return matches.filter((match) => getMexicoCityDateKey(match.kickoff_at) === tomorrowKey);
     }
     if (oddsScope === "locked") {
       return matches.filter((match) => match.is_locked);
@@ -770,6 +788,13 @@ export function QuinielaPlusPageContent() {
             className={oddsScope === "today" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
           >
             Partidos de hoy
+          </button>
+          <button
+            type="button"
+            onClick={() => setOddsScope("tomorrow")}
+            className={oddsScope === "tomorrow" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+          >
+            Mañana
           </button>
           <button
             type="button"
