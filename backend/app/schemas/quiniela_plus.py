@@ -192,6 +192,32 @@ class QuinielaPlusAdvancedStatsOut(BaseModel):
     matches: list[QuinielaPlusAdvancedStatsMatchOut] = []
 
 
+class QuinielaPlusValueRecommendationOut(BaseModel):
+    id: str
+    fixture_id: str
+    kickoff_at: datetime | None = None
+    home: str
+    away: str
+    market_key: str
+    selection_key: str
+    line_value: float | None = None
+    model_probability: float | None = None
+    market_probability: float | None = None
+    market_odds: float | None = None
+    fair_odds_decimal: float | None = None
+    edge_probability: float | None = None
+    confidence_label: str
+    recommendation: str
+    reason: str | None = None
+    created_at: datetime
+
+
+class QuinielaPlusValueLabOut(BaseModel):
+    title: str = "Value Lab"
+    generated_at: datetime | None = None
+    recommendations: list[QuinielaPlusValueRecommendationOut] = []
+
+
 class QuinielaPlusAdminSettingsOut(BaseModel):
     checkout_enabled: bool = False
     checkout_message: str | None = None

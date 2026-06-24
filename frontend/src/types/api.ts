@@ -525,6 +525,32 @@ export interface QuinielaPlusAdvancedStats {
   matches: QuinielaPlusAdvancedStatsMatch[];
 }
 
+export interface QuinielaPlusValueRecommendation {
+  id: string;
+  fixture_id: string;
+  kickoff_at: string | null;
+  home: string;
+  away: string;
+  market_key: string;
+  selection_key: string;
+  line_value: number | null;
+  model_probability: number | null;
+  market_probability: number | null;
+  market_odds: number | null;
+  fair_odds_decimal: number | null;
+  edge_probability: number | null;
+  confidence_label: string;
+  recommendation: string;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface QuinielaPlusValueLab {
+  title: string;
+  generated_at: string | null;
+  recommendations: QuinielaPlusValueRecommendation[];
+}
+
 export interface QuinielaPlusAdminSettings {
   checkout_enabled: boolean;
   checkout_message: string | null;

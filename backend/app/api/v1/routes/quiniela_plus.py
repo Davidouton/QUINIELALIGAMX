@@ -16,6 +16,7 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusPlanOut,
     QuinielaPlusPlanUpsertRequest,
     QuinielaPlusUserDistributionOut,
+    QuinielaPlusValueLabOut,
 )
 from app.services.quiniela_plus_service import QuinielaPlusService
 
@@ -57,9 +58,18 @@ def get_user_distribution(
 
 @router.get("/quiniela-plus/advanced-stats", response_model=QuinielaPlusAdvancedStatsOut)
 def get_advanced_stats(
+    db: Session = Depends(get_db),
     _: Profile = Depends(get_current_profile),
 ) -> QuinielaPlusAdvancedStatsOut:
-    return service.get_advanced_stats()
+    return service.get_advanced_stats(db)
+
+
+@router.get("/quiniela-plus/value-lab", response_model=QuinielaPlusValueLabOut)
+def get_value_lab(
+    db: Session = Depends(get_db),
+    _: Profile = Depends(get_current_profile),
+) -> QuinielaPlusValueLabOut:
+    return service.get_value_lab(db)
 
 
 @router.get("/quiniela-plus/admin/console", response_model=QuinielaPlusAdminConsoleResponse)

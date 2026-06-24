@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.datetime import MEXICO_CITY_TZ, ensure_utc
@@ -28,6 +29,11 @@ from app.models.entities import (
     TournamentFormat,
     UserPick,
 )
+from app.models.quiniela_plus_value import (
+    QuinielaPlusStatsMatch,
+    QuinielaPlusStatsSnapshot,
+    QuinielaPlusValueRecommendation,
+)
 from app.repositories.odds_repository import OddsRepository
 from app.schemas.quiniela_plus import (
     QuinielaPlusAdminConsoleResponse,
@@ -48,6 +54,8 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusUserDistributionMatchOut,
     QuinielaPlusUserDistributionOut,
     QuinielaPlusUserSelectionDistributionOut,
+    QuinielaPlusValueLabOut,
+    QuinielaPlusValueRecommendationOut,
 )
 
 ADVANCED_STATS_PATH = (
@@ -246,7 +254,36 @@ class QuinielaPlusService:
 
         return QuinielaPlusUserDistributionOut(matches=rows)
 
-    def get_advanced_stats(self) -> QuinielaPlusAdvancedStatsOut:
+    def get_advanced_stats(self, db: Session | None = None) -> QuinielaPlusAdvancedStatsOut:
+        if db is not None:
+            try:
+                snapshot = db.scalar(
+                    select(QuinielaPlusStatsSnapshot).order_by(
+                        QuinielaPlusStatsSnapshot.created_at.desc()
+                    )
+                )
+                if snapshot is not None:
+                    rows = list(
+                        db.scalars(
+                            select(QuinielaPlusStatsMatch)
+                            .where(QuinielaPlusStatsMatch.snapshot_id == snapshot.id)
+                            .order_by(QuinielaPlusStatsMatch.kickoff_at.asc())
+                        )
+                    )
+                    matches: list[QuinielaPlusAdvancedStatsMatchOut] = []
+                    for row in rows:
+                        normalized = dict(row.payload_json or {})
+                        normalized["fixture_id"] = str(normalized.get("fixture_id") or row.fixture_id or "")
+                        if not normalized["fixture_id"]:
+                            continue
+                        matches.append(QuinielaPlusAdvancedStatsMatchOut.model_validate(normalized))
+                    return QuinielaPlusAdvancedStatsOut(
+                        generated_at=snapshot.generated_at or snapshot.created_at,
+                        matches=matches,
+                    )
+            except SQLAlchemyError:
+                db.rollback()
+
         if not ADVANCED_STATS_PATH.exists():
             return QuinielaPlusAdvancedStatsOut()
 
@@ -268,6 +305,76 @@ class QuinielaPlusService:
             generated_at=payload.get("generated_at"),
             matches=matches,
         )
+
+    def get_value_lab(self, db: Session, limit: int = 40) -> QuinielaPlusValueLabOut:
+        try:
+            snapshot = db.scalar(
+                select(QuinielaPlusStatsSnapshot).order_by(
+                    QuinielaPlusStatsSnapshot.created_at.desc()
+                )
+            )
+            if snapshot is None:
+                return QuinielaPlusValueLabOut()
+
+            rows = db.execute(
+                select(QuinielaPlusValueRecommendation, QuinielaPlusStatsMatch)
+                .join(
+                    QuinielaPlusStatsMatch,
+                    QuinielaPlusStatsMatch.id == QuinielaPlusValueRecommendation.stats_match_id,
+                )
+                .where(QuinielaPlusValueRecommendation.snapshot_id == snapshot.id)
+                .order_by(
+                    QuinielaPlusValueRecommendation.edge_probability.desc().nullslast(),
+                    QuinielaPlusValueRecommendation.created_at.desc(),
+                )
+                .limit(max(1, min(limit, 100)))
+            ).all()
+
+            recommendations = [
+                QuinielaPlusValueRecommendationOut(
+                    id=recommendation.id,
+                    fixture_id=recommendation.fixture_id,
+                    kickoff_at=stats_match.kickoff_at,
+                    home=stats_match.home_name,
+                    away=stats_match.away_name,
+                    market_key=recommendation.market_key,
+                    selection_key=recommendation.selection_key,
+                    line_value=float(recommendation.line_value) if recommendation.line_value is not None else None,
+                    model_probability=(
+                        float(recommendation.model_probability)
+                        if recommendation.model_probability is not None
+                        else None
+                    ),
+                    market_probability=(
+                        float(recommendation.market_probability)
+                        if recommendation.market_probability is not None
+                        else None
+                    ),
+                    market_odds=float(recommendation.market_odds) if recommendation.market_odds is not None else None,
+                    fair_odds_decimal=(
+                        float(recommendation.fair_odds_decimal)
+                        if recommendation.fair_odds_decimal is not None
+                        else None
+                    ),
+                    edge_probability=(
+                        float(recommendation.edge_probability)
+                        if recommendation.edge_probability is not None
+                        else None
+                    ),
+                    confidence_label=recommendation.confidence_label,
+                    recommendation=recommendation.recommendation,
+                    reason=recommendation.reason,
+                    created_at=recommendation.created_at,
+                )
+                for recommendation, stats_match in rows
+            ]
+            return QuinielaPlusValueLabOut(
+                generated_at=snapshot.generated_at or snapshot.created_at,
+                recommendations=recommendations,
+            )
+        except SQLAlchemyError:
+            db.rollback()
+            return QuinielaPlusValueLabOut()
 
     def get_admin_console(self, db: Session) -> QuinielaPlusAdminConsoleResponse:
         settings = self._get_or_create_settings(db)

@@ -12,10 +12,11 @@ import type {
   QuinielaPlusOddsSneakPeekMatch,
   QuinielaPlusUserDistribution,
   QuinielaPlusUserDistributionMatch,
+  QuinielaPlusValueLab,
 } from "@/types/api";
 
 type OddsScope = "today" | "matchday" | "locked";
-type QuinielaPlusTab = "probabilities" | "advanced-stats" | "user-distribution";
+type QuinielaPlusTab = "probabilities" | "value-lab" | "advanced-stats" | "user-distribution";
 type MatchdaySourceMatch = Pick<QuinielaPlusOddsSneakPeekMatch, "matchday_id" | "matchday_name" | "matchday_number" | "kickoff_at">;
 const TODAY_DISTRIBUTION_POLL_MS = 10_000;
 const MATCHDAY_DISTRIBUTION_POLL_MS = 45_000;
@@ -36,6 +37,33 @@ function formatDecimal(value: number) {
     maximumFractionDigits: 2,
     minimumFractionDigits: 0,
   }).format(value);
+}
+
+function formatSignedPercent(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  const pct = value * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`;
+}
+
+function formatOddsValue(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  if (Math.abs(value) >= 20) return value > 0 ? `+${Math.round(value)}` : `${Math.round(value)}`;
+  return value.toFixed(2);
+}
+
+function valueMarketLabel(marketKey: string, selectionKey: string, lineValue: number | null) {
+  if (marketKey === "h2h") {
+    if (selectionKey === "home") return "Local";
+    if (selectionKey === "draw") return "Empate";
+    if (selectionKey === "away") return "Visitante";
+  }
+  if (marketKey === "total") {
+    return `${selectionKey === "over" ? "Over" : "Under"} ${lineValue ?? ""}`.trim();
+  }
+  if (marketKey === "btts_model") {
+    return `BTTS ${selectionKey === "yes" ? "Si" : "No"}`;
+  }
+  return `${marketKey} ${selectionKey}`;
 }
 
 function getMexicoCityDateKey(value: string | Date) {
@@ -409,6 +437,7 @@ export function QuinielaPlusPageContent() {
   const [oddsSneakPeek, setOddsSneakPeek] = useState<QuinielaPlusOddsSneakPeek | null>(null);
   const [userDistribution, setUserDistribution] = useState<QuinielaPlusUserDistribution | null>(null);
   const [advancedStats, setAdvancedStats] = useState<QuinielaPlusAdvancedStats | null>(null);
+  const [valueLab, setValueLab] = useState<QuinielaPlusValueLab | null>(null);
   const [loading, setLoading] = useState(true);
   const [distributionRefreshing, setDistributionRefreshing] = useState(false);
   const [distributionUpdatedAt, setDistributionUpdatedAt] = useState<Date | null>(null);
@@ -448,14 +477,16 @@ export function QuinielaPlusPageContent() {
     async function loadInitialData() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const [oddsResponse, distributionResponse, advancedStatsResponse] = await Promise.all([
+        const [oddsResponse, distributionResponse, advancedStatsResponse, valueLabResponse] = await Promise.all([
           backendFetch<QuinielaPlusOddsSneakPeek>("/quiniela-plus/odds-sneak-peek", accessToken),
           backendFetch<QuinielaPlusUserDistribution>("/quiniela-plus/user-distribution", accessToken),
           backendFetch<QuinielaPlusAdvancedStats>("/quiniela-plus/advanced-stats", accessToken),
+          backendFetch<QuinielaPlusValueLab>("/quiniela-plus/value-lab", accessToken),
         ]);
         setOddsSneakPeek(oddsResponse);
         setUserDistribution(distributionResponse);
         setAdvancedStats(advancedStatsResponse);
+        setValueLab(valueLabResponse);
         setDistributionUpdatedAt(new Date());
         setError(null);
       } catch (caughtError) {
@@ -562,6 +593,7 @@ export function QuinielaPlusPageContent() {
   }, [oddsScope, selectedMatchdayId, userDistribution?.matches]);
 
   const visibleAdvancedStatsMatches = advancedStats?.matches ?? [];
+  const visibleValueRecommendations = valueLab?.recommendations ?? [];
 
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando probabilidades...</p>;
@@ -578,16 +610,20 @@ export function QuinielaPlusPageContent() {
         <h1 className="text-2xl font-semibold text-ink">
           {activeTab === "probabilities"
             ? "Probabilidades sin vig"
-            : activeTab === "advanced-stats"
-              ? "Estadisticas avanzadas"
-              : "Distribucion de usuarios"}
+            : activeTab === "value-lab"
+              ? "Value Lab"
+              : activeTab === "advanced-stats"
+                ? "Estadisticas avanzadas"
+                : "Distribucion de usuarios"}
         </h1>
         <p className="max-w-3xl text-sm text-steel">
           {activeTab === "probabilities"
             ? "Probabilidad implicita justa por partido, normalizada para quitar el margen de la casa."
-            : activeTab === "advanced-stats"
-              ? "Modelo avanzado por partido: xG, marcador probable, goles esperados, over/under y mapa de marcadores."
-              : "Picks agregados en vivo: porcentaje Local, Empate, Visitante y marcadores mas repetidos."}
+            : activeTab === "value-lab"
+              ? "Recomendaciones paper: compara Football-MD contra mercado real para detectar edge antes de arriesgar dinero."
+              : activeTab === "advanced-stats"
+                ? "Modelo avanzado por partido: xG, marcador probable, goles esperados, over/under y mapa de marcadores."
+                : "Picks agregados en vivo: porcentaje Local, Empate, Visitante y marcadores mas repetidos."}
         </p>
       </section>
 
@@ -615,6 +651,16 @@ export function QuinielaPlusPageContent() {
         <button
           type="button"
           onClick={() => {
+            setActiveTab("value-lab");
+            setOddsScope("today");
+          }}
+          className={activeTab === "value-lab" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+        >
+          Value Lab
+        </button>
+        <button
+          type="button"
+          onClick={() => {
             setActiveTab("advanced-stats");
             setOddsScope("today");
           }}
@@ -624,7 +670,7 @@ export function QuinielaPlusPageContent() {
         </button>
       </section>
 
-      {activeTab !== "advanced-stats" ? (
+      {activeTab !== "advanced-stats" && activeTab !== "value-lab" ? (
       <section className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap gap-2">
           <button
@@ -867,6 +913,89 @@ export function QuinielaPlusPageContent() {
         </section>
       ) : null}
 
+      {activeTab === "value-lab" && visibleValueRecommendations.length > 0 ? (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-steel">
+            <span>{visibleValueRecommendations.length} recomendaciones paper</span>
+            <span>
+              Generado {valueLab?.generated_at ? formatMexicoCityDateTime(valueLab.generated_at) : "sin fecha"}
+            </span>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {visibleValueRecommendations.map((item) => {
+              const isValue = item.recommendation === "paper_value";
+              const isModelOnly = item.recommendation === "model_only";
+              return (
+                <article
+                  key={item.id}
+                  className={`rounded-[12px] border p-4 ${
+                    isValue
+                      ? "border-[#3ff28a]/20 bg-[#3ff28a]/[0.045]"
+                      : isModelOnly
+                        ? "border-[#ffe45c]/15 bg-[#ffe45c]/[0.035]"
+                        : "border-white/[0.06] bg-white/[0.025]"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-[0.14em] text-steel">
+                        {item.kickoff_at ? formatMexicoCityDateTime(item.kickoff_at) : "Sin fecha"}
+                      </p>
+                      <h3 className="mt-1 truncate text-sm font-semibold text-ink">
+                        {item.home} vs {item.away}
+                      </h3>
+                    </div>
+                    <span
+                      className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                        isValue
+                          ? "border-[#3ff28a]/25 text-[#3ff28a]"
+                          : isModelOnly
+                            ? "border-[#ffe45c]/25 text-[#ffe45c]"
+                            : "border-white/[0.08] text-steel"
+                      }`}
+                    >
+                      {isValue ? "Value" : isModelOnly ? "Modelo" : "Watch"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Mercado</p>
+                      <p className="mt-1 text-xs font-semibold text-ink">
+                        {valueMarketLabel(item.market_key, item.selection_key, item.line_value)}
+                      </p>
+                    </div>
+                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Modelo</p>
+                      <p className="mt-1 text-xs font-semibold text-ink">
+                        {item.model_probability === null ? "—" : formatProbability(item.model_probability)}
+                      </p>
+                    </div>
+                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Mercado</p>
+                      <p className="mt-1 text-xs font-semibold text-ink">
+                        {item.market_probability === null ? "—" : formatProbability(item.market_probability)}
+                      </p>
+                    </div>
+                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Odds</p>
+                      <p className="mt-1 text-xs font-semibold text-ink">{formatOddsValue(item.market_odds)}</p>
+                    </div>
+                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Edge</p>
+                      <p className={`mt-1 text-xs font-semibold ${Number(item.edge_probability) > 0 ? "text-[#3ff28a]" : "text-steel"}`}>
+                        {formatSignedPercent(item.edge_probability)}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-steel">{item.reason}</p>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
       {activeTab === "advanced-stats" && visibleAdvancedStatsMatches.length > 0 ? (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-steel">
@@ -883,15 +1012,18 @@ export function QuinielaPlusPageContent() {
       ) : null}
 
       {((activeTab === "probabilities" && visibleMatches.length === 0) ||
+        (activeTab === "value-lab" && visibleValueRecommendations.length === 0) ||
         (activeTab === "advanced-stats" && visibleAdvancedStatsMatches.length === 0) ||
         (activeTab === "user-distribution" && visibleDistributionMatches.length === 0)) ? (
         <section className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4">
           <p className="text-sm text-steel">
             {activeTab === "probabilities"
               ? "No hay odds mundialistas sincronizados para este filtro. Baja odds con `THE_ODDS_API_SPORT=soccer_fifa_world_cup` y luego sincroniza el snapshot contra los partidos del Mundial."
-              : activeTab === "advanced-stats"
-                ? "No hay estadisticas avanzadas cargadas para Quiniela +."
-                : "No hay distribucion de usuarios para este filtro. Los datos aparecen cuando haya picks guardados."}
+              : activeTab === "value-lab"
+                ? "No hay recomendaciones todavia. Actualiza Football-MD y odds para generar el Value Lab."
+                : activeTab === "advanced-stats"
+                  ? "No hay estadisticas avanzadas cargadas para Quiniela +."
+                  : "No hay distribucion de usuarios para este filtro. Los datos aparecen cuando haya picks guardados."}
           </p>
         </section>
       ) : null}

@@ -2405,17 +2405,17 @@ def pull_admin_world_cup_odds(
     sport_key = "soccer_fifa_world_cup"
     script_env["THE_ODDS_API_SPORT"] = sport_key
     script_env["THE_ODDS_API_REGIONS"] = "us,uk,eu,au"
-    script_env["THE_ODDS_API_MARKETS"] = "h2h"
+    script_env["THE_ODDS_API_MARKETS"] = "h2h,totals"
     script_env["THE_ODDS_API_BOOKMAKER"] = ""
     script_env["ODDS_WINDOW_START_OFFSET_DAYS"] = "0"
-    script_env["ODDS_LOOKAHEAD_DAYS"] = "2"
+    script_env["ODDS_LOOKAHEAD_DAYS"] = "5"
     return run_odds_pull_pipeline(script_env, sport_key=sport_key)
 
 
 @router.post("/quiniela-plus/advanced-stats/pull", response_model=AdvancedStatsPullResponse)
 def pull_admin_quiniela_plus_advanced_stats(
     target_date: str | None = None,
-    days: int = 2,
+    days: int = 5,
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdvancedStatsPullResponse:
     script_env = build_odds_script_env()
