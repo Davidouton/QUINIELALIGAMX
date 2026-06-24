@@ -420,6 +420,7 @@ class QuinielaPlusService:
             self._select_strategy_entries(recommendations)
             retro_cards = self._build_retro_history_cards(db, snapshot.id, 50)
             all_recommendations = [*recommendations, *retro_cards]
+            self._apply_backtested_strategy_guards(db, all_recommendations)
             self._apply_historical_guards(all_recommendations)
             return QuinielaPlusValueLabOut(
                 generated_at=snapshot.generated_at or snapshot.created_at,
@@ -603,6 +604,146 @@ class QuinielaPlusService:
                 f"Watch por historico: {tracked_bets} bets del segmento con ROI {roi * 100:.1f}%. "
                 "No entrar hasta que mejore la muestra."
             )
+
+    def _apply_backtested_strategy_guards(
+        self,
+        db: Session,
+        recommendations: list[QuinielaPlusValueRecommendationOut],
+    ) -> None:
+        profiles = self._load_backtested_strategy_profiles(db)
+        for item in recommendations:
+            if item.outcome_status != "pending" or item.suggested_units <= 0:
+                continue
+            profile_key = self._backtest_profile_key(item)
+            profile = profiles.get(profile_key or "")
+            if profile is None:
+                item.suggested_units = 0
+                item.stake_bankroll_pct = 0
+                item.strategy_label = "watch"
+                item.entry_grade = "watch"
+                item.stake_reason = "Watch: este segmento no tiene backtest suficiente para meter dinero."
+                continue
+
+            total = int(profile["total"])
+            roi = float(profile["roi"])
+            profit_units = float(profile["profit_units"])
+            if total < 5:
+                item.suggested_units = 0
+                item.stake_bankroll_pct = 0
+                item.strategy_label = "watch"
+                item.entry_grade = "watch"
+                item.stake_reason = (
+                    f"Watch: segmento con muestra chica ({total} bets, {profit_units:+.2f}u). "
+                    "Esperar mas datos antes de stake real."
+                )
+                continue
+            if roi <= 0:
+                item.suggested_units = 0
+                item.stake_bankroll_pct = 0
+                item.strategy_label = "watch"
+                item.entry_grade = "watch"
+                item.stake_reason = (
+                    f"Watch: backtest negativo/neutro en {total} bets "
+                    f"({profit_units:+.2f}u, ROI {roi * 100:+.1f}%)."
+                )
+                continue
+            if roi < 0.05:
+                item.suggested_units = min(item.suggested_units, 0.25)
+                item.stake_bankroll_pct = self._stake_bankroll_pct(item.suggested_units)
+                item.strategy_label = "kelly_watch"
+                item.stake_reason = (
+                    f"Entrada chica: backtest apenas positivo en {total} bets "
+                    f"({profit_units:+.2f}u, ROI {roi * 100:+.1f}%). "
+                    f"{item.stake_reason or ''}"
+                ).strip()
+                continue
+            item.stake_reason = (
+                f"Backtest aprueba segmento: {total} bets, {profit_units:+.2f}u, "
+                f"ROI {roi * 100:+.1f}%. {item.stake_reason or ''}"
+            ).strip()
+
+    def _load_backtested_strategy_profiles(self, db: Session) -> dict[str, dict[str, float | int]]:
+        rows = db.execute(
+            text(
+                """
+                select distinct on (m.id)
+                  m.id as match_id,
+                  mr.home_score,
+                  mr.away_score,
+                  o.home_value,
+                  o.draw_value,
+                  o.away_value
+                from public.odds o
+                join public.matches m on m.id = o.match_id
+                join public.matchdays md on md.id = m.matchday_id
+                join public.seasons s on s.id = md.season_id
+                join public.match_results mr on mr.match_id = m.id and mr.is_official
+                where s.tournament_format = 'world_cup'
+                  and o.home_value is not null
+                  and o.draw_value is not null
+                  and o.away_value is not null
+                order by m.id, o.synced_at desc
+                """
+            )
+        ).mappings()
+        profiles: dict[str, dict[str, float | int]] = {}
+        for row in rows:
+            if int(row["home_score"]) > int(row["away_score"]):
+                actual = "home"
+            elif int(row["away_score"]) > int(row["home_score"]):
+                actual = "away"
+            else:
+                actual = "draw"
+            odds_by_selection = {
+                "home": row["home_value"],
+                "draw": row["draw_value"],
+                "away": row["away_value"],
+            }
+            for selection, odds in odds_by_selection.items():
+                key = self._backtest_profile_key_from_parts("h2h", selection, odds)
+                if key is None:
+                    continue
+                profit_units = self._flat_profit_units(odds, selection == actual)
+                profile = profiles.setdefault(
+                    key,
+                    {"total": 0, "wins": 0, "profit_units": 0.0, "roi": 0.0},
+                )
+                profile["total"] = int(profile["total"]) + 1
+                profile["wins"] = int(profile["wins"]) + int(selection == actual)
+                profile["profit_units"] = float(profile["profit_units"]) + profit_units
+        for profile in profiles.values():
+            total = int(profile["total"])
+            profile["roi"] = (float(profile["profit_units"]) / total) if total > 0 else 0.0
+        return profiles
+
+    def _backtest_profile_key(self, item: QuinielaPlusValueRecommendationOut) -> str | None:
+        return self._backtest_profile_key_from_parts(item.market_key, item.selection_key, item.market_odds)
+
+    def _backtest_profile_key_from_parts(
+        self,
+        market_key: str,
+        selection_key: str,
+        market_odds: Decimal | float | None,
+    ) -> str | None:
+        if market_key != "h2h" or market_odds is None:
+            return None
+        odds_decimal = Decimal(str(market_odds))
+        if selection_key == "draw":
+            return f"h2h_draw:{self._odds_bucket(odds_decimal)}"
+        return f"h2h_ml:{self._odds_bucket(odds_decimal)}"
+
+    @staticmethod
+    def _flat_profit_units(market_odds: Decimal | float | None, is_hit: bool) -> float:
+        if not is_hit:
+            return -1.0
+        if market_odds is None:
+            return 0.0
+        odds = Decimal(str(market_odds))
+        if odds > 0:
+            return float(odds / Decimal("100"))
+        if odds < 0:
+            return float(Decimal("100") / abs(odds))
+        return 0.0
 
     def _strategy_history_group(self, item: QuinielaPlusValueRecommendationOut) -> str | None:
         if item.market_key == "h2h":
