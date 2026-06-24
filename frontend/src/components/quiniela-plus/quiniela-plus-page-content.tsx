@@ -71,6 +71,13 @@ function formatStakeUnits(value: number | null | undefined) {
   return `${value.toFixed(2)}u`;
 }
 
+function entryGradeLabel(value: string | null | undefined) {
+  if (value === "bet") return "Estrategia";
+  if (value === "watch") return "Watch";
+  if (value === "track") return "Track";
+  return "Evitar";
+}
+
 function valueMarketLabel(marketKey: string, selectionKey: string, lineValue: number | null) {
   if (marketKey === "h2h") {
     if (selectionKey === "home") return "Local";
@@ -1109,8 +1116,10 @@ export function QuinielaPlusPageContent() {
                       ? item.is_hit
                         ? "Pegó"
                         : "Falló"
-                    : item.suggested_units > 0
+                    : item.entry_grade === "bet" && item.suggested_units > 0
                       ? "Entrar"
+                    : item.entry_grade === "watch"
+                      ? "Watch"
                     : isValue
                       ? "Value"
                       : isModelOnly
@@ -1146,6 +1155,8 @@ export function QuinielaPlusPageContent() {
                           ? "border-[#3ff28a]/25 text-[#3ff28a]"
                           : isSettled
                             ? "border-[#ff6b6b]/25 text-[#ff8a8a]"
+                            : item.entry_grade === "watch"
+                              ? "border-[#ffe45c]/25 text-[#ffe45c]"
                             : isValue
                               ? "border-[#3ff28a]/25 text-[#3ff28a]"
                               : isModelOnly
@@ -1192,8 +1203,12 @@ export function QuinielaPlusPageContent() {
                       <p className="mt-0.5 text-[10px] text-steel">{formatProbability(item.stake_bankroll_pct)}</p>
                     </div>
                     <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
-                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Resultado</p>
-                      <p className="mt-1 text-xs font-semibold text-ink">{item.result_label ?? "Pend."}</p>
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">
+                        {isSettled ? "Resultado" : "Rango"}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-ink">
+                        {isSettled ? item.result_label ?? "Pend." : item.odds_bucket ?? "—"}
+                      </p>
                     </div>
                     <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
                       <p className="text-[9px] uppercase tracking-[0.12em] text-steel">P/L</p>
@@ -1209,6 +1224,11 @@ export function QuinielaPlusPageContent() {
                     </div>
                   </div>
                   <p className="mt-3 text-xs text-steel">
+                    <span className="font-semibold text-ink">{entryGradeLabel(item.entry_grade)}</span>
+                    {item.market_segment || item.odds_bucket ? " · " : ""}
+                    {item.market_segment ? `${item.market_segment}` : ""}
+                    {item.market_segment && item.odds_bucket ? " · " : ""}
+                    {item.odds_bucket ? `${item.odds_bucket}. ` : " "}
                     {item.stake_reason ? `${item.stake_reason} ` : ""}
                     {item.reason}
                   </p>

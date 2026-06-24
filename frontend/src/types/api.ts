@@ -543,6 +543,9 @@ export interface QuinielaPlusValueRecommendation {
   stake_bankroll_pct: number;
   strategy_label: string;
   stake_reason: string | null;
+  odds_bucket: string | null;
+  market_segment: string | null;
+  entry_grade: string;
   outcome_status: "pending" | "settled" | "push";
   is_hit: boolean | null;
   result_label: string | null;

@@ -210,6 +210,9 @@ class QuinielaPlusValueRecommendationOut(BaseModel):
     stake_bankroll_pct: float = 0
     strategy_label: str = "no_bet"
     stake_reason: str | None = None
+    odds_bucket: str | None = None
+    market_segment: str | None = None
+    entry_grade: str = "avoid"
     outcome_status: str = "pending"
     is_hit: bool | None = None
     result_label: str | None = None

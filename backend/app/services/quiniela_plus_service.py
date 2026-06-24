@@ -67,6 +67,44 @@ KELLY_BANKROLL_UNITS = Decimal("20")
 KELLY_FRACTION = Decimal("0.25")
 KELLY_MAX_UNITS = Decimal("1.5")
 KELLY_ROUNDING_UNIT = Decimal("0.25")
+STRATEGY_RULES = {
+    "ml_favorite": {
+        "label": "ML favorito",
+        "min_edge": Decimal("0.055"),
+        "min_model_probability": Decimal("0.52"),
+        "max_units": Decimal("1.0"),
+    },
+    "ml_pickem": {
+        "label": "ML parejo",
+        "min_edge": Decimal("0.065"),
+        "min_model_probability": Decimal("0.44"),
+        "max_units": Decimal("1.0"),
+    },
+    "ml_dog": {
+        "label": "ML perro",
+        "min_edge": Decimal("0.08"),
+        "min_model_probability": Decimal("0.30"),
+        "max_units": Decimal("0.75"),
+    },
+    "ml_longshot": {
+        "label": "ML longshot",
+        "min_edge": Decimal("0.12"),
+        "min_model_probability": Decimal("0.22"),
+        "max_units": Decimal("0.25"),
+    },
+    "draw": {
+        "label": "Empate",
+        "min_edge": Decimal("0.09"),
+        "min_model_probability": Decimal("0.24"),
+        "max_units": Decimal("0.5"),
+    },
+    "total": {
+        "label": "Total",
+        "min_edge": Decimal("0.07"),
+        "min_model_probability": Decimal("0.54"),
+        "max_units": Decimal("1.0"),
+    },
+}
 
 
 class QuinielaPlusService:
@@ -382,6 +420,7 @@ class QuinielaPlusService:
             self._select_strategy_entries(recommendations)
             retro_cards = self._build_retro_history_cards(db, snapshot.id, 50)
             all_recommendations = [*recommendations, *retro_cards]
+            self._apply_historical_guards(all_recommendations)
             return QuinielaPlusValueLabOut(
                 generated_at=snapshot.generated_at or snapshot.created_at,
                 track_stats=[
@@ -391,6 +430,66 @@ class QuinielaPlusService:
                     ),
                     self._build_track_stats("Retro", retro_cards),
                     self._build_track_stats("Total", all_recommendations),
+                    self._build_track_stats(
+                        "ML",
+                        [
+                            item
+                            for item in all_recommendations
+                            if item.market_key == "h2h" and item.selection_key != "draw"
+                        ],
+                    ),
+                    self._build_track_stats(
+                        "Empate",
+                        [
+                            item
+                            for item in all_recommendations
+                            if item.market_key == "h2h" and item.selection_key == "draw"
+                        ],
+                    ),
+                    self._build_track_stats(
+                        "Over",
+                        [
+                            item
+                            for item in all_recommendations
+                            if item.market_key == "total" and item.selection_key == "over"
+                        ],
+                    ),
+                    self._build_track_stats(
+                        "Under",
+                        [
+                            item
+                            for item in all_recommendations
+                            if item.market_key == "total" and item.selection_key == "under"
+                        ],
+                    ),
+                    self._build_track_stats(
+                        "BTTS",
+                        [item for item in all_recommendations if item.market_key == "btts_model"],
+                    ),
+                    self._build_track_stats(
+                        "Favoritos",
+                        [
+                            item
+                            for item in all_recommendations
+                            if item.market_odds is not None and item.market_odds <= -120
+                        ],
+                    ),
+                    self._build_track_stats(
+                        "+100 a +300",
+                        [
+                            item
+                            for item in all_recommendations
+                            if item.market_odds is not None and 100 <= item.market_odds <= 300
+                        ],
+                    ),
+                    self._build_track_stats(
+                        "+301+",
+                        [
+                            item
+                            for item in all_recommendations
+                            if item.market_odds is not None and item.market_odds > 300
+                        ],
+                    ),
                 ],
                 recommendations=all_recommendations,
             )
@@ -458,7 +557,71 @@ class QuinielaPlusService:
                 item.stake_bankroll_pct = 0
                 item.strategy_label = "alternate"
                 item.stake_reason = "No entrar: hay mejor edge en este partido y mercado."
+                item.entry_grade = "avoid"
                 item.profit_units = None
+
+    def _apply_historical_guards(
+        self,
+        recommendations: list[QuinielaPlusValueRecommendationOut],
+    ) -> None:
+        grouped: dict[str, list[QuinielaPlusValueRecommendationOut]] = {}
+        for item in recommendations:
+            group_key = self._strategy_history_group(item)
+            if group_key is None:
+                continue
+            grouped.setdefault(group_key, []).append(item)
+
+        blocked_groups: dict[str, tuple[int, float]] = {}
+        for group_key, items in grouped.items():
+            settled = [
+                item
+                for item in items
+                if item.outcome_status in {"settled", "push"}
+                and item.profit_units is not None
+                and item.suggested_units > 0
+            ]
+            staked_units = sum(item.suggested_units for item in settled)
+            if len(settled) < 5 or staked_units <= 0:
+                continue
+            profit_units = sum(item.profit_units or 0 for item in settled)
+            roi = profit_units / staked_units
+            if roi < -0.05:
+                blocked_groups[group_key] = (len(settled), roi)
+
+        for item in recommendations:
+            if item.outcome_status != "pending" or item.suggested_units <= 0:
+                continue
+            group_key = self._strategy_history_group(item)
+            if group_key not in blocked_groups:
+                continue
+            tracked_bets, roi = blocked_groups[group_key]
+            item.suggested_units = 0
+            item.stake_bankroll_pct = 0
+            item.strategy_label = "watch"
+            item.entry_grade = "watch"
+            item.stake_reason = (
+                f"Watch por historico: {tracked_bets} bets del segmento con ROI {roi * 100:.1f}%. "
+                "No entrar hasta que mejore la muestra."
+            )
+
+    def _strategy_history_group(self, item: QuinielaPlusValueRecommendationOut) -> str | None:
+        if item.market_key == "h2h":
+            if item.selection_key == "draw":
+                return "h2h_draw"
+            if item.market_odds is None:
+                return "h2h_unknown"
+            if item.market_odds <= -120:
+                return "h2h_favorite"
+            if item.market_odds < 100:
+                return "h2h_pickem"
+            if item.market_odds <= 300:
+                return "h2h_dog"
+            return "h2h_longshot"
+        if item.market_key == "total":
+            return f"total_{item.selection_key}"
+        if item.market_key == "btts_model":
+            return "btts_model"
+        return None
 
     def _build_retro_history_cards(
         self,
@@ -544,6 +707,9 @@ class QuinielaPlusService:
                     stake_bankroll_pct=self._stake_bankroll_pct(suggested_units),
                     strategy_label="retro_track" if suggested_units > 0 else "no_bet",
                     stake_reason="Retro track con stake variable por probabilidad no-vig del mercado.",
+                    odds_bucket=self._odds_bucket(odds_by_selection[selection_key]),
+                    market_segment="Retro ML mercado",
+                    entry_grade="track" if suggested_units > 0 else "avoid",
                     outcome_status="settled",
                     is_hit=is_hit,
                     result_label=f"{int(row['home_score'])}-{int(row['away_score'])}",
@@ -666,6 +832,9 @@ class QuinielaPlusService:
                 "stake_bankroll_pct": 0.0,
                 "strategy_label": "model_only",
                 "stake_reason": "Sin odds reales; sólo seguimiento de modelo.",
+                "odds_bucket": None,
+                "market_segment": "Modelo sin mercado",
+                "entry_grade": "watch",
             }
         if (
             recommendation.model_probability is None
@@ -676,6 +845,9 @@ class QuinielaPlusService:
                 "stake_bankroll_pct": 0.0,
                 "strategy_label": "no_bet",
                 "stake_reason": "Sin edge calculable.",
+                "odds_bucket": self._odds_bucket(recommendation.market_odds),
+                "market_segment": self._market_segment(recommendation),
+                "entry_grade": "avoid",
             }
 
         decimal_odds = self._decimal_odds_from_american(recommendation.market_odds)
@@ -685,9 +857,25 @@ class QuinielaPlusService:
                 "stake_bankroll_pct": 0.0,
                 "strategy_label": "no_bet",
                 "stake_reason": "Odds no compatibles con Kelly.",
+                "odds_bucket": self._odds_bucket(recommendation.market_odds),
+                "market_segment": self._market_segment(recommendation),
+                "entry_grade": "avoid",
             }
 
         model_probability = Decimal(str(recommendation.model_probability))
+        edge = Decimal(str(recommendation.edge_probability))
+        gate = self._strategy_gate(recommendation, model_probability, edge)
+        if gate["entry_grade"] != "bet":
+            return {
+                "suggested_units": 0.0,
+                "stake_bankroll_pct": 0.0,
+                "strategy_label": "watch" if gate["entry_grade"] == "watch" else "no_bet",
+                "stake_reason": str(gate["stake_reason"]),
+                "odds_bucket": gate["odds_bucket"],
+                "market_segment": gate["market_segment"],
+                "entry_grade": gate["entry_grade"],
+            }
+
         payout_ratio = decimal_odds - Decimal("1")
         loss_probability = Decimal("1") - model_probability
         full_kelly = ((payout_ratio * model_probability) - loss_probability) / payout_ratio
@@ -697,10 +885,13 @@ class QuinielaPlusService:
                 "stake_bankroll_pct": 0.0,
                 "strategy_label": "no_bet",
                 "stake_reason": "Kelly negativo; no entrar.",
+                "odds_bucket": gate["odds_bucket"],
+                "market_segment": gate["market_segment"],
+                "entry_grade": "avoid",
             }
 
         raw_units = full_kelly * KELLY_FRACTION * KELLY_BANKROLL_UNITS
-        capped_units = min(raw_units, KELLY_MAX_UNITS)
+        capped_units = min(raw_units, KELLY_MAX_UNITS, gate["max_units"])
         suggested_units = self._floor_to_unit(capped_units, KELLY_ROUNDING_UNIT)
         if suggested_units <= 0:
             return {
@@ -708,6 +899,9 @@ class QuinielaPlusService:
                 "stake_bankroll_pct": 0.0,
                 "strategy_label": "no_bet",
                 "stake_reason": "Kelly positivo pero menor a 0.25u; no entrar.",
+                "odds_bucket": gate["odds_bucket"],
+                "market_segment": gate["market_segment"],
+                "entry_grade": "watch",
             }
 
         if suggested_units <= Decimal("0.25"):
@@ -723,8 +917,120 @@ class QuinielaPlusService:
             "suggested_units": float(suggested_units),
             "stake_bankroll_pct": self._stake_bankroll_pct(float(suggested_units)),
             "strategy_label": label,
-            "stake_reason": f"Kelly fraccional 25%; stake calculado {format(suggested_units, 'f')}u.",
+            "stake_reason": f"{gate['stake_reason']} Kelly 25%; stake {format(suggested_units, 'f')}u.",
+            "odds_bucket": gate["odds_bucket"],
+            "market_segment": gate["market_segment"],
+            "entry_grade": "bet",
         }
+
+    def _strategy_gate(
+        self,
+        recommendation: QuinielaPlusValueRecommendation,
+        model_probability: Decimal,
+        edge: Decimal,
+    ) -> dict[str, object]:
+        odds_bucket = self._odds_bucket(recommendation.market_odds)
+        market_segment = self._market_segment(recommendation)
+        if recommendation.market_key == "btts_model":
+            return {
+                "entry_grade": "watch",
+                "stake_reason": "BTTS no entra hasta tener odds reales; sólo tracking.",
+                "odds_bucket": odds_bucket,
+                "market_segment": market_segment,
+                "max_units": Decimal("0"),
+            }
+        if recommendation.market_odds is not None and recommendation.market_odds <= Decimal("-300"):
+            return {
+                "entry_grade": "watch",
+                "stake_reason": "Favorito demasiado caro; se observa aunque Kelly de positivo.",
+                "odds_bucket": odds_bucket,
+                "market_segment": market_segment,
+                "max_units": Decimal("0"),
+            }
+
+        rule_key = self._strategy_rule_key(recommendation)
+        rule = STRATEGY_RULES.get(rule_key)
+        if rule is None:
+            return {
+                "entry_grade": "watch",
+                "stake_reason": "Mercado sin regla suficiente; tracking sin stake.",
+                "odds_bucket": odds_bucket,
+                "market_segment": market_segment,
+                "max_units": Decimal("0"),
+            }
+
+        min_edge = rule["min_edge"]
+        min_model_probability = rule["min_model_probability"]
+        missing = []
+        if edge < min_edge:
+            missing.append(f"edge {float(edge * 100):.1f}% < {float(min_edge * 100):.1f}%")
+        if model_probability < min_model_probability:
+            missing.append(
+                f"modelo {float(model_probability * 100):.1f}% < {float(min_model_probability * 100):.1f}%"
+            )
+        if missing:
+            return {
+                "entry_grade": "watch",
+                "stake_reason": f"Watch {rule['label']}: " + ", ".join(missing) + ".",
+                "odds_bucket": odds_bucket,
+                "market_segment": market_segment,
+                "max_units": Decimal("0"),
+            }
+
+        return {
+            "entry_grade": "bet",
+            "stake_reason": f"Pasa filtro {rule['label']} ({odds_bucket}): edge y probabilidad sobre umbral.",
+            "odds_bucket": odds_bucket,
+            "market_segment": market_segment,
+            "max_units": rule["max_units"],
+        }
+
+    def _strategy_rule_key(self, recommendation: QuinielaPlusValueRecommendation) -> str | None:
+        if recommendation.market_key == "total":
+            return "total"
+        if recommendation.market_key != "h2h":
+            return None
+        if recommendation.selection_key == "draw":
+            return "draw"
+        odds = recommendation.market_odds
+        if odds is None:
+            return None
+        if odds <= Decimal("-120"):
+            return "ml_favorite"
+        if odds < Decimal("100"):
+            return "ml_pickem"
+        if odds <= Decimal("300"):
+            return "ml_dog"
+        return "ml_longshot"
+
+    def _market_segment(self, recommendation: QuinielaPlusValueRecommendation) -> str:
+        if recommendation.market_key == "h2h":
+            if recommendation.selection_key == "draw":
+                return "Empate"
+            return "ML"
+        if recommendation.market_key == "total":
+            return "Over/Under"
+        if recommendation.market_key == "btts_model":
+            return "BTTS modelo"
+        return recommendation.market_key
+
+    @staticmethod
+    def _odds_bucket(value: Decimal | None) -> str | None:
+        if value is None:
+            return None
+        if value <= Decimal("-300"):
+            return "-300 o mas caro"
+        if value <= Decimal("-200"):
+            return "-299 a -200"
+        if value <= Decimal("-120"):
+            return "-199 a -120"
+        if value < Decimal("100"):
+            return "-119 a +99"
+        if value <= Decimal("200"):
+            return "+100 a +200"
+        if value <= Decimal("300"):
+            return "+201 a +300"
+        return "+301 o mas"
 
     @staticmethod
     def _stake_bankroll_pct(stake_units: float) -> float:
