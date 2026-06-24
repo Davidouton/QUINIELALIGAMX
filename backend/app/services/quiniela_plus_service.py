@@ -366,7 +366,7 @@ class QuinielaPlusService:
                     **self._build_value_outcome(recommendation, result),
                     confidence_label=recommendation.confidence_label,
                     recommendation=recommendation.recommendation,
-                    reason=recommendation.reason,
+                    reason=self._display_value_reason(recommendation.reason),
                     created_at=recommendation.created_at,
                 )
                 for recommendation, stats_match, result in rows
@@ -378,6 +378,12 @@ class QuinielaPlusService:
         except SQLAlchemyError:
             db.rollback()
             return QuinielaPlusValueLabOut()
+
+    @staticmethod
+    def _display_value_reason(reason: str | None) -> str | None:
+        if reason is None:
+            return None
+        return reason.replace("Football-MD", "AI Quinielón").replace("AI Quinielon", "AI Quinielón")
 
     def _build_value_outcome(
         self,

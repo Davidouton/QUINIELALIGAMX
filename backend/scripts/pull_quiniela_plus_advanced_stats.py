@@ -583,7 +583,7 @@ def save_payload_to_db(payload: dict[str, Any]) -> tuple[str, int, int]:
                             model_probability=pct_to_prob(row.get(model_key)),
                             market_probability=market_probs[selection],
                             market_odds=odds.get(odds_key),
-                            reason="Football-MD probability versus no-vig 1X2 market.",
+                            reason="AI Quinielon probability versus no-vig 1X2 market.",
                         )
                         recommendations_saved += 1
 
@@ -612,7 +612,7 @@ def save_payload_to_db(payload: dict[str, Any]) -> tuple[str, int, int]:
                                 model_probability=model_probability,
                                 market_probability=market_prob,
                                 market_odds=odds.get(odds_key),
-                                reason="Football-MD total probability versus no-vig totals market.",
+                                reason="AI Quinielon total probability versus no-vig totals market.",
                             )
                             recommendations_saved += 1
 

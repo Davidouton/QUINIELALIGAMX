@@ -648,7 +648,7 @@ export function QuinielaPlusPageContent() {
           {activeTab === "probabilities"
             ? "Probabilidad implicita justa por partido, normalizada para quitar el margen de la casa."
             : activeTab === "value-lab"
-              ? "Recomendaciones paper: compara Football-MD contra mercado real para detectar edge antes de arriesgar dinero."
+              ? "Recomendaciones paper: compara AI Quinielón contra mercado real para detectar edge antes de arriesgar dinero."
               : activeTab === "advanced-stats"
                 ? "Modelo avanzado por partido: xG, marcador probable, goles esperados, over/under y mapa de marcadores."
                 : "Picks agregados en vivo: porcentaje Local, Empate, Visitante y marcadores mas repetidos."}
@@ -1107,7 +1107,7 @@ export function QuinielaPlusPageContent() {
             {activeTab === "probabilities"
               ? "No hay odds mundialistas sincronizados para este filtro. Baja odds con `THE_ODDS_API_SPORT=soccer_fifa_world_cup` y luego sincroniza el snapshot contra los partidos del Mundial."
               : activeTab === "value-lab"
-                ? "No hay recomendaciones todavia. Actualiza Football-MD y odds para generar el Value Lab."
+                ? "No hay recomendaciones todavia. Actualiza AI Quinielón y odds para generar el Value Lab."
                 : activeTab === "advanced-stats"
                   ? "No hay estadisticas avanzadas cargadas para Quiniela +."
                   : "No hay distribucion de usuarios para este filtro. Los datos aparecen cuando haya picks guardados."}
