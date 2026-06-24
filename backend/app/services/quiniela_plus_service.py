@@ -333,8 +333,11 @@ class QuinielaPlusService:
                 .limit(max(1, min(limit, 100)))
             ).all()
 
-            recommendations = [
-                QuinielaPlusValueRecommendationOut(
+            recommendations: list[QuinielaPlusValueRecommendationOut] = []
+            for recommendation, stats_match, result in rows:
+                strategy = self._build_stake_strategy(recommendation)
+                recommendations.append(
+                    QuinielaPlusValueRecommendationOut(
                     id=recommendation.id,
                     fixture_id=recommendation.fixture_id,
                     kickoff_at=stats_match.kickoff_at,
@@ -364,14 +367,15 @@ class QuinielaPlusService:
                         if recommendation.edge_probability is not None
                         else None
                     ),
-                    **self._build_value_outcome(recommendation, result),
+                    **strategy,
+                    **self._build_value_outcome(recommendation, result, strategy["suggested_units"]),
                     confidence_label=recommendation.confidence_label,
                     recommendation=recommendation.recommendation,
                     reason=self._display_value_reason(recommendation.reason),
                     created_at=recommendation.created_at,
+                    )
                 )
-                for recommendation, stats_match, result in rows
-            ]
+            self._select_strategy_entries(recommendations)
             retro_cards = self._build_retro_history_cards(db, snapshot.id, 50)
             all_recommendations = [*recommendations, *retro_cards]
             return QuinielaPlusValueLabOut(
@@ -407,9 +411,9 @@ class QuinielaPlusService:
         tracked = [
             item
             for item in settled
-            if item.profit_units is not None
+            if item.profit_units is not None and item.suggested_units > 0
         ]
-        staked_units = float(len(tracked))
+        staked_units = float(sum(item.suggested_units for item in tracked))
         profit_units = float(sum(item.profit_units or 0 for item in tracked))
         decisions = wins + losses
         return QuinielaPlusValueTrackStatsOut(
@@ -425,6 +429,30 @@ class QuinielaPlusService:
             hit_rate=(wins / decisions) if decisions > 0 else None,
             roi=(profit_units / staked_units) if staked_units > 0 else None,
         )
+
+    def _select_strategy_entries(
+        self,
+        recommendations: list[QuinielaPlusValueRecommendationOut],
+    ) -> None:
+        grouped: dict[tuple[str, str], list[QuinielaPlusValueRecommendationOut]] = {}
+        for item in recommendations:
+            if item.recommendation == "retro_market" or item.market_key == "btts_model":
+                continue
+            if item.suggested_units <= 0 or item.edge_probability is None:
+                continue
+            grouped.setdefault((item.fixture_id, item.market_key), []).append(item)
+
+        for candidates in grouped.values():
+            if len(candidates) <= 1:
+                continue
+            selected = max(candidates, key=lambda item: item.edge_probability or 0)
+            for item in candidates:
+                if item.id == selected.id:
+                    continue
+                item.suggested_units = 0
+                item.strategy_label = "alternate"
+                item.stake_reason = "No entrar: hay mejor edge en este partido y mercado."
+                item.profit_units = None
 
     def _build_retro_history_cards(
         self,
@@ -490,6 +518,7 @@ class QuinielaPlusService:
                 "away": row["away_value"],
             }
             is_hit = self._h2h_hit(selection_key, int(row["home_score"]), int(row["away_score"]))
+            suggested_units = self._retro_stake_units(market_probs[selection_key])
             cards.append(
                 QuinielaPlusValueRecommendationOut(
                     id=f"retro-{row['odds_id']}",
@@ -505,10 +534,13 @@ class QuinielaPlusService:
                     market_odds=float(odds_by_selection[selection_key]),
                     fair_odds_decimal=None,
                     edge_probability=None,
+                    suggested_units=suggested_units,
+                    strategy_label="retro_track" if suggested_units > 0 else "no_bet",
+                    stake_reason="Retro track con stake variable por probabilidad no-vig del mercado.",
                     outcome_status="settled",
                     is_hit=is_hit,
                     result_label=f"{int(row['home_score'])}-{int(row['away_score'])}",
-                    profit_units=self._profit_units(odds_by_selection[selection_key], is_hit),
+                    profit_units=self._profit_units(odds_by_selection[selection_key], is_hit, suggested_units),
                     confidence_label="retro",
                     recommendation="retro_market",
                     reason="Tarjeta retro AI Quinielón construida con odds guardadas antes del partido.",
@@ -527,6 +559,7 @@ class QuinielaPlusService:
         self,
         recommendation: QuinielaPlusValueRecommendation,
         result: MatchResult | None,
+        suggested_units: float,
     ) -> dict[str, object]:
         if result is None or not result.is_official:
             return {
@@ -566,7 +599,7 @@ class QuinielaPlusService:
             profit_units = 0.0
         else:
             status = "settled"
-            profit_units = self._profit_units(recommendation.market_odds, is_hit)
+            profit_units = self._profit_units(recommendation.market_odds, is_hit, suggested_units)
 
         return {
             "outcome_status": status,
@@ -616,18 +649,86 @@ class QuinielaPlusService:
             return Decimal("1") / value
         return None
 
+    def _build_stake_strategy(
+        self,
+        recommendation: QuinielaPlusValueRecommendation,
+    ) -> dict[str, object]:
+        if recommendation.market_odds is None:
+            return {
+                "suggested_units": 0.0,
+                "strategy_label": "model_only",
+                "stake_reason": "Sin odds reales; sólo seguimiento de modelo.",
+            }
+        if (
+            recommendation.model_probability is None
+            or recommendation.market_probability is None
+            or recommendation.edge_probability is None
+        ):
+            return {
+                "suggested_units": 0.0,
+                "strategy_label": "no_bet",
+                "stake_reason": "Sin edge calculable.",
+            }
+
+        edge = float(recommendation.edge_probability)
+        if edge < 0.025:
+            return {
+                "suggested_units": 0.0,
+                "strategy_label": "no_bet",
+                "stake_reason": "Edge menor a 2.5%; no entrar.",
+            }
+        if edge < 0.04:
+            return {
+                "suggested_units": 0.25,
+                "strategy_label": "watch",
+                "stake_reason": "Edge pequeño; entrada mínima.",
+            }
+        if edge < 0.08:
+            return {
+                "suggested_units": 0.5,
+                "strategy_label": "standard",
+                "stake_reason": "Edge medio; entrada controlada.",
+            }
+        if edge < 0.12:
+            return {
+                "suggested_units": 1.0,
+                "strategy_label": "strong",
+                "stake_reason": "Edge fuerte; stake completo.",
+            }
+        return {
+            "suggested_units": 1.5,
+            "strategy_label": "max",
+            "stake_reason": "Edge muy alto; stake máximo permitido.",
+        }
+
     @staticmethod
-    def _profit_units(market_odds: Decimal | None, is_hit: bool | None) -> float | None:
+    def _retro_stake_units(market_probability: float) -> float:
+        if market_probability >= 0.75:
+            return 1.0
+        if market_probability >= 0.65:
+            return 0.5
+        if market_probability >= 0.55:
+            return 0.25
+        return 0.0
+
+    @staticmethod
+    def _profit_units(
+        market_odds: Decimal | None,
+        is_hit: bool | None,
+        stake_units: float,
+    ) -> float | None:
+        if stake_units <= 0:
+            return None
         if is_hit is None:
             return None
         if not is_hit:
-            return -1.0
+            return -stake_units
         if market_odds is None:
             return None
         if market_odds > 0:
-            return float(market_odds / Decimal("100"))
+            return float(market_odds / Decimal("100")) * stake_units
         if market_odds < 0:
-            return float(Decimal("100") / abs(market_odds))
+            return float(Decimal("100") / abs(market_odds)) * stake_units
         return None
 
     def get_admin_console(self, db: Session) -> QuinielaPlusAdminConsoleResponse:

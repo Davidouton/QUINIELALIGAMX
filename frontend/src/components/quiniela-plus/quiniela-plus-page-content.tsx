@@ -57,6 +57,11 @@ function formatProfitUnits(value: number | null | undefined) {
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}u`;
 }
 
+function formatStakeUnits(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) return "0u";
+  return `${value.toFixed(2)}u`;
+}
+
 function valueMarketLabel(marketKey: string, selectionKey: string, lineValue: number | null) {
   if (marketKey === "h2h") {
     if (selectionKey === "home") return "Local";
@@ -978,7 +983,7 @@ export function QuinielaPlusPageContent() {
                     </div>
                     <div>
                       <p className="text-[9px] uppercase tracking-[0.12em] text-steel">U</p>
-                      <p className="mt-1 font-semibold text-ink">{stats.staked_units.toFixed(0)}</p>
+                      <p className="mt-1 font-semibold text-ink">{formatStakeUnits(stats.staked_units)}</p>
                     </div>
                     <div>
                       <p className="text-[9px] uppercase tracking-[0.12em] text-steel">ROI</p>
@@ -1077,7 +1082,7 @@ export function QuinielaPlusPageContent() {
                     </span>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
                     <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
                       <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Mercado</p>
                       <p className="mt-1 text-xs font-semibold text-ink">
@@ -1107,6 +1112,10 @@ export function QuinielaPlusPageContent() {
                       </p>
                     </div>
                     <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Stake</p>
+                      <p className="mt-1 text-xs font-semibold text-ink">{formatStakeUnits(item.suggested_units)}</p>
+                    </div>
+                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
                       <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Resultado</p>
                       <p className="mt-1 text-xs font-semibold text-ink">{item.result_label ?? "Pend."}</p>
                     </div>
@@ -1123,7 +1132,10 @@ export function QuinielaPlusPageContent() {
                       </p>
                     </div>
                   </div>
-                  <p className="mt-3 text-xs text-steel">{item.reason}</p>
+                  <p className="mt-3 text-xs text-steel">
+                    {item.stake_reason ? `${item.stake_reason} ` : ""}
+                    {item.reason}
+                  </p>
                 </article>
               );
             })}
