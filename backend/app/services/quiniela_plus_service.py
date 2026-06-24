@@ -5,7 +5,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -371,13 +371,105 @@ class QuinielaPlusService:
                 )
                 for recommendation, stats_match, result in rows
             ]
+            retro_cards = self._build_retro_history_cards(db, snapshot.id, 50)
             return QuinielaPlusValueLabOut(
                 generated_at=snapshot.generated_at or snapshot.created_at,
-                recommendations=recommendations,
+                recommendations=[*recommendations, *retro_cards],
             )
         except SQLAlchemyError:
             db.rollback()
             return QuinielaPlusValueLabOut()
+
+    def _build_retro_history_cards(
+        self,
+        db: Session,
+        latest_snapshot_id: str,
+        limit: int,
+    ) -> list[QuinielaPlusValueRecommendationOut]:
+        if limit <= 0:
+            return []
+
+        rows = db.execute(
+            text(
+                """
+                select distinct on (m.id)
+                  o.id as odds_id,
+                  m.id as match_id,
+                  m.kickoff_at,
+                  ht.name as home_name,
+                  at.name as away_name,
+                  mr.home_score,
+                  mr.away_score,
+                  o.home_value,
+                  o.draw_value,
+                  o.away_value,
+                  o.synced_at
+                from public.odds o
+                join public.matches m on m.id = o.match_id
+                join public.matchdays md on md.id = m.matchday_id
+                join public.seasons s on s.id = md.season_id
+                join public.teams ht on ht.id = m.home_team_id
+                join public.teams at on at.id = m.away_team_id
+                join public.match_results mr on mr.match_id = m.id and mr.is_official
+                where s.tournament_format = 'world_cup'
+                  and o.home_value is not null
+                  and o.draw_value is not null
+                  and o.away_value is not null
+                  and not exists (
+                    select 1
+                    from public.quiniela_plus_value_recommendations qpr
+                    where qpr.snapshot_id = :latest_snapshot_id
+                      and qpr.match_id = m.id
+                  )
+                order by m.id, o.synced_at desc
+                limit :limit
+                """
+            ),
+            {"latest_snapshot_id": latest_snapshot_id, "limit": limit},
+        ).mappings()
+
+        cards: list[QuinielaPlusValueRecommendationOut] = []
+        for row in rows:
+            market_probs = self._no_vig_h2h_probabilities(
+                row["home_value"],
+                row["draw_value"],
+                row["away_value"],
+            )
+            if market_probs is None:
+                continue
+            selection_key = max(market_probs, key=market_probs.get)
+            odds_by_selection = {
+                "home": row["home_value"],
+                "draw": row["draw_value"],
+                "away": row["away_value"],
+            }
+            is_hit = self._h2h_hit(selection_key, int(row["home_score"]), int(row["away_score"]))
+            cards.append(
+                QuinielaPlusValueRecommendationOut(
+                    id=f"retro-{row['odds_id']}",
+                    fixture_id=str(row["match_id"]),
+                    kickoff_at=row["kickoff_at"],
+                    home=str(row["home_name"]),
+                    away=str(row["away_name"]),
+                    market_key="h2h",
+                    selection_key=selection_key,
+                    line_value=None,
+                    model_probability=market_probs[selection_key],
+                    market_probability=market_probs[selection_key],
+                    market_odds=float(odds_by_selection[selection_key]),
+                    fair_odds_decimal=None,
+                    edge_probability=None,
+                    outcome_status="settled",
+                    is_hit=is_hit,
+                    result_label=f"{int(row['home_score'])}-{int(row['away_score'])}",
+                    profit_units=self._profit_units(odds_by_selection[selection_key], is_hit),
+                    confidence_label="retro",
+                    recommendation="retro_market",
+                    reason="Tarjeta retro AI Quinielón construida con odds guardadas antes del partido.",
+                    created_at=row["synced_at"],
+                )
+            )
+        return cards
 
     @staticmethod
     def _display_value_reason(reason: str | None) -> str | None:
@@ -436,6 +528,47 @@ class QuinielaPlusService:
             "result_label": f"{home_score}-{away_score}",
             "profit_units": profit_units,
         }
+
+    @staticmethod
+    def _h2h_hit(selection_key: str, home_score: int, away_score: int) -> bool:
+        if home_score > away_score:
+            return selection_key == "home"
+        if away_score > home_score:
+            return selection_key == "away"
+        return selection_key == "draw"
+
+    def _no_vig_h2h_probabilities(
+        self,
+        home_value: Decimal | None,
+        draw_value: Decimal | None,
+        away_value: Decimal | None,
+    ) -> dict[str, float] | None:
+        raw_home = self._american_to_probability(home_value)
+        raw_draw = self._american_to_probability(draw_value)
+        raw_away = self._american_to_probability(away_value)
+        if raw_home is None or raw_draw is None or raw_away is None:
+            return None
+        total = raw_home + raw_draw + raw_away
+        if total <= 0:
+            return None
+        return {
+            "home": float(raw_home / total),
+            "draw": float(raw_draw / total),
+            "away": float(raw_away / total),
+        }
+
+    @staticmethod
+    def _american_to_probability(value: Decimal | None) -> Decimal | None:
+        if value is None:
+            return None
+        if value >= Decimal("100"):
+            return Decimal("100") / (value + Decimal("100"))
+        if value <= Decimal("-100"):
+            absolute = abs(value)
+            return absolute / (absolute + Decimal("100"))
+        if value > Decimal("1"):
+            return Decimal("1") / value
+        return None
 
     @staticmethod
     def _profit_units(market_odds: Decimal | None, is_hit: bool | None) -> float | None:
