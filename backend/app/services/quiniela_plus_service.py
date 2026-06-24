@@ -63,6 +63,10 @@ from app.schemas.quiniela_plus import (
 ADVANCED_STATS_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "quiniela_plus_advanced_stats.json"
 )
+KELLY_BANKROLL_UNITS = Decimal("20")
+KELLY_FRACTION = Decimal("0.25")
+KELLY_MAX_UNITS = Decimal("1.5")
+KELLY_ROUNDING_UNIT = Decimal("0.25")
 
 
 class QuinielaPlusService:
@@ -661,7 +665,6 @@ class QuinielaPlusService:
             }
         if (
             recommendation.model_probability is None
-            or recommendation.market_probability is None
             or recommendation.edge_probability is None
         ):
             return {
@@ -670,36 +673,65 @@ class QuinielaPlusService:
                 "stake_reason": "Sin edge calculable.",
             }
 
-        edge = float(recommendation.edge_probability)
-        if edge < 0.025:
+        decimal_odds = self._decimal_odds_from_american(recommendation.market_odds)
+        if decimal_odds is None or decimal_odds <= 1:
             return {
                 "suggested_units": 0.0,
                 "strategy_label": "no_bet",
-                "stake_reason": "Edge menor a 2.5%; no entrar.",
+                "stake_reason": "Odds no compatibles con Kelly.",
             }
-        if edge < 0.04:
+
+        model_probability = Decimal(str(recommendation.model_probability))
+        payout_ratio = decimal_odds - Decimal("1")
+        loss_probability = Decimal("1") - model_probability
+        full_kelly = ((payout_ratio * model_probability) - loss_probability) / payout_ratio
+        if full_kelly <= 0:
             return {
-                "suggested_units": 0.25,
-                "strategy_label": "watch",
-                "stake_reason": "Edge pequeño; entrada mínima.",
+                "suggested_units": 0.0,
+                "strategy_label": "no_bet",
+                "stake_reason": "Kelly negativo; no entrar.",
             }
-        if edge < 0.08:
+
+        raw_units = full_kelly * KELLY_FRACTION * KELLY_BANKROLL_UNITS
+        capped_units = min(raw_units, KELLY_MAX_UNITS)
+        suggested_units = self._floor_to_unit(capped_units, KELLY_ROUNDING_UNIT)
+        if suggested_units <= 0:
             return {
-                "suggested_units": 0.5,
-                "strategy_label": "standard",
-                "stake_reason": "Edge medio; entrada controlada.",
+                "suggested_units": 0.0,
+                "strategy_label": "no_bet",
+                "stake_reason": "Kelly positivo pero menor a 0.25u; no entrar.",
             }
-        if edge < 0.12:
-            return {
-                "suggested_units": 1.0,
-                "strategy_label": "strong",
-                "stake_reason": "Edge fuerte; stake completo.",
-            }
+
+        if suggested_units <= Decimal("0.25"):
+            label = "kelly_watch"
+        elif suggested_units <= Decimal("0.75"):
+            label = "kelly_standard"
+        elif suggested_units < KELLY_MAX_UNITS:
+            label = "kelly_strong"
+        else:
+            label = "kelly_max"
+
         return {
-            "suggested_units": 1.5,
-            "strategy_label": "max",
-            "stake_reason": "Edge muy alto; stake máximo permitido.",
+            "suggested_units": float(suggested_units),
+            "strategy_label": label,
+            "stake_reason": f"Kelly fraccional 25%; stake calculado {format(suggested_units, 'f')}u.",
         }
+
+    @staticmethod
+    def _decimal_odds_from_american(value: Decimal | None) -> Decimal | None:
+        if value is None:
+            return None
+        if value >= Decimal("100"):
+            return Decimal("1") + (value / Decimal("100"))
+        if value <= Decimal("-100"):
+            return Decimal("1") + (Decimal("100") / abs(value))
+        if value > Decimal("1"):
+            return value
+        return None
+
+    @staticmethod
+    def _floor_to_unit(value: Decimal, unit: Decimal) -> Decimal:
+        return Decimal(int(value / unit)) * unit
 
     @staticmethod
     def _retro_stake_units(market_probability: float) -> float:
