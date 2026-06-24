@@ -17,7 +17,7 @@ import type {
 
 type OddsScope = "today" | "matchday" | "locked";
 type QuinielaPlusTab = "probabilities" | "value-lab" | "advanced-stats" | "user-distribution";
-type ValueLabMode = "open" | "history" | "all";
+type ValueLabMode = "entries" | "open" | "history" | "all";
 type MatchdaySourceMatch = Pick<QuinielaPlusOddsSneakPeekMatch, "matchday_id" | "matchday_name" | "matchday_number" | "kickoff_at">;
 const TODAY_DISTRIBUTION_POLL_MS = 10_000;
 const MATCHDAY_DISTRIBUTION_POLL_MS = 45_000;
@@ -455,7 +455,7 @@ export function QuinielaPlusPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<QuinielaPlusTab>("probabilities");
   const [oddsScope, setOddsScope] = useState<OddsScope>("today");
-  const [valueLabMode, setValueLabMode] = useState<ValueLabMode>("open");
+  const [valueLabMode, setValueLabMode] = useState<ValueLabMode>("entries");
   const [selectedMatchdayId, setSelectedMatchdayId] = useState("");
 
   const refreshUserDistribution = useCallback(
@@ -612,6 +612,10 @@ export function QuinielaPlusPageContent() {
     const hits = settled.filter((item) => item.is_hit).length;
     const trackedProfit = settled.reduce((total, item) => total + (item.profit_units ?? 0), 0);
     return {
+      entries: valueRecommendations.filter((item) => item.outcome_status === "pending" && item.suggested_units > 0).length,
+      entryUnits: valueRecommendations
+        .filter((item) => item.outcome_status === "pending" && item.suggested_units > 0)
+        .reduce((total, item) => total + item.suggested_units, 0),
       open: valueRecommendations.filter((item) => item.outcome_status === "pending").length,
       settled: settled.length,
       hits,
@@ -620,6 +624,9 @@ export function QuinielaPlusPageContent() {
     };
   }, [valueRecommendations]);
   const visibleValueRecommendations = useMemo(() => {
+    if (valueLabMode === "entries") {
+      return valueRecommendations.filter((item) => item.outcome_status === "pending" && item.suggested_units > 0);
+    }
     if (valueLabMode === "open") {
       return valueRecommendations.filter((item) => item.outcome_status === "pending");
     }
@@ -1000,6 +1007,7 @@ export function QuinielaPlusPageContent() {
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
                 {([
+                  ["entries", `Entradas ${valueLabSummary.entries}`],
                   ["open", `Abiertas ${valueLabSummary.open}`],
                   ["history", `Historial ${valueLabSummary.settled}`],
                   ["all", `Todas ${valueRecommendations.length}`],
@@ -1017,6 +1025,8 @@ export function QuinielaPlusPageContent() {
               <p className="text-xs text-steel">
                 {valueLabMode === "history"
                   ? `${valueLabSummary.hits}/${valueLabSummary.settled} pegadas · ${valueLabSummary.hitRate === null ? "sin hit rate" : formatProbability(valueLabSummary.hitRate)} · ${formatProfitUnits(valueLabSummary.trackedProfit)}`
+                  : valueLabMode === "entries"
+                    ? `${visibleValueRecommendations.length} entradas · ${formatStakeUnits(valueLabSummary.entryUnits)} sugeridas`
                   : `${visibleValueRecommendations.length} recomendaciones paper`}
               </p>
             </div>
@@ -1032,10 +1042,12 @@ export function QuinielaPlusPageContent() {
               const statusLabel =
                 item.outcome_status === "push"
                   ? "Push"
-                  : isSettled
-                    ? item.is_hit
-                      ? "Pegó"
-                      : "Falló"
+                    : isSettled
+                      ? item.is_hit
+                        ? "Pegó"
+                        : "Falló"
+                    : item.suggested_units > 0
+                      ? "Entrar"
                     : isValue
                       ? "Value"
                       : isModelOnly
@@ -1114,6 +1126,7 @@ export function QuinielaPlusPageContent() {
                     <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
                       <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Stake</p>
                       <p className="mt-1 text-xs font-semibold text-ink">{formatStakeUnits(item.suggested_units)}</p>
+                      <p className="mt-0.5 text-[10px] text-steel">{formatProbability(item.stake_bankroll_pct)}</p>
                     </div>
                     <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
                       <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Resultado</p>

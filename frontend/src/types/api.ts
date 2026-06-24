@@ -540,6 +540,7 @@ export interface QuinielaPlusValueRecommendation {
   fair_odds_decimal: number | null;
   edge_probability: number | null;
   suggested_units: number;
+  stake_bankroll_pct: number;
   strategy_label: string;
   stake_reason: string | null;
   outcome_status: "pending" | "settled" | "push";

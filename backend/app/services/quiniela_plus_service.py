@@ -403,22 +403,23 @@ class QuinielaPlusService:
         label: str,
         recommendations: list[QuinielaPlusValueRecommendationOut],
     ) -> QuinielaPlusValueTrackStatsOut:
-        open_count = sum(1 for item in recommendations if item.outcome_status == "pending")
+        open_count = sum(
+            1
+            for item in recommendations
+            if item.outcome_status == "pending" and item.suggested_units > 0
+        )
         settled = [
             item
             for item in recommendations
             if item.outcome_status in {"settled", "push"}
+            and item.profit_units is not None
+            and item.suggested_units > 0
         ]
         wins = sum(1 for item in settled if item.is_hit is True)
         losses = sum(1 for item in settled if item.is_hit is False and item.outcome_status != "push")
         pushes = sum(1 for item in settled if item.outcome_status == "push")
-        tracked = [
-            item
-            for item in settled
-            if item.profit_units is not None and item.suggested_units > 0
-        ]
-        staked_units = float(sum(item.suggested_units for item in tracked))
-        profit_units = float(sum(item.profit_units or 0 for item in tracked))
+        staked_units = float(sum(item.suggested_units for item in settled))
+        profit_units = float(sum(item.profit_units or 0 for item in settled))
         decisions = wins + losses
         return QuinielaPlusValueTrackStatsOut(
             label=label,
@@ -427,7 +428,7 @@ class QuinielaPlusService:
             wins=wins,
             losses=losses,
             pushes=pushes,
-            tracked_bets=len(tracked),
+            tracked_bets=len(settled),
             staked_units=staked_units,
             profit_units=profit_units,
             hit_rate=(wins / decisions) if decisions > 0 else None,
@@ -454,6 +455,7 @@ class QuinielaPlusService:
                 if item.id == selected.id:
                     continue
                 item.suggested_units = 0
+                item.stake_bankroll_pct = 0
                 item.strategy_label = "alternate"
                 item.stake_reason = "No entrar: hay mejor edge en este partido y mercado."
                 item.profit_units = None
@@ -539,6 +541,7 @@ class QuinielaPlusService:
                     fair_odds_decimal=None,
                     edge_probability=None,
                     suggested_units=suggested_units,
+                    stake_bankroll_pct=self._stake_bankroll_pct(suggested_units),
                     strategy_label="retro_track" if suggested_units > 0 else "no_bet",
                     stake_reason="Retro track con stake variable por probabilidad no-vig del mercado.",
                     outcome_status="settled",
@@ -660,6 +663,7 @@ class QuinielaPlusService:
         if recommendation.market_odds is None:
             return {
                 "suggested_units": 0.0,
+                "stake_bankroll_pct": 0.0,
                 "strategy_label": "model_only",
                 "stake_reason": "Sin odds reales; sólo seguimiento de modelo.",
             }
@@ -669,6 +673,7 @@ class QuinielaPlusService:
         ):
             return {
                 "suggested_units": 0.0,
+                "stake_bankroll_pct": 0.0,
                 "strategy_label": "no_bet",
                 "stake_reason": "Sin edge calculable.",
             }
@@ -677,6 +682,7 @@ class QuinielaPlusService:
         if decimal_odds is None or decimal_odds <= 1:
             return {
                 "suggested_units": 0.0,
+                "stake_bankroll_pct": 0.0,
                 "strategy_label": "no_bet",
                 "stake_reason": "Odds no compatibles con Kelly.",
             }
@@ -688,6 +694,7 @@ class QuinielaPlusService:
         if full_kelly <= 0:
             return {
                 "suggested_units": 0.0,
+                "stake_bankroll_pct": 0.0,
                 "strategy_label": "no_bet",
                 "stake_reason": "Kelly negativo; no entrar.",
             }
@@ -698,6 +705,7 @@ class QuinielaPlusService:
         if suggested_units <= 0:
             return {
                 "suggested_units": 0.0,
+                "stake_bankroll_pct": 0.0,
                 "strategy_label": "no_bet",
                 "stake_reason": "Kelly positivo pero menor a 0.25u; no entrar.",
             }
@@ -713,9 +721,16 @@ class QuinielaPlusService:
 
         return {
             "suggested_units": float(suggested_units),
+            "stake_bankroll_pct": self._stake_bankroll_pct(float(suggested_units)),
             "strategy_label": label,
             "stake_reason": f"Kelly fraccional 25%; stake calculado {format(suggested_units, 'f')}u.",
         }
+
+    @staticmethod
+    def _stake_bankroll_pct(stake_units: float) -> float:
+        if stake_units <= 0:
+            return 0.0
+        return float(Decimal(str(stake_units)) / KELLY_BANKROLL_UNITS)
 
     @staticmethod
     def _decimal_odds_from_american(value: Decimal | None) -> Decimal | None:

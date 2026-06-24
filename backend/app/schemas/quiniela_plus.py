@@ -207,6 +207,7 @@ class QuinielaPlusValueRecommendationOut(BaseModel):
     fair_odds_decimal: float | None = None
     edge_probability: float | None = None
     suggested_units: float = 0
+    stake_bankroll_pct: float = 0
     strategy_label: str = "no_bet"
     stake_reason: str | None = None
     outcome_status: str = "pending"
