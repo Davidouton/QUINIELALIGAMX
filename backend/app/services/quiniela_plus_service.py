@@ -13,6 +13,7 @@ from app.core.datetime import MEXICO_CITY_TZ, ensure_utc
 from app.models.entities import (
     CommerceSettings,
     Match,
+    MatchResult,
     Matchday,
     Odds,
     Payment,
@@ -306,7 +307,7 @@ class QuinielaPlusService:
             matches=matches,
         )
 
-    def get_value_lab(self, db: Session, limit: int = 40) -> QuinielaPlusValueLabOut:
+    def get_value_lab(self, db: Session, limit: int = 100) -> QuinielaPlusValueLabOut:
         try:
             snapshot = db.scalar(
                 select(QuinielaPlusStatsSnapshot).order_by(
@@ -317,11 +318,12 @@ class QuinielaPlusService:
                 return QuinielaPlusValueLabOut()
 
             rows = db.execute(
-                select(QuinielaPlusValueRecommendation, QuinielaPlusStatsMatch)
+                select(QuinielaPlusValueRecommendation, QuinielaPlusStatsMatch, MatchResult)
                 .join(
                     QuinielaPlusStatsMatch,
                     QuinielaPlusStatsMatch.id == QuinielaPlusValueRecommendation.stats_match_id,
                 )
+                .outerjoin(MatchResult, MatchResult.match_id == QuinielaPlusValueRecommendation.match_id)
                 .where(QuinielaPlusValueRecommendation.snapshot_id == snapshot.id)
                 .order_by(
                     QuinielaPlusValueRecommendation.edge_probability.desc().nullslast(),
@@ -361,12 +363,13 @@ class QuinielaPlusService:
                         if recommendation.edge_probability is not None
                         else None
                     ),
+                    **self._build_value_outcome(recommendation, result),
                     confidence_label=recommendation.confidence_label,
                     recommendation=recommendation.recommendation,
                     reason=recommendation.reason,
                     created_at=recommendation.created_at,
                 )
-                for recommendation, stats_match in rows
+                for recommendation, stats_match, result in rows
             ]
             return QuinielaPlusValueLabOut(
                 generated_at=snapshot.generated_at or snapshot.created_at,
@@ -375,6 +378,72 @@ class QuinielaPlusService:
         except SQLAlchemyError:
             db.rollback()
             return QuinielaPlusValueLabOut()
+
+    def _build_value_outcome(
+        self,
+        recommendation: QuinielaPlusValueRecommendation,
+        result: MatchResult | None,
+    ) -> dict[str, object]:
+        if result is None or not result.is_official:
+            return {
+                "outcome_status": "pending",
+                "is_hit": None,
+                "result_label": None,
+                "profit_units": None,
+            }
+
+        home_score = int(result.home_score)
+        away_score = int(result.away_score)
+        is_hit: bool | None = None
+        is_push = False
+
+        if recommendation.market_key == "h2h":
+            if home_score > away_score:
+                actual = "home"
+            elif away_score > home_score:
+                actual = "away"
+            else:
+                actual = "draw"
+            is_hit = recommendation.selection_key == actual
+        elif recommendation.market_key == "total" and recommendation.line_value is not None:
+            total_goals = Decimal(home_score + away_score)
+            if total_goals == recommendation.line_value:
+                is_push = True
+            elif recommendation.selection_key == "over":
+                is_hit = total_goals > recommendation.line_value
+            elif recommendation.selection_key == "under":
+                is_hit = total_goals < recommendation.line_value
+        elif recommendation.market_key == "btts_model":
+            actual = "yes" if home_score > 0 and away_score > 0 else "no"
+            is_hit = recommendation.selection_key == actual
+
+        if is_push:
+            status = "push"
+            profit_units = 0.0
+        else:
+            status = "settled"
+            profit_units = self._profit_units(recommendation.market_odds, is_hit)
+
+        return {
+            "outcome_status": status,
+            "is_hit": is_hit,
+            "result_label": f"{home_score}-{away_score}",
+            "profit_units": profit_units,
+        }
+
+    @staticmethod
+    def _profit_units(market_odds: Decimal | None, is_hit: bool | None) -> float | None:
+        if is_hit is None:
+            return None
+        if not is_hit:
+            return -1.0
+        if market_odds is None:
+            return None
+        if market_odds > 0:
+            return float(market_odds / Decimal("100"))
+        if market_odds < 0:
+            return float(Decimal("100") / abs(market_odds))
+        return None
 
     def get_admin_console(self, db: Session) -> QuinielaPlusAdminConsoleResponse:
         settings = self._get_or_create_settings(db)

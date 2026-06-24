@@ -539,6 +539,10 @@ export interface QuinielaPlusValueRecommendation {
   market_odds: number | null;
   fair_odds_decimal: number | null;
   edge_probability: number | null;
+  outcome_status: "pending" | "settled" | "push";
+  is_hit: boolean | null;
+  result_label: string | null;
+  profit_units: number | null;
   confidence_label: string;
   recommendation: string;
   reason: string | null;

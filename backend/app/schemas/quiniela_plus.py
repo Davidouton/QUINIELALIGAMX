@@ -206,6 +206,10 @@ class QuinielaPlusValueRecommendationOut(BaseModel):
     market_odds: float | None = None
     fair_odds_decimal: float | None = None
     edge_probability: float | None = None
+    outcome_status: str = "pending"
+    is_hit: bool | None = None
+    result_label: str | None = None
+    profit_units: float | None = None
     confidence_label: str
     recommendation: str
     reason: str | None = None

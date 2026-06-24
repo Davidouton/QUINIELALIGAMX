@@ -17,6 +17,7 @@ import type {
 
 type OddsScope = "today" | "matchday" | "locked";
 type QuinielaPlusTab = "probabilities" | "value-lab" | "advanced-stats" | "user-distribution";
+type ValueLabMode = "open" | "history" | "all";
 type MatchdaySourceMatch = Pick<QuinielaPlusOddsSneakPeekMatch, "matchday_id" | "matchday_name" | "matchday_number" | "kickoff_at">;
 const TODAY_DISTRIBUTION_POLL_MS = 10_000;
 const MATCHDAY_DISTRIBUTION_POLL_MS = 45_000;
@@ -49,6 +50,11 @@ function formatOddsValue(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   if (Math.abs(value) >= 20) return value > 0 ? `+${Math.round(value)}` : `${Math.round(value)}`;
   return value.toFixed(2);
+}
+
+function formatProfitUnits(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}u`;
 }
 
 function valueMarketLabel(marketKey: string, selectionKey: string, lineValue: number | null) {
@@ -444,6 +450,7 @@ export function QuinielaPlusPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<QuinielaPlusTab>("probabilities");
   const [oddsScope, setOddsScope] = useState<OddsScope>("today");
+  const [valueLabMode, setValueLabMode] = useState<ValueLabMode>("open");
   const [selectedMatchdayId, setSelectedMatchdayId] = useState("");
 
   const refreshUserDistribution = useCallback(
@@ -593,7 +600,28 @@ export function QuinielaPlusPageContent() {
   }, [oddsScope, selectedMatchdayId, userDistribution?.matches]);
 
   const visibleAdvancedStatsMatches = advancedStats?.matches ?? [];
-  const visibleValueRecommendations = valueLab?.recommendations ?? [];
+  const valueRecommendations = valueLab?.recommendations ?? [];
+  const valueLabSummary = useMemo(() => {
+    const settled = valueRecommendations.filter((item) => item.outcome_status === "settled" || item.outcome_status === "push");
+    const hits = settled.filter((item) => item.is_hit).length;
+    const trackedProfit = settled.reduce((total, item) => total + (item.profit_units ?? 0), 0);
+    return {
+      open: valueRecommendations.filter((item) => item.outcome_status === "pending").length,
+      settled: settled.length,
+      hits,
+      trackedProfit,
+      hitRate: settled.length > 0 ? hits / settled.length : null,
+    };
+  }, [valueRecommendations]);
+  const visibleValueRecommendations = useMemo(() => {
+    if (valueLabMode === "open") {
+      return valueRecommendations.filter((item) => item.outcome_status === "pending");
+    }
+    if (valueLabMode === "history") {
+      return valueRecommendations.filter((item) => item.outcome_status === "settled" || item.outcome_status === "push");
+    }
+    return valueRecommendations;
+  }, [valueLabMode, valueRecommendations]);
 
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando probabilidades...</p>;
@@ -915,9 +943,31 @@ export function QuinielaPlusPageContent() {
 
       {activeTab === "value-lab" && visibleValueRecommendations.length > 0 ? (
         <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-steel">
-            <span>{visibleValueRecommendations.length} recomendaciones paper</span>
-            <span>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                {([
+                  ["open", `Abiertas ${valueLabSummary.open}`],
+                  ["history", `Historial ${valueLabSummary.settled}`],
+                  ["all", `Todas ${valueRecommendations.length}`],
+                ] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setValueLabMode(mode)}
+                    className={valueLabMode === mode ? "app-pill-active px-3 py-2 text-xs" : "app-pill px-3 py-2 text-xs"}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-steel">
+                {valueLabMode === "history"
+                  ? `${valueLabSummary.hits}/${valueLabSummary.settled} pegadas · ${valueLabSummary.hitRate === null ? "sin hit rate" : formatProbability(valueLabSummary.hitRate)} · ${formatProfitUnits(valueLabSummary.trackedProfit)}`
+                  : `${visibleValueRecommendations.length} recomendaciones paper`}
+              </p>
+            </div>
+            <span className="text-xs text-steel">
               Generado {valueLab?.generated_at ? formatMexicoCityDateTime(valueLab.generated_at) : "sin fecha"}
             </span>
           </div>
@@ -925,11 +975,28 @@ export function QuinielaPlusPageContent() {
             {visibleValueRecommendations.map((item) => {
               const isValue = item.recommendation === "paper_value";
               const isModelOnly = item.recommendation === "model_only";
+              const isSettled = item.outcome_status === "settled" || item.outcome_status === "push";
+              const statusLabel =
+                item.outcome_status === "push"
+                  ? "Push"
+                  : isSettled
+                    ? item.is_hit
+                      ? "Pegó"
+                      : "Falló"
+                    : isValue
+                      ? "Value"
+                      : isModelOnly
+                        ? "Modelo"
+                        : "Watch";
               return (
                 <article
                   key={item.id}
                   className={`rounded-[12px] border p-4 ${
-                    isValue
+                    isSettled && item.is_hit
+                      ? "border-[#3ff28a]/20 bg-[#3ff28a]/[0.045]"
+                      : isSettled
+                        ? "border-[#ff6b6b]/20 bg-[#ff6b6b]/[0.035]"
+                        : isValue
                       ? "border-[#3ff28a]/20 bg-[#3ff28a]/[0.045]"
                       : isModelOnly
                         ? "border-[#ffe45c]/15 bg-[#ffe45c]/[0.035]"
@@ -947,18 +1014,22 @@ export function QuinielaPlusPageContent() {
                     </div>
                     <span
                       className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                        isValue
+                        isSettled && item.is_hit
                           ? "border-[#3ff28a]/25 text-[#3ff28a]"
-                          : isModelOnly
-                            ? "border-[#ffe45c]/25 text-[#ffe45c]"
-                            : "border-white/[0.08] text-steel"
+                          : isSettled
+                            ? "border-[#ff6b6b]/25 text-[#ff8a8a]"
+                            : isValue
+                              ? "border-[#3ff28a]/25 text-[#3ff28a]"
+                              : isModelOnly
+                                ? "border-[#ffe45c]/25 text-[#ffe45c]"
+                                : "border-white/[0.08] text-steel"
                       }`}
                     >
-                      {isValue ? "Value" : isModelOnly ? "Modelo" : "Watch"}
+                      {statusLabel}
                     </span>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
                     <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
                       <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Mercado</p>
                       <p className="mt-1 text-xs font-semibold text-ink">
@@ -985,6 +1056,22 @@ export function QuinielaPlusPageContent() {
                       <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Edge</p>
                       <p className={`mt-1 text-xs font-semibold ${Number(item.edge_probability) > 0 ? "text-[#3ff28a]" : "text-steel"}`}>
                         {formatSignedPercent(item.edge_probability)}
+                      </p>
+                    </div>
+                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Resultado</p>
+                      <p className="mt-1 text-xs font-semibold text-ink">{item.result_label ?? "Pend."}</p>
+                    </div>
+                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
+                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">P/L</p>
+                      <p className={`mt-1 text-xs font-semibold ${
+                        Number(item.profit_units) > 0
+                          ? "text-[#3ff28a]"
+                          : Number(item.profit_units) < 0
+                            ? "text-[#ff8a8a]"
+                            : "text-steel"
+                      }`}>
+                        {formatProfitUnits(item.profit_units)}
                       </p>
                     </div>
                   </div>
