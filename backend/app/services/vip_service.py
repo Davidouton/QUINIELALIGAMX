@@ -284,6 +284,18 @@ class VipService:
         db.refresh(vip)
         return vip
 
+    def delete_admin_vip(self, db: Session, vip_id: str) -> None:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+
+        db.execute(delete(VipTeamWinnerEntry).where(VipTeamWinnerEntry.vip_competition_id == vip.id))
+        db.execute(delete(VipTeamWinnerTeam).where(VipTeamWinnerTeam.vip_competition_id == vip.id))
+        db.execute(delete(VipMembership).where(VipMembership.vip_competition_id == vip.id))
+        db.execute(delete(VipCompetitionMatchday).where(VipCompetitionMatchday.vip_competition_id == vip.id))
+        db.delete(vip)
+        db.commit()
+
     def add_admin_membership(
         self,
         db: Session,

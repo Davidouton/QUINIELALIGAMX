@@ -2273,6 +2273,15 @@ def update_admin_vip(
     return next(row for row in vip_service.list_admin_vips(db) if row.id == vip.id)
 
 
+@router.delete("/vip/{vip_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_admin_vip(
+    vip_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> None:
+    vip_service.delete_admin_vip(db, vip_id)
+
+
 @router.post("/vip/{vip_id}/memberships", response_model=AdminVipCompetitionOut)
 def add_admin_vip_membership(
     vip_id: str,

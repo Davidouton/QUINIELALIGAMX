@@ -89,6 +89,7 @@ export function AdminVipPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingTeamWinner, setSavingTeamWinner] = useState(false);
+  const [deletingVip, setDeletingVip] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [processingMembershipId, setProcessingMembershipId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +138,17 @@ export function AdminVipPanel() {
   }, [approvedMemberships, selectedVip, users]);
   const payoutPct =
     Number(form.firstPlacePct || 0) + Number(form.secondPlacePct || 0) + Number(form.thirdPlacePct || 0);
+  const teamWinnerParticipantCount = teamWinnerProfileIds.length + (includeHouse ? 1 : 0);
+  const hasTeamWinnerDraw = Boolean(selectedVip?.team_winner_entries.some((entry) => entry.reveal_order));
+  const revealedTeamWinnerCount = selectedVip?.team_winner_entries.filter((entry) => entry.revealed_at).length ?? 0;
+  const nextTeamWinnerEntry =
+    selectedVip?.team_winner_entries.find((entry) => entry.reveal_order && !entry.revealed_at) ?? null;
+  const canRunTeamWinnerDraw =
+    Boolean(selectedVip) &&
+    selectedVip?.competition_kind === "team_winner" &&
+    !hasTeamWinnerDraw &&
+    teamWinnerParticipantCount > 0 &&
+    teamWinnerTeamIds.length >= teamWinnerParticipantCount;
 
   function syncTeamWinnerDraft(vip: AdminVipCompetition | null) {
     setTeamWinnerTeamIds(vip?.team_winner_teams.map((team) => team.team_id) ?? []);
@@ -226,6 +238,34 @@ export function AdminVipPanel() {
     );
   }
 
+  function selectAllTeamWinnerTeams() {
+    const assignedTeamIds = selectedVip?.team_winner_entries
+      .map((entry) => entry.assigned_team_id)
+      .filter((teamId): teamId is string => Boolean(teamId)) ?? [];
+    setTeamWinnerTeamIds(Array.from(new Set([...assignedTeamIds, ...eligibleTeams.map((team) => team.id)])));
+  }
+
+  function clearUnassignedTeamWinnerTeams() {
+    const assignedTeamIds = selectedVip?.team_winner_entries
+      .map((entry) => entry.assigned_team_id)
+      .filter((teamId): teamId is string => Boolean(teamId)) ?? [];
+    setTeamWinnerTeamIds(Array.from(new Set(assignedTeamIds)));
+  }
+
+  function selectAllTeamWinnerUsers() {
+    const assignedProfileIds = selectedVip?.team_winner_entries
+      .filter((entry) => entry.assigned_team_id && entry.profile_id)
+      .map((entry) => entry.profile_id as string) ?? [];
+    setTeamWinnerProfileIds(Array.from(new Set([...assignedProfileIds, ...users.map((user) => user.id)])));
+  }
+
+  function clearUnassignedTeamWinnerUsers() {
+    const assignedProfileIds = selectedVip?.team_winner_entries
+      .filter((entry) => entry.assigned_team_id && entry.profile_id)
+      .map((entry) => entry.profile_id as string) ?? [];
+    setTeamWinnerProfileIds(Array.from(new Set(assignedProfileIds)));
+  }
+
   async function handleSave() {
     const isUpdate = Boolean(selectedVipId);
     setSaving(true);
@@ -259,6 +299,35 @@ export function AdminVipPanel() {
       setError(`${isUpdate ? "Guardar VIP" : "Crear VIP"}: ${errorMessage}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDeleteVip() {
+    if (!selectedVip) {
+      return;
+    }
+    const confirmed = window.confirm(`Vas a borrar "${selectedVip.name}" con todo su historial VIP. Esta accion no se puede deshacer. Continuar?`);
+    if (!confirmed) {
+      return;
+    }
+    setDeletingVip(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/admin/vip/${selectedVip.id}`, accessToken, { method: "DELETE" });
+      const nextVips = vips.filter((vip) => vip.id !== selectedVip.id);
+      setVips(nextVips);
+      const nextSelectedVip = nextVips[0] ?? null;
+      setSelectedVipId(nextSelectedVip?.id ?? "");
+      setForm(toFormState(nextSelectedVip, seasons));
+      syncTeamWinnerDraft(nextSelectedVip);
+      setMessage("VIP borrada.");
+    } catch (caughtError) {
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo borrar la VIP");
+      setError(`Borrar VIP: ${errorMessage}`);
+    } finally {
+      setDeletingVip(false);
     }
   }
 
@@ -332,8 +401,45 @@ export function AdminVipPanel() {
     }
   }
 
-  async function handleSaveTeamWinnerConfig() {
+  async function saveTeamWinnerConfig(accessToken: string | undefined) {
     if (!selectedVip) {
+      throw new Error("Selecciona una VIP");
+    }
+    return backendFetch<AdminVipCompetition>(
+      `/admin/vip/${selectedVip.id}/team-winner/config`,
+      accessToken,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          team_ids: teamWinnerTeamIds,
+          profile_ids: teamWinnerProfileIds,
+          include_house: includeHouse,
+          house_label: houseLabel.trim() || "Casa",
+        }),
+      },
+    );
+  }
+
+  async function handleSaveTeamWinnerConfig() {
+    setSavingTeamWinner(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const updatedVip = await saveTeamWinnerConfig(accessToken);
+      setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+      syncTeamWinnerDraft(updatedVip);
+      setMessage("Sorteo Equipo ganador actualizado.");
+    } catch (caughtError) {
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo guardar Equipo ganador");
+      setError(`Equipo ganador: ${errorMessage}`);
+    } finally {
+      setSavingTeamWinner(false);
+    }
+  }
+
+  async function handleSaveAndRunTeamWinnerDraw() {
+    if (!selectedVip || !canRunTeamWinnerDraw) {
       return;
     }
     setSavingTeamWinner(true);
@@ -341,24 +447,17 @@ export function AdminVipPanel() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      const updatedVip = await backendFetch<AdminVipCompetition>(
-        `/admin/vip/${selectedVip.id}/team-winner/config`,
+      await saveTeamWinnerConfig(accessToken);
+      const drawnVip = await backendFetch<AdminVipCompetition>(
+        `/admin/vip/${selectedVip.id}/team-winner/draw`,
         accessToken,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            team_ids: teamWinnerTeamIds,
-            profile_ids: teamWinnerProfileIds,
-            include_house: includeHouse,
-            house_label: houseLabel.trim() || "Casa",
-          }),
-        },
+        { method: "POST" },
       );
-      setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
-      syncTeamWinnerDraft(updatedVip);
-      setMessage("Sorteo Equipo ganador actualizado.");
+      setVips((current) => current.map((vip) => (vip.id === drawnVip.id ? drawnVip : vip)));
+      syncTeamWinnerDraft(drawnVip);
+      setMessage("Sorteo corrido. Ya puedes destapar participante por participante.");
     } catch (caughtError) {
-      const errorMessage = getCaughtMessage(caughtError, "No se pudo guardar Equipo ganador");
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo correr el sorteo");
       setError(`Equipo ganador: ${errorMessage}`);
     } finally {
       setSavingTeamWinner(false);
@@ -497,12 +596,22 @@ export function AdminVipPanel() {
                   <p className="mt-1 text-sm font-semibold text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
                 </div>
                 <div>
-                  <p className="uppercase tracking-[0.18em]">Jornadas</p>
-                  <p className="mt-1 text-sm font-semibold text-ink">{vip.matchdays.length}</p>
+                  <p className="uppercase tracking-[0.18em]">
+                    {vip.competition_kind === "team_winner" ? "Equipos" : "Jornadas"}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-ink">
+                    {vip.competition_kind === "team_winner" ? vip.team_winner_teams.length : vip.matchdays.length}
+                  </p>
                 </div>
                 <div>
-                  <p className="uppercase tracking-[0.18em]">Pendientes</p>
-                  <p className="mt-1 text-sm font-semibold text-ink">{vip.pending_requests_count}</p>
+                  <p className="uppercase tracking-[0.18em]">
+                    {vip.competition_kind === "team_winner" ? "Sorteo" : "Pendientes"}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-ink">
+                    {vip.competition_kind === "team_winner"
+                      ? `${vip.team_winner_entries.filter((entry) => entry.revealed_at).length}/${vip.team_winner_entries.length}`
+                      : vip.pending_requests_count}
+                  </p>
                 </div>
               </div>
               {!vip.is_active ? (
@@ -527,9 +636,21 @@ export function AdminVipPanel() {
                   {selectedVip ? `Editar ${selectedVip.name}` : "Nueva VIP"}
                 </h2>
               </div>
-              <button type="button" onClick={handleSave} disabled={saving} className="app-pill px-4">
-                {saving ? "Guardando" : selectedVip ? "Guardar cambios" : "Crear VIP"}
-              </button>
+              <div className="flex gap-2">
+                {selectedVip ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteVip()}
+                    disabled={deletingVip}
+                    className="app-pill px-4 text-coral disabled:opacity-50"
+                  >
+                    {deletingVip ? "Borrando" : "Borrar"}
+                  </button>
+                ) : null}
+                <button type="button" onClick={handleSave} disabled={saving} className="app-pill px-4">
+                  {saving ? "Guardando" : selectedVip ? "Guardar cambios" : "Crear VIP"}
+                </button>
+              </div>
             </div>
 
             <div className="grid gap-x-4 gap-y-3 lg:grid-cols-4">
@@ -709,24 +830,26 @@ export function AdminVipPanel() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-sm uppercase tracking-[0.22em] text-steel">Equipo ganador</p>
-                  <h3 className="mt-2 text-lg font-semibold text-ink">Sorteo de campeon</h3>
+                  <h3 className="mt-2 text-lg font-semibold text-ink">
+                    {hasTeamWinnerDraw ? "Sorteo en vivo" : "Preparar sorteo"}
+                  </h3>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => void handleSaveTeamWinnerConfig()}
-                    disabled={savingTeamWinner}
+                    disabled={savingTeamWinner || hasTeamWinnerDraw}
                     className="app-pill h-9 px-4 text-sm disabled:opacity-50"
                   >
                     {savingTeamWinner ? "Guardando" : "Guardar sorteo"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleTeamWinnerAction("draw")}
-                    disabled={savingTeamWinner || selectedVip.team_winner_entries.some((entry) => entry.assigned_team_id)}
-                    className="app-pill h-9 px-4 text-sm disabled:opacity-50"
+                    onClick={() => void handleSaveAndRunTeamWinnerDraw()}
+                    disabled={savingTeamWinner || !canRunTeamWinnerDraw}
+                    className="app-pill h-9 px-4 text-sm text-mint disabled:opacity-50"
                   >
-                    Sortear
+                    Guardar y sortear
                   </button>
                   <button
                     type="button"
@@ -742,11 +865,54 @@ export function AdminVipPanel() {
                 </div>
               </div>
 
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[8px] border border-white/[0.06] px-4 py-3">
+                  <p className={flatLabelClass}>Participantes</p>
+                  <p className="mt-1 text-lg font-semibold text-ink">{teamWinnerParticipantCount}</p>
+                </div>
+                <div className="rounded-[8px] border border-white/[0.06] px-4 py-3">
+                  <p className={flatLabelClass}>Equipos</p>
+                  <p className={`mt-1 text-lg font-semibold ${teamWinnerTeamIds.length < teamWinnerParticipantCount ? "text-coral" : "text-ink"}`}>
+                    {teamWinnerTeamIds.length}
+                  </p>
+                </div>
+                <div className="rounded-[8px] border border-white/[0.06] px-4 py-3">
+                  <p className={flatLabelClass}>Revelados</p>
+                  <p className="mt-1 text-lg font-semibold text-ink">
+                    {revealedTeamWinnerCount}/{selectedVip.team_winner_entries.length}
+                  </p>
+                </div>
+                <div className="rounded-[8px] border border-white/[0.06] px-4 py-3">
+                  <p className={flatLabelClass}>Siguiente</p>
+                  <p className="mt-1 truncate text-sm font-semibold text-ink">
+                    {nextTeamWinnerEntry?.display_name ?? (hasTeamWinnerDraw ? "Completo" : "Sin sortear")}
+                  </p>
+                </div>
+              </div>
+
+              {!hasTeamWinnerDraw && teamWinnerTeamIds.length < teamWinnerParticipantCount ? (
+                <p className="text-sm text-coral">
+                  Faltan equipos: necesitas al menos un equipo por participante antes de sortear.
+                </p>
+              ) : null}
+
               <div className="grid gap-4 xl:grid-cols-2">
                 <div className="space-y-3">
-                  <p className="text-xs uppercase tracking-[0.18em] text-steel">
-                    Equipos sorteables · {teamWinnerTeamIds.length}
-                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                      Equipos sorteables · {teamWinnerTeamIds.length}
+                    </p>
+                    {!hasTeamWinnerDraw ? (
+                      <div className="flex gap-3 text-xs font-semibold">
+                        <button type="button" onClick={selectAllTeamWinnerTeams} className="text-mint">
+                          Todos
+                        </button>
+                        <button type="button" onClick={clearUnassignedTeamWinnerTeams} className="text-coral">
+                          Limpiar
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                   <div className="grid max-h-[360px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
                     {eligibleTeams.map((team) => {
                       const assigned = selectedVip.team_winner_entries.some((entry) => entry.assigned_team_id === team.id);
@@ -760,7 +926,7 @@ export function AdminVipPanel() {
                           <input
                             type="checkbox"
                             checked={teamWinnerTeamIds.includes(team.id)}
-                            disabled={assigned}
+                            disabled={assigned || hasTeamWinnerDraw}
                             onChange={() => toggleTeamWinnerTeam(team.id)}
                           />
                           <span className="truncate">{team.name}</span>
@@ -771,13 +937,26 @@ export function AdminVipPanel() {
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-xs uppercase tracking-[0.18em] text-steel">
-                    Participantes · {teamWinnerProfileIds.length + (includeHouse ? 1 : 0)}
-                  </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                      Participantes · {teamWinnerParticipantCount}
+                    </p>
+                    {!hasTeamWinnerDraw ? (
+                      <div className="flex gap-3 text-xs font-semibold">
+                        <button type="button" onClick={selectAllTeamWinnerUsers} className="text-mint">
+                          Todos
+                        </button>
+                        <button type="button" onClick={clearUnassignedTeamWinnerUsers} className="text-coral">
+                          Limpiar
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                   <label className="flex items-center gap-3 rounded-[8px] border border-white/[0.06] px-3 py-2 text-sm">
                     <input
                       type="checkbox"
                       checked={includeHouse}
+                      disabled={hasTeamWinnerDraw}
                       onChange={(event) => setIncludeHouse(event.target.checked)}
                     />
                     <span>Agregar casa</span>
@@ -785,7 +964,7 @@ export function AdminVipPanel() {
                       value={houseLabel}
                       onChange={(event) => setHouseLabel(event.target.value)}
                       className={`${flatFieldClass} ml-auto max-w-[160px]`}
-                      disabled={!includeHouse}
+                      disabled={!includeHouse || hasTeamWinnerDraw}
                     />
                   </label>
                   <div className="grid max-h-[312px] gap-2 overflow-y-auto pr-1">
@@ -803,7 +982,7 @@ export function AdminVipPanel() {
                           <input
                             type="checkbox"
                             checked={teamWinnerProfileIds.includes(user.id)}
-                            disabled={assigned}
+                            disabled={assigned || hasTeamWinnerDraw}
                             onChange={() => toggleTeamWinnerProfile(user.id)}
                           />
                           <span className="truncate">{user.display_name}</span>

@@ -555,6 +555,35 @@ def test_admin_can_run_team_winner_vip_draw_and_mark_eliminated(admin_client: Te
     assert eliminated_team["is_eliminated"] is True
 
 
+def test_admin_can_delete_vip(admin_client: TestClient) -> None:
+    create_response = admin_client.post(
+        "/api/v1/admin/vip",
+        json={
+            "name": "VIP Borrable",
+            "entry_fee_amount": 300,
+            "admin_commission_pct": 0,
+            "first_place_pct": 100,
+            "second_place_pct": 0,
+            "third_place_pct": 0,
+            "matchday_ids": [MATCHDAY_ID],
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_response.status_code == 201
+    vip_id = create_response.json()["id"]
+
+    delete_response = admin_client.delete(
+        f"/api/v1/admin/vip/{vip_id}",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert delete_response.status_code == 204
+
+    list_response = admin_client.get("/api/v1/admin/vip", headers={"Authorization": "Bearer test-token"})
+    assert list_response.status_code == 200
+    assert all(row["id"] != vip_id for row in list_response.json())
+
+
 def test_admin_cannot_create_vip_with_prize_split_over_100(admin_client: TestClient) -> None:
     response = admin_client.post(
         "/api/v1/admin/vip",
