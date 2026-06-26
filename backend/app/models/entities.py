@@ -73,6 +73,11 @@ class VipMembershipStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class VipCompetitionKind(str, Enum):
+    MATCHDAY = "matchday"
+    TEAM_WINNER = "team_winner"
+
+
 class PickReminderKind(str, Enum):
     OPENING = "opening"
     PRE_GAME = "pre_game"
@@ -524,6 +529,12 @@ class VipCompetition(Base):
 
     id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
     season_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("seasons.id", ondelete="CASCADE"), index=True)
+    competition_kind: Mapped[VipCompetitionKind] = mapped_column(
+        SqlEnum(VipCompetitionKind, native_enum=False, values_callable=enum_values),
+        default=VipCompetitionKind.MATCHDAY,
+        nullable=False,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(String(160))
     entry_fee_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
     admin_commission_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
@@ -584,6 +595,57 @@ class VipMembership(Base):
         index=True,
     )
     admin_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class VipTeamWinnerTeam(Base):
+    __tablename__ = "vip_team_winner_teams"
+    __table_args__ = (UniqueConstraint("vip_competition_id", "team_id", name="uq_vip_team_winner_team"),)
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    vip_competition_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("vip_competitions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    team_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    is_eliminated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_champion: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    eliminated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by_profile_id: Mapped[str | None] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class VipTeamWinnerEntry(Base):
+    __tablename__ = "vip_team_winner_entries"
+    __table_args__ = (
+        UniqueConstraint("vip_competition_id", "profile_id", name="uq_vip_team_winner_entry_profile"),
+        UniqueConstraint("vip_competition_id", "assigned_team_id", name="uq_vip_team_winner_entry_team"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    vip_competition_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("vip_competitions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    profile_id: Mapped[str | None] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    display_name: Mapped[str] = mapped_column(String(120))
+    is_house: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    assigned_team_id: Mapped[str | None] = mapped_column(UUID_SQL, ForeignKey("teams.id", ondelete="SET NULL"), index=True)
+    reveal_order: Mapped[int | None] = mapped_column(Integer)
+    revealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

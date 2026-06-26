@@ -228,6 +228,8 @@ export interface VipMatchday {
   name: string;
 }
 
+export type VipCompetitionKind = "matchday" | "team_winner";
+
 export interface VipLeaderboardEntry {
   profile_id: string;
   display_name: string;
@@ -235,6 +237,32 @@ export interface VipLeaderboardEntry {
   correct_results: number;
   exact_scores: number;
   rank_position: number;
+}
+
+export interface VipTeamWinnerTeam {
+  id: string;
+  team_id: string;
+  team_name: string;
+  team_short_name: string;
+  team_crest_url: string | null;
+  is_eliminated: boolean;
+  is_champion: boolean;
+}
+
+export interface VipTeamWinnerEntry {
+  id: string;
+  profile_id: string | null;
+  display_name: string;
+  is_house: boolean;
+  assigned_team_id: string | null;
+  assigned_team_name: string | null;
+  assigned_team_short_name: string | null;
+  assigned_team_crest_url: string | null;
+  assigned_team_eliminated: boolean;
+  assigned_team_champion: boolean;
+  reveal_order: number | null;
+  revealed_at: string | null;
+  is_paid: boolean;
 }
 
 export interface VipMembership {
@@ -254,6 +282,7 @@ export interface VipCompetition {
   id: string;
   season_id: string;
   season_name: string;
+  competition_kind: VipCompetitionKind;
   name: string;
   entry_fee_amount: number;
   admin_commission_pct: number;
@@ -276,6 +305,8 @@ export interface VipCompetition {
   join_lock_match_label: string | null;
   my_membership: VipMembership | null;
   leaderboard: VipLeaderboardEntry[];
+  team_winner_teams: VipTeamWinnerTeam[];
+  team_winner_entries: VipTeamWinnerEntry[];
 }
 
 export interface VipJoinResponse {
@@ -287,6 +318,7 @@ export interface AdminVipCompetition {
   id: string;
   season_id: string;
   season_name: string;
+  competition_kind: VipCompetitionKind;
   name: string;
   entry_fee_amount: number;
   admin_commission_pct: number;
@@ -311,6 +343,8 @@ export interface AdminVipCompetition {
   join_lock_at: string | null;
   join_lock_match_label: string | null;
   leaderboard: VipLeaderboardEntry[];
+  team_winner_teams: VipTeamWinnerTeam[];
+  team_winner_entries: VipTeamWinnerEntry[];
 }
 
 export interface PricingRule {

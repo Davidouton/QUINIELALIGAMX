@@ -168,7 +168,7 @@ export function VipPageContent() {
         <p className="text-[11px] uppercase tracking-[0.28em] text-steel">VIP</p>
         <h1 className="text-2xl font-semibold text-ink">VIP</h1>
         <p className="max-w-3xl text-sm text-steel">
-          Cada VIP toma tus picks ya capturados en jornadas especificas y arma un leaderboard aparte.
+          Consulta tus VIPs por jornadas y sorteos especiales como Equipo ganador.
         </p>
       </section>
 
@@ -182,7 +182,8 @@ export function VipPageContent() {
             const pricing = pricingByVipId[vip.id] ?? null;
             const lockCopy = getVipJoinLockCopy(vip);
             const hasMembership = Boolean(vip.my_membership);
-            const disabled = vip.my_membership?.status === "approved" || (!hasMembership && vip.join_locked);
+            const isTeamWinner = vip.competition_kind === "team_winner";
+            const disabled = isTeamWinner || vip.my_membership?.status === "approved" || (!hasMembership && vip.join_locked);
             return (
               <div
                 key={vip.id}
@@ -209,12 +210,16 @@ export function VipPageContent() {
                     <p className="mt-1 text-sm font-semibold text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
                   </div>
                     <div>
-                      <p className="uppercase tracking-[0.18em]">Jornadas</p>
-                      <p className="mt-1 text-sm font-semibold text-ink">{vip.matchdays.length}</p>
+                      <p className="uppercase tracking-[0.18em]">{isTeamWinner ? "Equipos" : "Jornadas"}</p>
+                      <p className="mt-1 text-sm font-semibold text-ink">
+                        {isTeamWinner ? vip.team_winner_teams.length : vip.matchdays.length}
+                      </p>
                     </div>
                     <div>
                       <p className="uppercase tracking-[0.18em]">Aprobados</p>
-                      <p className="mt-1 text-sm font-semibold text-ink">{vip.approved_members_count}</p>
+                      <p className="mt-1 text-sm font-semibold text-ink">
+                        {isTeamWinner ? vip.team_winner_entries.length : vip.approved_members_count}
+                      </p>
                     </div>
                   <div>
                     <p className="uppercase tracking-[0.18em]">Pendientes</p>
@@ -233,7 +238,9 @@ export function VipPageContent() {
 
                 <div className="mt-4 flex items-center justify-between gap-3">
                   <p className="text-xs text-steel">
-                    Jornadas {vip.matchdays.map((matchday) => matchday.number).join(", ")}
+                    {isTeamWinner
+                      ? "Sorteo Equipo ganador"
+                      : `Jornadas ${vip.matchdays.map((matchday) => matchday.number).join(", ")}`}
                   </p>
                   {lockCopy ? (
                     <p className={`text-xs ${vip.join_locked ? "text-coral" : "text-steel"}`}>
@@ -252,6 +259,8 @@ export function VipPageContent() {
                       ? "Abriendo checkout"
                       : requestingVipId === vip.id
                         ? "Enviando"
+                        : isTeamWinner
+                          ? "Sorteo admin"
                         : vip.my_membership?.status === "approved"
                           ? "Dentro"
                           : !hasMembership && vip.join_locked
@@ -291,7 +300,11 @@ export function VipPageContent() {
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Participantes</p>
-                    <p className="mt-1 text-sm font-semibold text-ink">{selectedVip.approved_members_count}</p>
+                    <p className="mt-1 text-sm font-semibold text-ink">
+                      {selectedVip.competition_kind === "team_winner"
+                        ? selectedVip.team_winner_entries.length
+                        : selectedVip.approved_members_count}
+                    </p>
                   </div>
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Mi estado</p>
@@ -302,7 +315,7 @@ export function VipPageContent() {
                 </div>
               </div>
 
-              {selectedVip.my_membership?.status !== "approved" ? (
+              {selectedVip.competition_kind !== "team_winner" && selectedVip.my_membership?.status !== "approved" ? (
                 <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-white/[0.06] bg-white/[0.02] px-4 py-3">
                   {selectedVip.join_locked && !selectedVip.my_membership ? (
                     <span className="app-pill px-4 text-sm text-coral">Solicitud cerrada</span>
@@ -337,6 +350,49 @@ export function VipPageContent() {
                 </div>
               ) : null}
 
+              {selectedVip.competition_kind === "team_winner" ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Asignaciones</p>
+                    <p className="text-xs text-steel">{selectedVip.team_winner_entries.length} participantes</p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {selectedVip.team_winner_entries.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className={`rounded-[8px] border border-white/[0.06] px-4 py-3 ${
+                          entry.assigned_team_champion
+                            ? "bg-mint/10"
+                            : entry.assigned_team_eliminated
+                              ? "opacity-55"
+                              : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="truncate text-sm font-semibold text-ink">
+                            {entry.display_name}{entry.is_house ? " · Casa" : ""}
+                          </p>
+                          <span className="text-xs text-steel">#{entry.reveal_order ?? "-"}</span>
+                        </div>
+                        <p className="mt-2 text-sm text-steel">
+                          {entry.assigned_team_name ?? (entry.reveal_order ? "Oculto" : "Sin sortear")}
+                        </p>
+                        {entry.assigned_team_name ? (
+                          <p className={`mt-1 text-xs ${entry.assigned_team_eliminated ? "text-coral" : "text-mint"}`}>
+                            {entry.assigned_team_champion
+                              ? "Campeon"
+                              : entry.assigned_team_eliminated
+                                ? "Eliminado"
+                                : "Vivo"}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {selectedVip.competition_kind === "matchday" ? (
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-steel">Jornadas que cuentan</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -347,13 +403,16 @@ export function VipPageContent() {
                   ))}
                 </div>
               </div>
+              ) : null}
 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
                   <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Bolsa total</p>
                   <p className="mt-2 text-sm font-semibold text-ink">{formatCurrency(selectedVip.gross_pool_amount)}</p>
                   <p className="mt-1 text-xs text-steel">
-                    {selectedVip.approved_members_count} x {formatCurrency(selectedVip.entry_fee_amount)}
+                    {selectedVip.competition_kind === "team_winner"
+                      ? selectedVip.team_winner_entries.length
+                      : selectedVip.approved_members_count} x {formatCurrency(selectedVip.entry_fee_amount)}
                   </p>
                 </div>
                 <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
@@ -404,6 +463,7 @@ export function VipPageContent() {
                 </div>
               ) : null}
 
+              {selectedVip.competition_kind === "matchday" ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-4">
                   <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Leaderboard VIP</p>
@@ -444,6 +504,7 @@ export function VipPageContent() {
                   <p className="text-sm text-steel">Aun no hay participantes aprobados o puntos acumulados.</p>
                 ) : null}
               </div>
+              ) : null}
             </>
           ) : (
             <p className="text-sm text-steel">Selecciona una VIP para ver detalle y leaderboard.</p>

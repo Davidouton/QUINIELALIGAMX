@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+import random
 
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
@@ -14,19 +15,28 @@ from app.models.entities import (
     StandingsMatchday,
     Team,
     VipCompetition,
+    VipCompetitionKind,
     VipCompetitionMatchday,
     VipMembership,
     VipMembershipStatus,
+    VipTeamWinnerEntry,
+    VipTeamWinnerTeam,
 )
 from app.schemas.vip import (
     AdminVipCompetitionOut,
+    AdminVipMembershipAddRequest,
     AdminVipMembershipDecisionRequest,
     AdminVipMembershipPaymentRequest,
+    AdminVipTeamWinnerConfigRequest,
+    AdminVipTeamWinnerEntryPaymentRequest,
+    AdminVipTeamWinnerTeamStatusRequest,
     AdminVipUpsertRequest,
     VipCompetitionOut,
     VipLeaderboardEntryOut,
     VipMatchdayOut,
     VipMembershipOut,
+    VipTeamWinnerEntryOut,
+    VipTeamWinnerTeamOut,
 )
 from app.services.scoring_service import ScoringService
 
@@ -50,6 +60,7 @@ class VipService:
         result: list[VipCompetitionOut] = []
         for vip in vip_rows:
             memberships = bundle["memberships_by_vip"].get(vip.id, [])
+            team_entries = bundle["team_winner_entries_by_vip"].get(vip.id, [])
             my_membership = next((membership for membership in memberships if membership.profile_id == profile.id), None)
             join_lock = bundle["join_locks_by_vip"].get(vip.id, {})
             result.append(
@@ -57,6 +68,7 @@ class VipService:
                     id=vip.id,
                     season_id=vip.season_id,
                     season_name=bundle["season_names"].get(vip.season_id, "Temporada"),
+                    competition_kind=vip.competition_kind,
                     name=vip.name,
                     entry_fee_amount=float(vip.entry_fee_amount),
                     admin_commission_pct=float(vip.admin_commission_pct),
@@ -67,13 +79,13 @@ class VipService:
                     matchdays=bundle["matchdays_by_vip"].get(vip.id, []),
                     approved_members_count=sum(1 for membership in memberships if membership.status == VipMembershipStatus.APPROVED),
                     pending_requests_count=sum(1 for membership in memberships if membership.status == VipMembershipStatus.PENDING),
-                    gross_pool_amount=float(self._gross_pool_amount(vip, memberships)),
-                    admin_commission_amount=float(self._admin_commission_amount(vip, memberships)),
-                    distributable_prize_pool_amount=float(self._distributable_prize_pool_amount(vip, memberships)),
-                    first_place_amount=float(self._first_place_amount(vip, memberships)),
-                    second_place_amount=float(self._second_place_amount(vip, memberships)),
-                    third_place_amount=float(self._third_place_amount(vip, memberships)),
-                    remaining_pool_amount=float(self._remaining_pool_amount(vip, memberships)),
+                    gross_pool_amount=float(self._gross_pool_amount(vip, memberships, team_entries)),
+                    admin_commission_amount=float(self._admin_commission_amount(vip, memberships, team_entries)),
+                    distributable_prize_pool_amount=float(self._distributable_prize_pool_amount(vip, memberships, team_entries)),
+                    first_place_amount=float(self._first_place_amount(vip, memberships, team_entries)),
+                    second_place_amount=float(self._second_place_amount(vip, memberships, team_entries)),
+                    third_place_amount=float(self._third_place_amount(vip, memberships, team_entries)),
+                    remaining_pool_amount=float(self._remaining_pool_amount(vip, memberships, team_entries)),
                     join_locked=bool(join_lock.get("locked", False)),
                     join_lock_at=join_lock.get("lock_at"),
                     join_lock_match_label=join_lock.get("match_label"),
@@ -85,6 +97,15 @@ class VipService:
                         bundle["profile_names"],
                         db,
                     ),
+                    team_winner_teams=self._team_winner_team_outs(
+                        bundle["team_winner_teams_by_vip"].get(vip.id, []),
+                        bundle["team_names"],
+                    ),
+                    team_winner_entries=self._team_winner_entry_outs(
+                        team_entries,
+                        bundle["team_names"],
+                        bundle["team_status_by_id"],
+                    ),
                 )
             )
         return result
@@ -93,6 +114,8 @@ class VipService:
         vip = db.get(VipCompetition, vip_id)
         if vip is None or not vip.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+        if vip.competition_kind == VipCompetitionKind.TEAM_WINNER:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP se administra por sorteo")
 
         join_lock = self._join_lock_for_vip(db, vip_id)
         if join_lock["locked"]:
@@ -149,6 +172,7 @@ class VipService:
                 id=vip.id,
                 season_id=vip.season_id,
                 season_name=bundle["season_names"].get(vip.season_id, "Temporada"),
+                competition_kind=vip.competition_kind,
                 name=vip.name,
                 entry_fee_amount=float(vip.entry_fee_amount),
                 admin_commission_pct=float(vip.admin_commission_pct),
@@ -177,13 +201,13 @@ class VipService:
                     for membership in bundle["memberships_by_vip"].get(vip.id, [])
                     if membership.status == VipMembershipStatus.PENDING
                 ),
-                gross_pool_amount=float(self._gross_pool_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
-                admin_commission_amount=float(self._admin_commission_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
-                distributable_prize_pool_amount=float(self._distributable_prize_pool_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
-                first_place_amount=float(self._first_place_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
-                second_place_amount=float(self._second_place_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
-                third_place_amount=float(self._third_place_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
-                remaining_pool_amount=float(self._remaining_pool_amount(vip, bundle["memberships_by_vip"].get(vip.id, []))),
+                gross_pool_amount=float(self._gross_pool_amount(vip, bundle["memberships_by_vip"].get(vip.id, []), bundle["team_winner_entries_by_vip"].get(vip.id, []))),
+                admin_commission_amount=float(self._admin_commission_amount(vip, bundle["memberships_by_vip"].get(vip.id, []), bundle["team_winner_entries_by_vip"].get(vip.id, []))),
+                distributable_prize_pool_amount=float(self._distributable_prize_pool_amount(vip, bundle["memberships_by_vip"].get(vip.id, []), bundle["team_winner_entries_by_vip"].get(vip.id, []))),
+                first_place_amount=float(self._first_place_amount(vip, bundle["memberships_by_vip"].get(vip.id, []), bundle["team_winner_entries_by_vip"].get(vip.id, []))),
+                second_place_amount=float(self._second_place_amount(vip, bundle["memberships_by_vip"].get(vip.id, []), bundle["team_winner_entries_by_vip"].get(vip.id, []))),
+                third_place_amount=float(self._third_place_amount(vip, bundle["memberships_by_vip"].get(vip.id, []), bundle["team_winner_entries_by_vip"].get(vip.id, []))),
+                remaining_pool_amount=float(self._remaining_pool_amount(vip, bundle["memberships_by_vip"].get(vip.id, []), bundle["team_winner_entries_by_vip"].get(vip.id, []))),
                 join_locked=bool(bundle["join_locks_by_vip"].get(vip.id, {}).get("locked", False)),
                 join_lock_at=bundle["join_locks_by_vip"].get(vip.id, {}).get("lock_at"),
                 join_lock_match_label=bundle["join_locks_by_vip"].get(vip.id, {}).get("match_label"),
@@ -193,6 +217,15 @@ class VipService:
                     bundle["memberships_by_vip"].get(vip.id, []),
                     bundle["profile_names"],
                     db,
+                ),
+                team_winner_teams=self._team_winner_team_outs(
+                    bundle["team_winner_teams_by_vip"].get(vip.id, []),
+                    bundle["team_names"],
+                ),
+                team_winner_entries=self._team_winner_entry_outs(
+                    bundle["team_winner_entries_by_vip"].get(vip.id, []),
+                    bundle["team_names"],
+                    bundle["team_status_by_id"],
                 ),
             )
             for vip in vip_rows
@@ -204,9 +237,10 @@ class VipService:
         payload: AdminVipUpsertRequest,
         current_profile: Profile,
     ) -> VipCompetition:
-        season, matchdays = self._resolve_matchdays(db, payload.matchday_ids)
+        season, matchdays = self._resolve_vip_season_and_matchdays(db, payload)
         vip = VipCompetition(
             season_id=season.id,
+            competition_kind=payload.competition_kind,
             name=payload.name.strip(),
             entry_fee_amount=Decimal(str(payload.entry_fee_amount)),
             admin_commission_pct=Decimal(str(payload.admin_commission_pct)),
@@ -233,8 +267,9 @@ class VipService:
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
 
-        season, matchdays = self._resolve_matchdays(db, payload.matchday_ids)
+        season, matchdays = self._resolve_vip_season_and_matchdays(db, payload)
         vip.season_id = season.id
+        vip.competition_kind = payload.competition_kind
         vip.name = payload.name.strip()
         vip.entry_fee_amount = Decimal(str(payload.entry_fee_amount))
         vip.admin_commission_pct = Decimal(str(payload.admin_commission_pct))
@@ -248,6 +283,223 @@ class VipService:
         db.commit()
         db.refresh(vip)
         return vip
+
+    def add_admin_membership(
+        self,
+        db: Session,
+        vip_id: str,
+        payload: AdminVipMembershipAddRequest,
+        current_profile: Profile,
+    ) -> VipMembership:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+
+        profile = db.get(Profile, payload.profile_id)
+        if profile is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+
+        now = datetime.now(UTC)
+        membership = db.scalar(
+            select(VipMembership).where(
+                VipMembership.vip_competition_id == vip_id,
+                VipMembership.profile_id == profile.id,
+            )
+        )
+        if membership is None:
+            membership = VipMembership(
+                vip_competition_id=vip_id,
+                profile_id=profile.id,
+                status=VipMembershipStatus.APPROVED,
+                requested_at=now,
+            )
+        elif membership.status == VipMembershipStatus.APPROVED:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El usuario ya pertenece a esta VIP")
+        else:
+            membership.status = VipMembershipStatus.APPROVED
+
+        membership.is_paid = payload.is_paid
+        membership.decided_at = now
+        membership.decided_by_profile_id = current_profile.id
+        membership.admin_note = payload.admin_note.strip() if payload.admin_note else "Agregado por admin"
+        db.add(membership)
+        db.commit()
+        db.refresh(membership)
+        return membership
+
+    def configure_team_winner(
+        self,
+        db: Session,
+        vip_id: str,
+        payload: AdminVipTeamWinnerConfigRequest,
+    ) -> None:
+        vip = self._get_team_winner_vip(db, vip_id)
+        clean_team_ids = list(dict.fromkeys(payload.team_ids))
+        clean_profile_ids = list(dict.fromkeys(payload.profile_ids))
+
+        assigned_team_ids = set(
+            db.scalars(
+                select(VipTeamWinnerEntry.assigned_team_id).where(
+                    VipTeamWinnerEntry.vip_competition_id == vip.id,
+                    VipTeamWinnerEntry.assigned_team_id.is_not(None),
+                )
+            )
+        )
+        removed_assigned_teams = assigned_team_ids.difference(clean_team_ids)
+        if removed_assigned_teams:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No puedes quitar equipos que ya fueron asignados",
+            )
+
+        teams = list(db.scalars(select(Team).where(Team.id.in_(clean_team_ids))).all()) if clean_team_ids else []
+        if len(teams) != len(clean_team_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Hay equipos invalidos")
+        if any(team.competition_id and team.competition_id != self._season_competition_id(db, vip.season_id) for team in teams):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Los equipos no pertenecen a la temporada")
+
+        profiles = list(db.scalars(select(Profile).where(Profile.id.in_(clean_profile_ids))).all()) if clean_profile_ids else []
+        if len(profiles) != len(clean_profile_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Hay usuarios invalidos")
+
+        db.execute(
+            delete(VipTeamWinnerTeam).where(
+                VipTeamWinnerTeam.vip_competition_id == vip.id,
+                VipTeamWinnerTeam.team_id.not_in(clean_team_ids) if clean_team_ids else True,
+            )
+        )
+        existing_team_ids = set(
+            db.scalars(select(VipTeamWinnerTeam.team_id).where(VipTeamWinnerTeam.vip_competition_id == vip.id))
+        )
+        for team_id in clean_team_ids:
+            if team_id not in existing_team_ids:
+                db.add(VipTeamWinnerTeam(vip_competition_id=vip.id, team_id=team_id))
+
+        existing_entries = list(
+            db.scalars(select(VipTeamWinnerEntry).where(VipTeamWinnerEntry.vip_competition_id == vip.id))
+        )
+        allowed_profile_ids = set(clean_profile_ids)
+        for entry in existing_entries:
+            if entry.assigned_team_id:
+                continue
+            if entry.is_house and not payload.include_house:
+                db.delete(entry)
+            elif not entry.is_house and entry.profile_id not in allowed_profile_ids:
+                db.delete(entry)
+
+        existing_profile_ids = {entry.profile_id for entry in existing_entries if entry.profile_id}
+        profile_by_id = {profile.id: profile for profile in profiles}
+        for profile_id in clean_profile_ids:
+            if profile_id not in existing_profile_ids:
+                profile = profile_by_id[profile_id]
+                db.add(
+                    VipTeamWinnerEntry(
+                        vip_competition_id=vip.id,
+                        profile_id=profile.id,
+                        display_name=profile.display_name,
+                    )
+                )
+
+        house_entry = next((entry for entry in existing_entries if entry.is_house), None)
+        if payload.include_house:
+            if house_entry is None:
+                db.add(
+                    VipTeamWinnerEntry(
+                        vip_competition_id=vip.id,
+                        display_name=payload.house_label.strip(),
+                        is_house=True,
+                    )
+                )
+            else:
+                house_entry.display_name = payload.house_label.strip()
+                db.add(house_entry)
+
+        db.commit()
+
+    def run_team_winner_draw(self, db: Session, vip_id: str) -> None:
+        vip = self._get_team_winner_vip(db, vip_id)
+        entries = list(
+            db.scalars(
+                select(VipTeamWinnerEntry)
+                .where(VipTeamWinnerEntry.vip_competition_id == vip.id)
+                .order_by(VipTeamWinnerEntry.created_at.asc(), VipTeamWinnerEntry.display_name.asc())
+            )
+        )
+        teams = list(
+            db.scalars(
+                select(VipTeamWinnerTeam)
+                .where(VipTeamWinnerTeam.vip_competition_id == vip.id)
+                .order_by(VipTeamWinnerTeam.created_at.asc())
+            )
+        )
+        if not entries:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agrega participantes al sorteo")
+        if len(teams) < len(entries):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Faltan equipos para sortear")
+        if any(entry.assigned_team_id for entry in entries):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Este sorteo ya fue corrido")
+
+        shuffled_teams = teams[:]
+        random.SystemRandom().shuffle(shuffled_teams)
+        shuffled_entries = entries[:]
+        random.SystemRandom().shuffle(shuffled_entries)
+        for index, entry in enumerate(shuffled_entries, start=1):
+            entry.assigned_team_id = shuffled_teams[index - 1].team_id
+            entry.reveal_order = index
+            entry.revealed_at = None
+            db.add(entry)
+        db.commit()
+
+    def reveal_next_team_winner_entry(self, db: Session, vip_id: str) -> None:
+        vip = self._get_team_winner_vip(db, vip_id)
+        entry = db.scalar(
+            select(VipTeamWinnerEntry)
+            .where(
+                VipTeamWinnerEntry.vip_competition_id == vip.id,
+                VipTeamWinnerEntry.assigned_team_id.is_not(None),
+                VipTeamWinnerEntry.revealed_at.is_(None),
+            )
+            .order_by(VipTeamWinnerEntry.reveal_order.asc())
+        )
+        if entry is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay asignaciones por revelar")
+        entry.revealed_at = datetime.now(UTC)
+        db.add(entry)
+        db.commit()
+
+    def update_team_winner_team_status(
+        self,
+        db: Session,
+        vip_id: str,
+        team_row_id: str,
+        payload: AdminVipTeamWinnerTeamStatusRequest,
+        current_profile: Profile,
+    ) -> None:
+        vip = self._get_team_winner_vip(db, vip_id)
+        row = db.get(VipTeamWinnerTeam, team_row_id)
+        if row is None or row.vip_competition_id != vip.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Equipo VIP no encontrado")
+        row.is_eliminated = payload.is_eliminated
+        row.is_champion = payload.is_champion
+        row.eliminated_at = datetime.now(UTC) if payload.is_eliminated else None
+        row.updated_by_profile_id = current_profile.id
+        db.add(row)
+        db.commit()
+
+    def update_team_winner_entry_payment(
+        self,
+        db: Session,
+        vip_id: str,
+        entry_id: str,
+        payload: AdminVipTeamWinnerEntryPaymentRequest,
+    ) -> None:
+        vip = self._get_team_winner_vip(db, vip_id)
+        entry = db.get(VipTeamWinnerEntry, entry_id)
+        if entry is None or entry.vip_competition_id != vip.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Participante VIP no encontrado")
+        entry.is_paid = payload.is_paid
+        db.add(entry)
+        db.commit()
 
     def decide_membership(
         self,
@@ -350,6 +602,10 @@ class VipService:
         matchdays_by_vip: dict[str, list[VipMatchdayOut]] = {}
         matchday_ids_by_vip: dict[str, list[str]] = {}
         season_ids: set[str] = set()
+        season_ids.update(
+            row.season_id
+            for row in db.scalars(select(VipCompetition).where(VipCompetition.id.in_(vip_ids))).all()
+        )
         for link, matchday in matchday_rows:
             season_ids.add(matchday.season_id)
             matchday_ids_by_vip.setdefault(link.vip_competition_id, []).append(matchday.id)
@@ -378,6 +634,38 @@ class VipService:
             if membership.decided_by_profile_id and decision_display_name:
                 profile_names[membership.decided_by_profile_id] = decision_display_name
 
+        team_winner_team_rows = list(
+            db.scalars(
+                select(VipTeamWinnerTeam)
+                .where(VipTeamWinnerTeam.vip_competition_id.in_(vip_ids))
+                .order_by(VipTeamWinnerTeam.created_at.asc())
+            )
+        )
+        team_winner_teams_by_vip: dict[str, list[VipTeamWinnerTeam]] = {}
+        team_ids: set[str] = set()
+        for row in team_winner_team_rows:
+            team_winner_teams_by_vip.setdefault(row.vip_competition_id, []).append(row)
+            team_ids.add(row.team_id)
+
+        team_winner_entry_rows = list(
+            db.scalars(
+                select(VipTeamWinnerEntry)
+                .where(VipTeamWinnerEntry.vip_competition_id.in_(vip_ids))
+                .order_by(VipTeamWinnerEntry.reveal_order.asc().nulls_last(), VipTeamWinnerEntry.created_at.asc())
+            )
+        )
+        team_winner_entries_by_vip: dict[str, list[VipTeamWinnerEntry]] = {}
+        for row in team_winner_entry_rows:
+            team_winner_entries_by_vip.setdefault(row.vip_competition_id, []).append(row)
+            if row.assigned_team_id:
+                team_ids.add(row.assigned_team_id)
+
+        team_names = {
+            team.id: team
+            for team in db.scalars(select(Team).where(Team.id.in_(team_ids))).all()
+        } if team_ids else {}
+        team_status_by_id = {row.team_id: row for row in team_winner_team_rows}
+
         if include_creator_names:
             vip_creator_ids = [
                 vip.created_by_profile_id
@@ -395,6 +683,10 @@ class VipService:
             "matchdays_by_vip": matchdays_by_vip,
             "join_locks_by_vip": self._join_locks_for_vips(db, matchday_ids_by_vip),
             "memberships_by_vip": memberships_by_vip,
+            "team_winner_teams_by_vip": team_winner_teams_by_vip,
+            "team_winner_entries_by_vip": team_winner_entries_by_vip,
+            "team_names": team_names,
+            "team_status_by_id": team_status_by_id,
             "profile_names": profile_names,
             "season_names": season_names,
         }
@@ -551,6 +843,31 @@ class VipService:
 
         return season, matchdays
 
+    def _resolve_vip_season_and_matchdays(
+        self,
+        db: Session,
+        payload: AdminVipUpsertRequest,
+    ) -> tuple[Season, list[Matchday]]:
+        if payload.competition_kind == VipCompetitionKind.MATCHDAY:
+            return self._resolve_matchdays(db, payload.matchday_ids)
+
+        season = db.get(Season, payload.season_id)
+        if season is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada no encontrada")
+        return season, []
+
+    def _get_team_winner_vip(self, db: Session, vip_id: str) -> VipCompetition:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+        if vip.competition_kind != VipCompetitionKind.TEAM_WINNER:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP no es de Equipo ganador")
+        return vip
+
+    def _season_competition_id(self, db: Session, season_id: str) -> str | None:
+        season = db.get(Season, season_id)
+        return season.competition_id if season else None
+
     def _replace_matchdays(self, db: Session, vip_id: str, matchdays: list[Matchday]) -> None:
         db.execute(delete(VipCompetitionMatchday).where(VipCompetitionMatchday.vip_competition_id == vip_id))
         for matchday in matchdays:
@@ -592,32 +909,128 @@ class VipService:
             admin_note=membership.admin_note,
         )
 
+    def _team_winner_team_outs(
+        self,
+        rows: list[VipTeamWinnerTeam],
+        teams_by_id: dict[str, Team],
+    ) -> list[VipTeamWinnerTeamOut]:
+        result: list[VipTeamWinnerTeamOut] = []
+        for row in rows:
+            team = teams_by_id.get(row.team_id)
+            result.append(
+                VipTeamWinnerTeamOut(
+                    id=row.id,
+                    team_id=row.team_id,
+                    team_name=team.name if team else "Equipo",
+                    team_short_name=team.short_name if team else "EQ",
+                    team_crest_url=team.crest_url if team else None,
+                    is_eliminated=row.is_eliminated,
+                    is_champion=row.is_champion,
+                )
+            )
+        return result
+
+    def _team_winner_entry_outs(
+        self,
+        rows: list[VipTeamWinnerEntry],
+        teams_by_id: dict[str, Team],
+        team_status_by_id: dict[str, VipTeamWinnerTeam],
+    ) -> list[VipTeamWinnerEntryOut]:
+        result: list[VipTeamWinnerEntryOut] = []
+        for row in rows:
+            team = teams_by_id.get(row.assigned_team_id) if row.assigned_team_id else None
+            team_status = team_status_by_id.get(row.assigned_team_id) if row.assigned_team_id else None
+            is_revealed = row.revealed_at is not None
+            result.append(
+                VipTeamWinnerEntryOut(
+                    id=row.id,
+                    profile_id=row.profile_id,
+                    display_name=row.display_name,
+                    is_house=row.is_house,
+                    assigned_team_id=row.assigned_team_id if is_revealed else None,
+                    assigned_team_name=team.name if team and is_revealed else None,
+                    assigned_team_short_name=team.short_name if team and is_revealed else None,
+                    assigned_team_crest_url=team.crest_url if team and is_revealed else None,
+                    assigned_team_eliminated=bool(team_status.is_eliminated) if team_status and is_revealed else False,
+                    assigned_team_champion=bool(team_status.is_champion) if team_status and is_revealed else False,
+                    reveal_order=row.reveal_order,
+                    revealed_at=row.revealed_at,
+                    is_paid=row.is_paid,
+                )
+            )
+        return result
+
     @staticmethod
     def _approved_members_count(memberships: list[VipMembership]) -> int:
         return sum(1 for membership in memberships if membership.status == VipMembershipStatus.APPROVED)
 
-    def _gross_pool_amount(self, vip: VipCompetition, memberships: list[VipMembership]) -> Decimal:
-        return Decimal(self._approved_members_count(memberships)) * vip.entry_fee_amount
+    def _pool_units(
+        self,
+        vip: VipCompetition,
+        memberships: list[VipMembership],
+        team_entries: list[VipTeamWinnerEntry] | None = None,
+    ) -> int:
+        if vip.competition_kind == VipCompetitionKind.TEAM_WINNER:
+            return len(team_entries or [])
+        return self._approved_members_count(memberships)
 
-    def _admin_commission_amount(self, vip: VipCompetition, memberships: list[VipMembership]) -> Decimal:
-        return self._gross_pool_amount(vip, memberships) * (vip.admin_commission_pct / Decimal("100"))
+    def _gross_pool_amount(
+        self,
+        vip: VipCompetition,
+        memberships: list[VipMembership],
+        team_entries: list[VipTeamWinnerEntry] | None = None,
+    ) -> Decimal:
+        return Decimal(self._pool_units(vip, memberships, team_entries)) * vip.entry_fee_amount
 
-    def _distributable_prize_pool_amount(self, vip: VipCompetition, memberships: list[VipMembership]) -> Decimal:
-        return self._gross_pool_amount(vip, memberships) - self._admin_commission_amount(vip, memberships)
+    def _admin_commission_amount(
+        self,
+        vip: VipCompetition,
+        memberships: list[VipMembership],
+        team_entries: list[VipTeamWinnerEntry] | None = None,
+    ) -> Decimal:
+        return self._gross_pool_amount(vip, memberships, team_entries) * (vip.admin_commission_pct / Decimal("100"))
 
-    def _first_place_amount(self, vip: VipCompetition, memberships: list[VipMembership]) -> Decimal:
-        return self._distributable_prize_pool_amount(vip, memberships) * (vip.first_place_pct / Decimal("100"))
+    def _distributable_prize_pool_amount(
+        self,
+        vip: VipCompetition,
+        memberships: list[VipMembership],
+        team_entries: list[VipTeamWinnerEntry] | None = None,
+    ) -> Decimal:
+        return self._gross_pool_amount(vip, memberships, team_entries) - self._admin_commission_amount(vip, memberships, team_entries)
 
-    def _second_place_amount(self, vip: VipCompetition, memberships: list[VipMembership]) -> Decimal:
-        return self._distributable_prize_pool_amount(vip, memberships) * (vip.second_place_pct / Decimal("100"))
+    def _first_place_amount(
+        self,
+        vip: VipCompetition,
+        memberships: list[VipMembership],
+        team_entries: list[VipTeamWinnerEntry] | None = None,
+    ) -> Decimal:
+        return self._distributable_prize_pool_amount(vip, memberships, team_entries) * (vip.first_place_pct / Decimal("100"))
 
-    def _third_place_amount(self, vip: VipCompetition, memberships: list[VipMembership]) -> Decimal:
-        return self._distributable_prize_pool_amount(vip, memberships) * (vip.third_place_pct / Decimal("100"))
+    def _second_place_amount(
+        self,
+        vip: VipCompetition,
+        memberships: list[VipMembership],
+        team_entries: list[VipTeamWinnerEntry] | None = None,
+    ) -> Decimal:
+        return self._distributable_prize_pool_amount(vip, memberships, team_entries) * (vip.second_place_pct / Decimal("100"))
 
-    def _remaining_pool_amount(self, vip: VipCompetition, memberships: list[VipMembership]) -> Decimal:
+    def _third_place_amount(
+        self,
+        vip: VipCompetition,
+        memberships: list[VipMembership],
+        team_entries: list[VipTeamWinnerEntry] | None = None,
+    ) -> Decimal:
+        return self._distributable_prize_pool_amount(vip, memberships, team_entries) * (vip.third_place_pct / Decimal("100"))
+
+    def _remaining_pool_amount(
+        self,
+        vip: VipCompetition,
+        memberships: list[VipMembership],
+        team_entries: list[VipTeamWinnerEntry] | None = None,
+    ) -> Decimal:
         return (
-            self._distributable_prize_pool_amount(vip, memberships)
-            - self._first_place_amount(vip, memberships)
-            - self._second_place_amount(vip, memberships)
-            - self._third_place_amount(vip, memberships)
+            self._distributable_prize_pool_amount(vip, memberships, team_entries)
+            - self._first_place_amount(vip, memberships, team_entries)
+            - self._second_place_amount(vip, memberships, team_entries)
+            - self._third_place_amount(vip, memberships, team_entries)
         )

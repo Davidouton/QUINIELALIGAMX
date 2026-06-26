@@ -98,8 +98,12 @@ from app.schemas.season import SeasonOut
 from app.schemas.team import TeamOut
 from app.schemas.vip import (
     AdminVipCompetitionOut,
+    AdminVipMembershipAddRequest,
     AdminVipMembershipDecisionRequest,
     AdminVipMembershipPaymentRequest,
+    AdminVipTeamWinnerConfigRequest,
+    AdminVipTeamWinnerEntryPaymentRequest,
+    AdminVipTeamWinnerTeamStatusRequest,
     AdminVipUpsertRequest,
 )
 from app.services.match_service import MatchService
@@ -2267,6 +2271,88 @@ def update_admin_vip(
 ) -> AdminVipCompetitionOut:
     vip = vip_service.update_admin_vip(db, vip_id, payload)
     return next(row for row in vip_service.list_admin_vips(db) if row.id == vip.id)
+
+
+@router.post("/vip/{vip_id}/memberships", response_model=AdminVipCompetitionOut)
+def add_admin_vip_membership(
+    vip_id: str,
+    payload: AdminVipMembershipAddRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.add_admin_membership(
+        db,
+        vip_id=vip_id,
+        payload=payload,
+        current_profile=current_profile,
+    )
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+
+
+@router.put("/vip/{vip_id}/team-winner/config", response_model=AdminVipCompetitionOut)
+def configure_admin_vip_team_winner(
+    vip_id: str,
+    payload: AdminVipTeamWinnerConfigRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.configure_team_winner(db, vip_id=vip_id, payload=payload)
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+
+
+@router.post("/vip/{vip_id}/team-winner/draw", response_model=AdminVipCompetitionOut)
+def run_admin_vip_team_winner_draw(
+    vip_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.run_team_winner_draw(db, vip_id=vip_id)
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+
+
+@router.post("/vip/{vip_id}/team-winner/reveal-next", response_model=AdminVipCompetitionOut)
+def reveal_next_admin_vip_team_winner(
+    vip_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.reveal_next_team_winner_entry(db, vip_id=vip_id)
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+
+
+@router.put("/vip/{vip_id}/team-winner/teams/{team_row_id}/status", response_model=AdminVipCompetitionOut)
+def update_admin_vip_team_winner_team_status(
+    vip_id: str,
+    team_row_id: str,
+    payload: AdminVipTeamWinnerTeamStatusRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.update_team_winner_team_status(
+        db,
+        vip_id=vip_id,
+        team_row_id=team_row_id,
+        payload=payload,
+        current_profile=current_profile,
+    )
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+
+
+@router.put("/vip/{vip_id}/team-winner/entries/{entry_id}/payment", response_model=AdminVipCompetitionOut)
+def update_admin_vip_team_winner_entry_payment(
+    vip_id: str,
+    entry_id: str,
+    payload: AdminVipTeamWinnerEntryPaymentRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.update_team_winner_entry_payment(
+        db,
+        vip_id=vip_id,
+        entry_id=entry_id,
+        payload=payload,
+    )
+    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
 
 
 @router.post("/vip/{vip_id}/memberships/{membership_id}/approve", response_model=AdminVipCompetitionOut)

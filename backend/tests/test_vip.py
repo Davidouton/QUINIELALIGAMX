@@ -18,7 +18,17 @@ from app.models.entities import (
     VipMembershipStatus,
 )
 
-from conftest import MATCHDAY_ID, MATCH_ONE_ID, PROFILE_LEADER_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
+from conftest import (
+    MATCHDAY_ID,
+    MATCH_ONE_ID,
+    PROFILE_LEADER_ID,
+    PROFILE_USER_ID,
+    SEASON_ID,
+    TEAM_A_ID,
+    TEAM_B_ID,
+    TEAM_C_ID,
+    SessionLocal,
+)
 
 
 @pytest.fixture
@@ -420,6 +430,129 @@ def test_vip_requests_lock_at_first_match_lock(admin_client: TestClient) -> None
     locked_list_response = admin_client.get("/api/v1/vip", headers={"Authorization": "Bearer test-token"})
     locked_vip = next(row for row in locked_list_response.json() if row["id"] == vip_id)
     assert locked_vip["join_locked"] is True
+
+
+def test_admin_can_add_vip_member_after_join_lock_with_accumulated_points(admin_client: TestClient) -> None:
+    create_response = admin_client.post(
+        "/api/v1/admin/vip",
+        json={
+            "name": "VIP Cerrada Admin",
+            "entry_fee_amount": 500,
+            "admin_commission_pct": 0,
+            "first_place_pct": 100,
+            "second_place_pct": 0,
+            "third_place_pct": 0,
+            "matchday_ids": [MATCHDAY_ID],
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_response.status_code == 201
+    vip_id = create_response.json()["id"]
+
+    db = SessionLocal()
+    try:
+        match = db.get(Match, MATCH_ONE_ID)
+        assert match is not None
+        match.picks_lock_at = datetime.now(UTC) - timedelta(minutes=5)
+        db.add(match)
+        db.add(
+            StandingsMatchday(
+                matchday_id=MATCHDAY_ID,
+                profile_id=PROFILE_LEADER_ID,
+                total_points=9,
+                correct_results=3,
+                exact_scores=1,
+                rank_position=1,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    add_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/memberships",
+        json={"profile_id": PROFILE_LEADER_ID},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert add_response.status_code == 200
+    payload = add_response.json()
+    assert payload["join_locked"] is True
+    assert payload["approved_members_count"] == 1
+    membership = next(row for row in payload["memberships"] if row["profile_id"] == PROFILE_LEADER_ID)
+    assert membership["status"] == "approved"
+    assert membership["admin_note"] == "Agregado por admin"
+    assert payload["leaderboard"][0]["profile_id"] == PROFILE_LEADER_ID
+    assert payload["leaderboard"][0]["total_points"] == 9
+
+
+def test_admin_can_run_team_winner_vip_draw_and_mark_eliminated(admin_client: TestClient) -> None:
+    create_response = admin_client.post(
+        "/api/v1/admin/vip",
+        json={
+            "competition_kind": "team_winner",
+            "season_id": SEASON_ID,
+            "name": "Equipo ganador",
+            "entry_fee_amount": 100,
+            "admin_commission_pct": 10,
+            "first_place_pct": 100,
+            "second_place_pct": 0,
+            "third_place_pct": 0,
+            "matchday_ids": [],
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_response.status_code == 201
+    vip_id = create_response.json()["id"]
+
+    config_response = admin_client.put(
+        f"/api/v1/admin/vip/{vip_id}/team-winner/config",
+        json={
+            "team_ids": [TEAM_A_ID, TEAM_B_ID, TEAM_C_ID],
+            "profile_ids": [PROFILE_USER_ID, PROFILE_LEADER_ID],
+            "include_house": True,
+            "house_label": "Casa",
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert config_response.status_code == 200
+    config_payload = config_response.json()
+    assert config_payload["competition_kind"] == "team_winner"
+    assert len(config_payload["team_winner_teams"]) == 3
+    assert len(config_payload["team_winner_entries"]) == 3
+    assert config_payload["gross_pool_amount"] == 300
+    assert config_payload["admin_commission_amount"] == 30
+
+    draw_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/team-winner/draw",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert draw_response.status_code == 200
+    draw_payload = draw_response.json()
+    assert all(entry["reveal_order"] for entry in draw_payload["team_winner_entries"])
+    assert all(entry["assigned_team_id"] is None for entry in draw_payload["team_winner_entries"])
+
+    reveal_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/team-winner/reveal-next",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert reveal_response.status_code == 200
+    reveal_payload = reveal_response.json()
+    revealed_entries = [entry for entry in reveal_payload["team_winner_entries"] if entry["revealed_at"]]
+    assert len(revealed_entries) == 1
+    assert revealed_entries[0]["assigned_team_id"] is not None
+
+    team_row = reveal_payload["team_winner_teams"][0]
+    eliminated_response = admin_client.put(
+        f"/api/v1/admin/vip/{vip_id}/team-winner/teams/{team_row['id']}/status",
+        json={"is_eliminated": True, "is_champion": False},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert eliminated_response.status_code == 200
+    eliminated_team = next(team for team in eliminated_response.json()["team_winner_teams"] if team["id"] == team_row["id"])
+    assert eliminated_team["is_eliminated"] is True
 
 
 def test_admin_cannot_create_vip_with_prize_split_over_100(admin_client: TestClient) -> None:

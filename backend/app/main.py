@@ -471,6 +471,7 @@ def run_startup_migrations() -> None:
                     CREATE TABLE IF NOT EXISTS vip_competitions (
                       id UUID PRIMARY KEY,
                       season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+                      competition_kind VARCHAR(32) NOT NULL DEFAULT 'matchday',
                       name VARCHAR(160) NOT NULL,
                       entry_fee_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
                       admin_commission_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
@@ -495,6 +496,7 @@ def run_startup_migrations() -> None:
             vip_competition_column_names = {column["name"] for column in inspector.get_columns("vip_competitions")}
             missing_vip_competition_columns = {
                 "entry_fee_amount": "ALTER TABLE vip_competitions ADD COLUMN entry_fee_amount NUMERIC(10,2) NOT NULL DEFAULT 0",
+                "competition_kind": "ALTER TABLE vip_competitions ADD COLUMN competition_kind VARCHAR(32) NOT NULL DEFAULT 'matchday'",
                 "admin_commission_pct": "ALTER TABLE vip_competitions ADD COLUMN admin_commission_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
                 "first_place_pct": "ALTER TABLE vip_competitions ADD COLUMN first_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
                 "second_place_pct": "ALTER TABLE vip_competitions ADD COLUMN second_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
@@ -511,6 +513,18 @@ def run_startup_migrations() -> None:
                     "ON vip_competitions(season_id)"
                 )
             )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_competitions_kind "
+                    "ON vip_competitions(competition_kind)"
+                )
+            )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_competitions_kind "
+                "ON vip_competitions(competition_kind)"
+            )
+        )
 
         if "vip_competition_matchdays" not in table_names:
             connection.execute(
@@ -566,6 +580,61 @@ def run_startup_migrations() -> None:
                 connection.execute(
                     text("ALTER TABLE vip_memberships ADD COLUMN is_paid BOOLEAN NOT NULL DEFAULT FALSE")
                 )
+
+        if "vip_team_winner_teams" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS vip_team_winner_teams (
+                      id UUID PRIMARY KEY,
+                      vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
+                      team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                      is_eliminated BOOLEAN NOT NULL DEFAULT FALSE,
+                      is_champion BOOLEAN NOT NULL DEFAULT FALSE,
+                      eliminated_at TIMESTAMP WITH TIME ZONE,
+                      updated_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_vip_team_winner_team UNIQUE (vip_competition_id, team_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_team_winner_teams_vip "
+                    "ON vip_team_winner_teams(vip_competition_id)"
+                )
+            )
+
+        if "vip_team_winner_entries" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS vip_team_winner_entries (
+                      id UUID PRIMARY KEY,
+                      vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
+                      profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+                      display_name VARCHAR(120) NOT NULL,
+                      is_house BOOLEAN NOT NULL DEFAULT FALSE,
+                      assigned_team_id UUID REFERENCES teams(id) ON DELETE SET NULL,
+                      reveal_order INTEGER,
+                      revealed_at TIMESTAMP WITH TIME ZONE,
+                      is_paid BOOLEAN NOT NULL DEFAULT FALSE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_vip_team_winner_entry_profile UNIQUE (vip_competition_id, profile_id),
+                      CONSTRAINT uq_vip_team_winner_entry_team UNIQUE (vip_competition_id, assigned_team_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_team_winner_entries_vip "
+                    "ON vip_team_winner_entries(vip_competition_id)"
+                )
+            )
 
         if "pricing_rules" not in table_names:
             connection.execute(
