@@ -52,6 +52,40 @@ function statusCopy(status: VipMembershipStatus | null) {
   return { label: "Disponible", tone: "text-steel" };
 }
 
+function getTeamWinnerEntryTeamName(
+  vip: VipCompetition,
+  entry: VipCompetition["team_winner_entries"][number],
+) {
+  if (entry.assigned_team_name) {
+    return entry.assigned_team_name;
+  }
+  if (!entry.revealed_at) {
+    return null;
+  }
+  if (entry.assigned_team_id) {
+    return vip.team_winner_teams.find((team) => team.team_id === entry.assigned_team_id)?.team_name ?? null;
+  }
+
+  const revealedTeamIds = new Set(
+    vip.team_winner_entries
+      .filter((row) => row.id !== entry.id && row.revealed_at && row.assigned_team_id)
+      .map((row) => row.assigned_team_id as string),
+  );
+  const revealedTeamNames = new Set(
+    vip.team_winner_entries
+      .filter((row) => row.id !== entry.id && row.revealed_at && row.assigned_team_name)
+      .map((row) => row.assigned_team_name as string),
+  );
+  const remainingTeams = vip.team_winner_teams.filter(
+    (team) => !revealedTeamIds.has(team.team_id) && !revealedTeamNames.has(team.team_name),
+  );
+  const missingRevealedEntries = vip.team_winner_entries
+    .filter((row) => row.revealed_at && !row.assigned_team_id && !row.assigned_team_name)
+    .sort((left, right) => (left.reveal_order ?? 0) - (right.reveal_order ?? 0));
+  const missingIndex = missingRevealedEntries.findIndex((row) => row.id === entry.id);
+  return remainingTeams[missingIndex]?.team_name ?? null;
+}
+
 function getVipJoinLockCopy(vip: VipCompetition) {
   if (!vip.join_lock_at || !vip.join_lock_match_label) {
     return null;
@@ -356,12 +390,7 @@ export function VipPageContent() {
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {selectedVip.team_winner_entries.map((entry) => {
-                      const teamName =
-                        entry.assigned_team_name ??
-                        (entry.revealed_at && entry.assigned_team_id
-                          ? selectedVip.team_winner_teams.find((team) => team.team_id === entry.assigned_team_id)
-                              ?.team_name
-                          : null);
+                      const teamName = getTeamWinnerEntryTeamName(selectedVip, entry);
                       return (
                         <div
                           key={entry.id}

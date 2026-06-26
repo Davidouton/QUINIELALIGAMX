@@ -275,10 +275,31 @@ export function AdminVipPanel() {
     if (entry.assigned_team_name) {
       return entry.assigned_team_name;
     }
-    if (!entry.revealed_at || !entry.assigned_team_id) {
+    if (!entry.revealed_at) {
       return null;
     }
-    return teamWinnerTeams.find((team) => team.team_id === entry.assigned_team_id)?.team_name ?? null;
+    if (entry.assigned_team_id) {
+      return teamWinnerTeams.find((team) => team.team_id === entry.assigned_team_id)?.team_name ?? null;
+    }
+
+    const revealedTeamIds = new Set(
+      teamWinnerEntries
+        .filter((row) => row.id !== entry.id && row.revealed_at && row.assigned_team_id)
+        .map((row) => row.assigned_team_id as string),
+    );
+    const revealedTeamNames = new Set(
+      teamWinnerEntries
+        .filter((row) => row.id !== entry.id && row.revealed_at && row.assigned_team_name)
+        .map((row) => row.assigned_team_name as string),
+    );
+    const remainingTeams = teamWinnerTeams.filter(
+      (team) => !revealedTeamIds.has(team.team_id) && !revealedTeamNames.has(team.team_name),
+    );
+    const missingRevealedEntries = teamWinnerEntries
+      .filter((row) => row.revealed_at && !row.assigned_team_id && !row.assigned_team_name)
+      .sort((left, right) => (left.reveal_order ?? 0) - (right.reveal_order ?? 0));
+    const missingIndex = missingRevealedEntries.findIndex((row) => row.id === entry.id);
+    return remainingTeams[missingIndex]?.team_name ?? null;
   }
 
   async function handleSave() {
