@@ -56,6 +56,7 @@ class VipService:
         if not vip_rows:
             return []
 
+        self._repair_revealed_team_winner_assignments(db, [row.id for row in vip_rows])
         bundle = self._load_bundle(db, [row.id for row in vip_rows])
         result: list[VipCompetitionOut] = []
         for vip in vip_rows:
@@ -164,6 +165,7 @@ class VipService:
         if not vip_rows:
             return []
 
+        self._repair_revealed_team_winner_assignments(db, [row.id for row in vip_rows])
         bundle = self._load_bundle(db, [row.id for row in vip_rows], include_creator_names=True)
         return [
             AdminVipCompetitionOut(
@@ -494,6 +496,58 @@ class VipService:
         db.refresh(entry)
         db.commit()
         db.expire_all()
+
+    def _repair_revealed_team_winner_assignments(self, db: Session, vip_ids: list[str]) -> None:
+        if not vip_ids:
+            return
+
+        entry_rows = list(
+            db.scalars(
+                select(VipTeamWinnerEntry)
+                .where(VipTeamWinnerEntry.vip_competition_id.in_(vip_ids))
+                .order_by(VipTeamWinnerEntry.reveal_order.asc().nulls_last(), VipTeamWinnerEntry.created_at.asc())
+            )
+        )
+        missing_entries_by_vip: dict[str, list[VipTeamWinnerEntry]] = {}
+        assigned_team_ids_by_vip: dict[str, set[str]] = {}
+        for entry in entry_rows:
+            if entry.assigned_team_id:
+                assigned_team_ids_by_vip.setdefault(entry.vip_competition_id, set()).add(entry.assigned_team_id)
+                continue
+            if entry.revealed_at is not None:
+                missing_entries_by_vip.setdefault(entry.vip_competition_id, []).append(entry)
+
+        if not missing_entries_by_vip:
+            return
+
+        team_rows = list(
+            db.scalars(
+                select(VipTeamWinnerTeam)
+                .where(VipTeamWinnerTeam.vip_competition_id.in_(missing_entries_by_vip.keys()))
+                .order_by(VipTeamWinnerTeam.created_at.asc(), VipTeamWinnerTeam.id.asc())
+            )
+        )
+        teams_by_vip: dict[str, list[VipTeamWinnerTeam]] = {}
+        for team in team_rows:
+            teams_by_vip.setdefault(team.vip_competition_id, []).append(team)
+
+        changed = False
+        for vip_id, missing_entries in missing_entries_by_vip.items():
+            assigned_team_ids = assigned_team_ids_by_vip.get(vip_id, set())
+            remaining_team_ids = [
+                team.team_id
+                for team in teams_by_vip.get(vip_id, [])
+                if team.team_id not in assigned_team_ids
+            ]
+            for entry, team_id in zip(missing_entries, remaining_team_ids, strict=False):
+                entry.assigned_team_id = team_id
+                db.add(entry)
+                assigned_team_ids.add(team_id)
+                changed = True
+
+        if changed:
+            db.commit()
+            db.expire_all()
 
     def update_team_winner_team_status(
         self,
