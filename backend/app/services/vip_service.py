@@ -490,7 +490,10 @@ class VipService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay asignaciones por revelar")
         entry.revealed_at = datetime.now(UTC)
         db.add(entry)
+        db.flush()
+        db.refresh(entry)
         db.commit()
+        db.expire_all()
 
     def update_team_winner_team_status(
         self,

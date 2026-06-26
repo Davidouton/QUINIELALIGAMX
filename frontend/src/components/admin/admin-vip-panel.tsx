@@ -864,7 +864,7 @@ export function AdminVipPanel() {
                     }
                     className="app-pill h-9 px-4 text-sm disabled:opacity-50"
                   >
-                    Destapar siguiente
+                    {nextTeamWinnerEntry ? `Destapar ${nextTeamWinnerEntry.display_name}` : "Destapar siguiente"}
                   </button>
                 </div>
               </div>
