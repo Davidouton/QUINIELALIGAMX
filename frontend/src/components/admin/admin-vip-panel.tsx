@@ -271,6 +271,16 @@ export function AdminVipPanel() {
     setTeamWinnerProfileIds(Array.from(new Set(assignedProfileIds)));
   }
 
+  function getTeamWinnerEntryTeamName(entry: AdminVipCompetition["team_winner_entries"][number]) {
+    if (entry.assigned_team_name) {
+      return entry.assigned_team_name;
+    }
+    if (!entry.revealed_at || !entry.assigned_team_id) {
+      return null;
+    }
+    return teamWinnerTeams.find((team) => team.team_id === entry.assigned_team_id)?.team_name ?? null;
+  }
+
   async function handleSave() {
     const isUpdate = Boolean(selectedVipId);
     setSaving(true);
@@ -1020,37 +1030,40 @@ export function AdminVipPanel() {
                   <span>Pago</span>
                   <span className="text-right">Acciones</span>
                 </div>
-                {teamWinnerEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className={`grid min-w-[680px] grid-cols-[64px_minmax(0,1fr)_minmax(0,1fr)_110px_160px] items-center gap-3 border-b border-white/[0.04] px-4 py-3 text-sm last:border-b-0 ${
-                      entry.assigned_team_champion
-                        ? "bg-mint/10"
-                        : entry.assigned_team_eliminated
-                          ? "opacity-55"
-                          : ""
-                    }`}
-                  >
-                    <span className="text-steel">{entry.reveal_order ?? "-"}</span>
-                    <span className="truncate font-semibold text-ink">
-                      {entry.display_name}{entry.is_house ? " · Casa" : ""}
-                    </span>
-                    <span className="truncate">
-                      {entry.assigned_team_name ?? (entry.reveal_order ? "Oculto" : "Sin sortear")}
-                    </span>
-                    <span className={entry.is_paid ? "font-semibold text-mint" : "font-semibold text-amber-100"}>
-                      {getPaymentLabel(entry.is_paid)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void handleTeamWinnerPayment(entry.id, entry.is_paid)}
-                      disabled={savingTeamWinner}
-                      className="justify-self-end text-sm font-semibold text-mint disabled:opacity-50"
+                {teamWinnerEntries.map((entry) => {
+                  const teamName = getTeamWinnerEntryTeamName(entry);
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`grid min-w-[680px] grid-cols-[64px_minmax(0,1fr)_minmax(0,1fr)_110px_160px] items-center gap-3 border-b border-white/[0.04] px-4 py-3 text-sm last:border-b-0 ${
+                        entry.assigned_team_champion
+                          ? "bg-mint/10"
+                          : entry.assigned_team_eliminated
+                            ? "opacity-55"
+                            : ""
+                      }`}
                     >
-                      {entry.is_paid ? "Pago pend." : "Marcar pag."}
-                    </button>
-                  </div>
-                ))}
+                      <span className="text-steel">{entry.reveal_order ?? "-"}</span>
+                      <span className="truncate font-semibold text-ink">
+                        {entry.display_name}{entry.is_house ? " · Casa" : ""}
+                      </span>
+                      <span className="truncate">
+                        {teamName ?? (entry.reveal_order ? "Oculto" : "Sin sortear")}
+                      </span>
+                      <span className={entry.is_paid ? "font-semibold text-mint" : "font-semibold text-amber-100"}>
+                        {getPaymentLabel(entry.is_paid)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleTeamWinnerPayment(entry.id, entry.is_paid)}
+                        disabled={savingTeamWinner}
+                        className="justify-self-end text-sm font-semibold text-mint disabled:opacity-50"
+                      >
+                        {entry.is_paid ? "Pago pend." : "Marcar pag."}
+                      </button>
+                    </div>
+                  );
+                })}
                 {teamWinnerEntries.length === 0 ? (
                   <p className="px-4 py-4 text-sm text-steel">
                     Selecciona participantes y crea la VIP para preparar el sorteo.

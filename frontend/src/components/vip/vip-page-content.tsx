@@ -355,37 +355,45 @@ export function VipPageContent() {
                     <p className="text-xs text-steel">{selectedVip.team_winner_entries.length} participantes</p>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {selectedVip.team_winner_entries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className={`rounded-[8px] border border-white/[0.06] px-4 py-3 ${
-                          entry.assigned_team_champion
-                            ? "bg-mint/10"
-                            : entry.assigned_team_eliminated
-                              ? "opacity-55"
-                              : ""
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="truncate text-sm font-semibold text-ink">
-                            {entry.display_name}{entry.is_house ? " · Casa" : ""}
-                          </p>
-                          <span className="text-xs text-steel">#{entry.reveal_order ?? "-"}</span>
-                        </div>
-                        <p className="mt-2 text-sm text-steel">
-                          {entry.assigned_team_name ?? (entry.reveal_order ? "Oculto" : "Sin sortear")}
-                        </p>
-                        {entry.assigned_team_name ? (
-                          <p className={`mt-1 text-xs ${entry.assigned_team_eliminated ? "text-coral" : "text-mint"}`}>
-                            {entry.assigned_team_champion
-                              ? "Campeon"
+                    {selectedVip.team_winner_entries.map((entry) => {
+                      const teamName =
+                        entry.assigned_team_name ??
+                        (entry.revealed_at && entry.assigned_team_id
+                          ? selectedVip.team_winner_teams.find((team) => team.team_id === entry.assigned_team_id)
+                              ?.team_name
+                          : null);
+                      return (
+                        <div
+                          key={entry.id}
+                          className={`rounded-[8px] border border-white/[0.06] px-4 py-3 ${
+                            entry.assigned_team_champion
+                              ? "bg-mint/10"
                               : entry.assigned_team_eliminated
-                                ? "Eliminado"
-                                : "Vivo"}
+                                ? "opacity-55"
+                                : ""
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="truncate text-sm font-semibold text-ink">
+                              {entry.display_name}{entry.is_house ? " · Casa" : ""}
+                            </p>
+                            <span className="text-xs text-steel">#{entry.reveal_order ?? "-"}</span>
+                          </div>
+                          <p className="mt-2 text-sm text-steel">
+                            {teamName ?? (entry.reveal_order ? "Oculto" : "Sin sortear")}
                           </p>
-                        ) : null}
-                      </div>
-                    ))}
+                          {teamName ? (
+                            <p className={`mt-1 text-xs ${entry.assigned_team_eliminated ? "text-coral" : "text-mint"}`}>
+                              {entry.assigned_team_champion
+                                ? "Campeon"
+                                : entry.assigned_team_eliminated
+                                  ? "Eliminado"
+                                  : "Vivo"}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}
