@@ -259,7 +259,9 @@ export function AdminVipPanel() {
     const assignedProfileIds = selectedVip?.team_winner_entries
       .filter((entry) => entry.assigned_team_id && entry.profile_id)
       .map((entry) => entry.profile_id as string) ?? [];
-    setTeamWinnerProfileIds(Array.from(new Set([...assignedProfileIds, ...users.map((user) => user.id)])));
+    setTeamWinnerProfileIds(
+      Array.from(new Set([...assignedProfileIds, ...approvedMemberships.map((membership) => membership.profile_id)])),
+    );
   }
 
   function clearUnassignedTeamWinnerUsers() {
@@ -294,31 +296,8 @@ export function AdminVipPanel() {
           is_active: form.isActive,
         }),
       });
-      if (form.competitionKind === "team_winner") {
-        await backendFetch<AdminVipCompetition>(
-          `/admin/vip/${savedVip.id}/team-winner/config`,
-          accessToken,
-          {
-            method: "PUT",
-            body: JSON.stringify({
-              team_ids: teamWinnerTeamIds,
-              profile_ids: teamWinnerProfileIds,
-              include_house: includeHouse,
-              house_label: houseLabel.trim() || "Casa",
-            }),
-          },
-        );
-      }
       await loadPanel(savedVip.id);
-      setMessage(
-        form.competitionKind === "team_winner"
-          ? isUpdate
-            ? "VIP y sorteo actualizados."
-            : "VIP creada con sorteo listo para correr."
-          : isUpdate
-            ? "VIP actualizada."
-            : "VIP creada.",
-      );
+      setMessage(isUpdate ? "VIP actualizada." : "VIP creada.");
     } catch (caughtError) {
       const errorMessage = getCaughtMessage(caughtError, "No se pudo guardar la VIP");
       setError(`${isUpdate ? "Guardar VIP" : "Crear VIP"}: ${errorMessage}`);
@@ -862,17 +841,11 @@ export function AdminVipPanel() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (selectedVip) {
-                        void handleSaveTeamWinnerConfig();
-                      } else {
-                        void handleSave();
-                      }
-                    }}
-                    disabled={saving || savingTeamWinner || hasTeamWinnerDraw}
+                    onClick={() => void handleSaveTeamWinnerConfig()}
+                    disabled={!selectedVip || savingTeamWinner || hasTeamWinnerDraw}
                     className="app-pill h-9 px-4 text-sm disabled:opacity-50"
                   >
-                    {saving || savingTeamWinner ? "Guardando" : selectedVip ? "Guardar sorteo" : "Crear VIP"}
+                    {savingTeamWinner ? "Guardando" : "Guardar sorteo"}
                   </button>
                   <button
                     type="button"
@@ -928,7 +901,12 @@ export function AdminVipPanel() {
               ) : null}
               {!selectedVip ? (
                 <p className="text-sm text-steel">
-                  Elige equipos y participantes aqui; al crear la VIP se guarda esta configuracion y queda lista para sortear.
+                  Primero crea la VIP para recibir solicitudes, aprobar participantes y preparar el sorteo.
+                </p>
+              ) : null}
+              {selectedVip && approvedMemberships.length === 0 ? (
+                <p className="text-sm text-steel">
+                  Aprueba solicitudes o agrega participantes manualmente antes de configurar el sorteo.
                 </p>
               ) : null}
 
@@ -1004,27 +982,32 @@ export function AdminVipPanel() {
                     />
                   </label>
                   <div className="grid max-h-[312px] gap-2 overflow-y-auto pr-1">
-                    {users.map((user) => {
+                    {approvedMemberships.map((membership) => {
                       const assigned = teamWinnerEntries.some(
-                        (entry) => entry.profile_id === user.id && entry.assigned_team_id,
+                        (entry) => entry.profile_id === membership.profile_id && entry.assigned_team_id,
                       );
                       return (
                         <label
-                          key={user.id}
+                          key={membership.id}
                           className={`flex items-center gap-3 rounded-[8px] border px-3 py-2 text-sm ${
                             assigned ? "border-mint/25 bg-mint/10" : "border-white/[0.06]"
                           }`}
                         >
                           <input
                             type="checkbox"
-                            checked={teamWinnerProfileIds.includes(user.id)}
+                            checked={teamWinnerProfileIds.includes(membership.profile_id)}
                             disabled={assigned || hasTeamWinnerDraw}
-                            onChange={() => toggleTeamWinnerProfile(user.id)}
+                            onChange={() => toggleTeamWinnerProfile(membership.profile_id)}
                           />
-                          <span className="truncate">{user.display_name}</span>
+                          <span className="truncate">{membership.display_name}</span>
                         </label>
                       );
                     })}
+                    {approvedMemberships.length === 0 ? (
+                      <p className="rounded-[8px] border border-white/[0.06] px-3 py-3 text-sm text-steel">
+                        No hay miembros aprobados todavia.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1113,7 +1096,7 @@ export function AdminVipPanel() {
             </section>
           ) : null}
 
-          {selectedVip?.competition_kind === "matchday" ? (
+          {selectedVip ? (
             <section className="space-y-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                 <div>
@@ -1153,7 +1136,6 @@ export function AdminVipPanel() {
             </section>
           ) : null}
 
-          {form.competitionKind === "matchday" ? (
           <section className="space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -1206,9 +1188,8 @@ export function AdminVipPanel() {
               <p className="text-sm text-steel">Crea o selecciona una VIP para revisar solicitudes.</p>
             )}
           </section>
-          ) : null}
 
-          {selectedVip?.competition_kind === "matchday" ? (
+          {selectedVip ? (
             <section className="space-y-4">
               <div className="flex items-center justify-between gap-4">
                 <div>

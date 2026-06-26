@@ -183,7 +183,7 @@ export function VipPageContent() {
             const lockCopy = getVipJoinLockCopy(vip);
             const hasMembership = Boolean(vip.my_membership);
             const isTeamWinner = vip.competition_kind === "team_winner";
-            const disabled = isTeamWinner || vip.my_membership?.status === "approved" || (!hasMembership && vip.join_locked);
+            const disabled = vip.my_membership?.status === "approved" || (!hasMembership && vip.join_locked);
             return (
               <div
                 key={vip.id}
@@ -218,7 +218,7 @@ export function VipPageContent() {
                     <div>
                       <p className="uppercase tracking-[0.18em]">Aprobados</p>
                       <p className="mt-1 text-sm font-semibold text-ink">
-                        {isTeamWinner ? vip.team_winner_entries.length : vip.approved_members_count}
+                        {vip.approved_members_count}
                       </p>
                     </div>
                   <div>
@@ -259,8 +259,6 @@ export function VipPageContent() {
                       ? "Abriendo checkout"
                       : requestingVipId === vip.id
                         ? "Enviando"
-                        : isTeamWinner
-                          ? "Sorteo admin"
                         : vip.my_membership?.status === "approved"
                           ? "Dentro"
                           : !hasMembership && vip.join_locked

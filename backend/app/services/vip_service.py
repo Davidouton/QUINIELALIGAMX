@@ -114,8 +114,6 @@ class VipService:
         vip = db.get(VipCompetition, vip_id)
         if vip is None or not vip.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
-        if vip.competition_kind == VipCompetitionKind.TEAM_WINNER:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP se administra por sorteo")
 
         join_lock = self._join_lock_for_vip(db, vip_id)
         if join_lock["locked"]:
@@ -373,6 +371,21 @@ class VipService:
         profiles = list(db.scalars(select(Profile).where(Profile.id.in_(clean_profile_ids))).all()) if clean_profile_ids else []
         if len(profiles) != len(clean_profile_ids):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Hay usuarios invalidos")
+        if clean_profile_ids:
+            approved_profile_ids = set(
+                db.scalars(
+                    select(VipMembership.profile_id).where(
+                        VipMembership.vip_competition_id == vip.id,
+                        VipMembership.status == VipMembershipStatus.APPROVED,
+                        VipMembership.profile_id.in_(clean_profile_ids),
+                    )
+                )
+            )
+            if approved_profile_ids != set(clean_profile_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Solo puedes sortear miembros aprobados en esta VIP",
+                )
 
         db.execute(
             delete(VipTeamWinnerTeam).where(
@@ -982,8 +995,6 @@ class VipService:
         memberships: list[VipMembership],
         team_entries: list[VipTeamWinnerEntry] | None = None,
     ) -> int:
-        if vip.competition_kind == VipCompetitionKind.TEAM_WINNER:
-            return len(team_entries or [])
         return self._approved_members_count(memberships)
 
     def _gross_pool_amount(
