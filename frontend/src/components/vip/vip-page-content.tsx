@@ -57,13 +57,15 @@ function registrationStatusCopy(vip: VipCompetition) {
     return {
       label: "Registro cerrado",
       sublabel: "Jugandose",
-      tone: "border-coral/25 bg-coral/10 text-coral",
+      tone: "text-coral",
+      dot: "bg-coral",
     };
   }
   return {
     label: "Registro abierto",
     sublabel: "Disponible",
-    tone: "border-mint/25 bg-mint/10 text-mint",
+    tone: "text-mint",
+    dot: "bg-mint",
   };
 }
 
@@ -232,8 +234,8 @@ export function VipPageContent() {
       {error ? <p className="text-sm text-coral">{error}</p> : null}
 
       <section className="space-y-4">
-        <div className="overflow-hidden rounded-[12px] border border-white/[0.06] bg-white/[0.02]">
-          <div className="hidden grid-cols-[1.35fr_0.9fr_0.75fr_0.75fr_0.75fr_0.8fr] gap-3 border-b border-white/[0.06] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-steel md:grid">
+        <div className="overflow-hidden border-y border-white/[0.08]">
+          <div className="hidden grid-cols-[1.45fr_0.95fr_0.7fr_0.7fr_0.7fr_0.75fr] gap-3 border-b border-white/[0.08] px-1 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-steel md:grid">
             <span>VIP</span>
             <span>Estado</span>
             <span>Entrada</span>
@@ -251,30 +253,28 @@ export function VipPageContent() {
                 key={vip.id}
                 type="button"
                 onClick={() => setSelectedVipId(vip.id)}
-                className={`grid w-full gap-3 px-4 py-4 text-left transition md:grid-cols-[1.35fr_0.9fr_0.75fr_0.75fr_0.75fr_0.8fr] md:items-center ${
+                className={`grid w-full gap-2 border-b border-white/[0.05] px-1 py-3 text-left transition last:border-b-0 md:grid-cols-[1.45fr_0.95fr_0.7fr_0.7fr_0.7fr_0.75fr] md:items-center ${
                   selectedVip?.id === vip.id
-                    ? "bg-white/[0.06]"
-                    : "border-t border-white/[0.04] hover:bg-white/[0.03] first:border-t-0"
+                    ? "bg-white/[0.04]"
+                    : "hover:bg-white/[0.025]"
                 }`}
               >
                 <div className="min-w-0">
                   <div className="flex items-start justify-between gap-3 md:block">
                     <p className="truncate text-sm font-semibold text-ink">{vip.name}</p>
-                    <span
-                      className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] md:hidden ${registrationStatus.tone}`}
-                    >
+                    <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-semibold md:hidden ${registrationStatus.tone}`}>
+                      <span className={`h-2 w-2 rounded-full ${registrationStatus.dot}`} />
                       {registrationStatus.label}
                     </span>
                   </div>
                   <p className="mt-1 truncate text-xs text-steel">{vip.season_name} · {getVipModeLabel(vip)}</p>
                 </div>
                 <div className="hidden md:block">
-                  <span
-                    className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${registrationStatus.tone}`}
-                  >
+                  <p className={`flex items-center gap-2 text-xs font-semibold ${registrationStatus.tone}`}>
+                    <span className={`h-2 w-2 rounded-full ${registrationStatus.dot}`} />
                     {registrationStatus.label}
-                  </span>
-                  <p className="mt-1 text-xs text-steel">{registrationStatus.sublabel}</p>
+                  </p>
+                  <p className="mt-0.5 text-xs text-steel">{registrationStatus.sublabel}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Entrada</p>
@@ -303,20 +303,20 @@ export function VipPageContent() {
           ) : null}
         </div>
 
-        <div className="space-y-4 rounded-[12px] border border-white/[0.06] bg-white/[0.02] p-5">
+        <div className="space-y-5 border-y border-white/[0.08] py-5">
           {selectedVip ? (
             <>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm uppercase tracking-[0.22em] text-steel">{selectedVip.season_name}</p>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${registrationStatusCopy(selectedVip).tone}`}
-                    >
+                    <span className={`flex items-center gap-1.5 text-xs font-semibold ${registrationStatusCopy(selectedVip).tone}`}>
+                      <span className={`h-2 w-2 rounded-full ${registrationStatusCopy(selectedVip).dot}`} />
                       {registrationStatusCopy(selectedVip).label}
                     </span>
                     {selectedVip.join_locked ? (
-                      <span className="rounded-full border border-gold/25 bg-gold/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-gold">
+                      <span className="flex items-center gap-1.5 text-xs font-semibold text-gold">
+                        <span className="h-2 w-2 rounded-full bg-gold" />
                         Jugandose
                       </span>
                     ) : null}
@@ -348,9 +348,9 @@ export function VipPageContent() {
               </div>
 
               {selectedVip.competition_kind !== "team_winner" && selectedVip.my_membership?.status !== "approved" ? (
-                <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                <div className="flex flex-wrap items-center gap-3 border-y border-white/[0.06] py-3">
                   {selectedVip.join_locked && !selectedVip.my_membership ? (
-                    <span className="app-pill px-4 text-sm text-coral">Solicitud cerrada</span>
+                    <span className="text-sm font-semibold text-coral">Solicitud cerrada</span>
                   ) : selectedVipPricing ? (
                     <button
                       type="button"
@@ -428,60 +428,55 @@ export function VipPageContent() {
               ) : null}
 
               {selectedVip.competition_kind === "matchday" ? (
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-steel">Jornadas que cuentan</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedVip.matchdays.map((matchday) => (
-                    <span key={matchday.id} className="app-pill-ghost px-3 text-xs text-ink">
-                      J{matchday.number} {matchday.name}
-                    </span>
-                  ))}
+                <div className="border-y border-white/[0.06] py-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-steel">Jornadas que cuentan</p>
+                  <p className="mt-2 text-sm font-semibold text-ink">
+                    {selectedVip.matchdays
+                      .map((matchday) => `J${matchday.number} ${matchday.name}`)
+                      .join(" · ")}
+                  </p>
                 </div>
-              </div>
               ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Bolsa total</p>
-                  <p className="mt-2 text-sm font-semibold text-ink">{formatCurrency(selectedVip.gross_pool_amount)}</p>
-                  <p className="mt-1 text-xs text-steel">
+              <div className="overflow-hidden border-y border-white/[0.08]">
+                <div className="grid gap-2 border-b border-white/[0.05] py-2.5 text-sm sm:grid-cols-3">
+                  <p className="text-steel">Bolsa total</p>
+                  <p className="font-semibold text-ink">{formatCurrency(selectedVip.gross_pool_amount)}</p>
+                  <p className="text-steel">
                     {selectedVip.competition_kind === "team_winner"
                       ? selectedVip.team_winner_entries.length
                       : selectedVip.approved_members_count} x {formatCurrency(selectedVip.entry_fee_amount)}
                   </p>
                 </div>
-                <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Comision</p>
-                  <p className="mt-2 text-sm font-semibold text-ink">{formatCurrency(selectedVip.admin_commission_amount)}</p>
-                  <p className="mt-1 text-xs text-steel">{selectedVip.admin_commission_pct.toFixed(2)}%</p>
+                <div className="grid gap-2 border-b border-white/[0.05] py-2.5 text-sm sm:grid-cols-3">
+                  <p className="text-steel">Comision</p>
+                  <p className="font-semibold text-ink">{formatCurrency(selectedVip.admin_commission_amount)}</p>
+                  <p className="text-steel">{selectedVip.admin_commission_pct.toFixed(2)}%</p>
                 </div>
-                <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Bolsa premios</p>
-                  <p className="mt-2 text-sm font-semibold text-ink">
-                    {formatCurrency(selectedVip.distributable_prize_pool_amount)}
-                  </p>
+                <div className="grid gap-2 border-b border-white/[0.05] py-2.5 text-sm sm:grid-cols-3">
+                  <p className="text-steel">Bolsa premios</p>
+                  <p className="font-semibold text-ink">{formatCurrency(selectedVip.distributable_prize_pool_amount)}</p>
+                  <p className="text-steel">Disponible para repartir</p>
                 </div>
-                <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Restante</p>
-                  <p className="mt-2 text-sm font-semibold text-ink">{formatCurrency(selectedVip.remaining_pool_amount)}</p>
+                <div className="grid gap-2 border-b border-white/[0.05] py-2.5 text-sm sm:grid-cols-3">
+                  <p className="text-steel">1er lugar</p>
+                  <p className="font-semibold text-ink">{formatCurrency(selectedVip.first_place_amount)}</p>
+                  <p className="text-steel">{selectedVip.first_place_pct.toFixed(2)}%</p>
                 </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-steel">1er lugar</p>
-                  <p className="mt-2 text-sm font-semibold text-ink">{formatCurrency(selectedVip.first_place_amount)}</p>
-                  <p className="mt-1 text-xs text-steel">{selectedVip.first_place_pct.toFixed(2)}%</p>
+                <div className="grid gap-2 border-b border-white/[0.05] py-2.5 text-sm sm:grid-cols-3">
+                  <p className="text-steel">2do lugar</p>
+                  <p className="font-semibold text-ink">{formatCurrency(selectedVip.second_place_amount)}</p>
+                  <p className="text-steel">{selectedVip.second_place_pct.toFixed(2)}%</p>
                 </div>
-                <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-steel">2do lugar</p>
-                  <p className="mt-2 text-sm font-semibold text-ink">{formatCurrency(selectedVip.second_place_amount)}</p>
-                  <p className="mt-1 text-xs text-steel">{selectedVip.second_place_pct.toFixed(2)}%</p>
+                <div className="grid gap-2 border-b border-white/[0.05] py-2.5 text-sm sm:grid-cols-3">
+                  <p className="text-steel">3er lugar</p>
+                  <p className="font-semibold text-ink">{formatCurrency(selectedVip.third_place_amount)}</p>
+                  <p className="text-steel">{selectedVip.third_place_pct.toFixed(2)}%</p>
                 </div>
-                <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.22em] text-steel">3er lugar</p>
-                  <p className="mt-2 text-sm font-semibold text-ink">{formatCurrency(selectedVip.third_place_amount)}</p>
-                  <p className="mt-1 text-xs text-steel">{selectedVip.third_place_pct.toFixed(2)}%</p>
+                <div className="grid gap-2 py-2.5 text-sm sm:grid-cols-3">
+                  <p className="text-steel">Restante</p>
+                  <p className="font-semibold text-ink">{formatCurrency(selectedVip.remaining_pool_amount)}</p>
+                  <p className="text-steel">Sin asignar</p>
                 </div>
               </div>
 
