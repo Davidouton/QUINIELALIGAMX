@@ -234,9 +234,9 @@ export function VipPageContent() {
       {error ? <p className="text-sm text-coral">{error}</p> : null}
 
       <section className="space-y-4">
-        <div className="overflow-x-auto border-y border-white/[0.08] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="md:min-w-[920px]">
-            <div className="hidden grid-cols-[minmax(260px,1.5fr)_minmax(130px,0.75fr)_minmax(110px,0.65fr)_minmax(120px,0.65fr)_minmax(130px,0.65fr)_minmax(160px,0.8fr)] gap-5 border-b border-white/[0.08] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-steel md:grid">
+        <div className="overflow-hidden border-y border-white/[0.08]">
+          <div>
+            <div className="hidden grid-cols-[minmax(0,1.55fr)_minmax(0,0.72fr)_minmax(0,0.58fr)_minmax(0,0.62fr)_minmax(0,0.72fr)_minmax(0,0.82fr)] gap-3 border-b border-white/[0.08] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-steel md:grid">
               <span>VIP</span>
               <span>Mi acceso</span>
               <span>Entrada</span>
@@ -254,7 +254,7 @@ export function VipPageContent() {
                 key={vip.id}
                 type="button"
                 onClick={() => setSelectedVipId(vip.id)}
-                className={`grid w-full gap-3 border-b border-white/[0.05] px-4 py-3 text-left transition last:border-b-0 md:min-h-[78px] md:grid-cols-[minmax(260px,1.5fr)_minmax(130px,0.75fr)_minmax(110px,0.65fr)_minmax(120px,0.65fr)_minmax(130px,0.65fr)_minmax(160px,0.8fr)] md:items-center md:gap-5 ${
+                className={`grid w-full gap-3 border-b border-white/[0.05] px-4 py-3 text-left transition last:border-b-0 md:min-h-[76px] md:grid-cols-[minmax(0,1.55fr)_minmax(0,0.72fr)_minmax(0,0.58fr)_minmax(0,0.62fr)_minmax(0,0.72fr)_minmax(0,0.82fr)] md:items-center md:gap-3 ${
                   selectedVip?.id === vip.id
                     ? "bg-white/[0.04]"
                     : "hover:bg-white/[0.025]"
@@ -272,9 +272,9 @@ export function VipPageContent() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Mi acceso</p>
-                  <p className={`flex items-center gap-2 text-[13px] font-semibold leading-5 ${membershipStatus.tone}`}>
+                  <p className={`flex min-w-0 items-center gap-2 text-[13px] font-semibold leading-5 ${membershipStatus.tone}`}>
                     <span className={`h-2 w-2 shrink-0 rounded-full ${membershipStatus.dot}`} />
-                    {membershipStatus.label}
+                    <span className="truncate">{membershipStatus.label}</span>
                   </p>
                 </div>
                 <div className="min-w-0">
@@ -291,11 +291,11 @@ export function VipPageContent() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Estado</p>
-                  <p className={`flex items-center gap-2 text-[13px] font-semibold leading-5 ${registrationStatus.tone}`}>
+                  <p className={`flex min-w-0 items-center gap-2 text-[13px] font-semibold leading-5 ${registrationStatus.tone}`}>
                     <span className={`h-2 w-2 shrink-0 rounded-full ${registrationStatus.dot}`} />
-                    {registrationStatus.label}
+                    <span className="truncate">{registrationStatus.label}</span>
                   </p>
-                  <p className="mt-0.5 text-xs leading-5 text-steel">{registrationStatus.sublabel}</p>
+                  <p className="mt-0.5 truncate text-xs leading-5 text-steel">{registrationStatus.sublabel}</p>
                 </div>
               </button>
             );
