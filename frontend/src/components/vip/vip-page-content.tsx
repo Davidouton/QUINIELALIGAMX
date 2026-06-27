@@ -234,15 +234,16 @@ export function VipPageContent() {
       {error ? <p className="text-sm text-coral">{error}</p> : null}
 
       <section className="space-y-4">
-        <div className="overflow-hidden border-y border-white/[0.08]">
-          <div className="hidden grid-cols-[1.45fr_0.95fr_0.7fr_0.7fr_0.7fr_0.85fr] gap-4 border-b border-white/[0.08] px-2 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-steel md:grid">
-            <span>VIP</span>
-            <span>Mi acceso</span>
-            <span>Entrada</span>
-            <span>Bolsa</span>
-            <span>Participantes</span>
-            <span>Estado</span>
-          </div>
+        <div className="overflow-x-auto border-y border-white/[0.08] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="md:min-w-[920px]">
+            <div className="hidden grid-cols-[minmax(260px,1.5fr)_minmax(130px,0.75fr)_minmax(110px,0.65fr)_minmax(120px,0.65fr)_minmax(130px,0.65fr)_minmax(160px,0.8fr)] gap-5 border-b border-white/[0.08] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-steel md:grid">
+              <span>VIP</span>
+              <span>Mi acceso</span>
+              <span>Entrada</span>
+              <span>Bolsa</span>
+              <span>Participantes</span>
+              <span>Estado</span>
+            </div>
           {vips.map((vip) => {
             const membershipStatus = statusCopy(vip.my_membership?.status ?? null);
             const registrationStatus = registrationStatusCopy(vip);
@@ -253,7 +254,7 @@ export function VipPageContent() {
                 key={vip.id}
                 type="button"
                 onClick={() => setSelectedVipId(vip.id)}
-                className={`grid w-full gap-3 border-b border-white/[0.05] px-2 py-3 text-left transition last:border-b-0 md:min-h-[78px] md:grid-cols-[1.45fr_0.95fr_0.7fr_0.7fr_0.7fr_0.85fr] md:items-center md:gap-4 ${
+                className={`grid w-full gap-3 border-b border-white/[0.05] px-4 py-3 text-left transition last:border-b-0 md:min-h-[78px] md:grid-cols-[minmax(260px,1.5fr)_minmax(130px,0.75fr)_minmax(110px,0.65fr)_minmax(120px,0.65fr)_minmax(130px,0.65fr)_minmax(160px,0.8fr)] md:items-center md:gap-5 ${
                   selectedVip?.id === vip.id
                     ? "bg-white/[0.04]"
                     : "hover:bg-white/[0.025]"
@@ -305,6 +306,7 @@ export function VipPageContent() {
               Aun no hay VIPs activas disponibles.
             </div>
           ) : null}
+          </div>
         </div>
 
         <div className="space-y-5 border-y border-white/[0.08] py-5">
