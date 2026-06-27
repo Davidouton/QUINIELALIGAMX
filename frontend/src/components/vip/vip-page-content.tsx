@@ -49,7 +49,29 @@ function statusCopy(status: VipMembershipStatus | null) {
   if (status === "pending") {
     return { label: "Pendiente", tone: "text-gold" };
   }
-  return { label: "Disponible", tone: "text-steel" };
+  return { label: "Sin acceso", tone: "text-steel" };
+}
+
+function registrationStatusCopy(vip: VipCompetition) {
+  if (vip.join_locked) {
+    return {
+      label: "Registro cerrado",
+      sublabel: "Jugandose",
+      tone: "border-coral/25 bg-coral/10 text-coral",
+    };
+  }
+  return {
+    label: "Registro abierto",
+    sublabel: "Disponible",
+    tone: "border-mint/25 bg-mint/10 text-mint",
+  };
+}
+
+function getVipModeLabel(vip: VipCompetition) {
+  if (vip.competition_kind === "team_winner") {
+    return `${vip.team_winner_teams.length} equipos`;
+  }
+  return `Jornadas ${vip.matchdays.map((matchday) => matchday.number).join(", ")}`;
 }
 
 function getTeamWinnerEntryTeamName(
@@ -209,102 +231,68 @@ export function VipPageContent() {
       {message ? <p className="text-sm text-mint">{message}</p> : null}
       {error ? <p className="text-sm text-coral">{error}</p> : null}
 
-      <section className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="space-y-3">
+      <section className="space-y-4">
+        <div className="overflow-hidden rounded-[12px] border border-white/[0.06] bg-white/[0.02]">
+          <div className="hidden grid-cols-[1.35fr_0.9fr_0.75fr_0.75fr_0.75fr_0.8fr] gap-3 border-b border-white/[0.06] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-steel md:grid">
+            <span>VIP</span>
+            <span>Estado</span>
+            <span>Entrada</span>
+            <span>Bolsa</span>
+            <span>Participantes</span>
+            <span>Mi acceso</span>
+          </div>
           {vips.map((vip) => {
-            const status = statusCopy(vip.my_membership?.status ?? null);
-            const pricing = pricingByVipId[vip.id] ?? null;
-            const lockCopy = getVipJoinLockCopy(vip);
-            const hasMembership = Boolean(vip.my_membership);
-            const isTeamWinner = vip.competition_kind === "team_winner";
-            const disabled = vip.my_membership?.status === "approved" || (!hasMembership && vip.join_locked);
+            const membershipStatus = statusCopy(vip.my_membership?.status ?? null);
+            const registrationStatus = registrationStatusCopy(vip);
+            const participantsCount =
+              vip.competition_kind === "team_winner" ? vip.team_winner_entries.length : vip.approved_members_count;
             return (
-              <div
+              <button
                 key={vip.id}
-                className={`w-full rounded-[12px] border px-4 py-4 text-left transition ${
+                type="button"
+                onClick={() => setSelectedVipId(vip.id)}
+                className={`grid w-full gap-3 px-4 py-4 text-left transition md:grid-cols-[1.35fr_0.9fr_0.75fr_0.75fr_0.75fr_0.8fr] md:items-center ${
                   selectedVip?.id === vip.id
-                    ? "border-white/[0.14] bg-white/[0.05]"
-                    : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1]"
+                    ? "bg-white/[0.06]"
+                    : "border-t border-white/[0.04] hover:bg-white/[0.03] first:border-t-0"
                 }`}
               >
-                <button type="button" onClick={() => setSelectedVipId(vip.id)} className="block w-full text-left">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-base font-semibold text-ink">{vip.name}</p>
-                      <p className="mt-1 text-sm text-steel">{vip.season_name}</p>
-                    </div>
-                    <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${status.tone}`}>
-                      {status.label}
+                <div className="min-w-0">
+                  <div className="flex items-start justify-between gap-3 md:block">
+                    <p className="truncate text-sm font-semibold text-ink">{vip.name}</p>
+                    <span
+                      className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] md:hidden ${registrationStatus.tone}`}
+                    >
+                      {registrationStatus.label}
                     </span>
                   </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-steel">
-                  <div>
-                    <p className="uppercase tracking-[0.18em]">Entrada</p>
-                    <p className="mt-1 text-sm font-semibold text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
-                  </div>
-                    <div>
-                      <p className="uppercase tracking-[0.18em]">{isTeamWinner ? "Equipos" : "Jornadas"}</p>
-                      <p className="mt-1 text-sm font-semibold text-ink">
-                        {isTeamWinner ? vip.team_winner_teams.length : vip.matchdays.length}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="uppercase tracking-[0.18em]">Aprobados</p>
-                      <p className="mt-1 text-sm font-semibold text-ink">
-                        {vip.approved_members_count}
-                      </p>
-                    </div>
-                  <div>
-                    <p className="uppercase tracking-[0.18em]">Pendientes</p>
-                    <p className="mt-1 text-sm font-semibold text-ink">{vip.pending_requests_count}</p>
-                  </div>
-                  <div>
-                    <p className="uppercase tracking-[0.18em]">Bolsa</p>
-                    <p className="mt-1 text-sm font-semibold text-ink">{formatCurrency(vip.gross_pool_amount)}</p>
-                  </div>
-                  <div>
-                    <p className="uppercase tracking-[0.18em]">1er lugar</p>
-                    <p className="mt-1 text-sm font-semibold text-ink">{formatCurrency(vip.first_place_amount)}</p>
-                  </div>
+                  <p className="mt-1 truncate text-xs text-steel">{vip.season_name} · {getVipModeLabel(vip)}</p>
                 </div>
-                </button>
-
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <p className="text-xs text-steel">
-                    {isTeamWinner
-                      ? "Sorteo Equipo ganador"
-                      : `Jornadas ${vip.matchdays.map((matchday) => matchday.number).join(", ")}`}
-                  </p>
-                  {lockCopy ? (
-                    <p className={`text-xs ${vip.join_locked ? "text-coral" : "text-steel"}`}>
-                      {lockCopy}
-                    </p>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={disabled || requestingVipId === vip.id || payingVipId === vip.id}
-                    className={`app-pill px-3 text-xs ${disabled ? "opacity-70" : ""}`}
-                    onClick={() =>
-                      pricing ? void handleVipCheckout(vip.id) : void handleRequest(vip.id)
-                    }
+                <div className="hidden md:block">
+                  <span
+                    className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${registrationStatus.tone}`}
                   >
-                    {payingVipId === vip.id
-                      ? "Abriendo checkout"
-                      : requestingVipId === vip.id
-                        ? "Enviando"
-                        : vip.my_membership?.status === "approved"
-                          ? "Dentro"
-                          : !hasMembership && vip.join_locked
-                            ? "Cerrada"
-                          : pricing
-                            ? `Pagar acceso · ${formatCurrency(pricing.amount)}`
-                            : vip.my_membership?.status === "pending"
-                              ? "En revision"
-                              : "Solicitar"}
-                  </button>
+                    {registrationStatus.label}
+                  </span>
+                  <p className="mt-1 text-xs text-steel">{registrationStatus.sublabel}</p>
                 </div>
-              </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Entrada</p>
+                  <p className="text-sm font-semibold text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Bolsa</p>
+                  <p className="text-sm font-semibold text-ink">{formatCurrency(vip.gross_pool_amount)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Participantes</p>
+                  <p className="text-sm font-semibold text-ink">{participantsCount}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Mi acceso</p>
+                  <p className={`text-sm font-semibold ${membershipStatus.tone}`}>{membershipStatus.label}</p>
+                </div>
+              </button>
             );
           })}
 
@@ -320,7 +308,19 @@ export function VipPageContent() {
             <>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.22em] text-steel">{selectedVip.season_name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm uppercase tracking-[0.22em] text-steel">{selectedVip.season_name}</p>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${registrationStatusCopy(selectedVip).tone}`}
+                    >
+                      {registrationStatusCopy(selectedVip).label}
+                    </span>
+                    {selectedVip.join_locked ? (
+                      <span className="rounded-full border border-gold/25 bg-gold/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-gold">
+                        Jugandose
+                      </span>
+                    ) : null}
+                  </div>
                   <h2 className="mt-2 text-xl font-semibold text-ink">{selectedVip.name}</h2>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
