@@ -8,12 +8,15 @@ from sqlalchemy.orm import Session, aliased
 
 from app.core.datetime import ensure_utc
 from app.models.entities import (
+    Competition,
     Match,
+    MatchResult,
     Matchday,
     Profile,
     Season,
-    StandingsMatchday,
+    TournamentFormat,
     Team,
+    UserPick,
     VipCompetition,
     VipCompetitionKind,
     VipCompetitionMatchday,
@@ -860,27 +863,19 @@ class VipService:
         if not matchdays:
             return []
 
-        rows = list(
-            db.scalars(
-                select(StandingsMatchday).where(
-                    StandingsMatchday.matchday_id.in_([matchday.id for matchday in matchdays]),
-                    StandingsMatchday.profile_id.in_(approved_profile_ids),
-                )
-            )
-        )
-
         totals: dict[str, dict[str, int]] = {
             profile_id: {"total_points": 0, "correct_results": 0, "exact_scores": 0}
             for profile_id in approved_profile_ids
         }
-        for row in rows:
+        rows = self._vip_pick_score_rows(db, [matchday.id for matchday in matchdays], approved_profile_ids)
+        for profile_id, values in rows:
             bucket = totals.setdefault(
-                row.profile_id,
+                profile_id,
                 {"total_points": 0, "correct_results": 0, "exact_scores": 0},
             )
-            bucket["total_points"] += row.total_points
-            bucket["correct_results"] += row.correct_results
-            bucket["exact_scores"] += row.exact_scores
+            bucket["total_points"] += values["total_points"]
+            bucket["correct_results"] += values["correct_results"]
+            bucket["exact_scores"] += values["exact_scores"]
 
         sorted_rows = sorted(
             totals.items(),
@@ -902,6 +897,73 @@ class VipService:
             )
             for profile_id, values, rank_position in ranked_rows
         ]
+
+    def _vip_pick_score_rows(
+        self,
+        db: Session,
+        matchday_ids: list[str],
+        profile_ids: list[str],
+    ) -> list[tuple[str, dict[str, int]]]:
+        if not matchday_ids or not profile_ids:
+            return []
+
+        scoring = ScoringService()
+        rules = scoring._load_rules(db)
+        rows = db.execute(
+            select(UserPick, MatchResult, Match, Matchday, Season, Competition)
+            .join(Match, Match.id == UserPick.match_id)
+            .join(MatchResult, MatchResult.match_id == Match.id)
+            .join(Matchday, Matchday.id == Match.matchday_id)
+            .join(Season, Season.id == Matchday.season_id)
+            .outerjoin(Competition, Competition.id == Season.competition_id)
+            .where(
+                Match.matchday_id.in_(matchday_ids),
+                UserPick.profile_id.in_(profile_ids),
+                MatchResult.is_official.is_(True),
+            )
+        ).all()
+
+        result: list[tuple[str, dict[str, int]]] = []
+        for pick, match_result, match, _matchday, season, competition in rows:
+            is_nfl_match = scoring._is_nfl_competition(competition)
+            winner = scoring._resolve_winner(match_result.home_score, match_result.away_score)
+            result_points = rules["result_correct"] if pick.selection == winner else 0
+            exact_points = 0
+            if not is_nfl_match:
+                exact_points = (
+                    rules["exact_score"]
+                    if pick.predicted_home_score == match_result.home_score
+                    and pick.predicted_away_score == match_result.away_score
+                    else 0
+                )
+            advancing_points = (
+                rules["advancing_team"]
+                if season.tournament_format == TournamentFormat.WORLD_CUP
+                and match.stage_type.value not in {"regular", "group"}
+                and pick.advancing_team_id is not None
+                and pick.advancing_team_id == match_result.advancing_team_id
+                else 0
+            )
+            spread_points = 0
+            if is_nfl_match:
+                spread_points = scoring._calculate_spread_points(
+                    match_result.home_score,
+                    match_result.away_score,
+                    pick.spread_selection,
+                    pick.spread_line_value,
+                    rules["spread_correct"],
+                )
+            result.append(
+                (
+                    pick.profile_id,
+                    {
+                        "total_points": result_points + exact_points + advancing_points + spread_points,
+                        "correct_results": 1 if result_points else 0,
+                        "exact_scores": 1 if exact_points else 0,
+                    },
+                )
+            )
+        return result
 
     def _resolve_matchdays(self, db: Session, matchday_ids: list[str]) -> tuple[Season, list[Matchday]]:
         clean_ids = list(dict.fromkeys(matchday_ids))

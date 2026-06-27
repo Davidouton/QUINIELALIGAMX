@@ -8,12 +8,15 @@ from app.api.deps import get_current_profile
 from app.main import app
 from app.models.entities import (
     Match,
+    MatchResult,
     Matchday,
     MatchdayStatus,
+    PickSelection,
     Profile,
     RoleCode,
     Season,
-    StandingsMatchday,
+    SeasonMembership,
+    UserPick,
     VipMembership,
     VipMembershipStatus,
 )
@@ -21,6 +24,7 @@ from app.models.entities import (
 from conftest import (
     MATCHDAY_ID,
     MATCH_ONE_ID,
+    MATCH_TWO_ID,
     PROFILE_LEADER_ID,
     PROFILE_USER_ID,
     SEASON_ID,
@@ -67,40 +71,52 @@ def test_admin_can_create_vip_and_approve_request_with_leaderboard() -> None:
         )
         db.add_all(
             [
-                StandingsMatchday(
-                    matchday_id=MATCHDAY_ID,
+                MatchResult(
+                    match_id=MATCH_ONE_ID,
+                    home_score=2,
+                    away_score=1,
+                    is_official=True,
+                ),
+                MatchResult(
+                    match_id=MATCH_TWO_ID,
+                    home_score=0,
+                    away_score=0,
+                    is_official=True,
+                ),
+                UserPick(
                     profile_id=PROFILE_USER_ID,
-                    total_points=8,
-                    correct_results=2,
-                    exact_scores=1,
-                    rank_position=1,
+                    match_id=MATCH_ONE_ID,
+                    selection=PickSelection.HOME,
+                    predicted_home_score=2,
+                    predicted_away_score=1,
                 ),
-                StandingsMatchday(
-                    matchday_id=second_matchday_id,
+                UserPick(
                     profile_id=PROFILE_USER_ID,
-                    total_points=6,
-                    correct_results=2,
-                    exact_scores=0,
-                    rank_position=1,
+                    match_id=MATCH_TWO_ID,
+                    selection=PickSelection.DRAW,
+                    predicted_home_score=0,
+                    predicted_away_score=0,
                 ),
-                StandingsMatchday(
-                    matchday_id=MATCHDAY_ID,
+                UserPick(
                     profile_id=PROFILE_LEADER_ID,
-                    total_points=5,
-                    correct_results=1,
-                    exact_scores=1,
-                    rank_position=2,
+                    match_id=MATCH_ONE_ID,
+                    selection=PickSelection.HOME,
+                    predicted_home_score=1,
+                    predicted_away_score=0,
                 ),
-                StandingsMatchday(
-                    matchday_id=second_matchday_id,
+                UserPick(
                     profile_id=PROFILE_LEADER_ID,
-                    total_points=5,
-                    correct_results=1,
-                    exact_scores=0,
-                    rank_position=2,
+                    match_id=MATCH_TWO_ID,
+                    selection=PickSelection.AWAY,
+                    predicted_home_score=0,
+                    predicted_away_score=1,
                 ),
             ]
         )
+        user_membership = db.query(SeasonMembership).filter_by(profile_id=PROFILE_USER_ID, season_id=SEASON_ID).one()
+        user_membership.is_active = False
+        user_membership.is_paid = False
+        user_membership.eligible_for_scoring = False
         db.commit()
     finally:
         db.close()
@@ -188,9 +204,9 @@ def test_admin_can_create_vip_and_approve_request_with_leaderboard() -> None:
         assert approved_payload["approved_members_count"] == 2
         assert approved_payload["pending_requests_count"] == 0
         assert approved_payload["leaderboard"][0]["profile_id"] == PROFILE_USER_ID
-        assert approved_payload["leaderboard"][0]["total_points"] == 14
+        assert approved_payload["leaderboard"][0]["total_points"] == 10
         assert approved_payload["leaderboard"][1]["profile_id"] == PROFILE_LEADER_ID
-        assert approved_payload["leaderboard"][1]["total_points"] == 10
+        assert approved_payload["leaderboard"][1]["total_points"] == 3
         assert approved_payload["gross_pool_amount"] == 1500
         assert approved_payload["admin_commission_amount"] == 150
         assert approved_payload["distributable_prize_pool_amount"] == 1350
@@ -284,16 +300,6 @@ def test_admin_can_remove_approved_vip_member(admin_client: TestClient) -> None:
             status=VipMembershipStatus.APPROVED,
         )
         db.add(membership)
-        db.add(
-            StandingsMatchday(
-                matchday_id=MATCHDAY_ID,
-                profile_id=PROFILE_LEADER_ID,
-                total_points=7,
-                correct_results=2,
-                exact_scores=1,
-                rank_position=1,
-            )
-        )
         db.commit()
         membership_id = membership.id
     finally:
@@ -456,15 +462,22 @@ def test_admin_can_add_vip_member_after_join_lock_with_accumulated_points(admin_
         assert match is not None
         match.picks_lock_at = datetime.now(UTC) - timedelta(minutes=5)
         db.add(match)
-        db.add(
-            StandingsMatchday(
-                matchday_id=MATCHDAY_ID,
-                profile_id=PROFILE_LEADER_ID,
-                total_points=9,
-                correct_results=3,
-                exact_scores=1,
-                rank_position=1,
-            )
+        db.add_all(
+            [
+                MatchResult(
+                    match_id=MATCH_ONE_ID,
+                    home_score=3,
+                    away_score=1,
+                    is_official=True,
+                ),
+                UserPick(
+                    profile_id=PROFILE_LEADER_ID,
+                    match_id=MATCH_ONE_ID,
+                    selection=PickSelection.HOME,
+                    predicted_home_score=3,
+                    predicted_away_score=1,
+                ),
+            ]
         )
         db.commit()
     finally:
@@ -484,7 +497,7 @@ def test_admin_can_add_vip_member_after_join_lock_with_accumulated_points(admin_
     assert membership["status"] == "approved"
     assert membership["admin_note"] == "Agregado por admin"
     assert payload["leaderboard"][0]["profile_id"] == PROFILE_LEADER_ID
-    assert payload["leaderboard"][0]["total_points"] == 9
+    assert payload["leaderboard"][0]["total_points"] == 5
 
 
 def test_admin_can_run_team_winner_vip_draw_and_mark_eliminated(admin_client: TestClient) -> None:
@@ -507,6 +520,26 @@ def test_admin_can_run_team_winner_vip_draw_and_mark_eliminated(admin_client: Te
     assert create_response.status_code == 201
     vip_id = create_response.json()["id"]
 
+    db = SessionLocal()
+    try:
+        db.add_all(
+            [
+                VipMembership(
+                    vip_competition_id=vip_id,
+                    profile_id=PROFILE_USER_ID,
+                    status=VipMembershipStatus.APPROVED,
+                ),
+                VipMembership(
+                    vip_competition_id=vip_id,
+                    profile_id=PROFILE_LEADER_ID,
+                    status=VipMembershipStatus.APPROVED,
+                ),
+            ]
+        )
+        db.commit()
+    finally:
+        db.close()
+
     config_response = admin_client.put(
         f"/api/v1/admin/vip/{vip_id}/team-winner/config",
         json={
@@ -522,8 +555,8 @@ def test_admin_can_run_team_winner_vip_draw_and_mark_eliminated(admin_client: Te
     assert config_payload["competition_kind"] == "team_winner"
     assert len(config_payload["team_winner_teams"]) == 3
     assert len(config_payload["team_winner_entries"]) == 3
-    assert config_payload["gross_pool_amount"] == 300
-    assert config_payload["admin_commission_amount"] == 30
+    assert config_payload["gross_pool_amount"] == 200
+    assert config_payload["admin_commission_amount"] == 20
 
     draw_response = admin_client.post(
         f"/api/v1/admin/vip/{vip_id}/team-winner/draw",
