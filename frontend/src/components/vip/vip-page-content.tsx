@@ -41,24 +41,24 @@ function formatMexicoDate(value: string | null) {
 
 function statusCopy(status: VipMembershipStatus | null) {
   if (status === "approved") {
-    return { label: "Aprobado", tone: "text-mint" };
+    return { label: "Aprobado", tone: "text-mint", dot: "bg-mint" };
   }
   if (status === "rejected") {
-    return { label: "Rechazado", tone: "text-coral" };
+    return { label: "Fuera", tone: "text-coral", dot: "bg-coral" };
   }
   if (status === "pending") {
-    return { label: "Pendiente", tone: "text-gold" };
+    return { label: "Pendiente", tone: "text-gold", dot: "bg-gold" };
   }
-  return { label: "Sin acceso", tone: "text-steel" };
+  return { label: "Sin acceso", tone: "text-steel", dot: "bg-steel" };
 }
 
 function registrationStatusCopy(vip: VipCompetition) {
   if (vip.join_locked) {
     return {
-      label: "Registro cerrado",
-      sublabel: "Jugandose",
-      tone: "text-coral",
-      dot: "bg-coral",
+      label: "Jugandose",
+      sublabel: "Registro cerrado",
+      tone: "text-mint",
+      dot: "bg-mint",
     };
   }
   return {
@@ -237,11 +237,11 @@ export function VipPageContent() {
         <div className="overflow-hidden border-y border-white/[0.08]">
           <div className="hidden grid-cols-[1.45fr_0.95fr_0.7fr_0.7fr_0.7fr_0.75fr] gap-3 border-b border-white/[0.08] px-1 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-steel md:grid">
             <span>VIP</span>
-            <span>Estado</span>
+            <span>Mi acceso</span>
             <span>Entrada</span>
             <span>Bolsa</span>
             <span>Participantes</span>
-            <span>Mi acceso</span>
+            <span>Estado</span>
           </div>
           {vips.map((vip) => {
             const membershipStatus = statusCopy(vip.my_membership?.status ?? null);
@@ -262,19 +262,19 @@ export function VipPageContent() {
                 <div className="min-w-0">
                   <div className="flex items-start justify-between gap-3 md:block">
                     <p className="truncate text-sm font-semibold text-ink">{vip.name}</p>
-                    <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-semibold md:hidden ${registrationStatus.tone}`}>
-                      <span className={`h-2 w-2 rounded-full ${registrationStatus.dot}`} />
-                      {registrationStatus.label}
+                    <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-semibold md:hidden ${membershipStatus.tone}`}>
+                      <span className={`h-2 w-2 rounded-full ${membershipStatus.dot}`} />
+                      {membershipStatus.label}
                     </span>
                   </div>
                   <p className="mt-1 truncate text-xs text-steel">{vip.season_name} · {getVipModeLabel(vip)}</p>
                 </div>
-                <div className="hidden md:block">
-                  <p className={`flex items-center gap-2 text-xs font-semibold ${registrationStatus.tone}`}>
-                    <span className={`h-2 w-2 rounded-full ${registrationStatus.dot}`} />
-                    {registrationStatus.label}
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Mi acceso</p>
+                  <p className={`flex items-center gap-2 text-sm font-semibold ${membershipStatus.tone}`}>
+                    <span className={`hidden h-2 w-2 rounded-full md:block ${membershipStatus.dot}`} />
+                    {membershipStatus.label}
                   </p>
-                  <p className="mt-0.5 text-xs text-steel">{registrationStatus.sublabel}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Entrada</p>
@@ -289,8 +289,12 @@ export function VipPageContent() {
                   <p className="text-sm font-semibold text-ink">{participantsCount}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Mi acceso</p>
-                  <p className={`text-sm font-semibold ${membershipStatus.tone}`}>{membershipStatus.label}</p>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Estado</p>
+                  <p className={`flex items-center gap-2 text-sm font-semibold ${registrationStatus.tone}`}>
+                      <span className={`h-2 w-2 rounded-full ${registrationStatus.dot}`} />
+                      {registrationStatus.label}
+                  </p>
+                  <p className="mt-0.5 text-xs text-steel">{registrationStatus.sublabel}</p>
                 </div>
               </button>
             );
@@ -314,12 +318,10 @@ export function VipPageContent() {
                       <span className={`h-2 w-2 rounded-full ${registrationStatusCopy(selectedVip).dot}`} />
                       {registrationStatusCopy(selectedVip).label}
                     </span>
-                    {selectedVip.join_locked ? (
-                      <span className="flex items-center gap-1.5 text-xs font-semibold text-gold">
-                        <span className="h-2 w-2 rounded-full bg-gold" />
-                        Jugandose
-                      </span>
-                    ) : null}
+                    <span className={`flex items-center gap-1.5 text-xs font-semibold ${statusCopy(selectedVip.my_membership?.status ?? null).tone}`}>
+                      <span className={`h-2 w-2 rounded-full ${statusCopy(selectedVip.my_membership?.status ?? null).dot}`} />
+                      {statusCopy(selectedVip.my_membership?.status ?? null).label}
+                    </span>
                   </div>
                   <h2 className="mt-2 text-xl font-semibold text-ink">{selectedVip.name}</h2>
                 </div>
