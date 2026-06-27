@@ -235,7 +235,7 @@ export function VipPageContent() {
 
       <section className="space-y-4">
         <div className="overflow-hidden border-y border-white/[0.08]">
-          <div className="hidden grid-cols-[1.45fr_0.95fr_0.7fr_0.7fr_0.7fr_0.75fr] gap-3 border-b border-white/[0.08] px-1 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-steel md:grid">
+          <div className="hidden grid-cols-[1.45fr_0.95fr_0.7fr_0.7fr_0.7fr_0.85fr] gap-4 border-b border-white/[0.08] px-2 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-steel md:grid">
             <span>VIP</span>
             <span>Mi acceso</span>
             <span>Entrada</span>
@@ -253,7 +253,7 @@ export function VipPageContent() {
                 key={vip.id}
                 type="button"
                 onClick={() => setSelectedVipId(vip.id)}
-                className={`grid w-full gap-2 border-b border-white/[0.05] px-1 py-3 text-left transition last:border-b-0 md:grid-cols-[1.45fr_0.95fr_0.7fr_0.7fr_0.7fr_0.75fr] md:items-center ${
+                className={`grid w-full gap-3 border-b border-white/[0.05] px-2 py-3 text-left transition last:border-b-0 md:min-h-[78px] md:grid-cols-[1.45fr_0.95fr_0.7fr_0.7fr_0.7fr_0.85fr] md:items-center md:gap-4 ${
                   selectedVip?.id === vip.id
                     ? "bg-white/[0.04]"
                     : "hover:bg-white/[0.025]"
@@ -261,40 +261,40 @@ export function VipPageContent() {
               >
                 <div className="min-w-0">
                   <div className="flex items-start justify-between gap-3 md:block">
-                    <p className="truncate text-sm font-semibold text-ink">{vip.name}</p>
+                    <p className="truncate text-[13px] font-semibold leading-5 text-ink">{vip.name}</p>
                     <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-semibold md:hidden ${membershipStatus.tone}`}>
                       <span className={`h-2 w-2 rounded-full ${membershipStatus.dot}`} />
                       {membershipStatus.label}
                     </span>
                   </div>
-                  <p className="mt-1 truncate text-xs text-steel">{vip.season_name} · {getVipModeLabel(vip)}</p>
+                  <p className="mt-0.5 truncate text-xs leading-5 text-steel">{vip.season_name} · {getVipModeLabel(vip)}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Mi acceso</p>
-                  <p className={`flex items-center gap-2 text-sm font-semibold ${membershipStatus.tone}`}>
-                    <span className={`hidden h-2 w-2 rounded-full md:block ${membershipStatus.dot}`} />
+                  <p className={`flex items-center gap-2 text-[13px] font-semibold leading-5 ${membershipStatus.tone}`}>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${membershipStatus.dot}`} />
                     {membershipStatus.label}
                   </p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Entrada</p>
-                  <p className="text-sm font-semibold text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
+                  <p className="text-[13px] font-semibold leading-5 text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Bolsa</p>
-                  <p className="text-sm font-semibold text-ink">{formatCurrency(vip.gross_pool_amount)}</p>
+                  <p className="text-[13px] font-semibold leading-5 text-ink">{formatCurrency(vip.gross_pool_amount)}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Participantes</p>
-                  <p className="text-sm font-semibold text-ink">{participantsCount}</p>
+                  <p className="text-[13px] font-semibold leading-5 text-ink">{participantsCount}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Estado</p>
-                  <p className={`flex items-center gap-2 text-sm font-semibold ${registrationStatus.tone}`}>
-                      <span className={`h-2 w-2 rounded-full ${registrationStatus.dot}`} />
-                      {registrationStatus.label}
+                  <p className={`flex items-center gap-2 text-[13px] font-semibold leading-5 ${registrationStatus.tone}`}>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${registrationStatus.dot}`} />
+                    {registrationStatus.label}
                   </p>
-                  <p className="mt-0.5 text-xs text-steel">{registrationStatus.sublabel}</p>
+                  <p className="mt-0.5 text-xs leading-5 text-steel">{registrationStatus.sublabel}</p>
                 </div>
               </button>
             );
