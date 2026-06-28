@@ -272,7 +272,7 @@ class PickService:
         official_results_by_match_id = {result.match_id: result for result in result_rows}
         teams = self._load_teams(db, matches)
 
-        player_rows = db.execute(
+        regular_player_rows = db.execute(
             select(Profile.id, Profile.display_name)
             .join(SeasonMembership, SeasonMembership.profile_id == Profile.id)
             .where(
@@ -280,12 +280,31 @@ class PickService:
                 SeasonMembership.is_active.is_(True),
                 Profile.is_active.is_(True),
             )
-            .order_by(Profile.display_name.asc())
         ).all()
+        vip_player_rows = db.execute(
+            select(Profile.id, Profile.display_name)
+            .join(VipMembership, VipMembership.profile_id == Profile.id)
+            .join(VipCompetition, VipCompetition.id == VipMembership.vip_competition_id)
+            .join(VipCompetitionMatchday, VipCompetitionMatchday.vip_competition_id == VipCompetition.id)
+            .where(
+                VipMembership.status == VipMembershipStatus.APPROVED,
+                VipCompetition.is_active.is_(True),
+                VipCompetitionMatchday.matchday_id == matchday_id,
+                Profile.is_active.is_(True),
+            )
+        ).all()
+
+        player_rows_by_id = {
+            profile_id: display_name
+            for profile_id, display_name in [*regular_player_rows, *vip_player_rows]
+        }
 
         players = [
             GlobalPickPlayerOut(profile_id=profile_id, display_name=display_name)
-            for profile_id, display_name in player_rows
+            for profile_id, display_name in sorted(
+                player_rows_by_id.items(),
+                key=lambda row: row[1].lower(),
+            )
         ]
 
         profile_ids = [player.profile_id for player in players]
