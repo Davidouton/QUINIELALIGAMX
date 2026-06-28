@@ -13,7 +13,6 @@ const baseLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
   { href: "/dashboard/world-cup", label: "Mundial", shortLabel: "WC" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/dashboard/admin", label: "Admin" },
   { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
   { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks Center" },
@@ -23,7 +22,10 @@ const baseLinks = [
   { href: "/dashboard/settings", label: "Settings" },
 ];
 
+const adminLink = { href: "/dashboard/admin", label: "Admin" };
+
 const primaryMobileLinks = [
+  { href: "/dashboard/admin", label: "Admin" },
   { href: "/dashboard/quiniela-plus", label: "Q+" },
   { href: "/dashboard/world-cup", label: "WC" },
   { href: "/dashboard", label: "Inicio" },
@@ -51,7 +53,7 @@ export function DashboardSidebar() {
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { buildHrefWithSeason } = useDashboardSeasonParam();
-  const links = baseLinks;
+  const links = [adminLink, ...baseLinks];
   const currentLink = links.find((link) => pathname === link.href) ?? links[0];
 
   async function handleSignOut() {
@@ -78,6 +80,16 @@ export function DashboardSidebar() {
               >
                 {isMobileMenuOpen ? "Cerrar" : "Menu"}
               </button>
+              <Link
+                href={buildHrefWithSeason(adminLink.href)}
+                prefetch={false}
+                className={cn(
+                  "app-pill px-3 text-center",
+                  pathname.startsWith(adminLink.href) && "app-pill-active text-ink",
+                )}
+              >
+                Admin
+              </Link>
               <button
                 type="button"
                 onClick={handleSignOut}
@@ -91,8 +103,19 @@ export function DashboardSidebar() {
           {isMobileMenuOpen ? (
             <div className="mt-4 max-h-[calc(100dvh-12rem)] space-y-3 overflow-y-auto pb-28 pr-1">
               <DashboardSeasonSwitcher />
+              <Link
+                href={buildHrefWithSeason(adminLink.href)}
+                prefetch={false}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={cn(
+                  "app-pill-active flex h-11 items-center justify-center px-3 text-center",
+                  pathname.startsWith(adminLink.href) && "text-ink",
+                )}
+              >
+                Admin
+              </Link>
               <div className="grid grid-cols-2 gap-2">
-                {links.map((link) => (
+                {baseLinks.map((link) => (
                   <Link
                     key={link.href}
                     href={buildHrefWithSeason(link.href)}
@@ -112,15 +135,16 @@ export function DashboardSidebar() {
         </div>
 
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-night/95 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3 backdrop-blur-xl">
-          <div className="grid grid-cols-6 gap-2">
+          <div className="grid grid-cols-7 gap-1.5">
             {primaryMobileLinks.map((link) => (
               <Link
                 key={link.href}
                 href={buildHrefWithSeason(link.href)}
                 prefetch={false}
                 className={cn(
-                  "app-pill-ghost h-10 px-2 text-center text-[11px]",
-                  pathname === link.href && "app-pill-active text-ink",
+                  "app-pill-ghost h-10 px-1 text-center text-[10px]",
+                  (pathname === link.href || (link.href === adminLink.href && pathname.startsWith(adminLink.href))) &&
+                    "app-pill-active text-ink",
                 )}
               >
                 {link.label}
@@ -148,8 +172,22 @@ export function DashboardSidebar() {
             <DashboardSeasonSwitcher />
           </div>
 
+          <Link
+            href={buildHrefWithSeason(adminLink.href)}
+            prefetch={false}
+            aria-label={adminLink.label}
+            title={adminLink.label}
+            className={cn(
+              "mb-3 block rounded-[12px] border border-mint/20 bg-mint/10 py-3 text-sm font-semibold text-mint transition hover:border-mint/40 hover:bg-mint/15",
+              "px-4 text-left",
+              pathname.startsWith(adminLink.href) && "border-mint/50 bg-mint/15 text-ink",
+            )}
+          >
+            Admin
+          </Link>
+
           <div className="space-y-3">
-            {links.map((link) => (
+            {baseLinks.map((link) => (
               <Link
                 key={link.href}
                 href={buildHrefWithSeason(link.href)}
