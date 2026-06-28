@@ -38,7 +38,10 @@ from app.schemas.vip import (
     VipCompetitionOut,
     VipLeaderboardEntryOut,
     VipMatchdayOut,
+    VipMatchdayPointsEntryOut,
     VipMembershipOut,
+    VipPerformanceRaceOut,
+    VipPerformanceRacePointOut,
     VipTeamWinnerEntryOut,
     VipTeamWinnerTeamOut,
 )
@@ -68,6 +71,22 @@ class VipService:
             team_entries = bundle["team_winner_entries_by_vip"].get(vip.id, [])
             my_membership = next((membership for membership in memberships if membership.profile_id == profile.id), None)
             join_lock = bundle["join_locks_by_vip"].get(vip.id, {})
+            matchdays = bundle["matchdays_by_vip"].get(vip.id, [])
+            leaderboard = self._build_leaderboard(
+                vip.id,
+                matchdays,
+                memberships,
+                bundle["profile_names"],
+                db,
+            )
+            matchday_points, performance_race = self._build_member_dashboard(
+                db,
+                vip=vip,
+                matchdays=matchdays,
+                memberships=memberships,
+                profile=profile,
+                profile_names=bundle["profile_names"],
+            )
             result.append(
                 VipCompetitionOut(
                     id=vip.id,
@@ -81,7 +100,7 @@ class VipService:
                     second_place_pct=float(vip.second_place_pct),
                     third_place_pct=float(vip.third_place_pct),
                     is_active=vip.is_active,
-                    matchdays=bundle["matchdays_by_vip"].get(vip.id, []),
+                    matchdays=matchdays,
                     approved_members_count=sum(1 for membership in memberships if membership.status == VipMembershipStatus.APPROVED),
                     pending_requests_count=sum(1 for membership in memberships if membership.status == VipMembershipStatus.PENDING),
                     gross_pool_amount=float(self._gross_pool_amount(vip, memberships, team_entries)),
@@ -95,13 +114,9 @@ class VipService:
                     join_lock_at=join_lock.get("lock_at"),
                     join_lock_match_label=join_lock.get("match_label"),
                     my_membership=self._membership_out(my_membership, bundle["profile_names"]) if my_membership else None,
-                    leaderboard=self._build_leaderboard(
-                        vip.id,
-                        bundle["matchdays_by_vip"].get(vip.id, []),
-                        memberships,
-                        bundle["profile_names"],
-                        db,
-                    ),
+                    leaderboard=leaderboard,
+                    matchday_points=matchday_points,
+                    performance_race=performance_race,
                     team_winner_teams=self._team_winner_team_outs(
                         bundle["team_winner_teams_by_vip"].get(vip.id, []),
                         bundle["team_names"],
@@ -928,6 +943,140 @@ class VipService:
         ranked_rows = self._rank_leaderboard_totals(totals, profile_name_map)
         return self._leaderboard_outs(ranked_rows, profile_name_map)
 
+    def _build_member_dashboard(
+        self,
+        db: Session,
+        *,
+        vip: VipCompetition,
+        matchdays: list[VipMatchdayOut],
+        memberships: list[VipMembership],
+        profile: Profile,
+        profile_names: dict[str, str],
+    ) -> tuple[list[VipMatchdayPointsEntryOut], VipPerformanceRaceOut | None]:
+        approved_memberships = [membership for membership in memberships if membership.status == VipMembershipStatus.APPROVED]
+        approved_profile_ids = [membership.profile_id for membership in approved_memberships]
+        if profile.id not in approved_profile_ids or not matchdays:
+            return [], None
+
+        profile_name_map = dict(profile_names)
+        if any(profile_id not in profile_name_map for profile_id in approved_profile_ids):
+            profile_name_map.update(self._profile_names(db, approved_profile_ids))
+
+        matchday_ids = [matchday.id for matchday in matchdays]
+        score_rows = self._vip_pick_score_rows_by_matchday(db, matchday_ids, approved_profile_ids)
+        scored_matchday_ids = {matchday_id for _profile_id, matchday_id, _values in score_rows}
+        totals_by_matchday: dict[str, dict[str, dict[str, int]]] = {
+            matchday.id: {
+                profile_id: {"total_points": 0, "correct_results": 0, "exact_scores": 0}
+                for profile_id in approved_profile_ids
+            }
+            for matchday in matchdays
+        }
+        for profile_id, matchday_id, values in score_rows:
+            bucket = totals_by_matchday.setdefault(matchday_id, {}).setdefault(
+                profile_id,
+                {"total_points": 0, "correct_results": 0, "exact_scores": 0},
+            )
+            bucket["total_points"] += values["total_points"]
+            bucket["correct_results"] += values["correct_results"]
+            bucket["exact_scores"] += values["exact_scores"]
+
+        cumulative_points = 0
+        member_rows: list[VipMatchdayPointsEntryOut] = []
+        cumulative_by_profile = {profile_id: 0 for profile_id in approved_profile_ids}
+        race_points: list[VipPerformanceRacePointOut] = []
+
+        for matchday in matchdays:
+            matchday_totals = totals_by_matchday.get(matchday.id, {})
+            ranked_matchday_rows = self._rank_leaderboard_totals(matchday_totals, profile_name_map)
+            user_values = matchday_totals.get(
+                profile.id,
+                {"total_points": 0, "correct_results": 0, "exact_scores": 0},
+            )
+            if matchday.id in scored_matchday_ids:
+                cumulative_points += user_values["total_points"]
+                user_rank = next(
+                    (rank_position for row_profile_id, _values, rank_position in ranked_matchday_rows if row_profile_id == profile.id),
+                    None,
+                )
+                member_rows.append(
+                    VipMatchdayPointsEntryOut(
+                        matchday_id=matchday.id,
+                        season_id=matchday.season_id,
+                        matchday_number=matchday.number,
+                        matchday_name=matchday.name,
+                        total_points=user_values["total_points"],
+                        correct_results=user_values["correct_results"],
+                        exact_scores=user_values["exact_scores"],
+                        rank_position=user_rank,
+                        cumulative_points=cumulative_points,
+                        weekly_prize_amount=0,
+                    )
+                )
+
+                for profile_id in approved_profile_ids:
+                    cumulative_by_profile[profile_id] += matchday_totals.get(
+                        profile_id,
+                        {"total_points": 0},
+                    )["total_points"]
+                ranked_cumulative = sorted(
+                    cumulative_by_profile.items(),
+                    key=lambda item: (
+                        -item[1],
+                        profile_name_map.get(item[0], item[0]).lower(),
+                    ),
+                )
+                first_profile_id, first_points = ranked_cumulative[0]
+                third_index = min(2, len(ranked_cumulative) - 1)
+                _third_profile_id, third_points = ranked_cumulative[third_index]
+                race_points.append(
+                    VipPerformanceRacePointOut(
+                        matchday_id=matchday.id,
+                        matchday_number=matchday.number,
+                        matchday_name=matchday.name,
+                        user_cumulative_points=cumulative_by_profile.get(profile.id, 0),
+                        leader_cumulative_points=first_points,
+                        first_place_cumulative_points=first_points,
+                        third_place_cumulative_points=third_points,
+                    )
+                )
+
+        if not race_points:
+            return member_rows, VipPerformanceRaceOut(
+                season_id=vip.season_id,
+                season_name=profile_name_map.get(vip.season_id) or "",
+                tournament_matchdays=len(matchdays),
+                completed_matchdays=0,
+                points=[],
+            )
+
+        completed_matchdays = len(race_points)
+        total_matchdays = len(matchdays)
+        final_user_total = race_points[-1].user_cumulative_points
+        final_leader_total = race_points[-1].leader_cumulative_points
+        final_third_total = race_points[-1].third_place_cumulative_points
+        projected_multiplier = total_matchdays / completed_matchdays if completed_matchdays > 0 else 1
+        leader_profile_id = max(
+            cumulative_by_profile,
+            key=lambda profile_id: (
+                cumulative_by_profile[profile_id],
+                profile_name_map.get(profile_id, profile_id).lower(),
+            ),
+        )
+        return member_rows, VipPerformanceRaceOut(
+            season_id=vip.season_id,
+            season_name=vip.name,
+            leader_profile_id=leader_profile_id,
+            leader_name=profile_name_map.get(leader_profile_id, "Lider"),
+            tournament_matchdays=total_matchdays,
+            completed_matchdays=completed_matchdays,
+            projected_user_total=final_user_total * projected_multiplier,
+            projected_leader_total=final_leader_total * projected_multiplier,
+            projected_first_place_total=final_leader_total * projected_multiplier,
+            projected_third_place_total=final_third_total * projected_multiplier,
+            points=race_points,
+        )
+
     def _calculate_leaderboard_totals(
         self,
         db: Session,
@@ -1049,6 +1198,17 @@ class VipService:
         matchday_ids: list[str],
         profile_ids: list[str],
     ) -> list[tuple[str, dict[str, int]]]:
+        return [
+            (profile_id, values)
+            for profile_id, _matchday_id, values in self._vip_pick_score_rows_by_matchday(db, matchday_ids, profile_ids)
+        ]
+
+    def _vip_pick_score_rows_by_matchday(
+        self,
+        db: Session,
+        matchday_ids: list[str],
+        profile_ids: list[str],
+    ) -> list[tuple[str, str, dict[str, int]]]:
         if not matchday_ids or not profile_ids:
             return []
 
@@ -1068,7 +1228,7 @@ class VipService:
             )
         ).all()
 
-        result: list[tuple[str, dict[str, int]]] = []
+        result: list[tuple[str, str, dict[str, int]]] = []
         for pick, match_result, match, _matchday, season, competition in rows:
             is_nfl_match = scoring._is_nfl_competition(competition)
             winner = scoring._resolve_winner(match_result.home_score, match_result.away_score)
@@ -1101,6 +1261,7 @@ class VipService:
             result.append(
                 (
                     pick.profile_id,
+                    match.matchday_id,
                     {
                         "total_points": result_points + exact_points + advancing_points + spread_points,
                         "correct_results": 1 if result_points else 0,

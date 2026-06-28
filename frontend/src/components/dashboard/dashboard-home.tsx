@@ -622,6 +622,12 @@ export function DashboardHome() {
   const myVipEntry =
     selectedVipCompetition?.leaderboard.find((entry) => entry.profile_id === state.me?.id) ?? null;
   const visibleVipLeaderboard = selectedVipCompetition?.leaderboard.slice(0, 10) ?? [];
+  const vipMatchdayPoints = selectedVipCompetition?.matchday_points ?? [];
+  const vipPerformanceRace = selectedVipCompetition?.performance_race ?? null;
+  const vipCompletedMatchdays = vipPerformanceRace?.completed_matchdays ?? vipMatchdayPoints.length;
+  const vipAverage =
+    vipCompletedMatchdays > 0 ? ((myVipEntry?.total_points ?? 0) / vipCompletedMatchdays).toFixed(1) : "0.0";
+  const vipProjectedTotal = (vipPerformanceRace?.projected_user_total ?? myVipEntry?.total_points ?? 0).toFixed(1);
   const dashboardTabs: Array<{ id: DashboardTab; label: string }> = [
     { id: "general", label: "General" },
     { id: "jornada", label: "Jornada" },
@@ -886,34 +892,75 @@ export function DashboardHome() {
 
           {selectedVipCompetition ? (
             <>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="stat-tile border border-white/[0.06]">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Mi lugar</p>
-                  <p className="mt-2 text-lg font-semibold text-coral">
+              <div className="grid grid-cols-5 gap-1 md:grid-cols-2 md:gap-3 xl:grid-cols-5">
+                <div className={summaryTileClass}>
+                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                    <span className="sm:hidden">Pts</span>
+                    <span className="hidden sm:inline">Puntos acumulados</span>
+                  </p>
+                  <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">
+                    {myVipEntry?.total_points ?? 0}
+                  </p>
+                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                    <span className="sm:hidden">VIP</span>
+                    <span className="hidden sm:inline">{selectedVipCompetition.name}</span>
+                  </p>
+                </div>
+                <div className={summaryTileClass}>
+                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                    <span className="sm:hidden">Lugar</span>
+                    <span className="hidden sm:inline">Lugar VIP</span>
+                  </p>
+                  <p className="mt-1 text-[12px] font-semibold leading-none text-coral sm:mt-2 sm:text-xl">
                     {myVipEntry ? `#${myVipEntry.rank_position}` : "-"}
                   </p>
-                  <p className="mt-1 text-xs text-steel">Posicion actual dentro de la VIP</p>
-                </div>
-                <div className="stat-tile border border-white/[0.06]">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Mis puntos</p>
-                  <p className="mt-2 text-lg font-semibold text-ink">{myVipEntry?.total_points ?? 0}</p>
-                  <p className="mt-1 text-xs text-steel">
-                    {myVipEntry?.exact_scores ?? 0} exactos · {myVipEntry?.correct_results ?? 0} aciertos
+                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                    <span className="sm:hidden">{selectedVipCompetition.approved_members_count} jug</span>
+                    <span className="hidden sm:inline">{selectedVipCompetition.approved_members_count} jugadores en competencia</span>
                   </p>
                 </div>
-                <div className="stat-tile border border-white/[0.06]">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Bolsa VIP</p>
-                  <p className="mt-2 text-lg font-semibold text-ink">{formatCurrency(selectedVipCompetition.gross_pool_amount)}</p>
-                  <p className="mt-1 text-xs text-steel">{selectedVipCompetition.approved_members_count} participantes aprobados</p>
+                <div className={summaryTileClass}>
+                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                    <span className="sm:hidden">Bolsa</span>
+                    <span className="hidden sm:inline">Bolsa VIP</span>
+                  </p>
+                  <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">
+                    {formatCurrency(selectedVipCompetition.gross_pool_amount)}
+                  </p>
+                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                    <span className="sm:hidden">pool</span>
+                    <span className="hidden sm:inline">Pool bruto de la competencia</span>
+                  </p>
                 </div>
-                <div className="stat-tile border border-white/[0.06]">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Jornadas que cuentan</p>
-                  <p className="mt-2 text-lg font-semibold text-ink">{selectedVipCompetition.matchdays.length}</p>
-                  <p className="mt-1 text-xs text-steel">
-                    J{selectedVipCompetition.matchdays.map((matchday) => matchday.number).join(", J")}
+                <div className={summaryTileClass}>
+                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                    <span className="sm:hidden">Prom</span>
+                    <span className="hidden sm:inline">Puntos promedio</span>
+                  </p>
+                  <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{vipAverage}</p>
+                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                    <span className="sm:hidden">por jd</span>
+                    <span className="hidden sm:inline">Por jornada VIP calificada</span>
+                  </p>
+                </div>
+                <div className={summaryTileClass}>
+                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                    <span className="sm:hidden">Proy</span>
+                    <span className="hidden sm:inline">Cierre proyectado</span>
+                  </p>
+                  <p className="mt-1 text-[12px] font-semibold leading-none text-emerald-300 sm:mt-2 sm:text-xl">
+                    {vipProjectedTotal}
+                  </p>
+                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                    <span className="sm:hidden">{selectedVipCompetition.matchdays.length} jds</span>
+                    <span className="hidden sm:inline">{selectedVipCompetition.matchdays.length} jornadas que cuentan</span>
                   </p>
                 </div>
               </div>
+
+              <PerformanceRaceChart race={vipPerformanceRace} userLabel={state.me?.display_name ?? "Tu VIP"} />
+
+              <MatchdayPointsTable rows={vipMatchdayPoints} />
 
               <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_320px]">
                 <section className="space-y-3">

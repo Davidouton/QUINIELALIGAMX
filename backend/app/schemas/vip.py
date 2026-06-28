@@ -22,6 +22,43 @@ class VipLeaderboardEntryOut(BaseModel):
     rank_position: int
 
 
+class VipMatchdayPointsEntryOut(BaseModel):
+    matchday_id: str
+    season_id: str
+    matchday_number: int
+    matchday_name: str
+    total_points: int
+    correct_results: int
+    exact_scores: int
+    rank_position: int | None = None
+    cumulative_points: int
+    weekly_prize_amount: float = 0
+
+
+class VipPerformanceRacePointOut(BaseModel):
+    matchday_id: str
+    matchday_number: int
+    matchday_name: str
+    user_cumulative_points: int
+    leader_cumulative_points: int
+    first_place_cumulative_points: int
+    third_place_cumulative_points: int
+
+
+class VipPerformanceRaceOut(BaseModel):
+    season_id: str | None = None
+    season_name: str | None = None
+    leader_profile_id: str | None = None
+    leader_name: str | None = None
+    tournament_matchdays: int = 0
+    completed_matchdays: int = 0
+    projected_user_total: float = 0
+    projected_leader_total: float = 0
+    projected_first_place_total: float = 0
+    projected_third_place_total: float = 0
+    points: list[VipPerformanceRacePointOut] = []
+
+
 class VipTeamWinnerTeamOut(BaseModel):
     id: str
     team_id: str
@@ -88,6 +125,8 @@ class VipCompetitionOut(BaseModel):
     join_lock_match_label: str | None = None
     my_membership: VipMembershipOut | None = None
     leaderboard: list[VipLeaderboardEntryOut] = []
+    matchday_points: list[VipMatchdayPointsEntryOut] = []
+    performance_race: VipPerformanceRaceOut | None = None
     team_winner_teams: list[VipTeamWinnerTeamOut] = []
     team_winner_entries: list[VipTeamWinnerEntryOut] = []
 

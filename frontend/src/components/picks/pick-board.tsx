@@ -797,6 +797,7 @@ export function PickBoard() {
     matchScope === "today"
       ? state.globalPickBoard?.matches.filter((match) => visibleMatchIds.has(match.match_id)) ?? []
       : state.globalPickBoard?.matches ?? [];
+  const hasAdvancingTeamPicks = visibleMatches.some((match) => requiresAdvancingTeam(match, state.selectedSeason));
 
   return (
     <div className="space-y-6">
@@ -913,7 +914,13 @@ export function PickBoard() {
 
       {activeTab === "mine" && visibleMatches.length > 0 ? (
         <section className="space-y-3">
-          <div className="flex justify-end">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            {hasAdvancingTeamPicks ? (
+              <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-steel">
+                <span className="text-mint">Escoge el equipo que califica</span>
+                <span className="text-steel">Resultado oficial: 90 mins + TE</span>
+              </div>
+            ) : <span />}
             <p className="text-[10px] text-steel">Se guarda automatico 2 segundos despues del ultimo cambio.</p>
           </div>
           <div className="hidden grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] gap-2 border-b border-white/10 pb-2 text-[10px] uppercase tracking-[0.14em] text-steel/80 md:grid">
@@ -944,11 +951,11 @@ export function PickBoard() {
               const homeAdvances = canPickAdvancingTeam && form?.advancing_team_id === match.home_team_id;
               const awayAdvances = canPickAdvancingTeam && form?.advancing_team_id === match.away_team_id;
               const teamPickBaseClass =
-                "flex min-w-0 flex-col items-center justify-start gap-1 self-start rounded-[12px] border px-1.5 py-1 text-center transition";
+                "mx-auto flex min-w-0 max-w-[74px] flex-col items-center justify-start gap-1 self-start rounded-full border-2 px-2 py-1 text-center transition";
               const teamPickIdleClass = canPickAdvancingTeam
-                ? "border-transparent hover:border-mint/40 hover:bg-mint/10"
+                ? "border-transparent hover:border-mint/50 hover:bg-mint/10"
                 : "border-transparent";
-              const teamPickSelectedClass = "border-mint/50 bg-mint/15 text-mint";
+              const teamPickSelectedClass = "border-mint bg-mint/15 text-mint shadow-[0_0_0_1px_rgba(74,222,128,0.25)]";
 
               return (
                 <div key={match.id} className="border-b border-white/5 py-2 last:border-b-0">
@@ -1145,14 +1152,7 @@ export function PickBoard() {
                       </p>
                     </div>
                   </div>
-                  {requiresAdvancingTeam(match, state.selectedSeason) && match.is_ready_for_picks ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 px-1 text-[10px] text-steel">
-                      <span className="font-semibold uppercase tracking-[0.12em] text-mint">
-                        Escoge el equipo que califica
-                      </span>
-                      <span>90 min + tiempo extra.</span>
-                    </div>
-                  ) : requiresAdvancingTeam(match, state.selectedSeason) ? (
+                  {requiresAdvancingTeam(match, state.selectedSeason) && !match.is_ready_for_picks ? (
                     <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[10px] text-amber-100">
                       Este cruce todavia esta sembrado con placeholders. Los picks se habilitan en cuanto queden definidos ambos equipos.
                     </div>
