@@ -8,7 +8,6 @@ import { DashboardSeasonSwitcher } from "@/components/layout/dashboard-season-sw
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { cn } from "@/lib/utils";
-import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
 
 const baseLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
@@ -21,6 +20,7 @@ const baseLinks = [
   { href: "/dashboard/hall-of-fame", label: "Salon de la Fama" },
   { href: "/dashboard/rules", label: "Reglamento" },
   { href: "/dashboard/settings", label: "Settings" },
+  { href: "/dashboard/admin", label: "Admin" },
 ];
 
 const primaryMobileLinks = [
@@ -50,12 +50,8 @@ export function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const canViewAdmin = useAdminVisibility();
   const { buildHrefWithSeason } = useDashboardSeasonParam();
-  const links = [
-    ...baseLinks,
-    ...(canViewAdmin ? [{ href: "/dashboard/admin", label: "Admin" }] : []),
-  ];
+  const links = baseLinks;
   const currentLink = links.find((link) => pathname === link.href) ?? links[0];
 
   async function handleSignOut() {
