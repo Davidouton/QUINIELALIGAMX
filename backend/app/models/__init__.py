@@ -50,6 +50,11 @@ from app.models.entities import (
     WorldCupGroup,
     WorldCupGroupTeam,
 )
+from app.models.quiniela_plus_value import (
+    QuinielaPlusStatsMatch,
+    QuinielaPlusStatsSnapshot,
+    QuinielaPlusValueRecommendation,
+)
 
 __all__ = [
     "Base",
@@ -79,6 +84,9 @@ __all__ = [
     "QuinielaPlusMembershipLeague",
     "QuinielaPlusMembershipStatus",
     "QuinielaPlusPlan",
+    "QuinielaPlusStatsMatch",
+    "QuinielaPlusStatsSnapshot",
+    "QuinielaPlusValueRecommendation",
     "RawMatchResult",
     "RulePage",
     "RoleCode",

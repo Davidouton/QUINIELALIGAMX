@@ -1049,6 +1049,9 @@ export interface OddsPullResult {
 export interface AdvancedStatsPullResult {
   status: string;
   count: number;
+  snapshot_id: string | null;
+  matches_saved: number | null;
+  recommendations_saved: number | null;
   output_path: string;
   pull_output: string;
 }

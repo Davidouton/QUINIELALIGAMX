@@ -407,6 +407,13 @@ def extract_int(pattern: str, text: str) -> int | None:
     return int(match.group(1))
 
 
+def extract_text(pattern: str, text: str) -> str | None:
+    match = re.search(pattern, text)
+    if match is None:
+        return None
+    return match.group(1)
+
+
 def extract_snapshot_date(text: str) -> str | None:
     match = re.search(r"snapshot (\d{4}-\d{2}-\d{2})", text)
     if match is not None:
@@ -709,6 +716,7 @@ def build_odds_script_env() -> dict[str, str]:
         or backend_env.get("DATABASE_URL")
         or env.get("ODDS_DATABASE_URL")
         or env.get("SUPABASE_DATABASE_URL")
+        or env.get("DATABASE_URL")
     )
 
     if odds_database_url:
@@ -846,6 +854,9 @@ def run_advanced_stats_pull_pipeline(
     return AdvancedStatsPullResponse(
         status="success",
         count=extract_int(r"Saved\s+(\d+)\s+advanced stats fixtures", pull_output) or 0,
+        snapshot_id=extract_text(r"Saved DB snapshot\s+([0-9a-fA-F-]+):", pull_output),
+        matches_saved=extract_int(r":\s*(\d+)\s+stats matches", pull_output),
+        recommendations_saved=extract_int(r",\s*(\d+)\s+recommendations", pull_output),
         output_path=output_path,
         pull_output=pull_output,
     )
@@ -2605,7 +2616,7 @@ def pull_admin_world_cup_odds(
 @router.post("/quiniela-plus/advanced-stats/pull", response_model=AdvancedStatsPullResponse)
 def pull_admin_quiniela_plus_advanced_stats(
     target_date: str | None = None,
-    days: int = 5,
+    days: int = 2,
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdvancedStatsPullResponse:
     script_env = build_odds_script_env()

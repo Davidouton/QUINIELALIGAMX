@@ -24,6 +24,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from app.core.team_matching import EQUIVALENT_TEAM_CODES, TEAM_CODE_ALIASES, normalize_text  # noqa: E402
+from app.services.quiniela_plus_value_schema import ensure_quiniela_plus_value_tables  # noqa: E402
 
 
 def pct(value: Any) -> float:
@@ -306,6 +307,8 @@ def ensure_value_tables(conn: Any) -> None:
             statement = statement.strip()
             if statement:
                 conn.execute(text(statement))
+        return
+    ensure_quiniela_plus_value_tables(conn)
 
 
 def latest_match_id(conn: Any, fixture_id: str) -> str | None:

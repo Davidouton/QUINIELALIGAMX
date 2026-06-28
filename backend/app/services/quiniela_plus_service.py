@@ -36,6 +36,7 @@ from app.models.quiniela_plus_value import (
     QuinielaPlusValueRecommendation,
 )
 from app.repositories.odds_repository import OddsRepository
+from app.services.quiniela_plus_value_schema import ensure_quiniela_plus_value_tables
 from app.schemas.quiniela_plus import (
     QuinielaPlusAdminConsoleResponse,
     QuinielaPlusAdminSettingsOut,
@@ -110,6 +111,10 @@ STRATEGY_RULES = {
 class QuinielaPlusService:
     def __init__(self) -> None:
         self.odds_repo = OddsRepository()
+
+    def _ensure_value_tables(self, db: Session) -> None:
+        ensure_quiniela_plus_value_tables(db)
+        db.commit()
 
     def list_catalog(self, db: Session, profile: Profile) -> QuinielaPlusCatalogResponse:
         self._refresh_expired_memberships(db, profile.id)
@@ -301,6 +306,7 @@ class QuinielaPlusService:
     def get_advanced_stats(self, db: Session | None = None) -> QuinielaPlusAdvancedStatsOut:
         if db is not None:
             try:
+                self._ensure_value_tables(db)
                 snapshot = db.scalar(
                     select(QuinielaPlusStatsSnapshot).order_by(
                         QuinielaPlusStatsSnapshot.created_at.desc()
@@ -352,6 +358,7 @@ class QuinielaPlusService:
 
     def get_value_lab(self, db: Session, limit: int = 100) -> QuinielaPlusValueLabOut:
         try:
+            self._ensure_value_tables(db)
             snapshot = db.scalar(
                 select(QuinielaPlusStatsSnapshot).order_by(
                     QuinielaPlusStatsSnapshot.created_at.desc()

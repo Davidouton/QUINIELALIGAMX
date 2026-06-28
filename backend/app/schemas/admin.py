@@ -274,6 +274,9 @@ class OddsPullResponse(BaseModel):
 class AdvancedStatsPullResponse(BaseModel):
     status: str
     count: int = 0
+    snapshot_id: str | None = None
+    matches_saved: int | None = None
+    recommendations_saved: int | None = None
     output_path: str
     pull_output: str
 

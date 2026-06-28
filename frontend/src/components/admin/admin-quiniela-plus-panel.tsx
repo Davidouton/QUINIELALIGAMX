@@ -284,7 +284,11 @@ export function AdminQuinielaPlusPanel() {
         { method: "POST" },
       );
       setAdvancedStatsResult(result);
-      setMessage(`Estadisticas avanzadas actualizadas: ${result.count} partidos cargados.`);
+      setMessage(
+        `Estadisticas avanzadas actualizadas: ${result.matches_saved ?? result.count} partidos y ${
+          result.recommendations_saved ?? 0
+        } recomendaciones guardadas.`,
+      );
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -453,14 +457,22 @@ export function AdminQuinielaPlusPanel() {
         </div>
 
         {advancedStatsResult ? (
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-5">
             <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
               <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Estado</p>
               <p className="mt-2 text-sm font-semibold text-moss">{advancedStatsResult.status}</p>
             </div>
             <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Partidos</p>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Scrapeados</p>
               <p className="mt-2 text-sm font-semibold text-ink">{advancedStatsResult.count}</p>
+            </div>
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Guardados</p>
+              <p className="mt-2 text-sm font-semibold text-ink">{advancedStatsResult.matches_saved ?? 0}</p>
+            </div>
+            <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Value Lab</p>
+              <p className="mt-2 text-sm font-semibold text-gold">{advancedStatsResult.recommendations_saved ?? 0}</p>
             </div>
             <div className="rounded-[14px] border border-white/[0.06] bg-white/[0.02] p-4">
               <p className="text-[11px] uppercase tracking-[0.18em] text-steel">Archivo</p>
