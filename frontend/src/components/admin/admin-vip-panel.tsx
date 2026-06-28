@@ -91,6 +91,7 @@ export function AdminVipPanel() {
   const [savingTeamWinner, setSavingTeamWinner] = useState(false);
   const [deletingVip, setDeletingVip] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
+  const [recalculatingVip, setRecalculatingVip] = useState(false);
   const [processingMembershipId, setProcessingMembershipId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -186,6 +187,26 @@ export function AdminVipPanel() {
     setForm(toFormState(nextSelectedVip, seasonRows));
     setAddMemberProfileId("");
     syncTeamWinnerDraft(nextSelectedVip);
+    if (nextSelectedVip) {
+      void loadVipDetail(nextSelectedVip.id, accessToken).catch((caughtError) => {
+        setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el detalle VIP");
+      });
+    }
+  }
+
+  async function loadVipDetail(vipId: string, accessToken?: string) {
+    const token = accessToken ?? (await getBrowserAccessToken());
+    const detailedVip = await backendFetch<AdminVipCompetition>(`/admin/vip/${vipId}`, token);
+    setVips((current) => current.map((vip) => (vip.id === detailedVip.id ? detailedVip : vip)));
+  }
+
+  function replaceVipAndRefreshDetail(updatedVip: AdminVipCompetition, accessToken?: string) {
+    setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+    window.setTimeout(() => {
+      void loadVipDetail(updatedVip.id, accessToken).catch((caughtError) => {
+        setError(caughtError instanceof Error ? caughtError.message : "No se pudo refrescar el detalle VIP");
+      });
+    }, 1200);
   }
 
   useEffect(() => {
@@ -218,6 +239,9 @@ export function AdminVipPanel() {
     syncTeamWinnerDraft(vip);
     setMessage(null);
     setError(null);
+    void loadVipDetail(vip.id).catch((caughtError) => {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el detalle VIP");
+    });
   }
 
   function toggleMatchday(matchdayId: string) {
@@ -389,7 +413,7 @@ export function AdminVipPanel() {
           body: JSON.stringify({}),
         },
       );
-      setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
       setMessage(
         action === "approve"
           ? "Solicitud aprobada."
@@ -425,7 +449,7 @@ export function AdminVipPanel() {
           }),
         },
       );
-      setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
       setAddMemberProfileId("");
       setMessage("Participante agregado a la VIP con sus puntos acumulados.");
     } catch (caughtError) {
@@ -462,7 +486,7 @@ export function AdminVipPanel() {
     try {
       const accessToken = await getBrowserAccessToken();
       const updatedVip = await saveTeamWinnerConfig(accessToken);
-      setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
       syncTeamWinnerDraft(updatedVip);
       setMessage("Sorteo Equipo ganador actualizado.");
     } catch (caughtError) {
@@ -488,7 +512,7 @@ export function AdminVipPanel() {
         accessToken,
         { method: "POST" },
       );
-      setVips((current) => current.map((vip) => (vip.id === drawnVip.id ? drawnVip : vip)));
+      replaceVipAndRefreshDetail(drawnVip, accessToken);
       syncTeamWinnerDraft(drawnVip);
       setMessage("Sorteo corrido. Ya puedes destapar participante por participante.");
     } catch (caughtError) {
@@ -516,7 +540,7 @@ export function AdminVipPanel() {
           body: body ? JSON.stringify(body) : undefined,
         },
       );
-      setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
       syncTeamWinnerDraft(updatedVip);
       setMessage("Equipo ganador actualizado.");
     } catch (caughtError) {
@@ -573,7 +597,7 @@ export function AdminVipPanel() {
     try {
       const accessToken = await getBrowserAccessToken();
       const updatedVip = await requestVipPaymentUpdate(accessToken, membershipId, isPaid);
-      setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
       setMessage(!isPaid ? "Pago VIP confirmado." : "Pago VIP marcado pendiente.");
     } catch (caughtError) {
       const errorMessage = getCaughtMessage(caughtError, "No se pudo actualizar el pago VIP");
@@ -584,6 +608,30 @@ export function AdminVipPanel() {
       );
     } finally {
       setProcessingMembershipId(null);
+    }
+  }
+
+  async function handleRecalculateVip() {
+    if (!selectedVip) {
+      return;
+    }
+    setRecalculatingVip(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/admin/vip/${selectedVip.id}/recalculate`, accessToken, { method: "POST" });
+      window.setTimeout(() => {
+        void loadVipDetail(selectedVip.id, accessToken).catch((caughtError) => {
+          setError(caughtError instanceof Error ? caughtError.message : "No se pudo refrescar el leaderboard VIP");
+        });
+      }, 1200);
+      setMessage("Recalculo VIP iniciado.");
+    } catch (caughtError) {
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo recalcular la VIP");
+      setError(`Recalcular VIP: ${errorMessage}`);
+    } finally {
+      setRecalculatingVip(false);
     }
   }
 
@@ -1291,7 +1339,17 @@ export function AdminVipPanel() {
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-4">
                 <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Leaderboard</p>
-                <p className="text-xs text-steel">{selectedVip.leaderboard.length} participantes</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-steel">{selectedVip.leaderboard.length} participantes</p>
+                  <button
+                    type="button"
+                    onClick={handleRecalculateVip}
+                    disabled={recalculatingVip}
+                    className="app-pill px-3 text-xs"
+                  >
+                    {recalculatingVip ? "Recalculando" : "Recalcular"}
+                  </button>
+                </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-[12px] border border-white/[0.06] px-4 py-3">

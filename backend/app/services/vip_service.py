@@ -3,7 +3,7 @@ from decimal import Decimal
 import random
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session, aliased
 
 from app.core.datetime import ensure_utc
@@ -22,6 +22,7 @@ from app.models.entities import (
     VipCompetitionMatchday,
     VipMembership,
     VipMembershipStatus,
+    VipStanding,
     VipTeamWinnerEntry,
     VipTeamWinnerTeam,
 )
@@ -158,13 +159,20 @@ class VipService:
         db.refresh(membership)
         return membership
 
-    def list_admin_vips(self, db: Session) -> list[AdminVipCompetitionOut]:
-        vip_rows = list(
-            db.scalars(
-                select(VipCompetition)
-                .order_by(VipCompetition.created_at.desc(), VipCompetition.name.asc())
-            )
+    def list_admin_vips(
+        self,
+        db: Session,
+        *,
+        include_leaderboard: bool = True,
+        vip_id: str | None = None,
+    ) -> list[AdminVipCompetitionOut]:
+        statement = select(VipCompetition).order_by(
+            VipCompetition.created_at.desc(),
+            VipCompetition.name.asc(),
         )
+        if vip_id is not None:
+            statement = statement.where(VipCompetition.id == vip_id)
+        vip_rows = list(db.scalars(statement))
         if not vip_rows:
             return []
 
@@ -214,12 +222,16 @@ class VipService:
                 join_locked=bool(bundle["join_locks_by_vip"].get(vip.id, {}).get("locked", False)),
                 join_lock_at=bundle["join_locks_by_vip"].get(vip.id, {}).get("lock_at"),
                 join_lock_match_label=bundle["join_locks_by_vip"].get(vip.id, {}).get("match_label"),
-                leaderboard=self._build_leaderboard(
-                    vip.id,
-                    bundle["matchdays_by_vip"].get(vip.id, []),
-                    bundle["memberships_by_vip"].get(vip.id, []),
-                    bundle["profile_names"],
-                    db,
+                leaderboard=(
+                    self._build_leaderboard(
+                        vip.id,
+                        bundle["matchdays_by_vip"].get(vip.id, []),
+                        bundle["memberships_by_vip"].get(vip.id, []),
+                        bundle["profile_names"],
+                        db,
+                    )
+                    if include_leaderboard
+                    else []
                 ),
                 team_winner_teams=self._team_winner_team_outs(
                     bundle["team_winner_teams_by_vip"].get(vip.id, []),
@@ -672,6 +684,51 @@ class VipService:
         )
         return self._membership_out(membership, profile_names)
 
+    def recalculate_vip_standings(self, db: Session, vip_id: str) -> int:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+
+        self._ensure_vip_standings_table(db)
+        memberships = list(
+            db.scalars(
+                select(VipMembership).where(
+                    VipMembership.vip_competition_id == vip.id,
+                    VipMembership.status == VipMembershipStatus.APPROVED,
+                )
+            )
+        )
+        profile_ids = [membership.profile_id for membership in memberships]
+        matchday_ids = list(
+            db.scalars(
+                select(VipCompetitionMatchday.matchday_id).where(
+                    VipCompetitionMatchday.vip_competition_id == vip.id,
+                )
+            )
+        )
+
+        db.execute(delete(VipStanding).where(VipStanding.vip_competition_id == vip.id))
+        if not profile_ids or not matchday_ids:
+            db.commit()
+            return 0
+
+        totals = self._calculate_leaderboard_totals(db, matchday_ids, profile_ids)
+        profile_names = self._profile_names(db, profile_ids)
+        ranked_rows = self._rank_leaderboard_totals(totals, profile_names)
+        for profile_id, values, rank_position in ranked_rows:
+            db.add(
+                VipStanding(
+                    vip_competition_id=vip.id,
+                    profile_id=profile_id,
+                    total_points=values["total_points"],
+                    correct_results=values["correct_results"],
+                    exact_scores=values["exact_scores"],
+                    rank_position=rank_position,
+                )
+            )
+        db.commit()
+        return len(ranked_rows)
+
     def _load_bundle(
         self,
         db: Session,
@@ -863,11 +920,25 @@ class VipService:
         if not matchdays:
             return []
 
+        cached_rows = self._cached_leaderboard(vip_id, approved_profile_ids, profile_name_map, db)
+        if cached_rows is not None:
+            return cached_rows
+
+        totals = self._calculate_leaderboard_totals(db, [matchday.id for matchday in matchdays], approved_profile_ids)
+        ranked_rows = self._rank_leaderboard_totals(totals, profile_name_map)
+        return self._leaderboard_outs(ranked_rows, profile_name_map)
+
+    def _calculate_leaderboard_totals(
+        self,
+        db: Session,
+        matchday_ids: list[str],
+        profile_ids: list[str],
+    ) -> dict[str, dict[str, int]]:
         totals: dict[str, dict[str, int]] = {
             profile_id: {"total_points": 0, "correct_results": 0, "exact_scores": 0}
-            for profile_id in approved_profile_ids
+            for profile_id in profile_ids
         }
-        rows = self._vip_pick_score_rows(db, [matchday.id for matchday in matchdays], approved_profile_ids)
+        rows = self._vip_pick_score_rows(db, matchday_ids, profile_ids)
         for profile_id, values in rows:
             bucket = totals.setdefault(
                 profile_id,
@@ -876,7 +947,13 @@ class VipService:
             bucket["total_points"] += values["total_points"]
             bucket["correct_results"] += values["correct_results"]
             bucket["exact_scores"] += values["exact_scores"]
+        return totals
 
+    def _rank_leaderboard_totals(
+        self,
+        totals: dict[str, dict[str, int]],
+        profile_name_map: dict[str, str],
+    ) -> list[tuple[str, dict[str, int], int]]:
         sorted_rows = sorted(
             totals.items(),
             key=lambda item: (
@@ -885,7 +962,13 @@ class VipService:
                 profile_name_map.get(item[0], item[0]).lower(),
             ),
         )
-        ranked_rows = ScoringService._apply_competition_ranks(sorted_rows)
+        return ScoringService._apply_competition_ranks(sorted_rows)
+
+    def _leaderboard_outs(
+        self,
+        ranked_rows: list[tuple[str, dict[str, int], int]],
+        profile_name_map: dict[str, str],
+    ) -> list[VipLeaderboardEntryOut]:
         return [
             VipLeaderboardEntryOut(
                 profile_id=profile_id,
@@ -897,6 +980,68 @@ class VipService:
             )
             for profile_id, values, rank_position in ranked_rows
         ]
+
+    def _cached_leaderboard(
+        self,
+        vip_id: str,
+        approved_profile_ids: list[str],
+        profile_name_map: dict[str, str],
+        db: Session,
+    ) -> list[VipLeaderboardEntryOut] | None:
+        self._ensure_vip_standings_table(db)
+        standing_rows = list(
+            db.scalars(
+                select(VipStanding)
+                .where(VipStanding.vip_competition_id == vip_id)
+                .order_by(VipStanding.rank_position.asc(), VipStanding.total_points.desc())
+            )
+        )
+        cached_profile_ids = {row.profile_id for row in standing_rows}
+        if cached_profile_ids != set(approved_profile_ids):
+            return None
+        return [
+            VipLeaderboardEntryOut(
+                profile_id=row.profile_id,
+                display_name=profile_name_map.get(row.profile_id, "Jugador"),
+                total_points=row.total_points,
+                correct_results=row.correct_results,
+                exact_scores=row.exact_scores,
+                rank_position=row.rank_position,
+            )
+            for row in standing_rows
+        ]
+
+    def _ensure_vip_standings_table(self, db: Session) -> None:
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS vip_standings (
+                  id UUID PRIMARY KEY,
+                  vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
+                  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                  total_points INTEGER NOT NULL DEFAULT 0,
+                  correct_results INTEGER NOT NULL DEFAULT 0,
+                  exact_scores INTEGER NOT NULL DEFAULT 0,
+                  rank_position INTEGER NOT NULL DEFAULT 0,
+                  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                  CONSTRAINT uq_vip_standing_profile UNIQUE (vip_competition_id, profile_id)
+                )
+                """
+            )
+        )
+        db.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_standings_vip_rank "
+                "ON vip_standings(vip_competition_id, rank_position)"
+            )
+        )
+        db.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_standings_profile "
+                "ON vip_standings(profile_id)"
+            )
+        )
 
     def _vip_pick_score_rows(
         self,

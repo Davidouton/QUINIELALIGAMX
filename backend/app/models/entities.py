@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, Uuid, func
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -595,6 +595,33 @@ class VipMembership(Base):
         index=True,
     )
     admin_note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class VipStanding(Base):
+    __tablename__ = "vip_standings"
+    __table_args__ = (
+        UniqueConstraint("vip_competition_id", "profile_id", name="uq_vip_standing_profile"),
+        Index("idx_vip_standings_vip_rank", "vip_competition_id", "rank_position"),
+        Index("idx_vip_standings_profile", "profile_id"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    vip_competition_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("vip_competitions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    profile_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    total_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    correct_results: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    exact_scores: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rank_position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

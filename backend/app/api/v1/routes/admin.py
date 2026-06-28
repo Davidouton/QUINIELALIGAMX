@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy import delete, func, inspect, select, text
 from sqlalchemy.orm import Session
@@ -34,6 +34,7 @@ from app.models.entities import (
     StandingsMatchday,
     Team,
     TrophyAsset,
+    VipCompetitionMatchday,
     VipMembershipStatus,
 )
 from app.providers.api_football_provider import ApiFootballProvider
@@ -153,6 +154,51 @@ def run_scoring_recalculate_background() -> None:
         ScoringService().recalculate(db)
     finally:
         db.close()
+
+
+def run_vip_recalculate_background(vip_id: str) -> None:
+    db = SessionLocal()
+    try:
+        VipService().recalculate_vip_standings(db, vip_id)
+    finally:
+        db.close()
+
+
+def run_vip_recalculate_for_matchday_background(matchday_id: str) -> None:
+    db = SessionLocal()
+    try:
+        vip_ids = {
+            vip_id
+            for vip_id in db.scalars(
+                select(VipCompetitionMatchday.vip_competition_id).where(
+                    VipCompetitionMatchday.matchday_id == matchday_id
+                )
+            )
+        }
+        for vip_id in vip_ids:
+            VipService().recalculate_vip_standings(db, vip_id)
+    finally:
+        db.close()
+
+
+def run_all_vip_recalculate_background() -> None:
+    db = SessionLocal()
+    try:
+        vip_ids = set(db.scalars(select(VipCompetitionMatchday.vip_competition_id)))
+        for vip_id in vip_ids:
+            VipService().recalculate_vip_standings(db, vip_id)
+    finally:
+        db.close()
+
+
+def admin_vip_row(db: Session, vip_id: str, *, include_leaderboard: bool = False) -> AdminVipCompetitionOut:
+    vip = next(
+        iter(vip_service.list_admin_vips(db, include_leaderboard=include_leaderboard, vip_id=vip_id)),
+        None,
+    )
+    if vip is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+    return vip
 
 
 def ensure_matchday_can_be_saved(
@@ -2246,31 +2292,57 @@ def save_admin_pick_override(
 
 @router.get("/vip", response_model=list[AdminVipCompetitionOut])
 def list_admin_vips(
+    include_leaderboard: bool = Query(False),
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> list[AdminVipCompetitionOut]:
-    return vip_service.list_admin_vips(db)
+    return vip_service.list_admin_vips(db, include_leaderboard=include_leaderboard)
+
+
+@router.get("/vip/{vip_id}", response_model=AdminVipCompetitionOut)
+def get_admin_vip(
+    vip_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
+@router.post("/vip/{vip_id}/recalculate")
+def recalculate_admin_vip(
+    vip_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> dict[str, str]:
+    admin_vip_row(db, vip_id, include_leaderboard=False)
+    background_tasks.add_task(run_vip_recalculate_background, vip_id)
+    return {"status": "vip_recalculate_started", "vip_id": vip_id}
 
 
 @router.post("/vip", response_model=AdminVipCompetitionOut, status_code=201)
 def create_admin_vip(
     payload: AdminVipUpsertRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
     vip = vip_service.create_admin_vip(db, payload, current_profile)
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip.id)
+    background_tasks.add_task(run_vip_recalculate_background, vip.id)
+    return admin_vip_row(db, vip.id, include_leaderboard=False)
 
 
 @router.put("/vip/{vip_id}", response_model=AdminVipCompetitionOut)
 def update_admin_vip(
     vip_id: str,
     payload: AdminVipUpsertRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
     vip = vip_service.update_admin_vip(db, vip_id, payload)
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip.id)
+    background_tasks.add_task(run_vip_recalculate_background, vip.id)
+    return admin_vip_row(db, vip.id, include_leaderboard=False)
 
 
 @router.delete("/vip/{vip_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -2286,6 +2358,7 @@ def delete_admin_vip(
 def add_admin_vip_membership(
     vip_id: str,
     payload: AdminVipMembershipAddRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
@@ -2295,7 +2368,8 @@ def add_admin_vip_membership(
         payload=payload,
         current_profile=current_profile,
     )
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    background_tasks.add_task(run_vip_recalculate_background, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.put("/vip/{vip_id}/team-winner/config", response_model=AdminVipCompetitionOut)
@@ -2306,7 +2380,7 @@ def configure_admin_vip_team_winner(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
     vip_service.configure_team_winner(db, vip_id=vip_id, payload=payload)
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.post("/vip/{vip_id}/team-winner/draw", response_model=AdminVipCompetitionOut)
@@ -2316,7 +2390,7 @@ def run_admin_vip_team_winner_draw(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
     vip_service.run_team_winner_draw(db, vip_id=vip_id)
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.post("/vip/{vip_id}/team-winner/reveal-next", response_model=AdminVipCompetitionOut)
@@ -2326,7 +2400,7 @@ def reveal_next_admin_vip_team_winner(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
     vip_service.reveal_next_team_winner_entry(db, vip_id=vip_id)
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.put("/vip/{vip_id}/team-winner/teams/{team_row_id}/status", response_model=AdminVipCompetitionOut)
@@ -2344,7 +2418,7 @@ def update_admin_vip_team_winner_team_status(
         payload=payload,
         current_profile=current_profile,
     )
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.put("/vip/{vip_id}/team-winner/entries/{entry_id}/payment", response_model=AdminVipCompetitionOut)
@@ -2361,7 +2435,7 @@ def update_admin_vip_team_winner_entry_payment(
         entry_id=entry_id,
         payload=payload,
     )
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.post("/vip/{vip_id}/memberships/{membership_id}/approve", response_model=AdminVipCompetitionOut)
@@ -2369,6 +2443,7 @@ def approve_admin_vip_membership(
     vip_id: str,
     membership_id: str,
     payload: AdminVipMembershipDecisionRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
@@ -2380,7 +2455,8 @@ def approve_admin_vip_membership(
         current_profile=current_profile,
         payload=payload,
     )
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    background_tasks.add_task(run_vip_recalculate_background, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.post("/vip/{vip_id}/memberships/{membership_id}/reject", response_model=AdminVipCompetitionOut)
@@ -2388,6 +2464,7 @@ def reject_admin_vip_membership(
     vip_id: str,
     membership_id: str,
     payload: AdminVipMembershipDecisionRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
@@ -2399,7 +2476,8 @@ def reject_admin_vip_membership(
         current_profile=current_profile,
         payload=payload,
     )
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    background_tasks.add_task(run_vip_recalculate_background, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.post("/vip/{vip_id}/memberships/{membership_id}/remove", response_model=AdminVipCompetitionOut)
@@ -2407,6 +2485,7 @@ def remove_admin_vip_membership(
     vip_id: str,
     membership_id: str,
     payload: AdminVipMembershipDecisionRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
@@ -2417,7 +2496,8 @@ def remove_admin_vip_membership(
         current_profile=current_profile,
         payload=payload,
     )
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    background_tasks.add_task(run_vip_recalculate_background, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.post("/vip/{vip_id}/memberships/{membership_id}/payment", response_model=AdminVipCompetitionOut)
@@ -2436,44 +2516,59 @@ def update_admin_vip_membership_payment(
         current_profile=current_profile,
         payload=payload,
     )
-    return next(row for row in vip_service.list_admin_vips(db) if row.id == vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
 @router.put("/results/{match_id}", response_model=AdminResultRowOut)
 def update_admin_result(
     match_id: str,
     payload: AdminResultUpdateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
-    return result_service.save_admin_result(db, match_id, payload, updated_by=current_profile)
+    result = result_service.save_admin_result(db, match_id, payload, updated_by=current_profile)
+    background_tasks.add_task(run_vip_recalculate_for_matchday_background, result.matchday_id)
+    return result
 
 
 @router.post("/results/{match_id}/clear-override", response_model=AdminResultRowOut)
 def clear_admin_result_override(
     match_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
-    return result_service.clear_manual_override(db, match_id)
+    result = result_service.clear_manual_override(db, match_id)
+    background_tasks.add_task(run_vip_recalculate_for_matchday_background, result.matchday_id)
+    return result
 
 
 @router.delete("/results/{match_id}", response_model=AdminResultRowOut)
 def clear_admin_result(
     match_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
-    return result_service.clear_admin_result(db, match_id)
+    result = result_service.clear_admin_result(db, match_id)
+    background_tasks.add_task(run_vip_recalculate_for_matchday_background, result.matchday_id)
+    return result
 
 
 @router.post("/results/sync", response_model=SyncResponse)
 def sync_admin_results(
+    background_tasks: BackgroundTasks,
     matchday_id: str | None = None,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SyncResponse:
-    return SyncResponse(**sync_results(db, get_results_provider(), matchday_id=matchday_id))
+    response = SyncResponse(**sync_results(db, get_results_provider(), matchday_id=matchday_id))
+    if matchday_id is not None:
+        background_tasks.add_task(run_vip_recalculate_for_matchday_background, matchday_id)
+    else:
+        background_tasks.add_task(run_all_vip_recalculate_background)
+    return response
 
 
 @router.post("/odds/sync", response_model=SyncResponse)
@@ -2529,7 +2624,8 @@ def recalculate_results(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> dict[str, str]:
     background_tasks.add_task(run_scoring_recalculate_background)
-    return {"status": "recalculate_started"}
+    background_tasks.add_task(run_all_vip_recalculate_background)
+    return {"status": "recalculate_started", "vip_status": "vip_recalculate_started"}
 
 
 @router.post("/matchdays/{matchday_id}/publish")
@@ -2558,8 +2654,10 @@ def publish_matchday(
     db.add(matchday)
     db.commit()
     background_tasks.add_task(run_scoring_recalculate_background)
+    background_tasks.add_task(run_vip_recalculate_for_matchday_background, matchday_id)
     return {
         "status": "published",
         "matchday_id": matchday_id,
         "recalculate_status": "recalculate_started",
+        "vip_recalculate_status": "vip_recalculate_started",
     }

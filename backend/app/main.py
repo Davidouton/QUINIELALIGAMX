@@ -581,6 +581,38 @@ def run_startup_migrations() -> None:
                     text("ALTER TABLE vip_memberships ADD COLUMN is_paid BOOLEAN NOT NULL DEFAULT FALSE")
                 )
 
+        if "vip_standings" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS vip_standings (
+                      id UUID PRIMARY KEY,
+                      vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
+                      profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      total_points INTEGER NOT NULL DEFAULT 0,
+                      correct_results INTEGER NOT NULL DEFAULT 0,
+                      exact_scores INTEGER NOT NULL DEFAULT 0,
+                      rank_position INTEGER NOT NULL DEFAULT 0,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_vip_standing_profile UNIQUE (vip_competition_id, profile_id)
+                    )
+                    """
+                )
+            )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_standings_vip_rank "
+                "ON vip_standings(vip_competition_id, rank_position)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_standings_profile "
+                "ON vip_standings(profile_id)"
+            )
+        )
+
         if "vip_team_winner_teams" not in table_names:
             connection.execute(
                 text(
@@ -1219,7 +1251,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     if settings.run_startup_db_bootstrap and settings.app_env != "production":
         Base.metadata.create_all(bind=engine)
 
-    if settings.run_startup_migrations:
+    should_run_startup_migrations = settings.run_startup_migrations and (
+        settings.app_env != "production" or settings.run_startup_migrations_in_production
+    )
+    if should_run_startup_migrations:
         run_startup_migrations()
     yield
 

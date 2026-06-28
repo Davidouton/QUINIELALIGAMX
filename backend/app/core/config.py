@@ -10,7 +10,11 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./quinielamaestra.db"
     run_startup_db_bootstrap: bool = False
     run_startup_migrations: bool = True
-    run_startup_migrations_in_production: bool = True
+    run_startup_migrations_in_production: bool = False
+    database_connect_timeout_seconds: int = 10
+    database_statement_timeout_ms: int = 30000
+    database_pool_recycle_seconds: int = 300
+    database_pool_pre_ping: bool = True
     allowed_origins: str = "http://localhost:3000"
     frontend_site_url: str = "http://localhost:3000"
     supabase_url: str = "https://your-project.supabase.co"
@@ -54,7 +58,6 @@ class Settings(BaseSettings):
     stripe_cancel_url: str = "http://localhost:3000/dashboard/payments/cancel"
     stripe_default_currency: str = "mxn"
     stripe_webhook_tolerance_seconds: int = 300
-
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
     @property
