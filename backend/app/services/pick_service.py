@@ -21,6 +21,10 @@ from app.models.entities import (
     Team,
     TournamentFormat,
     UserPick,
+    VipCompetition,
+    VipCompetitionMatchday,
+    VipMembership,
+    VipMembershipStatus,
 )
 from app.repositories.match_repository import MatchRepository
 from app.repositories.odds_repository import OddsRepository
@@ -571,10 +575,26 @@ class PickService:
 
         membership = self.membership_repo.get_for_profile_and_season(db, profile.id, matchday.season_id)
         if not self.eligibility_service.can_participate(db, season, membership):
+            if self._has_approved_vip_access_for_matchday(db, profile.id, matchday.id):
+                return
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No estas dado de alta en este torneo. Pidele al admin que te active la temporada.",
             )
+
+    def _has_approved_vip_access_for_matchday(self, db: Session, profile_id: str, matchday_id: str) -> bool:
+        return db.scalar(
+            select(VipMembership.id)
+            .join(VipCompetition, VipCompetition.id == VipMembership.vip_competition_id)
+            .join(VipCompetitionMatchday, VipCompetitionMatchday.vip_competition_id == VipCompetition.id)
+            .where(
+                VipMembership.profile_id == profile_id,
+                VipMembership.status == VipMembershipStatus.APPROVED,
+                VipCompetition.is_active.is_(True),
+                VipCompetitionMatchday.matchday_id == matchday_id,
+            )
+            .limit(1)
+        ) is not None
 
     def _season_id_for_match(self, db: Session, match: Match) -> str:
         matchday = db.get(Matchday, match.matchday_id)

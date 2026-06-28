@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { backendFetch } from "@/lib/api/backend";
 import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team } from "@/types/api";
+import type { GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
 
 type PickFormState = {
   winner_selection: PickSelection | "";
@@ -35,6 +35,7 @@ type PickBoardState = {
   matches: Match[];
   existingPicks: Pick[];
   globalPickBoard: GlobalPickBoard | null;
+  vipCompetitions: VipCompetition[];
   error: string | null;
 };
 
@@ -58,6 +59,7 @@ const initialState: PickBoardState = {
   matches: [],
   existingPicks: [],
   globalPickBoard: null,
+  vipCompetitions: [],
   error: null,
 };
 
@@ -443,12 +445,13 @@ export function PickBoard() {
     async function loadBoard() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const [me, activeMatchdays, seasons, matchdays, teamRows] = await Promise.all([
+        const [me, activeMatchdays, seasons, matchdays, teamRows, vipCompetitions] = await Promise.all([
           backendFetch<Me>("/me", accessToken),
           backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<Matchday[]>("/matchdays", accessToken),
           backendFetch<Team[]>("/teams", accessToken),
+          backendFetch<VipCompetition[]>("/vip", accessToken),
         ]);
         const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
@@ -484,6 +487,7 @@ export function PickBoard() {
             matches: [],
             existingPicks: [],
             globalPickBoard: null,
+            vipCompetitions,
             error: null,
           });
           setForms({});
@@ -515,6 +519,7 @@ export function PickBoard() {
           matches,
           existingPicks,
           globalPickBoard,
+          vipCompetitions,
           error: null,
         });
       } catch (loadError) {
@@ -671,6 +676,8 @@ export function PickBoard() {
         selectedMatchday: null,
         matches: [],
         existingPicks: [],
+        globalPickBoard: null,
+        vipCompetitions: current.vipCompetitions,
         error: null,
       }));
       setForms({});
@@ -784,10 +791,20 @@ export function PickBoard() {
     state.selectedSeason && state.me
       ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
       : null;
+  const approvedVipForSelectedMatchday =
+    state.selectedMatchday
+      ? state.vipCompetitions.find(
+          (vip) =>
+            vip.my_membership?.status === "approved" &&
+            vip.matchdays.some((matchday) => matchday.id === state.selectedMatchday?.id),
+        ) ?? null
+      : null;
+  const canPickSelectedMatchday = Boolean(selectedSeasonMembership?.can_participate || approvedVipForSelectedMatchday);
   const showMembershipWarning =
     state.me !== null &&
     state.selectedSeason !== null &&
-    !selectedSeasonMembership?.can_participate;
+    !selectedSeasonMembership?.can_participate &&
+    approvedVipForSelectedMatchday === null;
   const globalCellByKey = Object.fromEntries(
     (state.globalPickBoard?.cells ?? []).map((cell) => [getGlobalCellKey(cell.profile_id, cell.match_id), cell]),
   );
@@ -807,6 +824,11 @@ export function PickBoard() {
           <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
             Tu cuenta puede entrar al dashboard, pero todavia no esta dada de alta en este torneo.
             El admin debe activarte para capturar picks.
+          </div>
+        ) : null}
+        {approvedVipForSelectedMatchday && !selectedSeasonMembership?.can_participate ? (
+          <div className="mt-4 rounded-2xl border border-mint/30 bg-mint/10 px-4 py-3 text-sm text-mint">
+            Estas capturando picks para {approvedVipForSelectedMatchday.name}. No cuentan para el ranking general.
           </div>
         ) : null}
         <div className="grid gap-2 lg:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] lg:items-end">
@@ -946,7 +968,7 @@ export function PickBoard() {
                 autoSaveState,
                 Boolean(existingPick),
               );
-              const pickDisabled = match.is_locked || !match.is_ready_for_picks;
+              const pickDisabled = match.is_locked || !match.is_ready_for_picks || !canPickSelectedMatchday;
               const canPickAdvancingTeam = requiresAdvancingTeam(match, state.selectedSeason) && match.is_ready_for_picks;
               const homeAdvances = canPickAdvancingTeam && form?.advancing_team_id === match.home_team_id;
               const awayAdvances = canPickAdvancingTeam && form?.advancing_team_id === match.away_team_id;
