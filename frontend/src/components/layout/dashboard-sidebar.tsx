@@ -13,6 +13,7 @@ const baseLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
   { href: "/dashboard/world-cup", label: "Mundial", shortLabel: "WC" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/admin", label: "Admin" },
   { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
   { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks Center" },
@@ -20,7 +21,6 @@ const baseLinks = [
   { href: "/dashboard/hall-of-fame", label: "Salon de la Fama" },
   { href: "/dashboard/rules", label: "Reglamento" },
   { href: "/dashboard/settings", label: "Settings" },
-  { href: "/dashboard/admin", label: "Admin" },
 ];
 
 const primaryMobileLinks = [
@@ -89,7 +89,7 @@ export function DashboardSidebar() {
           </div>
 
           {isMobileMenuOpen ? (
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 max-h-[calc(100dvh-12rem)] space-y-3 overflow-y-auto pb-28 pr-1">
               <DashboardSeasonSwitcher />
               <div className="grid grid-cols-2 gap-2">
                 {links.map((link) => (

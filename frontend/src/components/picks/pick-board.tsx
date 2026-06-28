@@ -940,38 +940,61 @@ export function PickBoard() {
                 Boolean(existingPick),
               );
               const pickDisabled = match.is_locked || !match.is_ready_for_picks;
+              const canPickAdvancingTeam = requiresAdvancingTeam(match, state.selectedSeason) && match.is_ready_for_picks;
+              const homeAdvances = canPickAdvancingTeam && form?.advancing_team_id === match.home_team_id;
+              const awayAdvances = canPickAdvancingTeam && form?.advancing_team_id === match.away_team_id;
+              const teamPickBaseClass =
+                "flex min-w-0 flex-col items-center justify-start gap-1 self-start rounded-[12px] border px-1.5 py-1 text-center transition";
+              const teamPickIdleClass = canPickAdvancingTeam
+                ? "border-transparent hover:border-mint/40 hover:bg-mint/10"
+                : "border-transparent";
+              const teamPickSelectedClass = "border-mint/50 bg-mint/15 text-mint";
 
               return (
                 <div key={match.id} className="border-b border-white/5 py-2 last:border-b-0">
                   <div className="grid grid-cols-[1.7fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.7fr] items-center gap-1.5 md:grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] md:gap-2">
                     <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
-                      <div className="flex min-w-0 flex-col items-center justify-start gap-1 self-start text-center">
-                      <TeamBubble
-                        crestUrl={homeTeam?.crest_url}
-                        fallback={getTeamInitials(match.home_team_name)}
-                        sizeClassName="h-7 w-7"
-                        textClassName="text-[9px]"
-                        useWorldCupBubbles={useWorldCupAbbreviation}
-                      />
-                      <span className="min-h-[20px] max-w-[58px] text-[8px] leading-tight text-steel">
-                        {getMatchTeamLabel(match.home_team_id, match.home_team_name)}
-                      </span>
-                    </div>
+                      <button
+                        type="button"
+                        onClick={() => canPickAdvancingTeam && updateForm(match.id, { advancing_team_id: match.home_team_id ?? "" })}
+                        disabled={!canPickAdvancingTeam || pickDisabled}
+                        aria-pressed={homeAdvances}
+                        aria-label={`Escoge ${match.home_team_name} como equipo que califica`}
+                        className={`${teamPickBaseClass} ${homeAdvances ? teamPickSelectedClass : teamPickIdleClass} disabled:cursor-default`}
+                      >
+                        <TeamBubble
+                          crestUrl={homeTeam?.crest_url}
+                          fallback={getTeamInitials(match.home_team_name)}
+                          sizeClassName="h-7 w-7"
+                          textClassName="text-[9px]"
+                          useWorldCupBubbles={useWorldCupAbbreviation}
+                        />
+                        <span className={`min-h-[20px] max-w-[58px] text-[8px] leading-tight ${homeAdvances ? "text-mint" : "text-steel"}`}>
+                          {getMatchTeamLabel(match.home_team_id, match.home_team_name)}
+                        </span>
+                      </button>
                     <span className="self-start pt-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-steel/70">
                       vs
                     </span>
-                    <div className="flex min-w-0 flex-col items-center justify-start gap-1 self-start text-center">
-                      <TeamBubble
-                        crestUrl={awayTeam?.crest_url}
-                        fallback={getTeamInitials(match.away_team_name)}
-                        sizeClassName="h-7 w-7"
-                        textClassName="text-[9px]"
-                        useWorldCupBubbles={useWorldCupAbbreviation}
-                      />
-                      <span className="min-h-[20px] max-w-[58px] text-[8px] leading-tight text-steel">
-                        {getMatchTeamLabel(match.away_team_id, match.away_team_name)}
-                      </span>
-                    </div>
+                      <button
+                        type="button"
+                        onClick={() => canPickAdvancingTeam && updateForm(match.id, { advancing_team_id: match.away_team_id ?? "" })}
+                        disabled={!canPickAdvancingTeam || pickDisabled}
+                        aria-pressed={awayAdvances}
+                        aria-label={`Escoge ${match.away_team_name} como equipo que califica`}
+                        className={`${teamPickBaseClass} ${awayAdvances ? teamPickSelectedClass : teamPickIdleClass} disabled:cursor-default`}
+                      >
+                        <TeamBubble
+                          crestUrl={awayTeam?.crest_url}
+                          fallback={getTeamInitials(match.away_team_name)}
+                          sizeClassName="h-7 w-7"
+                          textClassName="text-[9px]"
+                          useWorldCupBubbles={useWorldCupAbbreviation}
+                        />
+                        <span className={`min-h-[20px] max-w-[58px] text-[8px] leading-tight ${awayAdvances ? "text-mint" : "text-steel"}`}>
+                          {getMatchTeamLabel(match.away_team_id, match.away_team_name)}
+                        </span>
+                      </button>
                     </div>
                     <div className="text-center">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Inicio</p>
@@ -1123,29 +1146,11 @@ export function PickBoard() {
                     </div>
                   </div>
                   {requiresAdvancingTeam(match, state.selectedSeason) && match.is_ready_for_picks ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-steel">
-                        Equipo que avanza
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => updateForm(match.id, { advancing_team_id: match.home_team_id ?? "" })}
-                        disabled={pickDisabled}
-                        className={`app-pill px-3 text-[10px] ${form?.advancing_team_id === match.home_team_id ? "app-pill-active text-ink" : ""}`}
-                      >
-                        {getMatchTeamLabel(match.home_team_id, match.home_team_name)}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateForm(match.id, { advancing_team_id: match.away_team_id ?? "" })}
-                        disabled={pickDisabled}
-                        className={`app-pill px-3 text-[10px] ${form?.advancing_team_id === match.away_team_id ? "app-pill-active text-ink" : ""}`}
-                      >
-                        {getMatchTeamLabel(match.away_team_id, match.away_team_name)}
-                      </button>
-                      <p className="text-[10px] text-steel">
-                        90 min + clasificado correcto = hasta 6 puntos.
-                      </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 px-1 text-[10px] text-steel">
+                      <span className="font-semibold uppercase tracking-[0.12em] text-mint">
+                        Escoge el equipo que califica
+                      </span>
+                      <span>90 min + tiempo extra.</span>
                     </div>
                   ) : requiresAdvancingTeam(match, state.selectedSeason) ? (
                     <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[10px] text-amber-100">

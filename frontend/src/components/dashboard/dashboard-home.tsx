@@ -54,6 +54,8 @@ type DashboardState = {
 };
 
 type DashboardTab = "general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios" | "vip";
+type DashboardDefaultView = "regular" | `vip:${string}`;
+const DASHBOARD_DEFAULT_VIEW_STORAGE_KEY = "qm-dashboard-default-view";
 
 const initialState: DashboardState = {
   me: null,
@@ -248,12 +250,32 @@ function readSettledValue<T>(result: PromiseSettledResult<T>, fallback: T) {
   return result.status === "fulfilled" ? result.value : fallback;
 }
 
+function readStoredDashboardDefaultView(): DashboardDefaultView {
+  if (typeof window === "undefined") {
+    return "regular";
+  }
+
+  const value = window.localStorage.getItem(DASHBOARD_DEFAULT_VIEW_STORAGE_KEY);
+  if (value?.startsWith("vip:")) {
+    return value as DashboardDefaultView;
+  }
+  return "regular";
+}
+
+function writeStoredDashboardDefaultView(value: DashboardDefaultView) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(DASHBOARD_DEFAULT_VIEW_STORAGE_KEY, value);
+  }
+}
+
 export function DashboardHome() {
   const [state, setState] = useState<DashboardState>(initialState);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<DashboardTab>("general");
   const [selectedVipBoardId, setSelectedVipBoardId] = useState("");
   const [isTabMenuOpen, setIsTabMenuOpen] = useState(false);
+  const [dashboardDefaultView, setDashboardDefaultView] = useState<DashboardDefaultView>(readStoredDashboardDefaultView);
+  const [hasAppliedDashboardDefault, setHasAppliedDashboardDefault] = useState(false);
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
@@ -502,6 +524,50 @@ export function DashboardHome() {
     }
   }, [activeTab, selectedVipBoardId, state.vipCompetitions]);
 
+  useEffect(() => {
+    if (loading || hasAppliedDashboardDefault) {
+      return;
+    }
+
+    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+    if (dashboardDefaultView.startsWith("vip:")) {
+      const vipId = dashboardDefaultView.slice(4);
+      const vipExists = approvedVipCompetitions.some((vip) => vip.id === vipId);
+      if (vipExists) {
+        setSelectedVipBoardId(vipId);
+        setActiveTab("vip");
+      } else {
+        setDashboardDefaultView("regular");
+        writeStoredDashboardDefaultView("regular");
+        setActiveTab("general");
+      }
+    }
+
+    setHasAppliedDashboardDefault(true);
+  }, [dashboardDefaultView, hasAppliedDashboardDefault, loading, state.vipCompetitions]);
+
+  function handleDashboardDefaultViewChange(value: string) {
+    const nextValue: DashboardDefaultView = value.startsWith("vip:") ? (value as DashboardDefaultView) : "regular";
+    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+
+    setDashboardDefaultView(nextValue);
+    writeStoredDashboardDefaultView(nextValue);
+
+    if (nextValue.startsWith("vip:")) {
+      const vipId = nextValue.slice(4);
+      const vipExists = approvedVipCompetitions.some((vip) => vip.id === vipId);
+      if (vipExists) {
+        setSelectedVipBoardId(vipId);
+        setActiveTab("vip");
+        setIsTabMenuOpen(false);
+        return;
+      }
+    }
+
+    setActiveTab("general");
+    setIsTabMenuOpen(false);
+  }
+
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando dashboard...</p>;
   }
@@ -543,6 +609,16 @@ export function DashboardHome() {
   const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
   const selectedVipCompetition =
     approvedVipCompetitions.find((vip) => vip.id === selectedVipBoardId) ?? approvedVipCompetitions[0] ?? null;
+  const dashboardDefaultOptions: Array<{ value: DashboardDefaultView; label: string }> = [
+    { value: "regular", label: "Torneo regular" },
+    ...approvedVipCompetitions.map((vip) => ({
+      value: `vip:${vip.id}` as DashboardDefaultView,
+      label: vip.name,
+    })),
+  ];
+  const dashboardDefaultValue = dashboardDefaultOptions.some((option) => option.value === dashboardDefaultView)
+    ? dashboardDefaultView
+    : "regular";
   const myVipEntry =
     selectedVipCompetition?.leaderboard.find((entry) => entry.profile_id === state.me?.id) ?? null;
   const visibleVipLeaderboard = selectedVipCompetition?.leaderboard.slice(0, 10) ?? [];
@@ -592,20 +668,60 @@ export function DashboardHome() {
             ) : null}
           </div>
 
-          <div className="shrink-0">
-            {headerLogoUrl ? (
-              <img
-                src={headerLogoUrl}
-                alt={headerLogoLabel}
-                className="h-9 w-9 object-contain sm:h-24 sm:w-24"
-              />
-            ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm font-semibold text-steel sm:h-24 sm:w-24 sm:text-2xl">
-                WC
-              </div>
-            )}
+          <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+            {dashboardDefaultOptions.length > 1 ? (
+              <label className="hidden min-w-[180px] space-y-1 text-xs sm:block">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
+                  Vista default
+                </span>
+                <select
+                  value={dashboardDefaultValue}
+                  onChange={(event) => handleDashboardDefaultViewChange(event.target.value)}
+                  className={dashboardSelectClass}
+                >
+                  {dashboardDefaultOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <div className="shrink-0">
+              {headerLogoUrl ? (
+                <img
+                  src={headerLogoUrl}
+                  alt={headerLogoLabel}
+                  className="h-9 w-9 object-contain sm:h-24 sm:w-24"
+                />
+              ) : (
+                <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-sm font-semibold text-steel sm:h-24 sm:w-24 sm:text-2xl">
+                  WC
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {dashboardDefaultOptions.length > 1 ? (
+          <label className="mt-3 block space-y-1 text-xs sm:hidden">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
+              Vista default
+            </span>
+            <select
+              value={dashboardDefaultValue}
+              onChange={(event) => handleDashboardDefaultViewChange(event.target.value)}
+              className={dashboardSelectClass}
+            >
+              {dashboardDefaultOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </section>
 
       <section className="space-y-3">
@@ -755,7 +871,7 @@ export function DashboardHome() {
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Competencia VIP</span>
                 <select
                   value={selectedVipCompetition?.id ?? ""}
-                  onChange={(event) => setSelectedVipBoardId(event.target.value)}
+                  onChange={(event) => handleDashboardDefaultViewChange(`vip:${event.target.value}`)}
                   className={dashboardSelectClass}
                 >
                   {approvedVipCompetitions.map((vip) => (
