@@ -9,12 +9,14 @@ import type { AdminPickRow, AdminVipCompetition, Matchday, PickSelection, Season
 type DraftState = {
   predicted_home_score: string;
   predicted_away_score: string;
+  advancing_team_id: string;
   admin_override_note: string;
 };
 
 const initialDraft: DraftState = {
   predicted_home_score: "",
   predicted_away_score: "",
+  advancing_team_id: "",
   admin_override_note: "",
 };
 
@@ -49,6 +51,31 @@ function deriveSelection(homeScore: string, awayScore: string): PickSelection | 
     return "away";
   }
   return "draw";
+}
+
+function isKnockoutPickRow(row: AdminPickRow) {
+  return row.stage_type !== "regular" && row.stage_type !== "group";
+}
+
+function requiresAdvancingTeam(row: AdminPickRow, season: Season | null) {
+  return season?.tournament_format === "world_cup" && isKnockoutPickRow(row);
+}
+
+function resolveAdvancingTeamId(row: AdminPickRow, draft: DraftState, season: Season | null) {
+  if (!requiresAdvancingTeam(row, season)) {
+    return "";
+  }
+  const selection = deriveSelection(draft.predicted_home_score, draft.predicted_away_score);
+  if (selection === "home") {
+    return row.home_team_id ?? "";
+  }
+  if (selection === "away") {
+    return row.away_team_id ?? "";
+  }
+  if (draft.advancing_team_id === row.home_team_id || draft.advancing_team_id === row.away_team_id) {
+    return draft.advancing_team_id;
+  }
+  return "";
 }
 
 function getSelectionLabel(selection: PickSelection | null) {
@@ -93,6 +120,7 @@ function toDraft(row: AdminPickRow): DraftState {
   return {
     predicted_home_score: row.predicted_home_score === null ? "" : String(row.predicted_home_score),
     predicted_away_score: row.predicted_away_score === null ? "" : String(row.predicted_away_score),
+    advancing_team_id: row.advancing_team_id ?? "",
     admin_override_note: row.admin_override_note ?? "",
   };
 }
@@ -294,13 +322,31 @@ export function AdminPicksPanel() {
     }));
   }
 
+  function updateScoreDraft(row: AdminPickRow, key: string, field: "predicted_home_score" | "predicted_away_score", value: string) {
+    const current = drafts[key] ?? initialDraft;
+    const nextDraft = {
+      ...current,
+      [field]: value,
+    };
+    updateDraft(key, {
+      [field]: value,
+      advancing_team_id: resolveAdvancingTeamId(row, nextDraft, selectedSeason),
+    });
+  }
+
   async function handleSaveOverride(row: AdminPickRow) {
     const key = rowKey(row);
     const draft = drafts[key] ?? initialDraft;
     const selection = deriveSelection(draft.predicted_home_score, draft.predicted_away_score);
+    const mustPickAdvancingTeam = requiresAdvancingTeam(row, selectedSeason);
+    const advancingTeamId = resolveAdvancingTeamId(row, draft, selectedSeason);
 
     if (!selection) {
       setError("Captura ambos marcadores para guardar el override.");
+      return;
+    }
+    if (mustPickAdvancingTeam && !advancingTeamId) {
+      setError("Selecciona el equipo que avanza para guardar el override.");
       return;
     }
 
@@ -317,6 +363,7 @@ export function AdminPicksPanel() {
           selection,
           predicted_home_score: Number(draft.predicted_home_score),
           predicted_away_score: Number(draft.predicted_away_score),
+          advancing_team_id: mustPickAdvancingTeam ? advancingTeamId : null,
           admin_override_note: draft.admin_override_note || null,
         }),
       });
@@ -449,6 +496,8 @@ export function AdminPicksPanel() {
                 const key = rowKey(row);
                 const draft = drafts[key] ?? initialDraft;
                 const selection = deriveSelection(draft.predicted_home_score, draft.predicted_away_score);
+                const mustPickAdvancingTeam = requiresAdvancingTeam(row, selectedSeason);
+                const advancingTeamId = resolveAdvancingTeamId(row, draft, selectedSeason);
 
                 return (
                   <tr key={key} className="app-table-row border-b align-top last:border-b-0">
@@ -471,7 +520,9 @@ export function AdminPicksPanel() {
                       <div className="flex items-center gap-2">
                         <input
                           value={draft.predicted_home_score}
-                          onChange={(event) => updateDraft(key, { predicted_home_score: sanitizeScoreInput(event.target.value) })}
+                          onChange={(event) =>
+                            updateScoreDraft(row, key, "predicted_home_score", sanitizeScoreInput(event.target.value))
+                          }
                           className="field-control h-9 w-14 px-2 text-center text-xs"
                           inputMode="numeric"
                           placeholder="-"
@@ -479,7 +530,9 @@ export function AdminPicksPanel() {
                         <span className="text-steel">-</span>
                         <input
                           value={draft.predicted_away_score}
-                          onChange={(event) => updateDraft(key, { predicted_away_score: sanitizeScoreInput(event.target.value) })}
+                          onChange={(event) =>
+                            updateScoreDraft(row, key, "predicted_away_score", sanitizeScoreInput(event.target.value))
+                          }
                           className="field-control h-9 w-14 px-2 text-center text-xs"
                           inputMode="numeric"
                           placeholder="-"
@@ -489,6 +542,28 @@ export function AdminPicksPanel() {
                     <td className="px-3 py-3">
                       <p className="font-semibold text-ink">{getSelectionLabel(selection)}</p>
                       {row.selection ? <p className="mt-1 text-[11px] text-steel">Actual: {getSelectionLabel(row.selection)}</p> : null}
+                      {mustPickAdvancingTeam ? (
+                        <label className="mt-3 block space-y-1.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-steel">
+                            Equipo que avanza
+                          </span>
+                          <select
+                            value={advancingTeamId}
+                            onChange={(event) => updateDraft(key, { advancing_team_id: event.target.value })}
+                            disabled={selection === "home" || selection === "away" || !row.is_ready_for_picks}
+                            className="field-control h-9 text-xs disabled:opacity-70"
+                          >
+                            <option value="">Selecciona</option>
+                            {row.home_team_id ? <option value={row.home_team_id}>{row.home_team_name}</option> : null}
+                            {row.away_team_id ? <option value={row.away_team_id}>{row.away_team_name}</option> : null}
+                          </select>
+                          {row.advancing_team_id ? (
+                            <p className="text-[11px] text-steel">
+                              Actual: {row.advancing_team_id === row.home_team_id ? row.home_team_name : row.away_team_name}
+                            </p>
+                          ) : null}
+                        </label>
+                      ) : null}
                     </td>
                     <td className="px-3 py-3">
                       <textarea
