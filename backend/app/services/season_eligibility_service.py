@@ -47,6 +47,11 @@ class SeasonEligibilityService:
     def can_participate(self, db: Session, season: Season, membership: SeasonMembership | None) -> bool:
         if membership is None:
             return False
-        if self.is_locked(db, season):
-            return bool(membership.eligible_for_scoring)
         return bool(membership.is_active)
+
+    def counts_for_scoring(self, db: Session, season: Season, membership: SeasonMembership | None) -> bool:
+        if membership is None:
+            return False
+        if not self.is_locked(db, season) and membership.eligible_locked_at is None:
+            return bool(membership.is_active and membership.eligible_for_scoring)
+        return bool(membership.eligible_for_scoring)

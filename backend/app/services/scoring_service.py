@@ -85,13 +85,13 @@ class ScoringService:
                 eligible_profiles_by_season[season_id] = [
                     membership.profile_id
                     for membership in self.membership_repo.list_for_season(db, season_id)
-                    if self.eligibility_service.can_participate(db, season, membership)
+                    if self.eligibility_service.counts_for_scoring(db, season, membership)
                 ]
 
             membership_key = (season_id, pick.profile_id)
             if membership_key not in membership_cache:
                 membership = self.membership_repo.get_for_profile_and_season(db, pick.profile_id, season_id)
-                membership_cache[membership_key] = self.eligibility_service.can_participate(db, season, membership)
+                membership_cache[membership_key] = self.eligibility_service.counts_for_scoring(db, season, membership)
             if not membership_cache[membership_key]:
                 continue
 
