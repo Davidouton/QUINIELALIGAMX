@@ -6,6 +6,10 @@ const BACKEND_FETCH_RETRY_DELAY_MS = 350;
 const BACKEND_FETCH_MAX_ATTEMPTS = 2;
 const LOCAL_BACKEND_PATTERN = /(^https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/i;
 
+type BackendFetchInit = RequestInit & {
+  timeoutMs?: number;
+};
+
 function normalizeHeaders(headers?: HeadersInit) {
   if (!headers) {
     return {} as Record<string, string>;
@@ -28,7 +32,7 @@ function shouldRetryRequest(method: string, attempt: number) {
 }
 
 function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
 function getErrorMessage(errorText: string) {
@@ -56,7 +60,7 @@ function isBackendMisconfiguredForDeployedFrontend() {
 export async function backendFetch<T>(
   path: string,
   accessToken?: string,
-  init?: RequestInit,
+  init?: BackendFetchInit,
 ): Promise<T> {
   if (isBackendMisconfiguredForDeployedFrontend()) {
     throw new Error(
@@ -65,32 +69,42 @@ export async function backendFetch<T>(
   }
 
   const method = (init?.method ?? "GET").toUpperCase();
+  const { timeoutMs: requestTimeoutMs, signal: requestSignal, ...requestInit } = init ?? {};
   const timeoutMs =
-    method === "GET" ? BACKEND_FETCH_GET_TIMEOUT_MS : BACKEND_FETCH_MUTATION_TIMEOUT_MS;
+    requestTimeoutMs ?? (method === "GET" ? BACKEND_FETCH_GET_TIMEOUT_MS : BACKEND_FETCH_MUTATION_TIMEOUT_MS);
 
   for (let attempt = 1; attempt <= BACKEND_FETCH_MAX_ATTEMPTS; attempt += 1) {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutId = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+    const abortFromCaller = () => controller.abort();
+    if (requestSignal) {
+      if (requestSignal.aborted) {
+        controller.abort();
+      } else {
+        requestSignal.addEventListener("abort", abortFromCaller, { once: true });
+      }
+    }
 
     const headers: Record<string, string> = {
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...normalizeHeaders(init?.headers),
+      ...normalizeHeaders(requestInit.headers),
     };
-    if (isBodyInitPresent(init) && !("Content-Type" in headers)) {
+    if (isBodyInitPresent(requestInit) && !("Content-Type" in headers)) {
       headers["Content-Type"] = "application/json";
     }
 
     let response: Response;
     try {
       response = await fetch(`${env.apiBaseUrl}${path}`, {
-        ...init,
+        ...requestInit,
         headers,
         cache: "no-store",
         signal: controller.signal,
       });
     } catch (error) {
-      window.clearTimeout(timeoutId);
-      if (error instanceof DOMException && error.name === "AbortError") {
+      globalThis.clearTimeout(timeoutId);
+      requestSignal?.removeEventListener("abort", abortFromCaller);
+      if (error instanceof Error && error.name === "AbortError") {
         if (shouldRetryRequest(method, attempt)) {
           await wait(BACKEND_FETCH_RETRY_DELAY_MS);
           continue;
@@ -103,7 +117,8 @@ export async function backendFetch<T>(
       }
       throw error;
     } finally {
-      window.clearTimeout(timeoutId);
+      globalThis.clearTimeout(timeoutId);
+      requestSignal?.removeEventListener("abort", abortFromCaller);
     }
 
     if (!response.ok) {

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_statement_timeout_ms: int = 30000
     database_pool_recycle_seconds: int = 300
     database_pool_pre_ping: bool = True
+    admin_script_timeout_seconds: int = 180
     allowed_origins: str = "http://localhost:3000"
     frontend_site_url: str = "http://localhost:3000"
     supabase_url: str = "https://your-project.supabase.co"

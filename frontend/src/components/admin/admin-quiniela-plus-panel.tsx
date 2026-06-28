@@ -256,6 +256,7 @@ export function AdminQuinielaPlusPanel() {
       const accessToken = await getBrowserAccessToken();
       const result = await backendFetch<OddsPullResult>("/admin/odds/pull-world-cup", accessToken, {
         method: "POST",
+        timeoutMs: 180000,
       });
       setOddsResult(result);
       await loadUnmatchedOdds();
@@ -281,7 +282,7 @@ export function AdminQuinielaPlusPanel() {
       const result = await backendFetch<AdvancedStatsPullResult>(
         "/admin/quiniela-plus/advanced-stats/pull",
         accessToken,
-        { method: "POST" },
+        { method: "POST", timeoutMs: 180000 },
       );
       setAdvancedStatsResult(result);
       setMessage(

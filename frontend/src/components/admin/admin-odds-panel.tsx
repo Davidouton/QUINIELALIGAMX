@@ -174,6 +174,7 @@ export function AdminOddsPanel() {
       const accessToken = await getBrowserAccessToken();
       const nextResult = await backendFetch<OddsPullResult>("/admin/odds/pull", accessToken, {
         method: "POST",
+        timeoutMs: 180000,
       });
       setFromGameDate("all");
       setToGameDate("all");

@@ -511,6 +511,7 @@ export function AdminControlRoom() {
       const accessToken = await getAccessTokenWithTimeout();
       const result = await backendFetch<OddsPullResult>("/admin/odds/pull", accessToken, {
         method: "POST",
+        timeoutMs: 180000,
       });
       setOddsPullResult(result);
       setState((current) => ({ ...current, error: null }));

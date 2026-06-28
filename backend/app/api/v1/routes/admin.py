@@ -731,15 +731,36 @@ def build_odds_script_env() -> dict[str, str]:
     return env
 
 
+def normalize_script_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value
+
+
 def run_script(command: list[str], cwd: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        cwd=str(cwd),
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    timeout_seconds = max(get_settings().admin_script_timeout_seconds, 1)
+    try:
+        return subprocess.run(
+            command,
+            cwd=str(cwd),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = normalize_script_output(exc.stdout)
+        stderr = normalize_script_output(exc.stderr)
+        timeout_message = f"Script excedio {timeout_seconds}s y fue detenido para no colgar el backend."
+        return subprocess.CompletedProcess(
+            command,
+            124,
+            stdout=stdout,
+            stderr="\n".join(part for part in [stderr.strip(), timeout_message] if part).strip(),
+        )
 
 
 def run_odds_pull_pipeline(script_env: dict[str, str], *, sport_key: str | None = None) -> OddsPullResponse:
