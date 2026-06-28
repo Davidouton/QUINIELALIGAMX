@@ -598,6 +598,7 @@ export function DashboardHome() {
   const teamCrestById = new Map(state.teams.map((team) => [team.id, team.crest_url]));
   const teamShortNameById = new Map(state.teams.map((team) => [team.id, team.short_name]));
   const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+  const hasApprovedVipCompetition = approvedVipCompetitions.length > 0;
   const selectedVipIdFromView = dashboardDefaultView.startsWith("vip:") ? dashboardDefaultView.slice(4) : "";
   const selectedVipCompetition =
     approvedVipCompetitions.find((vip) => vip.id === selectedVipIdFromView) ??
@@ -681,7 +682,7 @@ export function DashboardHome() {
                 {state.me ? `Hola, ${state.me.display_name}` : "Dashboard"}
               </h1>
             </div>
-            {state.me && state.selectedSeason && !selectedSeasonMembership?.can_participate ? (
+            {state.me && state.selectedSeason && !selectedSeasonMembership?.can_participate && !hasApprovedVipCompetition ? (
               <div className="mt-3 max-w-2xl rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
                 Tu cuenta esta activa y puedes entrar al dashboard, pero aun no estas dado de alta en
                 {" "}{state.selectedSeason.name}. Cuando admin confirme tu acceso, te activa el torneo.
