@@ -27,7 +27,7 @@ const adminLink = { href: "/dashboard/admin", label: "Admin" };
 
 const primaryMobileLinks = [
   { href: "/dashboard/quiniela-plus", label: "Q+" },
-  { href: "/dashboard/world-cup", label: "WC" },
+  { href: "/dashboard/leaderboard", label: "Ranking" },
   { href: "/dashboard", label: "Inicio" },
   { href: "/dashboard/prizes", label: "Premios" },
   { href: "/dashboard/vip", label: "VIP" },
