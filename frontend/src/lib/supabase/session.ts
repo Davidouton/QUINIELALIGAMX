@@ -62,6 +62,10 @@ function getStoredAccessToken(): string | null {
   return null;
 }
 
+export function hasStoredBrowserSession() {
+  return getStoredAccessToken() !== null;
+}
+
 export async function getBrowserAccessToken() {
   const storedAccessToken = getStoredAccessToken();
   if (storedAccessToken) {

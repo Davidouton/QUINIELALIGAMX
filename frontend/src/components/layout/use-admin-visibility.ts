@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
-import { NO_ACTIVE_SESSION_MESSAGE, getBrowserAccessToken } from "@/lib/supabase/session";
+import {
+  NO_ACTIVE_SESSION_MESSAGE,
+  getBrowserAccessToken,
+  hasStoredBrowserSession,
+} from "@/lib/supabase/session";
 import type { Me } from "@/types/api";
 
 const ADMIN_VISIBILITY_STORAGE_KEY = "qm-admin-visible";
@@ -23,7 +27,8 @@ function readCachedAdminVisibility() {
   if (typeof window === "undefined") {
     return false;
   }
-  cachedAdminVisibility = window.localStorage.getItem(ADMIN_VISIBILITY_STORAGE_KEY) === "true";
+  cachedAdminVisibility =
+    window.localStorage.getItem(ADMIN_VISIBILITY_STORAGE_KEY) === "true" || hasStoredBrowserSession();
   return cachedAdminVisibility;
 }
 
