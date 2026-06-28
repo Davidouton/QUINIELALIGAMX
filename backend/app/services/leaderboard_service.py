@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.entities import HistoricalChampion, Matchday, Profile, Season, StandingsMatchday, StandingsOverall, TrophyAsset
+from app.models.entities import HistoricalChampion, Matchday, Profile, Season, SeasonMembership, StandingsMatchday, StandingsOverall, TrophyAsset
 from app.repositories.leaderboard_repository import LeaderboardRepository
 from app.schemas.leaderboard import (
     HallOfFameEntry,
@@ -124,7 +124,14 @@ class LeaderboardService:
         standings_rows = db.execute(
             select(StandingsMatchday, Profile)
             .join(Profile, Profile.id == StandingsMatchday.profile_id)
+            .join(Matchday, Matchday.id == StandingsMatchday.matchday_id)
+            .join(
+                SeasonMembership,
+                (SeasonMembership.season_id == Matchday.season_id)
+                & (SeasonMembership.profile_id == StandingsMatchday.profile_id),
+            )
             .where(StandingsMatchday.matchday_id.in_([matchday.id for matchday in tournament_matchdays]))
+            .where(SeasonMembership.eligible_for_scoring.is_(True))
             .order_by(StandingsMatchday.matchday_id.asc(), StandingsMatchday.rank_position.asc(), Profile.display_name.asc())
         ).all()
 
@@ -221,10 +228,23 @@ class LeaderboardService:
         overall_rows = db.execute(
             select(StandingsOverall, Profile)
             .join(Profile, Profile.id == StandingsOverall.profile_id)
+            .join(
+                SeasonMembership,
+                (SeasonMembership.season_id == StandingsOverall.season_id)
+                & (SeasonMembership.profile_id == StandingsOverall.profile_id),
+            )
+            .where(SeasonMembership.eligible_for_scoring.is_(True))
         ).all()
         matchday_rows = db.execute(
             select(StandingsMatchday, Profile)
             .join(Profile, Profile.id == StandingsMatchday.profile_id)
+            .join(Matchday, Matchday.id == StandingsMatchday.matchday_id)
+            .join(
+                SeasonMembership,
+                (SeasonMembership.season_id == Matchday.season_id)
+                & (SeasonMembership.profile_id == StandingsMatchday.profile_id),
+            )
+            .where(SeasonMembership.eligible_for_scoring.is_(True))
         ).all()
 
         points_bucket: dict[str, dict[str, int | str]] = {}

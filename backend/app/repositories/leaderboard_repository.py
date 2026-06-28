@@ -1,7 +1,7 @@
 from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Matchday, Profile, StandingsMatchday, StandingsOverall
+from app.models.entities import Matchday, Profile, SeasonMembership, StandingsMatchday, StandingsOverall
 
 
 class LeaderboardRepository:
@@ -9,6 +9,14 @@ class LeaderboardRepository:
         stmt: Select[tuple[StandingsOverall, Profile]] = (
             select(StandingsOverall, Profile)
             .join(Profile, Profile.id == StandingsOverall.profile_id)
+            .join(
+                SeasonMembership,
+                and_(
+                    SeasonMembership.season_id == StandingsOverall.season_id,
+                    SeasonMembership.profile_id == StandingsOverall.profile_id,
+                ),
+            )
+            .where(SeasonMembership.eligible_for_scoring.is_(True))
             .order_by(StandingsOverall.rank_position.asc(), Profile.display_name.asc())
         )
         if season_id is not None:
@@ -19,7 +27,16 @@ class LeaderboardRepository:
         stmt: Select[tuple[StandingsMatchday, Profile]] = (
             select(StandingsMatchday, Profile)
             .join(Profile, Profile.id == StandingsMatchday.profile_id)
+            .join(Matchday, Matchday.id == StandingsMatchday.matchday_id)
+            .join(
+                SeasonMembership,
+                and_(
+                    SeasonMembership.season_id == Matchday.season_id,
+                    SeasonMembership.profile_id == StandingsMatchday.profile_id,
+                ),
+            )
             .where(StandingsMatchday.matchday_id == matchday_id)
+            .where(SeasonMembership.eligible_for_scoring.is_(True))
             .order_by(StandingsMatchday.rank_position.asc(), Profile.display_name.asc())
         )
         return list(db.execute(stmt).all())
