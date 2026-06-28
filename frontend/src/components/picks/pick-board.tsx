@@ -800,11 +800,6 @@ export function PickBoard() {
         ) ?? null
       : null;
   const canPickSelectedMatchday = Boolean(selectedSeasonMembership?.can_participate || approvedVipForSelectedMatchday);
-  const showMembershipWarning =
-    state.me !== null &&
-    state.selectedSeason !== null &&
-    !selectedSeasonMembership?.can_participate &&
-    approvedVipForSelectedMatchday === null;
   const globalCellByKey = Object.fromEntries(
     (state.globalPickBoard?.cells ?? []).map((cell) => [getGlobalCellKey(cell.profile_id, cell.match_id), cell]),
   );
@@ -820,12 +815,6 @@ export function PickBoard() {
     <div className="space-y-6">
       <div className="space-y-4 px-1 py-1">
         <h1 className="text-sm font-semibold text-ink sm:text-3xl">{picksHeader}</h1>
-        {showMembershipWarning ? (
-          <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-            Tu cuenta puede entrar al dashboard, pero todavia no esta dada de alta en este torneo.
-            El admin debe activarte para capturar picks.
-          </div>
-        ) : null}
         {approvedVipForSelectedMatchday && !selectedSeasonMembership?.can_participate ? (
           <div className="mt-4 rounded-2xl border border-mint/30 bg-mint/10 px-4 py-3 text-sm text-mint">
             Estas capturando picks para {approvedVipForSelectedMatchday.name}. No cuentan para el ranking general.

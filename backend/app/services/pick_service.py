@@ -381,6 +381,7 @@ class PickService:
         db: Session,
         matchday_id: str,
         profile_id: str | None = None,
+        vip_id: str | None = None,
     ) -> list[AdminPickRowOut]:
         matchday = db.get(Matchday, matchday_id)
         if matchday is None:
@@ -397,16 +398,44 @@ class PickService:
             return []
 
         teams = self._load_teams(db, matches)
-        players_stmt = (
-            select(Profile)
-            .join(SeasonMembership, SeasonMembership.profile_id == Profile.id)
-            .where(
-                SeasonMembership.season_id == matchday.season_id,
-                SeasonMembership.is_active.is_(True),
-                Profile.is_active.is_(True),
+        if vip_id is not None:
+            vip_has_matchday = db.scalar(
+                select(VipCompetitionMatchday.id)
+                .join(VipCompetition, VipCompetition.id == VipCompetitionMatchday.vip_competition_id)
+                .where(
+                    VipCompetition.id == vip_id,
+                    VipCompetition.is_active.is_(True),
+                    VipCompetitionMatchday.matchday_id == matchday_id,
+                )
+                .limit(1)
             )
-            .order_by(Profile.display_name.asc())
-        )
+            if vip_has_matchday is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La VIP seleccionada no incluye esta jornada.",
+                )
+
+            players_stmt: Select[tuple[Profile]] = (
+                select(Profile)
+                .join(VipMembership, VipMembership.profile_id == Profile.id)
+                .where(
+                    VipMembership.vip_competition_id == vip_id,
+                    VipMembership.status == VipMembershipStatus.APPROVED,
+                    Profile.is_active.is_(True),
+                )
+                .order_by(Profile.display_name.asc())
+            )
+        else:
+            players_stmt = (
+                select(Profile)
+                .join(SeasonMembership, SeasonMembership.profile_id == Profile.id)
+                .where(
+                    SeasonMembership.season_id == matchday.season_id,
+                    SeasonMembership.is_active.is_(True),
+                    Profile.is_active.is_(True),
+                )
+                .order_by(Profile.display_name.asc())
+            )
         if profile_id is not None:
             players_stmt = players_stmt.where(Profile.id == profile_id)
 
@@ -500,10 +529,11 @@ class PickService:
         season_id = self._season_id_for_match(db, match)
         membership = self.membership_repo.get_for_profile_and_season(db, profile.id, season_id)
         if membership is None or not membership.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is not active in the season for this match",
-            )
+            if not self._has_approved_vip_access_for_matchday(db, profile.id, match.matchday_id):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="User is not active in the season or an approved VIP for this match",
+                )
 
         pick = self.pick_repo.get_for_user_and_match(db, profile.id, match.id)
         self._validate_pick_payload(db, match, payload)
@@ -537,6 +567,10 @@ class PickService:
         db.refresh(pick)
 
         rows = self.list_admin_picks(db, match.matchday_id, profile_id=profile.id)
+        if not rows:
+            vip_id = self._approved_vip_id_for_matchday(db, profile.id, match.matchday_id)
+            if vip_id is not None:
+                rows = self.list_admin_picks(db, match.matchday_id, profile_id=profile.id, vip_id=vip_id)
         for row in rows:
             if row.match_id == match.id:
                 return row
@@ -583,8 +617,11 @@ class PickService:
             )
 
     def _has_approved_vip_access_for_matchday(self, db: Session, profile_id: str, matchday_id: str) -> bool:
+        return self._approved_vip_id_for_matchday(db, profile_id, matchday_id) is not None
+
+    def _approved_vip_id_for_matchday(self, db: Session, profile_id: str, matchday_id: str) -> str | None:
         return db.scalar(
-            select(VipMembership.id)
+            select(VipMembership.vip_competition_id)
             .join(VipCompetition, VipCompetition.id == VipMembership.vip_competition_id)
             .join(VipCompetitionMatchday, VipCompetitionMatchday.vip_competition_id == VipCompetition.id)
             .where(
@@ -594,7 +631,7 @@ class PickService:
                 VipCompetitionMatchday.matchday_id == matchday_id,
             )
             .limit(1)
-        ) is not None
+        )
 
     def _season_id_for_match(self, db: Session, match: Match) -> str:
         matchday = db.get(Matchday, match.matchday_id)

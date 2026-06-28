@@ -351,7 +351,7 @@ export function VipPageContent() {
                 </div>
               </div>
 
-              {selectedVip.competition_kind !== "team_winner" && selectedVip.my_membership?.status !== "approved" ? (
+              {selectedVip.my_membership?.status !== "approved" ? (
                 <div className="flex flex-wrap items-center gap-3 border-y border-white/[0.06] py-3">
                   {selectedVip.join_locked && !selectedVip.my_membership ? (
                     <span className="text-sm font-semibold text-coral">Solicitud cerrada</span>

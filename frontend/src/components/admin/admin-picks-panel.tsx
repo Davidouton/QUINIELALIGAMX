@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminPickRow, Matchday, PickSelection, Season } from "@/types/api";
+import type { AdminPickRow, AdminVipCompetition, Matchday, PickSelection, Season } from "@/types/api";
 
 type DraftState = {
   predicted_home_score: string;
@@ -100,6 +100,8 @@ function toDraft(row: AdminPickRow): DraftState {
 export function AdminPicksPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [matchdays, setMatchdays] = useState<Matchday[]>([]);
+  const [vips, setVips] = useState<AdminVipCompetition[]>([]);
+  const [selectedVipId, setSelectedVipId] = useState("");
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [selectedMatchdayId, setSelectedMatchdayId] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState("");
@@ -111,12 +113,25 @@ export function AdminPicksPanel() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const selectedVip = useMemo(
+    () => vips.find((vip) => vip.id === selectedVipId) ?? null,
+    [selectedVipId, vips],
+  );
+
   const seasonMatchdays = useMemo(
-    () =>
-      matchdays
+    () => {
+      if (selectedVip) {
+        const vipMatchdayIds = new Set(selectedVip.matchdays.map((matchday) => matchday.id));
+        return matchdays
+          .filter((matchday) => vipMatchdayIds.has(matchday.id))
+          .sort((left, right) => left.number - right.number);
+      }
+
+      return matchdays
         .filter((matchday) => !selectedSeasonId || matchday.season_id === selectedSeasonId)
-        .sort((left, right) => left.number - right.number),
-    [matchdays, selectedSeasonId],
+        .sort((left, right) => left.number - right.number);
+    },
+    [matchdays, selectedSeasonId, selectedVip],
   );
 
   const profileOptions = useMemo(() => {
@@ -159,7 +174,7 @@ export function AdminPicksPanel() {
     }
   }, [rows, selectedProfileId]);
 
-  async function loadRows(matchdayId: string, accessToken?: string) {
+  async function loadRows(matchdayId: string, accessToken?: string, vipId = selectedVipId) {
     if (!matchdayId) {
       setRows([]);
       setDrafts({});
@@ -167,16 +182,21 @@ export function AdminPicksPanel() {
     }
 
     const token = accessToken ?? (await getBrowserAccessToken());
-    const data = await backendFetch<AdminPickRow[]>(`/admin/picks?matchday_id=${matchdayId}`, token);
+    const params = new URLSearchParams({ matchday_id: matchdayId });
+    if (vipId) {
+      params.set("vip_id", vipId);
+    }
+    const data = await backendFetch<AdminPickRow[]>(`/admin/picks?${params.toString()}`, token);
     setRows(data);
     setDrafts(Object.fromEntries(data.map((row) => [rowKey(row), toDraft(row)])));
   }
 
   async function loadPanel() {
     const accessToken = await getBrowserAccessToken();
-    const [seasonRows, matchdayRows] = await Promise.all([
+    const [seasonRows, matchdayRows, vipRows] = await Promise.all([
       backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Matchday[]>("/matchdays", accessToken),
+      backendFetch<AdminVipCompetition[]>("/admin/vip", accessToken),
     ]);
 
     const defaultSeason = seasonRows.find((season) => season.is_active) ?? seasonRows[0] ?? null;
@@ -188,6 +208,7 @@ export function AdminPicksPanel() {
 
     setSeasons(seasonRows);
     setMatchdays(matchdayRows);
+    setVips(vipRows);
     setSelectedSeasonId(defaultSeason?.id ?? "");
     setSelectedMatchdayId(defaultMatchday?.id ?? "");
     await loadRows(defaultMatchday?.id ?? "", accessToken);
@@ -208,6 +229,7 @@ export function AdminPicksPanel() {
   }, []);
 
   async function handleSeasonChange(seasonId: string) {
+    setSelectedVipId("");
     setSelectedSeasonId(seasonId);
     setError(null);
     setMessage(null);
@@ -218,6 +240,34 @@ export function AdminPicksPanel() {
       await loadRows(nextMatchday?.id ?? "");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los picks del torneo");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVipChange(vipId: string) {
+    const vip = vips.find((row) => row.id === vipId) ?? null;
+    setSelectedVipId(vipId);
+    setSelectedSeasonId(vip?.season_id ?? selectedSeasonId);
+    setError(null);
+    setMessage(null);
+    setLoading(true);
+    try {
+      if (!vipId) {
+        const nextMatchday = pickPreferredMatchday(
+          matchdays.filter((matchday) => !selectedSeasonId || matchday.season_id === selectedSeasonId),
+        );
+        setSelectedMatchdayId(nextMatchday?.id ?? "");
+        await loadRows(nextMatchday?.id ?? "", undefined, "");
+        return;
+      }
+
+      const vipMatchdayIds = new Set(vip?.matchdays.map((matchday) => matchday.id) ?? []);
+      const nextMatchday = pickPreferredMatchday(matchdays.filter((matchday) => vipMatchdayIds.has(matchday.id)));
+      setSelectedMatchdayId(nextMatchday?.id ?? "");
+      await loadRows(nextMatchday?.id ?? "", undefined, vipId);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los picks de la VIP");
     } finally {
       setLoading(false);
     }
@@ -270,7 +320,7 @@ export function AdminPicksPanel() {
           admin_override_note: draft.admin_override_note || null,
         }),
       });
-      await loadRows(selectedMatchdayId, accessToken);
+      await loadRows(selectedMatchdayId, accessToken, selectedVipId);
       setMessage(`${row.profile_display_name}: pick overrideado.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el override");
@@ -285,10 +335,27 @@ export function AdminPicksPanel() {
 
   return (
     <section className="space-y-5">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,220px)_minmax(0,220px)_minmax(0,260px)_minmax(0,1fr)]">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,220px)_minmax(0,220px)_minmax(0,220px)_minmax(0,260px)_minmax(0,1fr)]">
+        <label className="space-y-1.5 text-xs">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">VIP</span>
+          <select value={selectedVipId} onChange={(event) => void handleVipChange(event.target.value)} className="field-control text-xs">
+            <option value="">Torneo regular</option>
+            {vips.map((vip) => (
+              <option key={vip.id} value={vip.id}>
+                {vip.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label className="space-y-1.5 text-xs">
           <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Temporada</span>
-          <select value={selectedSeasonId} onChange={(event) => void handleSeasonChange(event.target.value)} className="field-control text-xs">
+          <select
+            value={selectedSeasonId}
+            onChange={(event) => void handleSeasonChange(event.target.value)}
+            disabled={selectedVipId !== ""}
+            className="field-control text-xs disabled:opacity-70"
+          >
             <option value="">Selecciona temporada</option>
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>

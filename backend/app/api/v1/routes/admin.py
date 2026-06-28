@@ -2307,10 +2307,11 @@ def list_admin_results(
 def list_admin_picks(
     matchday_id: str,
     profile_id: str | None = None,
+    vip_id: str | None = None,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> list[AdminPickRowOut]:
-    return pick_service.list_admin_picks(db, matchday_id=matchday_id, profile_id=profile_id)
+    return pick_service.list_admin_picks(db, matchday_id=matchday_id, profile_id=profile_id, vip_id=vip_id)
 
 
 @router.post("/picks/override", response_model=AdminPickRowOut)
