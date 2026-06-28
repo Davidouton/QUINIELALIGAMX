@@ -53,7 +53,7 @@ type DashboardState = {
   error: string | null;
 };
 
-type DashboardTab = "general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios" | "vip";
+type DashboardTab = "general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios";
 type DashboardDefaultView = "regular" | `vip:${string}`;
 const DASHBOARD_DEFAULT_VIEW_STORAGE_KEY = "qm-dashboard-default-view";
 
@@ -511,10 +511,6 @@ export function DashboardHome() {
 
   useEffect(() => {
     const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
-    if (approvedVipCompetitions.length === 0 && activeTab === "vip") {
-      setActiveTab("general");
-      return;
-    }
 
     if (approvedVipCompetitions.length > 0) {
       const stillSelected = approvedVipCompetitions.some((vip) => vip.id === selectedVipBoardId);
@@ -522,7 +518,7 @@ export function DashboardHome() {
         setSelectedVipBoardId(approvedVipCompetitions[0].id);
       }
     }
-  }, [activeTab, selectedVipBoardId, state.vipCompetitions]);
+  }, [selectedVipBoardId, state.vipCompetitions]);
 
   useEffect(() => {
     if (loading || hasAppliedDashboardDefault) {
@@ -535,11 +531,9 @@ export function DashboardHome() {
       const vipExists = approvedVipCompetitions.some((vip) => vip.id === vipId);
       if (vipExists) {
         setSelectedVipBoardId(vipId);
-        setActiveTab("vip");
       } else {
         setDashboardDefaultView("regular");
         writeStoredDashboardDefaultView("regular");
-        setActiveTab("general");
       }
     }
 
@@ -558,7 +552,7 @@ export function DashboardHome() {
       const vipExists = approvedVipCompetitions.some((vip) => vip.id === vipId);
       if (vipExists) {
         setSelectedVipBoardId(vipId);
-        setActiveTab("vip");
+        setActiveTab("general");
         setIsTabMenuOpen(false);
         return;
       }
@@ -579,7 +573,6 @@ export function DashboardHome() {
   const favoriteTeam = state.teams.find((team) => team.id === state.me?.favorite_team_id) ?? null;
   const headerLogoUrl = favoriteTeam?.crest_url ?? env.worldCupLogoUrl;
   const headerLogoLabel = favoriteTeam?.name ?? "FIFA World Cup";
-  const weeklyLeader = state.leaderboard[0];
   const matchesWithProbabilities = state.matches.filter(
     (match) =>
       match.home_win_probability !== null &&
@@ -600,15 +593,17 @@ export function DashboardHome() {
   const dashboardSelectClass =
     "field-control text-xs";
   const showsMatchdayControls = activeTab === "jornada" || activeTab === "probabilidades";
-  const prizeRows = state.matchdayPoints.filter((row) => row.rank_position !== null && row.rank_position <= 3);
-  const totalWeeklyPrizeAmount = prizeRows.reduce((sum, row) => sum + row.weekly_prize_amount, 0);
   const trophyRecords = state.personalTrophies.filter((row) => row.recognition_type === "trophy");
   const awardRecords = state.personalTrophies.filter((row) => row.recognition_type === "award");
   const teamCrestById = new Map(state.teams.map((team) => [team.id, team.crest_url]));
   const teamShortNameById = new Map(state.teams.map((team) => [team.id, team.short_name]));
   const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+  const selectedVipIdFromView = dashboardDefaultView.startsWith("vip:") ? dashboardDefaultView.slice(4) : "";
   const selectedVipCompetition =
-    approvedVipCompetitions.find((vip) => vip.id === selectedVipBoardId) ?? approvedVipCompetitions[0] ?? null;
+    approvedVipCompetitions.find((vip) => vip.id === selectedVipIdFromView) ??
+    approvedVipCompetitions.find((vip) => vip.id === selectedVipBoardId) ??
+    approvedVipCompetitions[0] ??
+    null;
   const dashboardDefaultOptions: Array<{ value: DashboardDefaultView; label: string }> = [
     { value: "regular", label: "Torneo regular" },
     ...approvedVipCompetitions.map((vip) => ({
@@ -621,13 +616,37 @@ export function DashboardHome() {
     : "regular";
   const myVipEntry =
     selectedVipCompetition?.leaderboard.find((entry) => entry.profile_id === state.me?.id) ?? null;
-  const visibleVipLeaderboard = selectedVipCompetition?.leaderboard.slice(0, 10) ?? [];
   const vipMatchdayPoints = selectedVipCompetition?.matchday_points ?? [];
   const vipPerformanceRace = selectedVipCompetition?.performance_race ?? null;
   const vipCompletedMatchdays = vipPerformanceRace?.completed_matchdays ?? vipMatchdayPoints.length;
   const vipAverage =
     vipCompletedMatchdays > 0 ? ((myVipEntry?.total_points ?? 0) / vipCompletedMatchdays).toFixed(1) : "0.0";
   const vipProjectedTotal = (vipPerformanceRace?.projected_user_total ?? myVipEntry?.total_points ?? 0).toFixed(1);
+  const isVipDashboardContext = dashboardDefaultValue.startsWith("vip:") && selectedVipCompetition !== null;
+  const activeMatchdayPoints = isVipDashboardContext ? vipMatchdayPoints : state.matchdayPoints;
+  const activePerformanceRace = isVipDashboardContext ? vipPerformanceRace : state.performanceRace;
+  const activeContextName = isVipDashboardContext
+    ? selectedVipCompetition?.name ?? "VIP"
+    : state.summary?.season_name ?? state.selectedSeason?.name ?? "Torneo sin definir";
+  const activeCompactContextLabel = formatCompactSeasonName(activeContextName);
+  const activeTotalPoints = isVipDashboardContext ? myVipEntry?.total_points ?? 0 : state.summary?.total_points ?? 0;
+  const activeRank = isVipDashboardContext ? myVipEntry?.rank_position ?? null : state.summary?.overall_rank ?? null;
+  const activeCompletedMatchdays = isVipDashboardContext
+    ? vipCompletedMatchdays
+    : state.summary?.completed_matchdays ?? 0;
+  const activeAverage = isVipDashboardContext ? vipAverage : summaryAverage;
+  const activeProjectedTotal = isVipDashboardContext ? vipProjectedTotal : summaryProjectedTotal;
+  const activeThirdMetricLabel = isVipDashboardContext ? "Bolsa VIP" : "Premios por jornada";
+  const activeThirdMetricValue = isVipDashboardContext
+    ? formatCurrency(selectedVipCompetition?.gross_pool_amount ?? 0)
+    : String(state.summary?.weekly_prizes_count ?? 0);
+  const activeThirdMetricHint = isVipDashboardContext ? "Pool bruto de la competencia" : "Top 3 por jornada";
+  const activeRankLabel = isVipDashboardContext ? "Lugar VIP" : "Lugar general";
+  const activeRankHint = isVipDashboardContext
+    ? `${selectedVipCompetition?.approved_members_count ?? 0} jugadores en competencia`
+    : `${activeCompletedMatchdays} jornadas calificadas`;
+  const prizeRows = activeMatchdayPoints.filter((row) => row.rank_position !== null && row.rank_position <= 3);
+  const totalWeeklyPrizeAmount = prizeRows.reduce((sum, row) => sum + row.weekly_prize_amount, 0);
   const dashboardTabs: Array<{ id: DashboardTab; label: string }> = [
     { id: "general", label: "General" },
     { id: "jornada", label: "Jornada" },
@@ -636,11 +655,7 @@ export function DashboardHome() {
     { id: "advanced", label: "E. Avanzadas" },
     { id: "premios", label: "Premios" },
   ];
-  if (approvedVipCompetitions.length > 0) {
-    dashboardTabs.push({ id: "vip", label: "VIP Board" });
-  }
   const activeTabLabel = dashboardTabs.find((tab) => tab.id === activeTab)?.label ?? "General";
-  const compactSeasonLabel = formatCompactSeasonName(state.summary?.season_name ?? state.selectedSeason?.name);
   const summaryTileClass =
     "flex min-w-0 h-[78px] flex-col justify-between rounded-[16px] bg-transparent p-1.5 sm:h-auto sm:rounded-[30px] sm:p-5";
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
@@ -678,7 +693,7 @@ export function DashboardHome() {
             {dashboardDefaultOptions.length > 1 ? (
               <label className="hidden min-w-[180px] space-y-1 text-xs sm:block">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
-                  Vista default
+                  Vista dashboard
                 </span>
                 <select
                   value={dashboardDefaultValue}
@@ -713,7 +728,7 @@ export function DashboardHome() {
         {dashboardDefaultOptions.length > 1 ? (
           <label className="mt-3 block space-y-1 text-xs sm:hidden">
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
-              Vista default
+              Vista dashboard
             </span>
             <select
               value={dashboardDefaultValue}
@@ -860,196 +875,7 @@ export function DashboardHome() {
         </div>
       ) : null}
 
-      {activeTab === "vip" ? (
-        <section className="space-y-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-steel">VIP Board</p>
-              <h2 className="mt-1.5 text-lg font-semibold text-ink sm:mt-2 sm:text-2xl">
-                {selectedVipCompetition?.name ?? "VIP"}
-              </h2>
-              <p className="mt-1.5 max-w-2xl text-xs text-steel sm:mt-2 sm:text-sm">
-                Tablero exclusivo de tu competencia VIP, usando solo las jornadas que cuentan para esa bolsa.
-              </p>
-            </div>
-            {approvedVipCompetitions.length > 1 ? (
-              <label className="w-full max-w-[280px] space-y-1.5 text-xs">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Competencia VIP</span>
-                <select
-                  value={selectedVipCompetition?.id ?? ""}
-                  onChange={(event) => handleDashboardDefaultViewChange(`vip:${event.target.value}`)}
-                  className={dashboardSelectClass}
-                >
-                  {approvedVipCompetitions.map((vip) => (
-                    <option key={vip.id} value={vip.id}>
-                      {vip.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-          </div>
-
-          {selectedVipCompetition ? (
-            <>
-              <div className="grid grid-cols-5 gap-1 md:grid-cols-2 md:gap-3 xl:grid-cols-5">
-                <div className={summaryTileClass}>
-                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                    <span className="sm:hidden">Pts</span>
-                    <span className="hidden sm:inline">Puntos acumulados</span>
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">
-                    {myVipEntry?.total_points ?? 0}
-                  </p>
-                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                    <span className="sm:hidden">VIP</span>
-                    <span className="hidden sm:inline">{selectedVipCompetition.name}</span>
-                  </p>
-                </div>
-                <div className={summaryTileClass}>
-                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                    <span className="sm:hidden">Lugar</span>
-                    <span className="hidden sm:inline">Lugar VIP</span>
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold leading-none text-coral sm:mt-2 sm:text-xl">
-                    {myVipEntry ? `#${myVipEntry.rank_position}` : "-"}
-                  </p>
-                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                    <span className="sm:hidden">{selectedVipCompetition.approved_members_count} jug</span>
-                    <span className="hidden sm:inline">{selectedVipCompetition.approved_members_count} jugadores en competencia</span>
-                  </p>
-                </div>
-                <div className={summaryTileClass}>
-                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                    <span className="sm:hidden">Bolsa</span>
-                    <span className="hidden sm:inline">Bolsa VIP</span>
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">
-                    {formatCurrency(selectedVipCompetition.gross_pool_amount)}
-                  </p>
-                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                    <span className="sm:hidden">pool</span>
-                    <span className="hidden sm:inline">Pool bruto de la competencia</span>
-                  </p>
-                </div>
-                <div className={summaryTileClass}>
-                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                    <span className="sm:hidden">Prom</span>
-                    <span className="hidden sm:inline">Puntos promedio</span>
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{vipAverage}</p>
-                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                    <span className="sm:hidden">por jd</span>
-                    <span className="hidden sm:inline">Por jornada VIP calificada</span>
-                  </p>
-                </div>
-                <div className={summaryTileClass}>
-                  <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                    <span className="sm:hidden">Proy</span>
-                    <span className="hidden sm:inline">Cierre proyectado</span>
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold leading-none text-emerald-300 sm:mt-2 sm:text-xl">
-                    {vipProjectedTotal}
-                  </p>
-                  <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                    <span className="sm:hidden">{selectedVipCompetition.matchdays.length} jds</span>
-                    <span className="hidden sm:inline">{selectedVipCompetition.matchdays.length} jornadas que cuentan</span>
-                  </p>
-                </div>
-              </div>
-
-              <PerformanceRaceChart race={vipPerformanceRace} userLabel={state.me?.display_name ?? "Tu VIP"} />
-
-              <MatchdayPointsTable rows={vipMatchdayPoints} />
-
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_320px]">
-                <section className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Leaderboard VIP</p>
-                      <p className="mt-1 text-xs text-steel">
-                        {selectedVipCompetition.leaderboard.length} jugadores en competencia
-                      </p>
-                    </div>
-                    <p className="text-xs text-steel">Top 10</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    {visibleVipLeaderboard.map((entry) => {
-                      const isMe = entry.profile_id === state.me?.id;
-                      return (
-                        <div
-                          key={entry.profile_id}
-                          className={`grid grid-cols-[52px_minmax(0,1fr)_72px_72px] items-center gap-3 rounded-[14px] border px-4 py-3 ${
-                            isMe ? "border-coral/35 bg-coral/10" : "border-white/[0.06] bg-white/[0.02]"
-                          }`}
-                        >
-                          <div className="text-center">
-                            <p className="text-[10px] uppercase tracking-[0.12em] text-steel">Lugar</p>
-                            <p className="mt-1 text-lg font-semibold text-ink">#{entry.rank_position}</p>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-ink">
-                              {entry.display_name} {isMe ? "· Tu" : ""}
-                            </p>
-                            <p className="mt-1 text-xs text-steel">
-                              {entry.correct_results} aciertos · {entry.exact_scores} exactos
-                            </p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-[10px] uppercase tracking-[0.12em] text-steel">Puntos</p>
-                            <p className="mt-1 text-sm font-semibold text-ink">{entry.total_points}</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-[10px] uppercase tracking-[0.12em] text-steel">Exactos</p>
-                            <p className="mt-1 text-sm font-semibold text-ink">{entry.exact_scores}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {visibleVipLeaderboard.length === 0 ? (
-                      <p className="text-sm text-steel">Todavia no hay puntos cargados en esta VIP.</p>
-                    ) : null}
-                  </div>
-                </section>
-
-                <aside className="space-y-3">
-                  <div className="stat-tile border border-white/[0.06]">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Premios</p>
-                    <div className="mt-3 space-y-2 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-steel">1er lugar</span>
-                        <span className="font-semibold text-ink">{formatCurrency(selectedVipCompetition.first_place_amount)}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-steel">2do lugar</span>
-                        <span className="font-semibold text-ink">{formatCurrency(selectedVipCompetition.second_place_amount)}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-steel">3er lugar</span>
-                        <span className="font-semibold text-ink">{formatCurrency(selectedVipCompetition.third_place_amount)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="stat-tile border border-white/[0.06]">
-                    <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Jornadas que cuentan</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {selectedVipCompetition.matchdays.map((matchday) => (
-                        <span key={matchday.id} className="app-pill-ghost h-9 px-3 text-[11px] text-ink">
-                          J{matchday.number}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </aside>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-steel">No tienes una VIP aprobada para mostrar en el dashboard.</p>
-          )}
-        </section>
-      ) : activeTab === "advanced" ? (
+      {activeTab === "advanced" ? (
         <AdvancedStatsPanel stats={state.advancedStats} />
       ) : activeTab === "jornada" ? (
         <PickResultsTable
@@ -1247,34 +1073,34 @@ export function DashboardHome() {
                 <span className="sm:hidden">Pts</span>
                 <span className="hidden sm:inline">Puntos acumulados</span>
               </p>
-              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{state.summary?.total_points ?? 0}</p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{activeTotalPoints}</p>
               <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">{compactSeasonLabel}</span>
-                <span className="hidden sm:inline">{state.summary?.season_name ?? state.selectedSeason?.name ?? "Torneo sin definir"}</span>
+                <span className="sm:hidden">{activeCompactContextLabel}</span>
+                <span className="hidden sm:inline">{activeContextName}</span>
               </p>
             </div>
             <div className={summaryTileClass}>
               <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
                 <span className="sm:hidden">Lugar</span>
-                <span className="hidden sm:inline">Lugar general</span>
+                <span className="hidden sm:inline">{activeRankLabel}</span>
               </p>
               <p className="mt-1 text-[12px] font-semibold leading-none text-coral sm:mt-2 sm:text-xl">
-                {state.summary?.overall_rank ? `#${state.summary.overall_rank}` : "-"}
+                {activeRank ? `#${activeRank}` : "-"}
               </p>
               <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">{state.summary?.completed_matchdays ?? 0} jds</span>
-                <span className="hidden sm:inline">{state.summary?.completed_matchdays ?? 0} jornadas calificadas</span>
+                <span className="sm:hidden">{activeCompletedMatchdays} jds</span>
+                <span className="hidden sm:inline">{activeRankHint}</span>
               </p>
             </div>
             <div className={summaryTileClass}>
               <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                <span className="sm:hidden">Podios</span>
-                <span className="hidden sm:inline">Premios por jornada</span>
+                <span className="sm:hidden">{isVipDashboardContext ? "Bolsa" : "Podios"}</span>
+                <span className="hidden sm:inline">{activeThirdMetricLabel}</span>
               </p>
-              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{state.summary?.weekly_prizes_count ?? 0}</p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{activeThirdMetricValue}</p>
               <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">Top 3</span>
-                <span className="hidden sm:inline">Top 3 por jornada</span>
+                <span className="sm:hidden">{isVipDashboardContext ? "pool" : "Top 3"}</span>
+                <span className="hidden sm:inline">{activeThirdMetricHint}</span>
               </p>
             </div>
             <div className={summaryTileClass}>
@@ -1282,30 +1108,34 @@ export function DashboardHome() {
                 <span className="sm:hidden">Prom</span>
                 <span className="hidden sm:inline">Puntos promedio</span>
               </p>
-              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{summaryAverage}</p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{activeAverage}</p>
               <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
                 <span className="sm:hidden">por jd</span>
-                <span className="hidden sm:inline">Por jornada publicada</span>
+                <span className="hidden sm:inline">{isVipDashboardContext ? "Por jornada VIP calificada" : "Por jornada publicada"}</span>
               </p>
             </div>
             <div className={summaryTileClass}>
               <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
                 <span className="sm:hidden">Proy</span>
-                <span className="hidden sm:inline">Lugar proyectado</span>
+                <span className="hidden sm:inline">Cierre proyectado</span>
               </p>
               <p className="mt-1 text-[12px] font-semibold leading-none text-emerald-300 sm:mt-2 sm:text-xl">
-                {state.summary?.projected_rank ? `#${state.summary.projected_rank}` : "-"}
+                {activeProjectedTotal}
               </p>
               <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">{summaryProjectedTotal} pts</span>
-                <span className="hidden sm:inline">Cierre proyectado: {summaryProjectedTotal} pts</span>
+                <span className="sm:hidden">pts</span>
+                <span className="hidden sm:inline">
+                  {isVipDashboardContext
+                    ? `${selectedVipCompetition?.matchdays.length ?? 0} jornadas que cuentan`
+                    : "Puntos proyectados al cierre"}
+                </span>
               </p>
             </div>
           </div>
 
-          <PerformanceRaceChart race={state.performanceRace} userLabel={state.me?.display_name ?? "Tu desempeno"} />
+          <PerformanceRaceChart race={activePerformanceRace} userLabel={state.me?.display_name ?? "Tu desempeno"} />
 
-          <MatchdayPointsTable rows={state.matchdayPoints} />
+          <MatchdayPointsTable rows={activeMatchdayPoints} />
         </>
       ) : null}
     </div>

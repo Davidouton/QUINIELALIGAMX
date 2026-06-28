@@ -1,8 +1,6 @@
-import json
 from calendar import monthrange
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select, text
@@ -61,9 +59,6 @@ from app.schemas.quiniela_plus import (
     QuinielaPlusValueTrackStatsOut,
 )
 
-ADVANCED_STATS_PATH = (
-    Path(__file__).resolve().parents[1] / "data" / "quiniela_plus_advanced_stats.json"
-)
 KELLY_BANKROLL_UNITS = Decimal("20")
 KELLY_FRACTION = Decimal("0.25")
 KELLY_MAX_UNITS = Decimal("1.5")
@@ -333,28 +328,7 @@ class QuinielaPlusService:
                     )
             except SQLAlchemyError:
                 db.rollback()
-
-        if not ADVANCED_STATS_PATH.exists():
-            return QuinielaPlusAdvancedStatsOut()
-
-        with ADVANCED_STATS_PATH.open(encoding="utf-8") as file:
-            payload = json.load(file)
-
-        matches: list[QuinielaPlusAdvancedStatsMatchOut] = []
-        for row in payload.get("fixtures", []):
-            if not isinstance(row, dict):
-                continue
-            normalized = dict(row)
-            normalized["fixture_id"] = str(normalized.get("fixture_id") or "")
-            if not normalized["fixture_id"]:
-                continue
-            matches.append(QuinielaPlusAdvancedStatsMatchOut.model_validate(normalized))
-
-        matches.sort(key=lambda match: match.kickoff_at)
-        return QuinielaPlusAdvancedStatsOut(
-            generated_at=payload.get("generated_at"),
-            matches=matches,
-        )
+        return QuinielaPlusAdvancedStatsOut()
 
     def get_value_lab(self, db: Session, limit: int = 100) -> QuinielaPlusValueLabOut:
         try:

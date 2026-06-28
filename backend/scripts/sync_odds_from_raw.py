@@ -369,6 +369,7 @@ def upsert_match_odds(db: Session, match: Match, row: RawOddsRow) -> None:
     existing.total_line = row.total_line
     existing.over_value = row.over_value
     existing.under_value = row.under_value
+    existing.synced_at = datetime.now(UTC)
     db.add(existing)
 
 

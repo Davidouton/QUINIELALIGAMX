@@ -47,7 +47,7 @@ function readStoredAccessToken(key: string): string | null {
   return null;
 }
 
-function getStoredAccessToken(): string | null {
+export function getStoredAccessToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { DashboardSeasonSwitcher } from "@/components/layout/dashboard-season-switcher";
+import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,6 @@ const baseLinks = [
 const adminLink = { href: "/dashboard/admin", label: "Admin" };
 
 const primaryMobileLinks = [
-  { href: "/dashboard/admin", label: "Admin" },
   { href: "/dashboard/quiniela-plus", label: "Q+" },
   { href: "/dashboard/world-cup", label: "WC" },
   { href: "/dashboard", label: "Inicio" },
@@ -53,7 +53,9 @@ export function DashboardSidebar() {
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { buildHrefWithSeason } = useDashboardSeasonParam();
-  const links = [adminLink, ...baseLinks];
+  const canViewAdmin = useAdminVisibility();
+  const links = canViewAdmin ? [adminLink, ...baseLinks] : baseLinks;
+  const mobilePrimaryLinks = canViewAdmin ? [adminLink, ...primaryMobileLinks] : primaryMobileLinks;
   const currentLink = links.find((link) => pathname === link.href) ?? links[0];
 
   async function handleSignOut() {
@@ -80,16 +82,18 @@ export function DashboardSidebar() {
               >
                 {isMobileMenuOpen ? "Cerrar" : "Menu"}
               </button>
-              <Link
-                href={buildHrefWithSeason(adminLink.href)}
-                prefetch={false}
-                className={cn(
-                  "app-pill px-3 text-center",
-                  pathname.startsWith(adminLink.href) && "app-pill-active text-ink",
-                )}
-              >
-                Admin
-              </Link>
+              {canViewAdmin ? (
+                <Link
+                  href={buildHrefWithSeason(adminLink.href)}
+                  prefetch={false}
+                  className={cn(
+                    "app-pill px-3 text-center",
+                    pathname.startsWith(adminLink.href) && "app-pill-active text-ink",
+                  )}
+                >
+                  Admin
+                </Link>
+              ) : null}
               <button
                 type="button"
                 onClick={handleSignOut}
@@ -103,17 +107,19 @@ export function DashboardSidebar() {
           {isMobileMenuOpen ? (
             <div className="mt-4 max-h-[calc(100dvh-12rem)] space-y-3 overflow-y-auto pb-28 pr-1">
               <DashboardSeasonSwitcher />
-              <Link
-                href={buildHrefWithSeason(adminLink.href)}
-                prefetch={false}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={cn(
-                  "app-pill-active flex h-11 items-center justify-center px-3 text-center",
-                  pathname.startsWith(adminLink.href) && "text-ink",
-                )}
-              >
-                Admin
-              </Link>
+              {canViewAdmin ? (
+                <Link
+                  href={buildHrefWithSeason(adminLink.href)}
+                  prefetch={false}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={cn(
+                    "app-pill-active flex h-11 items-center justify-center px-3 text-center",
+                    pathname.startsWith(adminLink.href) && "text-ink",
+                  )}
+                >
+                  Admin
+                </Link>
+              ) : null}
               <div className="grid grid-cols-2 gap-2">
                 {baseLinks.map((link) => (
                   <Link
@@ -135,8 +141,8 @@ export function DashboardSidebar() {
         </div>
 
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-night/95 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3 backdrop-blur-xl">
-          <div className="grid grid-cols-7 gap-1.5">
-            {primaryMobileLinks.map((link) => (
+          <div className={cn("grid gap-1.5", canViewAdmin ? "grid-cols-7" : "grid-cols-6")}>
+            {mobilePrimaryLinks.map((link) => (
               <Link
                 key={link.href}
                 href={buildHrefWithSeason(link.href)}
@@ -172,19 +178,21 @@ export function DashboardSidebar() {
             <DashboardSeasonSwitcher />
           </div>
 
-          <Link
-            href={buildHrefWithSeason(adminLink.href)}
-            prefetch={false}
-            aria-label={adminLink.label}
-            title={adminLink.label}
-            className={cn(
-              "mb-3 block rounded-[12px] border border-mint/20 bg-mint/10 py-3 text-sm font-semibold text-mint transition hover:border-mint/40 hover:bg-mint/15",
-              "px-4 text-left",
-              pathname.startsWith(adminLink.href) && "border-mint/50 bg-mint/15 text-ink",
-            )}
-          >
-            Admin
-          </Link>
+          {canViewAdmin ? (
+            <Link
+              href={buildHrefWithSeason(adminLink.href)}
+              prefetch={false}
+              aria-label={adminLink.label}
+              title={adminLink.label}
+              className={cn(
+                "mb-3 block rounded-[12px] border border-mint/20 bg-mint/10 py-3 text-sm font-semibold text-mint transition hover:border-mint/40 hover:bg-mint/15",
+                "px-4 text-left",
+                pathname.startsWith(adminLink.href) && "border-mint/50 bg-mint/15 text-ink",
+              )}
+            >
+              Admin
+            </Link>
+          ) : null}
 
           <div className="space-y-3">
             {baseLinks.map((link) => (
