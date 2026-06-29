@@ -228,6 +228,49 @@ function getOfficialResultLabel(match: GlobalPickBoard["matches"][number]) {
   return `${match.home_score}-${match.away_score}`;
 }
 
+function isKnockoutGlobalMatch(match: GlobalPickBoard["matches"][number]) {
+  return match.stage_type !== "regular" && match.stage_type !== "group";
+}
+
+function ScorePair({
+  homeScore,
+  awayScore,
+  advancingTeamId,
+  homeTeamId,
+  awayTeamId,
+  emphasizeKnockoutAdvance = false,
+}: {
+  homeScore: number;
+  awayScore: number;
+  advancingTeamId?: string | null;
+  homeTeamId?: string | null;
+  awayTeamId?: string | null;
+  emphasizeKnockoutAdvance?: boolean;
+}) {
+  const shouldColorAdvance =
+    emphasizeKnockoutAdvance &&
+    Boolean(advancingTeamId) &&
+    (advancingTeamId === homeTeamId || advancingTeamId === awayTeamId);
+  const homeClassName = shouldColorAdvance
+    ? advancingTeamId === homeTeamId
+      ? "text-emerald-100"
+      : "text-rose-100/80"
+    : "text-current";
+  const awayClassName = shouldColorAdvance
+    ? advancingTeamId === awayTeamId
+      ? "text-emerald-100"
+      : "text-rose-100/80"
+    : "text-current";
+
+  return (
+    <>
+      <span className={homeClassName}>{homeScore}</span>
+      <span>-</span>
+      <span className={awayClassName}>{awayScore}</span>
+    </>
+  );
+}
+
 function getNflSideLabel(selection: PickSelection | "" | null, homeLabel: string, awayLabel: string) {
   if (selection === "home") {
     return homeLabel;
@@ -1420,7 +1463,14 @@ export function PickBoard() {
                       <td key={match.match_id} className="px-3 py-2 text-center">
                         {match.is_official && match.home_score !== null && match.away_score !== null ? (
                           <span className="inline-flex min-w-14 justify-center rounded-md border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 text-[11px] font-semibold text-emerald-100">
-                            {getOfficialResultLabel(match)}
+                            <ScorePair
+                              homeScore={match.home_score}
+                              awayScore={match.away_score}
+                              advancingTeamId={match.official_advancing_team_id}
+                              homeTeamId={match.home_team_id}
+                              awayTeamId={match.away_team_id}
+                              emphasizeKnockoutAdvance={isKnockoutGlobalMatch(match)}
+                            />
                           </span>
                         ) : (
                           <span className="text-[10px] font-semibold uppercase text-steel/65">Pendiente</span>
@@ -1453,7 +1503,14 @@ export function PickBoard() {
                                 ) : (
                                   <>
                                     <p className="font-semibold text-ink">
-                                      {cell.predicted_home_score}-{cell.predicted_away_score}
+                                      <ScorePair
+                                        homeScore={cell.predicted_home_score ?? 0}
+                                        awayScore={cell.predicted_away_score ?? 0}
+                                        advancingTeamId={cell.advancing_team_id}
+                                        homeTeamId={match.home_team_id}
+                                        awayTeamId={match.away_team_id}
+                                        emphasizeKnockoutAdvance={isKnockoutGlobalMatch(match)}
+                                      />
                                     </p>
                                     <p className="text-[10px] font-semibold uppercase text-steel">
                                       {getSelectionShortLabel(cell.selection)}
