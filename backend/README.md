@@ -16,7 +16,7 @@ uvicorn app.main:app --reload --port 8000
 
 El backend ya incluye configuracion en [railway.json](./railway.json) para correr en Railway con:
 
-- `startCommand`: `PYTHONPATH=. uvicorn app.main:app --host 0.0.0.0 --port $PORT --ws none`
+- `startCommand`: `PYTHONPATH=. uvicorn app.main:app --host 0.0.0.0 --port $PORT --ws none --workers ${WEB_CONCURRENCY:-2}`
 - `healthcheckPath`: `/api/v1/health`
 
 Para un monorepo como este, en Railway todavia hay que hacer dos pasos manuales:
@@ -32,6 +32,7 @@ APP_ENV=production
 DATABASE_URL=...
 ALLOWED_ORIGINS=https://tu-frontend.vercel.app
 FRONTEND_SITE_URL=https://tu-frontend.vercel.app
+WEB_CONCURRENCY=2
 SUPABASE_URL=...
 SUPABASE_ANON_KEY=...
 SUPABASE_JWT_SECRET=...
