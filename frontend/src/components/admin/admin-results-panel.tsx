@@ -245,9 +245,9 @@ export function AdminResultsPanel() {
         // The saved row is already reflected locally; a later reload can reconcile the full table.
       }
       if (savedRow.is_published) {
-        setMessage("Resultado guardado. Esta jornada ya esta publicada, asi que el cambio ya es visible en la app.");
+        setMessage("Resultado guardado. Scoring general y VIP recalculandose en segundo plano.");
       } else {
-        setMessage("Resultado guardado.");
+        setMessage("Resultado guardado. Scoring general y VIP recalculandose en segundo plano.");
       }
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el resultado");
@@ -271,7 +271,7 @@ export function AdminResultsPanel() {
         },
       );
       await refreshCurrentRows(accessToken);
-      setMessage(`${response.records_processed} resultados sincronizados.`);
+      setMessage(`${response.records_processed} resultados sincronizados. Scoring general y VIP recalculandose en segundo plano.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudieron bajar resultados");
     } finally {
@@ -289,7 +289,7 @@ export function AdminResultsPanel() {
         method: "POST",
       });
       await refreshCurrentRows(accessToken);
-      setMessage("Override manual quitado. El partido vuelve a aceptar resultado automatico.");
+      setMessage("Override manual quitado. Scoring general y VIP recalculandose en segundo plano.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo quitar el override");
     } finally {
@@ -317,11 +317,7 @@ export function AdminResultsPanel() {
         method: "DELETE",
       });
       await refreshCurrentRows(accessToken);
-      setMessage(
-        currentRow?.is_published
-          ? "Resultado limpiado. La app vuelve a mostrar ese partido como pendiente."
-          : "Resultado limpiado.",
-      );
+      setMessage("Resultado limpiado. Scoring general y VIP recalculandose en segundo plano.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo limpiar el resultado");
     } finally {

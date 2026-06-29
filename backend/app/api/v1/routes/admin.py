@@ -2561,6 +2561,7 @@ def update_admin_result(
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.save_admin_result(db, match_id, payload, updated_by=current_profile)
+    background_tasks.add_task(run_scoring_recalculate_background)
     background_tasks.add_task(run_vip_recalculate_for_matchday_background, result.matchday_id)
     return result
 
@@ -2573,6 +2574,7 @@ def clear_admin_result_override(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_manual_override(db, match_id)
+    background_tasks.add_task(run_scoring_recalculate_background)
     background_tasks.add_task(run_vip_recalculate_for_matchday_background, result.matchday_id)
     return result
 
@@ -2585,6 +2587,7 @@ def clear_admin_result(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_admin_result(db, match_id)
+    background_tasks.add_task(run_scoring_recalculate_background)
     background_tasks.add_task(run_vip_recalculate_for_matchday_background, result.matchday_id)
     return result
 
@@ -2597,6 +2600,7 @@ def sync_admin_results(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SyncResponse:
     response = SyncResponse(**sync_results(db, get_results_provider(), matchday_id=matchday_id))
+    background_tasks.add_task(run_scoring_recalculate_background)
     if matchday_id is not None:
         background_tasks.add_task(run_vip_recalculate_for_matchday_background, matchday_id)
     else:
