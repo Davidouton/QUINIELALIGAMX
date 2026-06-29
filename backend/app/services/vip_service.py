@@ -114,6 +114,11 @@ class VipService:
                     join_lock_at=join_lock.get("lock_at"),
                     join_lock_match_label=join_lock.get("match_label"),
                     my_membership=self._membership_out(my_membership, bundle["profile_names"]) if my_membership else None,
+                    approved_members=[
+                        self._membership_out(membership, bundle["profile_names"])
+                        for membership in memberships
+                        if membership.status == VipMembershipStatus.APPROVED
+                    ],
                     leaderboard=leaderboard,
                     matchday_points=matchday_points,
                     performance_race=performance_race,

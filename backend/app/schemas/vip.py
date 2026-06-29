@@ -124,6 +124,7 @@ class VipCompetitionOut(BaseModel):
     join_lock_at: datetime | None = None
     join_lock_match_label: str | None = None
     my_membership: VipMembershipOut | None = None
+    approved_members: list[VipMembershipOut] = []
     leaderboard: list[VipLeaderboardEntryOut] = []
     matchday_points: list[VipMatchdayPointsEntryOut] = []
     performance_race: VipPerformanceRaceOut | None = None

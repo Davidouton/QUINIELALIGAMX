@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_profile, get_db, require_roles
@@ -50,10 +50,17 @@ def get_odds_sneak_peek(
 
 @router.get("/quiniela-plus/user-distribution", response_model=QuinielaPlusUserDistributionOut)
 def get_user_distribution(
+    context_type: str | None = Query(default=None),
+    context_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: Profile = Depends(get_current_profile),
+    current_profile: Profile = Depends(get_current_profile),
 ) -> QuinielaPlusUserDistributionOut:
-    return service.get_user_distribution(db)
+    return service.get_user_distribution(
+        db,
+        current_profile=current_profile,
+        context_type=context_type,
+        context_id=context_id,
+    )
 
 
 @router.get("/quiniela-plus/advanced-stats", response_model=QuinielaPlusAdvancedStatsOut)

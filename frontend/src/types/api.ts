@@ -304,6 +304,7 @@ export interface VipCompetition {
   join_lock_at: string | null;
   join_lock_match_label: string | null;
   my_membership: VipMembership | null;
+  approved_members: VipMembership[];
   leaderboard: VipLeaderboardEntry[];
   matchday_points: MyMatchdayPointsEntry[];
   performance_race: PerformanceRace | null;

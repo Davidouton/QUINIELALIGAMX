@@ -23,10 +23,17 @@ from app.models.entities import (
     QuinielaPlusMembershipLeague,
     QuinielaPlusMembershipStatus,
     QuinielaPlusPlan,
+    RoleCode,
     Season,
+    SeasonMembership,
     Team,
     TournamentFormat,
     UserPick,
+    VipCompetition,
+    VipCompetitionKind,
+    VipCompetitionMatchday,
+    VipMembership,
+    VipMembershipStatus,
 )
 from app.models.quiniela_plus_value import (
     QuinielaPlusStatsMatch,
@@ -34,6 +41,7 @@ from app.models.quiniela_plus_value import (
     QuinielaPlusValueRecommendation,
 )
 from app.repositories.odds_repository import OddsRepository
+from app.services.season_eligibility_service import SeasonEligibilityService
 from app.services.quiniela_plus_value_schema import ensure_quiniela_plus_value_tables
 from app.schemas.quiniela_plus import (
     QuinielaPlusAdminConsoleResponse,
@@ -106,6 +114,7 @@ STRATEGY_RULES = {
 class QuinielaPlusService:
     def __init__(self) -> None:
         self.odds_repo = OddsRepository()
+        self.season_eligibility_service = SeasonEligibilityService()
 
     def _ensure_value_tables(self, db: Session) -> None:
         ensure_quiniela_plus_value_tables(db)
@@ -196,8 +205,18 @@ class QuinielaPlusService:
 
         return QuinielaPlusOddsSneakPeekOut(matches=rows)
 
-    def get_user_distribution(self, db: Session, limit: int | None = None) -> QuinielaPlusUserDistributionOut:
+    def get_user_distribution(
+        self,
+        db: Session,
+        current_profile: Profile,
+        context_type: str | None = None,
+        context_id: str | None = None,
+        limit: int | None = None,
+    ) -> QuinielaPlusUserDistributionOut:
         now = datetime.now(UTC)
+        is_admin = current_profile.role_code in {RoleCode.ADMIN, RoleCode.MASTER_ADMIN}
+        title = "Distribucion de usuarios"
+        participant_profile_ids: list[str] | None = None
         match_query = (
             select(Match, Matchday)
             .join(Matchday, Matchday.id == Match.matchday_id)
@@ -209,13 +228,75 @@ class QuinielaPlusService:
             )
             .order_by(Match.kickoff_at.asc(), Match.created_at.asc())
         )
+
+        if context_type == "season" and context_id:
+            season = db.get(Season, context_id)
+            if season is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada no encontrada")
+
+            memberships = list(
+                db.scalars(select(SeasonMembership).where(SeasonMembership.season_id == season.id))
+            )
+            has_access = any(
+                membership.profile_id == current_profile.id
+                and self.season_eligibility_service.counts_for_scoring(db, season, membership)
+                for membership in memberships
+            )
+            if not has_access and not is_admin:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes acceso a este contexto")
+
+            participant_profile_ids = [
+                membership.profile_id
+                for membership in memberships
+                if self.season_eligibility_service.counts_for_scoring(db, season, membership)
+            ]
+            title = f"Distribucion de usuarios · {season.name}"
+            match_query = match_query.where(Matchday.season_id == season.id)
+        elif context_type == "vip" and context_id:
+            vip = db.get(VipCompetition, context_id)
+            if vip is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+
+            membership = db.scalar(
+                select(VipMembership).where(
+                    VipMembership.vip_competition_id == vip.id,
+                    VipMembership.profile_id == current_profile.id,
+                    VipMembership.status == VipMembershipStatus.APPROVED,
+                )
+            )
+            if membership is None and not is_admin:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tienes acceso a este contexto")
+
+            title = f"Distribucion de usuarios · {vip.name}"
+            if vip.competition_kind != VipCompetitionKind.MATCHDAY:
+                return QuinielaPlusUserDistributionOut(title=title, matches=[])
+
+            participant_profile_ids = list(
+                db.scalars(
+                    select(VipMembership.profile_id).where(
+                        VipMembership.vip_competition_id == vip.id,
+                        VipMembership.status == VipMembershipStatus.APPROVED,
+                    )
+                )
+            )
+            vip_matchday_ids = list(
+                db.scalars(
+                    select(VipCompetitionMatchday.matchday_id).where(
+                        VipCompetitionMatchday.vip_competition_id == vip.id,
+                    )
+                )
+            )
+            if not vip_matchday_ids:
+                return QuinielaPlusUserDistributionOut(title=title, matches=[])
+            match_query = match_query.where(Match.matchday_id.in_(vip_matchday_ids))
+
         if limit is not None:
             match_query = match_query.limit(limit)
         match_rows = db.execute(match_query).all()
 
         match_ids = [match.id for match, _ in match_rows]
         if not match_ids:
-            return QuinielaPlusUserDistributionOut()
+            return QuinielaPlusUserDistributionOut(title=title)
 
         selection_counts: dict[str, dict[PickSelection, int]] = {
             match_id: {
@@ -227,16 +308,21 @@ class QuinielaPlusService:
         }
         score_counts: dict[str, list[tuple[int, int, int]]] = {match_id: [] for match_id in match_ids}
 
-        selection_rows = db.execute(
+        selection_query = (
             select(UserPick.match_id, UserPick.selection, func.count(UserPick.id))
             .where(UserPick.match_id.in_(match_ids))
             .group_by(UserPick.match_id, UserPick.selection)
-        ).all()
+        )
+        if participant_profile_ids is not None:
+            if not participant_profile_ids:
+                return QuinielaPlusUserDistributionOut(title=title)
+            selection_query = selection_query.where(UserPick.profile_id.in_(participant_profile_ids))
+        selection_rows = db.execute(selection_query).all()
         for match_id, selection, count in selection_rows:
             if match_id in selection_counts:
                 selection_counts[match_id][selection] = int(count)
 
-        score_rows = db.execute(
+        score_query = (
             select(
                 UserPick.match_id,
                 UserPick.predicted_home_score,
@@ -246,7 +332,10 @@ class QuinielaPlusService:
             .where(UserPick.match_id.in_(match_ids))
             .group_by(UserPick.match_id, UserPick.predicted_home_score, UserPick.predicted_away_score)
             .order_by(UserPick.match_id.asc(), func.count(UserPick.id).desc(), UserPick.predicted_home_score.asc(), UserPick.predicted_away_score.asc())
-        ).all()
+        )
+        if participant_profile_ids is not None:
+            score_query = score_query.where(UserPick.profile_id.in_(participant_profile_ids))
+        score_rows = db.execute(score_query).all()
         for match_id, home_score, away_score, count in score_rows:
             if match_id in score_counts:
                 score_counts[match_id].append((int(home_score), int(away_score), int(count)))
@@ -296,7 +385,7 @@ class QuinielaPlusService:
                 )
             )
 
-        return QuinielaPlusUserDistributionOut(matches=rows)
+        return QuinielaPlusUserDistributionOut(title=title, matches=rows)
 
     def get_advanced_stats(self, db: Session | None = None) -> QuinielaPlusAdvancedStatsOut:
         if db is not None:

@@ -34,7 +34,7 @@ const primaryMobileLinks = [
   { href: "/dashboard/picks", label: "Picks" },
 ];
 
-const appVersionLabel = "v 1.06";
+const appVersionLabel = "v 1.07";
 
 function renderLinkLabel(label: string) {
   if (label !== "Quiniela +") {

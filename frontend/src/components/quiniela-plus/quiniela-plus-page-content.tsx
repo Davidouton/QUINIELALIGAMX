@@ -6,6 +6,7 @@ import { backendFetch } from "@/lib/api/backend";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
+  Me,
   QuinielaPlusAdvancedStats,
   QuinielaPlusAdvancedStatsMatch,
   QuinielaPlusOddsSneakPeek,
@@ -13,6 +14,7 @@ import type {
   QuinielaPlusUserDistribution,
   QuinielaPlusUserDistributionMatch,
   QuinielaPlusValueLab,
+  VipCompetition,
 } from "@/types/api";
 
 type OddsScope = "today" | "tomorrow" | "matchday" | "locked";
@@ -20,6 +22,10 @@ type QuinielaPlusTab = "probabilities" | "value-lab" | "advanced-stats" | "user-
 type ValueLabMode = "entries" | "open" | "history" | "all";
 type ValueMarketFilter = "all" | "ml" | "draw" | "btts" | "over" | "under";
 type MatchdaySourceMatch = Pick<QuinielaPlusOddsSneakPeekMatch, "matchday_id" | "matchday_name" | "matchday_number" | "kickoff_at">;
+type DistributionContextOption = {
+  value: string;
+  label: string;
+};
 const TODAY_DISTRIBUTION_POLL_MS = 10_000;
 const MATCHDAY_DISTRIBUTION_POLL_MS = 45_000;
 const VALUE_MARKET_FILTERS: { value: ValueMarketFilter; label: string }[] = [
@@ -141,6 +147,22 @@ function buildMatchdayLabel(match: MatchdaySourceMatch) {
   return match.matchday_name.trim().toLowerCase().startsWith("jornada")
     ? match.matchday_name
     : `Jornada ${match.matchday_number}`;
+}
+
+function buildDistributionUrl(contextValue: string) {
+  if (!contextValue) {
+    return "/quiniela-plus/user-distribution";
+  }
+  const [contextType, contextId] = contextValue.split(":");
+  const params = new URLSearchParams();
+  if (contextType) {
+    params.set("context_type", contextType);
+  }
+  if (contextId) {
+    params.set("context_id", contextId);
+  }
+  const query = params.toString();
+  return query ? `/quiniela-plus/user-distribution?${query}` : "/quiniela-plus/user-distribution";
 }
 
 function getTeamInitials(name: string) {
@@ -485,6 +507,8 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
 }
 
 export function QuinielaPlusPageContent() {
+  const [me, setMe] = useState<Me | null>(null);
+  const [vipCompetitions, setVipCompetitions] = useState<VipCompetition[]>([]);
   const [oddsSneakPeek, setOddsSneakPeek] = useState<QuinielaPlusOddsSneakPeek | null>(null);
   const [userDistribution, setUserDistribution] = useState<QuinielaPlusUserDistribution | null>(null);
   const [advancedStats, setAdvancedStats] = useState<QuinielaPlusAdvancedStats | null>(null);
@@ -499,16 +523,34 @@ export function QuinielaPlusPageContent() {
   const [valueMarketFilter, setValueMarketFilter] = useState<ValueMarketFilter>("all");
   const [valueTeamQuery, setValueTeamQuery] = useState("");
   const [selectedMatchdayId, setSelectedMatchdayId] = useState("");
+  const [selectedDistributionContext, setSelectedDistributionContext] = useState("");
+
+  const distributionContextOptions = useMemo<DistributionContextOption[]>(() => {
+    const seasonOptions =
+      me?.season_memberships
+        .filter((membership) => membership.can_participate)
+        .map((membership) => ({
+          value: `season:${membership.season_id}`,
+          label: `Torneo regular · ${membership.season_name}`,
+        })) ?? [];
+    const vipOptions = vipCompetitions
+      .filter((vip) => vip.competition_kind === "matchday" && vip.my_membership?.status === "approved")
+      .map((vip) => ({
+        value: `vip:${vip.id}`,
+        label: `VIP · ${vip.name}`,
+      }));
+    return [...seasonOptions, ...vipOptions];
+  }, [me, vipCompetitions]);
 
   const refreshUserDistribution = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
+    async ({ silent = false, contextValue }: { silent?: boolean; contextValue?: string } = {}) => {
       if (!silent) {
         setDistributionRefreshing(true);
       }
       try {
         const accessToken = await getBrowserAccessToken();
         const distributionResponse = await backendFetch<QuinielaPlusUserDistribution>(
-          "/quiniela-plus/user-distribution",
+          buildDistributionUrl(contextValue ?? selectedDistributionContext),
           accessToken,
         );
         setUserDistribution(distributionResponse);
@@ -524,24 +566,25 @@ export function QuinielaPlusPageContent() {
         }
       }
     },
-    [],
+    [selectedDistributionContext],
   );
 
   useEffect(() => {
     async function loadInitialData() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const [oddsResponse, distributionResponse, advancedStatsResponse, valueLabResponse] = await Promise.all([
+        const [meResponse, vipResponse, oddsResponse, advancedStatsResponse, valueLabResponse] = await Promise.all([
+          backendFetch<Me>("/me", accessToken),
+          backendFetch<VipCompetition[]>("/vip", accessToken),
           backendFetch<QuinielaPlusOddsSneakPeek>("/quiniela-plus/odds-sneak-peek", accessToken),
-          backendFetch<QuinielaPlusUserDistribution>("/quiniela-plus/user-distribution", accessToken),
           backendFetch<QuinielaPlusAdvancedStats>("/quiniela-plus/advanced-stats", accessToken),
           backendFetch<QuinielaPlusValueLab>("/quiniela-plus/value-lab", accessToken),
         ]);
+        setMe(meResponse);
+        setVipCompetitions(vipResponse);
         setOddsSneakPeek(oddsResponse);
-        setUserDistribution(distributionResponse);
         setAdvancedStats(advancedStatsResponse);
         setValueLab(valueLabResponse);
-        setDistributionUpdatedAt(new Date());
         setError(null);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar las probabilidades");
@@ -552,6 +595,22 @@ export function QuinielaPlusPageContent() {
 
     void loadInitialData();
   }, []);
+
+  useEffect(() => {
+    setSelectedDistributionContext((current) => {
+      if (distributionContextOptions.some((option) => option.value === current)) {
+        return current;
+      }
+      return distributionContextOptions[0]?.value ?? "";
+    });
+  }, [distributionContextOptions]);
+
+  useEffect(() => {
+    if (loading || activeTab !== "user-distribution" || !selectedDistributionContext) {
+      return;
+    }
+    void refreshUserDistribution({ silent: true, contextValue: selectedDistributionContext });
+  }, [activeTab, loading, refreshUserDistribution, selectedDistributionContext]);
 
   useEffect(() => {
     if (activeTab !== "user-distribution") {
@@ -574,12 +633,14 @@ export function QuinielaPlusPageContent() {
       }, pollMs);
     };
 
-    void refreshUserDistribution({ silent: true });
+    if (selectedDistributionContext) {
+      void refreshUserDistribution({ silent: true, contextValue: selectedDistributionContext });
+    }
     scheduleNextRefresh();
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        void refreshUserDistribution({ silent: true });
+        void refreshUserDistribution({ silent: true, contextValue: selectedDistributionContext });
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -591,7 +652,7 @@ export function QuinielaPlusPageContent() {
       }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeTab, oddsScope, refreshUserDistribution]);
+  }, [activeTab, oddsScope, refreshUserDistribution, selectedDistributionContext]);
 
   const matchdayOptions = useMemo(() => {
     const grouped = new Map<string, { id: string; label: string; number: number; kickoffAt: string }>();
@@ -842,6 +903,22 @@ export function QuinielaPlusPageContent() {
                 {matchdayOptions.map((matchday) => (
                   <option key={matchday.id} value={matchday.id}>
                     {matchday.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {activeTab === "user-distribution" && distributionContextOptions.length > 0 ? (
+            <label className="w-full max-w-[360px] space-y-2 text-sm sm:w-auto">
+              <span className="text-steel">Contexto</span>
+              <select
+                value={selectedDistributionContext}
+                onChange={(event) => setSelectedDistributionContext(event.target.value)}
+                className="field-control"
+              >
+                {distributionContextOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>

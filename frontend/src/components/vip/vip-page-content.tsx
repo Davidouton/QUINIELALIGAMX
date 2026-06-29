@@ -76,6 +76,20 @@ function getVipModeLabel(vip: VipCompetition) {
   return `Jornadas ${vip.matchdays.map((matchday) => matchday.number).join(", ")}`;
 }
 
+function getVipParticipantsCount(vip: VipCompetition) {
+  if (vip.competition_kind !== "team_winner") {
+    return vip.approved_members_count;
+  }
+  const approvedCount = vip.approved_members.length || vip.approved_members_count;
+  const assignedParticipantCount = new Set(
+    vip.team_winner_entries
+      .map((entry) => entry.profile_id)
+      .filter((profileId): profileId is string => Boolean(profileId)),
+  ).size;
+  const houseCount = vip.team_winner_entries.filter((entry) => entry.is_house).length;
+  return Math.max(approvedCount, assignedParticipantCount) + houseCount;
+}
+
 function getTeamWinnerEntryTeamName(
   vip: VipCompetition,
   entry: VipCompetition["team_winner_entries"][number],
@@ -136,6 +150,41 @@ export function VipPageContent() {
     [selectedVipId, vips],
   );
   const selectedVipPricing = selectedVip ? pricingByVipId[selectedVip.id] ?? null : null;
+  const selectedTeamWinnerEntries = useMemo(() => {
+    if (!selectedVip || selectedVip.competition_kind !== "team_winner") {
+      return [];
+    }
+    const assignedProfileIds = new Set(
+      selectedVip.team_winner_entries
+        .map((entry) => entry.profile_id)
+        .filter((profileId): profileId is string => Boolean(profileId)),
+    );
+    const pendingApprovedMembers = selectedVip.approved_members
+      .filter((member) => !assignedProfileIds.has(member.profile_id))
+      .map((member) => ({
+        key: `approved-${member.id}`,
+        displayName: member.display_name,
+        revealOrder: null as number | null,
+        teamLabel: "Equipo por asignar",
+        assignedTeamChampion: false,
+        assignedTeamEliminated: false,
+      }));
+
+    return [
+      ...selectedVip.team_winner_entries.map((entry) => {
+        const teamName = getTeamWinnerEntryTeamName(selectedVip, entry);
+        return {
+          key: entry.id,
+          displayName: `${entry.display_name}${entry.is_house ? " · Casa" : ""}`,
+          revealOrder: entry.reveal_order,
+          teamLabel: teamName ?? (entry.reveal_order ? "Oculto" : "Equipo por asignar"),
+          assignedTeamChampion: entry.assigned_team_champion,
+          assignedTeamEliminated: entry.assigned_team_eliminated,
+        };
+      }),
+      ...pendingApprovedMembers,
+    ];
+  }, [selectedVip]);
 
   async function loadVips() {
     const accessToken = await getBrowserAccessToken();
@@ -247,14 +296,13 @@ export function VipPageContent() {
           {vips.map((vip) => {
             const membershipStatus = statusCopy(vip.my_membership?.status ?? null);
             const registrationStatus = registrationStatusCopy(vip);
-            const participantsCount =
-              vip.competition_kind === "team_winner" ? vip.team_winner_entries.length : vip.approved_members_count;
+            const participantsCount = getVipParticipantsCount(vip);
             return (
               <button
                 key={vip.id}
                 type="button"
                 onClick={() => setSelectedVipId(vip.id)}
-                className={`grid w-full gap-3 border-b border-white/[0.05] px-4 py-3 text-left transition last:border-b-0 md:min-h-[76px] md:grid-cols-[minmax(0,1.55fr)_minmax(0,0.72fr)_minmax(0,0.58fr)_minmax(0,0.62fr)_minmax(0,0.72fr)_minmax(0,0.82fr)] md:items-center md:gap-3 ${
+                className={`grid w-full gap-2 border-b border-white/[0.05] px-4 py-3 text-left transition last:border-b-0 md:min-h-[76px] md:grid-cols-[minmax(0,1.55fr)_minmax(0,0.72fr)_minmax(0,0.58fr)_minmax(0,0.62fr)_minmax(0,0.72fr)_minmax(0,0.82fr)] md:items-center md:gap-3 ${
                   selectedVip?.id === vip.id
                     ? "bg-white/[0.04]"
                     : "hover:bg-white/[0.025]"
@@ -263,33 +311,42 @@ export function VipPageContent() {
                 <div className="min-w-0">
                   <div className="flex items-start justify-between gap-3 md:block">
                     <p className="truncate text-[13px] font-semibold leading-5 text-ink">{vip.name}</p>
-                    <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-semibold md:hidden ${membershipStatus.tone}`}>
-                      <span className={`h-2 w-2 rounded-full ${membershipStatus.dot}`} />
-                      {membershipStatus.label}
-                    </span>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2 md:hidden">
+                      <span className={`flex items-center gap-1.5 text-[11px] font-semibold ${membershipStatus.tone}`}>
+                        <span className={`h-2 w-2 rounded-full ${membershipStatus.dot}`} />
+                        {membershipStatus.label}
+                      </span>
+                      <span className={`flex items-center gap-1.5 text-[11px] font-semibold ${registrationStatus.tone}`}>
+                        <span className={`h-2 w-2 rounded-full ${registrationStatus.dot}`} />
+                        {registrationStatus.label}
+                      </span>
+                    </div>
                   </div>
-                  <p className="mt-0.5 truncate text-xs leading-5 text-steel">{vip.season_name} · {getVipModeLabel(vip)}</p>
+                  <p className="mt-0.5 truncate text-xs leading-5 text-steel">{vip.season_name}</p>
+                  <p className="mt-1 text-[11px] leading-5 text-steel md:hidden">
+                    {getVipModeLabel(vip)} · {participantsCount} participantes · {formatCurrency(vip.entry_fee_amount)}
+                  </p>
                 </div>
-                <div className="min-w-0">
+                <div className="hidden min-w-0 md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Mi acceso</p>
                   <p className={`flex min-w-0 items-center gap-2 text-[13px] font-semibold leading-5 ${membershipStatus.tone}`}>
                     <span className={`h-2 w-2 shrink-0 rounded-full ${membershipStatus.dot}`} />
                     <span className="truncate">{membershipStatus.label}</span>
                   </p>
                 </div>
-                <div className="min-w-0">
+                <div className="hidden min-w-0 md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Entrada</p>
                   <p className="text-[13px] font-semibold leading-5 text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
                 </div>
-                <div className="min-w-0">
+                <div className="hidden min-w-0 md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Bolsa</p>
                   <p className="text-[13px] font-semibold leading-5 text-ink">{formatCurrency(vip.gross_pool_amount)}</p>
                 </div>
-                <div className="min-w-0">
+                <div className="hidden min-w-0 md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Participantes</p>
                   <p className="text-[13px] font-semibold leading-5 text-ink">{participantsCount}</p>
                 </div>
-                <div className="min-w-0">
+                <div className="hidden min-w-0 md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Estado</p>
                   <p className={`flex min-w-0 items-center gap-2 text-[13px] font-semibold leading-5 ${registrationStatus.tone}`}>
                     <span className={`h-2 w-2 shrink-0 rounded-full ${registrationStatus.dot}`} />
@@ -337,9 +394,7 @@ export function VipPageContent() {
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Participantes</p>
                     <p className="mt-1 text-sm font-semibold text-ink">
-                      {selectedVip.competition_kind === "team_winner"
-                        ? selectedVip.team_winner_entries.length
-                        : selectedVip.approved_members_count}
+                      {getVipParticipantsCount(selectedVip)}
                     </p>
                   </div>
                   <div>
@@ -390,43 +445,36 @@ export function VipPageContent() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-4">
                     <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Asignaciones</p>
-                    <p className="text-xs text-steel">{selectedVip.team_winner_entries.length} participantes</p>
+                    <p className="text-xs text-steel">{selectedTeamWinnerEntries.length} participantes</p>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {selectedVip.team_winner_entries.map((entry) => {
-                      const teamName = getTeamWinnerEntryTeamName(selectedVip, entry);
-                      return (
-                        <div
-                          key={entry.id}
-                          className={`rounded-[8px] border border-white/[0.06] px-4 py-3 ${
-                            entry.assigned_team_champion
-                              ? "bg-mint/10"
-                              : entry.assigned_team_eliminated
-                                ? "opacity-55"
-                                : ""
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="truncate text-sm font-semibold text-ink">
-                              {entry.display_name}{entry.is_house ? " · Casa" : ""}
-                            </p>
-                            <span className="text-xs text-steel">#{entry.reveal_order ?? "-"}</span>
-                          </div>
-                          <p className="mt-2 text-sm text-steel">
-                            {teamName ?? (entry.reveal_order ? "Oculto" : "Sin sortear")}
-                          </p>
-                          {teamName ? (
-                            <p className={`mt-1 text-xs ${entry.assigned_team_eliminated ? "text-coral" : "text-mint"}`}>
-                              {entry.assigned_team_champion
-                                ? "Campeon"
-                                : entry.assigned_team_eliminated
-                                  ? "Eliminado"
-                                  : "Vivo"}
-                            </p>
-                          ) : null}
+                    {selectedTeamWinnerEntries.map((entry) => (
+                      <div
+                        key={entry.key}
+                        className={`rounded-[8px] border border-white/[0.06] px-4 py-3 ${
+                          entry.assignedTeamChampion
+                            ? "bg-mint/10"
+                            : entry.assignedTeamEliminated
+                              ? "opacity-55"
+                              : ""
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="truncate text-sm font-semibold text-ink">{entry.displayName}</p>
+                          <span className="text-xs text-steel">#{entry.revealOrder ?? "-"}</span>
                         </div>
-                      );
-                    })}
+                        <p className="mt-2 text-sm text-steel">{entry.teamLabel}</p>
+                        {entry.teamLabel !== "Oculto" && entry.teamLabel !== "Equipo por asignar" ? (
+                          <p className={`mt-1 text-xs ${entry.assignedTeamEliminated ? "text-coral" : "text-mint"}`}>
+                            {entry.assignedTeamChampion
+                              ? "Campeon"
+                              : entry.assignedTeamEliminated
+                                ? "Eliminado"
+                                : "Vivo"}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : null}
@@ -448,7 +496,7 @@ export function VipPageContent() {
                   <p className="font-semibold text-ink">{formatCurrency(selectedVip.gross_pool_amount)}</p>
                   <p className="text-steel">
                     {selectedVip.competition_kind === "team_winner"
-                      ? selectedVip.team_winner_entries.length
+                      ? getVipParticipantsCount(selectedVip)
                       : selectedVip.approved_members_count} x {formatCurrency(selectedVip.entry_fee_amount)}
                   </p>
                 </div>

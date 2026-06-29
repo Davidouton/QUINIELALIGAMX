@@ -540,6 +540,19 @@ def test_admin_can_run_team_winner_vip_draw_and_mark_eliminated(admin_client: Te
     finally:
         db.close()
 
+    public_response = admin_client.get(
+        "/api/v1/vip",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert public_response.status_code == 200
+    public_payload = public_response.json()
+    assert len(public_payload) == 1
+    assert sorted(member["display_name"] for member in public_payload[0]["approved_members"]) == [
+        "Lider Semanal",
+        "Usuario Demo",
+    ]
+    assert public_payload[0]["team_winner_entries"] == []
+
     config_response = admin_client.put(
         f"/api/v1/admin/vip/{vip_id}/team-winner/config",
         json={

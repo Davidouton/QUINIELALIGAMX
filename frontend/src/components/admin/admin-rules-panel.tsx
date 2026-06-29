@@ -14,7 +14,7 @@ type FormState = {
 
 const initialForm: FormState = {
   title: "Reglamento",
-  version_label: "v 1.06",
+  version_label: "v 1.07",
   content_markdown: "",
 };
 
@@ -99,7 +99,7 @@ export function AdminRulesPanel() {
               value={form.version_label}
               onChange={(event) => setForm((current) => ({ ...current, version_label: event.target.value }))}
               className="field-control"
-              placeholder="v 1.06"
+              placeholder="v 1.07"
             />
           </div>
 
