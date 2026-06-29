@@ -802,6 +802,14 @@ export interface Me {
   season_memberships: UserSeasonMembership[];
 }
 
+export interface AppBootstrap {
+  me: Me;
+  seasons: Season[];
+  matchdays: Matchday[];
+  active_matchdays: Matchday[];
+  teams: Team[];
+}
+
 export interface UserSeasonMembership {
   season_id: string;
   season_name: string;

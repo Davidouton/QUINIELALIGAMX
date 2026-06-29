@@ -2,7 +2,7 @@
 
 import { FormEvent, type CSSProperties, useEffect, useMemo, useState } from "react";
 
-import { backendFetch } from "@/lib/api/backend";
+import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import {
@@ -105,7 +105,7 @@ export function SettingsPageContent() {
         const accessToken = await getBrowserAccessToken();
         const [meResult, teamsResult, registeredUsersResult] = await Promise.allSettled([
           backendFetch<Me>("/me", accessToken),
-          backendFetch<Team[]>("/teams"),
+          backendFetch<Team[]>("/teams", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
           backendFetch<RegisteredUserOption[]>("/me/registered-users", accessToken),
         ]);
 

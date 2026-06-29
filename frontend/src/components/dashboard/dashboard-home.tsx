@@ -14,6 +14,7 @@ import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
   AdvancedStats,
+  AppBootstrap,
   DashboardSummary,
   LeaderboardEntry,
   Match,
@@ -371,22 +372,18 @@ export function DashboardHome() {
       try {
         const accessToken = await getBrowserAccessToken().catch(() => undefined);
 
-        const [meResult, seasonsResult, matchdaysResult, activeMatchdaysResult, teamsResult, personalTrophiesResult, vipCompetitionsResult] =
-          await Promise.allSettled([
-          backendFetch<Me>("/me", accessToken),
-          backendFetch<Season[]>("/seasons", accessToken),
-          backendFetch<Matchday[]>("/matchdays", accessToken),
-          backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
-          backendFetch<Team[]>("/teams"),
+        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken);
+        const {
+          me,
+          seasons,
+          matchdays,
+          active_matchdays: activeMatchdays,
+          teams,
+        } = bootstrap;
+        const [personalTrophiesResult, vipCompetitionsResult] = await Promise.allSettled([
           backendFetch<PersonalTrophyRecord[]>("/me/trophies", accessToken),
           backendFetch<VipCompetition[]>("/vip", accessToken),
         ]);
-
-        const me = readSettledValue(meResult, null);
-        const seasons = readSettledValue(seasonsResult, []);
-        const matchdays = readSettledValue(matchdaysResult, []);
-        const activeMatchdays = readSettledValue(activeMatchdaysResult, []);
-        const teams = readSettledValue(teamsResult, []);
         const personalTrophies = readSettledValue(personalTrophiesResult, []);
         const vipCompetitions = readSettledValue(vipCompetitionsResult, []);
 

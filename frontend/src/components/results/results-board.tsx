@@ -7,7 +7,7 @@ import { backendFetch } from "@/lib/api/backend";
 import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Matchday, PublishedResult, Result, Season } from "@/types/api";
+import type { AppBootstrap, Matchday, PublishedResult, Result, Season } from "@/types/api";
 
 type ResultsBoardState = {
   selectedSeason: Season | null;
@@ -34,11 +34,12 @@ export function ResultsBoard() {
     async function loadResultsBoard() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const [activeMatchdays, seasons, matchdays] = await Promise.all([
-          backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
-          backendFetch<Season[]>("/seasons", accessToken),
-          backendFetch<Matchday[]>("/matchdays", accessToken),
-        ]);
+        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken);
+        const {
+          active_matchdays: activeMatchdays,
+          seasons,
+          matchdays,
+        } = bootstrap;
         const selectedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const seasonMatchdays = selectedSeason ? filterMatchdaysBySeason(matchdays, selectedSeason.id) : [];
         const selectedMatchday =

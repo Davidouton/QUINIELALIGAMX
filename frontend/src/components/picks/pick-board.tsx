@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { backendFetch } from "@/lib/api/backend";
+import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
+import type { AppBootstrap, GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
 
 type PickFormState = {
   winner_selection: PickSelection | "";
@@ -477,14 +477,15 @@ export function PickBoard() {
     async function loadBoard() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const [me, activeMatchdays, seasons, matchdays, teamRows, vipCompetitions] = await Promise.all([
-          backendFetch<Me>("/me", accessToken),
-          backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
-          backendFetch<Season[]>("/seasons", accessToken),
-          backendFetch<Matchday[]>("/matchdays", accessToken),
-          backendFetch<Team[]>("/teams", accessToken),
-          backendFetch<VipCompetition[]>("/vip", accessToken),
-        ]);
+        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken);
+        const {
+          me,
+          active_matchdays: activeMatchdays,
+          seasons,
+          matchdays,
+          teams: teamRows,
+        } = bootstrap;
+        const vipCompetitions = await backendFetch<VipCompetition[]>("/vip", accessToken);
         const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
         const activeMatchday =
@@ -660,7 +661,7 @@ export function PickBoard() {
       }
 
       const [seasons, matches, existingPicks] = await Promise.all([
-        backendFetch<Season[]>("/seasons", accessToken),
+        backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
         backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken),
         backendFetch<Pick[]>(`/my-picks?matchday_id=${selectedMatchday.id}`, accessToken),
       ]);

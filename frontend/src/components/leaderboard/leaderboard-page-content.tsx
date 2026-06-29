@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { backendFetch } from "@/lib/api/backend";
 import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { LeaderboardEntry, Matchday, Me, Season, VipCompetition } from "@/types/api";
+import type { AppBootstrap, LeaderboardEntry, Matchday, Me, Season, VipCompetition } from "@/types/api";
 
 type RankingEntry = Pick<
   LeaderboardEntry,
@@ -47,12 +47,13 @@ export function LeaderboardPageContent() {
     try {
       const accessToken = await getBrowserAccessToken();
 
-      const [me, activeMatchdays, seasons, vipCompetitions] = await Promise.all([
-        backendFetch<Me>("/me", accessToken),
-        backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
-        backendFetch<Season[]>("/seasons", accessToken),
-        backendFetch<VipCompetition[]>("/vip", accessToken),
-      ]);
+      const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken);
+      const {
+        me,
+        active_matchdays: activeMatchdays,
+        seasons,
+      } = bootstrap;
+      const vipCompetitions = await backendFetch<VipCompetition[]>("/vip", accessToken);
       const selectedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
       const selectedSeasonMembership =
         selectedSeason

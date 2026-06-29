@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 
 import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { Card } from "@/components/ui/card";
-import { backendFetch } from "@/lib/api/backend";
+import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Match, Matchday, PickResultRow, Season } from "@/types/api";
+import type { AppBootstrap, Match, Matchday, PickResultRow, Season } from "@/types/api";
 
 type MatchdayCenterState = {
   seasons: Season[];
@@ -46,11 +46,12 @@ export function MatchdayCenter() {
     async function loadMatchdayCenter() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const [activeMatchdays, seasons, matchdays] = await Promise.all([
-          backendFetch<Matchday[]>("/matchdays?status=active", accessToken),
-          backendFetch<Season[]>("/seasons", accessToken),
-          backendFetch<Matchday[]>("/matchdays", accessToken),
-        ]);
+        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken);
+        const {
+          active_matchdays: activeMatchdays,
+          seasons,
+          matchdays,
+        } = bootstrap;
         const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const activeMatchday = preferredSeason
           ? activeMatchdays.find((matchday) => matchday.season_id === preferredSeason.id) ?? null
@@ -153,7 +154,7 @@ export function MatchdayCenter() {
         return;
       }
 
-      const seasons = await backendFetch<Season[]>("/seasons", accessToken);
+      const seasons = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
       const selectedSeason =
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
         resolveSeasonForContext(seasons, seasonIdParam, competitionId);

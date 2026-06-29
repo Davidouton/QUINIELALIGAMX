@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { backendFetch } from "@/lib/api/backend";
+import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import type {
@@ -199,7 +199,7 @@ export function WorldCupPageContent() {
   useEffect(() => {
     async function loadInitial() {
       try {
-        const seasonRows = await backendFetch<Season[]>("/seasons");
+        const seasonRows = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
         const wcSeasons = seasonRows.filter((season) => season.tournament_format === "world_cup");
         setSeasons(seasonRows);
         if (wcSeasons.length === 0) {

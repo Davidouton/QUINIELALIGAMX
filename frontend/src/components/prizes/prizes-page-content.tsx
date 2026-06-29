@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { backendFetch } from "@/lib/api/backend";
+import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { CheckoutSessionResponse, EffectivePricing, Me, PrizeSummary, Season } from "@/types/api";
@@ -49,7 +49,7 @@ export function PrizesPageContent() {
     async function load() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const seasons = await backendFetch<Season[]>("/seasons", accessToken);
+        const seasons = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
         const resolvedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const seasonQuery = resolvedSeason?.id ? `?season_id=${resolvedSeason.id}` : "";
         const [meResponse, summaryResponse] = await Promise.all([
