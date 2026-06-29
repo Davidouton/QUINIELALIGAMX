@@ -21,8 +21,8 @@ def get_app_bootstrap(
 ) -> AppBootstrapOut:
     return AppBootstrapOut(
         me=profile_service.build_me_response(db, current_profile),
-        seasons=list_seasons(db=db),
-        matchdays=list_matchdays(db=db),
+        seasons=list_seasons(competition_id=None, db=db),
+        matchdays=list_matchdays(status=None, db=db),
         active_matchdays=list_matchdays(status=MatchdayStatus.ACTIVE, db=db),
-        teams=list_teams(db=db),
+        teams=list_teams(competition_id=None, db=db),
     )
