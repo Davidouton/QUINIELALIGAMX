@@ -148,6 +148,27 @@ DEFAULT_RESULT_CORRECT_POINTS = 3
 DEFAULT_EXACT_SCORE_POINTS = 2
 
 
+def recalculate_vips_for_matchday(db: Session, matchday_id: str) -> int:
+    vip_ids = {
+        vip_id
+        for vip_id in db.scalars(
+            select(VipCompetitionMatchday.vip_competition_id).where(
+                VipCompetitionMatchday.matchday_id == matchday_id
+            )
+        )
+    }
+    for vip_id in vip_ids:
+        VipService().recalculate_vip_standings(db, vip_id)
+    return len(vip_ids)
+
+
+def recalculate_all_vips(db: Session) -> int:
+    vip_ids = set(db.scalars(select(VipCompetitionMatchday.vip_competition_id)))
+    for vip_id in vip_ids:
+        VipService().recalculate_vip_standings(db, vip_id)
+    return len(vip_ids)
+
+
 def run_scoring_recalculate_background() -> None:
     db = SessionLocal()
     try:
@@ -167,16 +188,7 @@ def run_vip_recalculate_background(vip_id: str) -> None:
 def run_vip_recalculate_for_matchday_background(matchday_id: str) -> None:
     db = SessionLocal()
     try:
-        vip_ids = {
-            vip_id
-            for vip_id in db.scalars(
-                select(VipCompetitionMatchday.vip_competition_id).where(
-                    VipCompetitionMatchday.matchday_id == matchday_id
-                )
-            )
-        }
-        for vip_id in vip_ids:
-            VipService().recalculate_vip_standings(db, vip_id)
+        recalculate_vips_for_matchday(db, matchday_id)
     finally:
         db.close()
 
@@ -184,9 +196,7 @@ def run_vip_recalculate_for_matchday_background(matchday_id: str) -> None:
 def run_all_vip_recalculate_background() -> None:
     db = SessionLocal()
     try:
-        vip_ids = set(db.scalars(select(VipCompetitionMatchday.vip_competition_id)))
-        for vip_id in vip_ids:
-            VipService().recalculate_vip_standings(db, vip_id)
+        recalculate_all_vips(db)
     finally:
         db.close()
 
@@ -2556,55 +2566,51 @@ def update_admin_vip_membership_payment(
 def update_admin_result(
     match_id: str,
     payload: AdminResultUpdateRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.save_admin_result(db, match_id, payload, updated_by=current_profile)
-    background_tasks.add_task(run_scoring_recalculate_background)
-    background_tasks.add_task(run_vip_recalculate_for_matchday_background, result.matchday_id)
+    ScoringService().recalculate(db)
+    recalculate_vips_for_matchday(db, result.matchday_id)
     return result
 
 
 @router.post("/results/{match_id}/clear-override", response_model=AdminResultRowOut)
 def clear_admin_result_override(
     match_id: str,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_manual_override(db, match_id)
-    background_tasks.add_task(run_scoring_recalculate_background)
-    background_tasks.add_task(run_vip_recalculate_for_matchday_background, result.matchday_id)
+    ScoringService().recalculate(db)
+    recalculate_vips_for_matchday(db, result.matchday_id)
     return result
 
 
 @router.delete("/results/{match_id}", response_model=AdminResultRowOut)
 def clear_admin_result(
     match_id: str,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_admin_result(db, match_id)
-    background_tasks.add_task(run_scoring_recalculate_background)
-    background_tasks.add_task(run_vip_recalculate_for_matchday_background, result.matchday_id)
+    ScoringService().recalculate(db)
+    recalculate_vips_for_matchday(db, result.matchday_id)
     return result
 
 
 @router.post("/results/sync", response_model=SyncResponse)
 def sync_admin_results(
-    background_tasks: BackgroundTasks,
     matchday_id: str | None = None,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SyncResponse:
     response = SyncResponse(**sync_results(db, get_results_provider(), matchday_id=matchday_id))
-    background_tasks.add_task(run_scoring_recalculate_background)
+    ScoringService().recalculate(db)
     if matchday_id is not None:
-        background_tasks.add_task(run_vip_recalculate_for_matchday_background, matchday_id)
+        recalculate_vips_for_matchday(db, matchday_id)
     else:
-        background_tasks.add_task(run_all_vip_recalculate_background)
+        recalculate_all_vips(db)
     return response
 
 
@@ -2656,19 +2662,23 @@ def pull_admin_quiniela_plus_advanced_stats(
 
 @router.post("/results/recalculate")
 def recalculate_results(
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
-) -> dict[str, str]:
-    background_tasks.add_task(run_scoring_recalculate_background)
-    background_tasks.add_task(run_all_vip_recalculate_background)
-    return {"status": "recalculate_started", "vip_status": "vip_recalculate_started"}
+) -> dict[str, int | str]:
+    summary = ScoringService().recalculate(db)
+    vip_competitions_recalculated = recalculate_all_vips(db)
+    return {
+        "status": "recalculated",
+        "evaluated_picks": summary["evaluated_picks"],
+        "weekly_leaders": summary["weekly_leaders"],
+        "weekly_awards": summary["weekly_awards"],
+        "vip_competitions_recalculated": vip_competitions_recalculated,
+    }
 
 
 @router.post("/matchdays/{matchday_id}/publish")
 def publish_matchday(
     matchday_id: str,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> dict[str, str]:
@@ -2690,11 +2700,13 @@ def publish_matchday(
     matchday.status = MatchdayStatus.PUBLISHED
     db.add(matchday)
     db.commit()
-    background_tasks.add_task(run_scoring_recalculate_background)
-    background_tasks.add_task(run_vip_recalculate_for_matchday_background, matchday_id)
+    scoring_summary = ScoringService().recalculate(db)
+    vip_competitions_recalculated = recalculate_vips_for_matchday(db, matchday_id)
     return {
         "status": "published",
         "matchday_id": matchday_id,
-        "recalculate_status": "recalculate_started",
-        "vip_recalculate_status": "vip_recalculate_started",
+        "recalculate_status": "recalculated",
+        "vip_recalculate_status": "recalculated",
+        "evaluated_picks": str(scoring_summary["evaluated_picks"]),
+        "vip_competitions_recalculated": str(vip_competitions_recalculated),
     }

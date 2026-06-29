@@ -245,9 +245,9 @@ export function AdminResultsPanel() {
         // The saved row is already reflected locally; a later reload can reconcile the full table.
       }
       if (savedRow.is_published) {
-        setMessage("Resultado guardado. Scoring general y VIP recalculandose en segundo plano.");
+        setMessage("Resultado guardado. Scoring general y VIP recalculado.");
       } else {
-        setMessage("Resultado guardado. Scoring general y VIP recalculandose en segundo plano.");
+        setMessage("Resultado guardado. Scoring general y VIP recalculado.");
       }
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el resultado");
@@ -271,7 +271,7 @@ export function AdminResultsPanel() {
         },
       );
       await refreshCurrentRows(accessToken);
-      setMessage(`${response.records_processed} resultados sincronizados. Scoring general y VIP recalculandose en segundo plano.`);
+      setMessage(`${response.records_processed} resultados sincronizados. Scoring general y VIP recalculado.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudieron bajar resultados");
     } finally {
@@ -289,7 +289,7 @@ export function AdminResultsPanel() {
         method: "POST",
       });
       await refreshCurrentRows(accessToken);
-      setMessage("Override manual quitado. Scoring general y VIP recalculandose en segundo plano.");
+      setMessage("Override manual quitado. Scoring general y VIP recalculado.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo quitar el override");
     } finally {
@@ -317,7 +317,7 @@ export function AdminResultsPanel() {
         method: "DELETE",
       });
       await refreshCurrentRows(accessToken);
-      setMessage("Resultado limpiado. Scoring general y VIP recalculandose en segundo plano.");
+      setMessage("Resultado limpiado. Scoring general y VIP recalculado.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo limpiar el resultado");
     } finally {
@@ -331,12 +331,20 @@ export function AdminResultsPanel() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      await backendFetch<{ status: string }>(
+      const response = await backendFetch<{
+        status: string;
+        evaluated_picks: number;
+        weekly_leaders: number;
+        weekly_awards: number;
+        vip_competitions_recalculated: number;
+      }>(
         "/admin/results/recalculate",
         accessToken,
         { method: "POST" },
       );
-      setMessage("Recalculo iniciado. El scoring se actualizara en segundo plano.");
+      setMessage(
+        `Recalculo listo: ${response.evaluated_picks} picks evaluados, ${response.vip_competitions_recalculated} VIPs recalculadas.`,
+      );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo recalcular el scoring");
     } finally {
