@@ -202,15 +202,13 @@ export function LeaderboardPageContent() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
+      <section className="space-y-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-end">
+          <div className="min-w-0 max-w-3xl">
             <h1 className="text-xl font-semibold text-ink">Ranking</h1>
-            <p className="mt-1 text-sm text-steel">
-              {activeSubtitle}
-            </p>
+            <p className="mt-1 text-sm text-steel">{activeSubtitle}</p>
           </div>
-          <div className="flex flex-col gap-3 xl:min-w-[320px]">
+          <div className="flex w-full flex-col gap-3 xl:justify-self-end">
             <label className="space-y-1">
               <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-steel">Torneo</span>
               <select
@@ -234,23 +232,24 @@ export function LeaderboardPageContent() {
               {loading ? "Actualizando..." : "Actualizar tabla"}
             </button>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3 xl:min-w-[520px]">
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-steel">Lider</p>
-              <p className="mt-2 text-sm font-semibold text-ink">
-                {activeEntries[0]?.display_name ?? "Sin clasificacion"}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-steel">Puntos</p>
-              <p className="mt-2 text-sm font-semibold text-ink">
-                {activeEntries[0] ? `${activeEntries[0].total_points} pts` : "Pendiente"}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-steel">Jugadores</p>
-              <p className="mt-2 text-sm font-semibold text-ink">{activeParticipantsCount}</p>
-            </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-steel">Lider</p>
+            <p className="mt-2 text-sm font-semibold text-ink">
+              {activeEntries[0]?.display_name ?? "Sin clasificacion"}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-steel">Puntos</p>
+            <p className="mt-2 text-sm font-semibold text-ink">
+              {activeEntries[0] ? `${activeEntries[0].total_points} pts` : "Pendiente"}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-steel">Jugadores</p>
+            <p className="mt-2 text-sm font-semibold text-ink">{activeParticipantsCount}</p>
           </div>
         </div>
       </section>
