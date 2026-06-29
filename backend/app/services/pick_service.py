@@ -207,8 +207,10 @@ class PickService:
                 PickResultRowOut(
                     match_id=match.id,
                     matchday_id=match.matchday_id,
+                    home_team_id=match.home_team_id,
                     home_team_name=home_team.name if home_team else match.home_placeholder or "Local",
                     home_team_crest_url=home_team.crest_url if home_team else None,
+                    away_team_id=match.away_team_id,
                     away_team_name=away_team.name if away_team else match.away_placeholder or "Visitante",
                     away_team_crest_url=away_team.crest_url if away_team else None,
                     kickoff_at=match.kickoff_at,

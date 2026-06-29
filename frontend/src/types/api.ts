@@ -99,8 +99,10 @@ export interface Pick {
 export interface PickResultRow {
   match_id: string;
   matchday_id: string;
+  home_team_id: string | null;
   home_team_name: string;
   home_team_crest_url: string | null;
+  away_team_id: string | null;
   away_team_name: string;
   away_team_crest_url: string | null;
   kickoff_at: string;

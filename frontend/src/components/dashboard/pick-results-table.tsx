@@ -23,6 +23,33 @@ function getSelectionLabel(selection: PickResultRow["selection"]) {
   return "Sin pick";
 }
 
+function getAdvancingTeamName(row: PickResultRow) {
+  if (!row.advancing_team_id) {
+    return null;
+  }
+  if (row.advancing_team_id === row.home_team_id) {
+    return row.home_team_name;
+  }
+  if (row.advancing_team_id === row.away_team_id) {
+    return row.away_team_name;
+  }
+  return "Equipo elegido";
+}
+
+function hasAdvancingTeamBreakdown(row: PickResultRow) {
+  return Boolean(row.advancing_team_id || row.official_advancing_team_id || row.advancing_team_points > 0);
+}
+
+function getAdvancingChipTone(row: PickResultRow) {
+  if (row.advancing_team_points > 0) {
+    return "text-emerald-300";
+  }
+  if (row.is_official && row.official_advancing_team_id && row.advancing_team_id) {
+    return "text-coral";
+  }
+  return "text-amber-100";
+}
+
 function isNflRow(row: PickResultRow) {
   return row.spread_selection !== null;
 }
@@ -55,6 +82,23 @@ function buildOverrideMessage(row: PickResultRow) {
     return `${base} ${row.admin_override_note}`;
   }
   return base;
+}
+
+function SelectionChip({
+  label,
+  value,
+  tone = "text-ink",
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1">
+      <span className="text-[9px] uppercase tracking-[0.12em] text-steel">{label}</span>
+      <span className={`text-[10px] font-semibold ${tone}`}>{value}</span>
+    </div>
+  );
 }
 
 function TeamBadge({
@@ -148,6 +192,15 @@ export function PickResultsTable({
                             </p>
                           </>
                         )}
+                        {getAdvancingTeamName(row) ? (
+                          <div className="mt-2 flex justify-center">
+                            <SelectionChip
+                              label="Clasificado"
+                              value={getAdvancingTeamName(row) as string}
+                              tone={getAdvancingChipTone(row)}
+                            />
+                          </div>
+                        ) : null}
                         {row.is_admin_override ? (
                           <p className="mt-1 text-[9px] text-amber-100">{buildOverrideMessage(row)}</p>
                         ) : null}
@@ -174,6 +227,11 @@ export function PickResultsTable({
                     <p className={`mt-1 text-[12px] font-semibold leading-none ${getPointsTone(row.total_points, row.has_pick, row.is_official)}`}>
                       {row.is_official ? row.total_points : "-"}
                     </p>
+                    {row.is_official && hasAdvancingTeamBreakdown(row) ? (
+                      <p className="mt-1 text-[8px] text-steel">
+                        {row.result_points}+{row.exact_score_points}+{row.advancing_team_points}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -224,6 +282,15 @@ export function PickResultsTable({
                             </p>
                           </>
                         )}
+                        {getAdvancingTeamName(row) ? (
+                          <div className="mt-2 flex justify-center">
+                            <SelectionChip
+                              label="Clasificado"
+                              value={getAdvancingTeamName(row) as string}
+                              tone={getAdvancingChipTone(row)}
+                            />
+                          </div>
+                        ) : null}
                         {row.is_admin_override ? (
                           <p className="mt-2 text-xs text-amber-100">{buildOverrideMessage(row)}</p>
                         ) : null}
@@ -251,11 +318,20 @@ export function PickResultsTable({
                       {row.is_official ? row.total_points : "-"}
                     </p>
                     {row.is_official ? (
-                      <p className="mt-1 text-xs text-steel">
-                        {isNflRow(row)
-                          ? `${row.result_points} + ${row.spread_points}`
-                          : `${row.result_points} + ${row.exact_score_points}`}
-                      </p>
+                      <>
+                        <p className="mt-1 text-xs text-steel">
+                          {isNflRow(row)
+                            ? `${row.result_points} + ${row.spread_points}`
+                            : hasAdvancingTeamBreakdown(row)
+                              ? `${row.result_points} + ${row.exact_score_points} + ${row.advancing_team_points}`
+                              : `${row.result_points} + ${row.exact_score_points}`}
+                        </p>
+                        {!isNflRow(row) && hasAdvancingTeamBreakdown(row) ? (
+                          <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-steel">
+                            Resultado + exacto + pase
+                          </p>
+                        ) : null}
+                      </>
                     ) : (
                       <p className="mt-1 text-xs text-steel">En espera del final</p>
                     )}

@@ -71,8 +71,10 @@ class PickOut(BaseModel):
 class PickResultRowOut(BaseModel):
     match_id: str
     matchday_id: str
+    home_team_id: str | None = None
     home_team_name: str
     home_team_crest_url: str | None
+    away_team_id: str | None = None
     away_team_name: str
     away_team_crest_url: str | None
     kickoff_at: datetime

@@ -526,29 +526,55 @@ export function DashboardHome() {
     }
 
     const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+    const selectedSeasonMembership =
+      state.selectedSeason && state.me
+        ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
+        : null;
+    const canViewRegularDashboard = Boolean(selectedSeasonMembership?.can_participate);
     if (dashboardDefaultView.startsWith("vip:")) {
       const vipId = dashboardDefaultView.slice(4);
       const vipExists = approvedVipCompetitions.some((vip) => vip.id === vipId);
       if (vipExists) {
         setSelectedVipBoardId(vipId);
       } else {
-        setDashboardDefaultView("regular");
-        writeStoredDashboardDefaultView("regular");
+        const fallbackView = canViewRegularDashboard
+          ? "regular"
+          : approvedVipCompetitions[0]
+            ? (`vip:${approvedVipCompetitions[0].id}` as DashboardDefaultView)
+            : "regular";
+        setDashboardDefaultView(fallbackView);
+        writeStoredDashboardDefaultView(fallbackView);
       }
+    } else if (!canViewRegularDashboard && approvedVipCompetitions[0]) {
+      const fallbackView = `vip:${approvedVipCompetitions[0].id}` as DashboardDefaultView;
+      setDashboardDefaultView(fallbackView);
+      writeStoredDashboardDefaultView(fallbackView);
+      setSelectedVipBoardId(approvedVipCompetitions[0].id);
     }
 
     setHasAppliedDashboardDefault(true);
-  }, [dashboardDefaultView, hasAppliedDashboardDefault, loading, state.vipCompetitions]);
+  }, [dashboardDefaultView, hasAppliedDashboardDefault, loading, state.me, state.selectedSeason, state.vipCompetitions]);
 
   function handleDashboardDefaultViewChange(value: string) {
     const nextValue: DashboardDefaultView = value.startsWith("vip:") ? (value as DashboardDefaultView) : "regular";
     const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+    const selectedSeasonMembership =
+      state.selectedSeason && state.me
+        ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
+        : null;
+    const canViewRegularDashboard = Boolean(selectedSeasonMembership?.can_participate);
+    const safeValue =
+      nextValue === "regular" && !canViewRegularDashboard
+        ? approvedVipCompetitions[0]
+          ? (`vip:${approvedVipCompetitions[0].id}` as DashboardDefaultView)
+          : "regular"
+        : nextValue;
 
-    setDashboardDefaultView(nextValue);
-    writeStoredDashboardDefaultView(nextValue);
+    setDashboardDefaultView(safeValue);
+    writeStoredDashboardDefaultView(safeValue);
 
-    if (nextValue.startsWith("vip:")) {
-      const vipId = nextValue.slice(4);
+    if (safeValue.startsWith("vip:")) {
+      const vipId = safeValue.slice(4);
       const vipExists = approvedVipCompetitions.some((vip) => vip.id === vipId);
       if (vipExists) {
         setSelectedVipBoardId(vipId);
@@ -597,8 +623,13 @@ export function DashboardHome() {
   const awardRecords = state.personalTrophies.filter((row) => row.recognition_type === "award");
   const teamCrestById = new Map(state.teams.map((team) => [team.id, team.crest_url]));
   const teamShortNameById = new Map(state.teams.map((team) => [team.id, team.short_name]));
+  const selectedSeasonMembership =
+    state.selectedSeason && state.me
+      ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
+      : null;
   const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
   const hasApprovedVipCompetition = approvedVipCompetitions.length > 0;
+  const canViewRegularDashboard = Boolean(selectedSeasonMembership?.can_participate);
   const selectedVipIdFromView = dashboardDefaultView.startsWith("vip:") ? dashboardDefaultView.slice(4) : "";
   const selectedVipCompetition =
     approvedVipCompetitions.find((vip) => vip.id === selectedVipIdFromView) ??
@@ -606,7 +637,7 @@ export function DashboardHome() {
     approvedVipCompetitions[0] ??
     null;
   const dashboardDefaultOptions: Array<{ value: DashboardDefaultView; label: string }> = [
-    { value: "regular", label: "Torneo regular" },
+    ...(canViewRegularDashboard ? [{ value: "regular" as DashboardDefaultView, label: "Torneo regular" }] : []),
     ...approvedVipCompetitions.map((vip) => ({
       value: `vip:${vip.id}` as DashboardDefaultView,
       label: vip.name,
@@ -614,7 +645,7 @@ export function DashboardHome() {
   ];
   const dashboardDefaultValue = dashboardDefaultOptions.some((option) => option.value === dashboardDefaultView)
     ? dashboardDefaultView
-    : "regular";
+    : dashboardDefaultOptions[0]?.value ?? "regular";
   const myVipEntry =
     selectedVipCompetition?.leaderboard.find((entry) => entry.profile_id === state.me?.id) ?? null;
   const vipMatchdayPoints = selectedVipCompetition?.matchday_points ?? [];
@@ -660,10 +691,6 @@ export function DashboardHome() {
   const summaryTileClass =
     "flex min-w-0 h-[78px] flex-col justify-between rounded-[16px] bg-transparent p-1.5 sm:h-auto sm:rounded-[30px] sm:p-5";
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
-  const selectedSeasonMembership =
-    state.selectedSeason && state.me
-      ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
-      : null;
 
   function getMatchTeamLabel(teamId: string | null, fallbackName: string) {
     if (!useWorldCupAbbreviation || !teamId) {
