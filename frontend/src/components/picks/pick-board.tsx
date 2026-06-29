@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
@@ -41,6 +41,11 @@ type PickBoardState = {
 
 type PickBoardTab = "mine" | "global";
 type PickMatchScope = "matchday" | "today";
+type PickContextOption = {
+  value: string;
+  label: string;
+  helper: string;
+};
 
 const AUTO_SAVE_DELAY_MS = 2000;
 const compactPickControlClass =
@@ -99,6 +104,18 @@ function isNflSeason(season: Season | null) {
 
 function isMatchReadyForPicks(match: Match) {
   return match.is_ready_for_picks;
+}
+
+function hasPredictedScore(form: PickFormState | undefined) {
+  return Boolean(form && form.predicted_home_score !== "" && form.predicted_away_score !== "");
+}
+
+function isMissingAdvancingTeamSelection(
+  match: Match,
+  form: PickFormState | undefined,
+  worldCupMode: boolean,
+) {
+  return worldCupMode && isKnockoutMatch(match) && hasPredictedScore(form) && !form?.advancing_team_id;
 }
 
 function isPickFormComplete(
@@ -333,6 +350,18 @@ function getGlobalCellKey(profileId: string, matchId: string) {
   return `${profileId}:${matchId}`;
 }
 
+function buildGlobalPicksUrl(matchdayId: string, contextValue: string) {
+  const params = new URLSearchParams({ matchday_id: matchdayId });
+  const [contextType, contextId] = contextValue.split(":");
+  if (contextType) {
+    params.set("context_type", contextType);
+  }
+  if (contextId) {
+    params.set("context_id", contextId);
+  }
+  return `/global-picks?${params.toString()}`;
+}
+
 function getStageLabel(match: Match) {
   if (match.stage_type === "group") {
     return match.group_label ? `Grupo ${match.group_label}` : "Grupo";
@@ -423,8 +452,11 @@ export function PickBoard() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [forms, setForms] = useState<FormsMap>({});
   const [autoSave, setAutoSave] = useState<AutoSaveMap>({});
+  const [selectedGlobalContext, setSelectedGlobalContext] = useState("");
   const [activeTab, setActiveTab] = useState<PickBoardTab>("mine");
   const [matchScope, setMatchScope] = useState<PickMatchScope>("matchday");
+  const [globalBoardLoading, setGlobalBoardLoading] = useState(false);
+  const [globalPickError, setGlobalPickError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const teamById = Object.fromEntries(teams.map((team) => [team.id, team]));
@@ -495,10 +527,9 @@ export function PickBoard() {
           return;
         }
 
-        const [matches, existingPicks, globalPickBoard] = await Promise.all([
+        const [matches, existingPicks] = await Promise.all([
           backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken),
           backendFetch<Pick[]>(`/my-picks?matchday_id=${selectedMatchday.id}`, accessToken),
-          backendFetch<GlobalPickBoard>(`/global-picks?matchday_id=${selectedMatchday.id}`, accessToken),
         ]);
 
         const nextForms: FormsMap = {};
@@ -518,7 +549,7 @@ export function PickBoard() {
           selectedMatchday,
           matches,
           existingPicks,
-          globalPickBoard,
+          globalPickBoard: null,
           vipCompetitions,
           error: null,
         });
@@ -568,6 +599,11 @@ export function PickBoard() {
         if (savedSignature) {
           nextAutoSave[match.id] = { status: "saved", detail: "Pick cerrado y guardado." };
         }
+        return;
+      }
+
+      if (isMissingAdvancingTeamSelection(match, form, useWorldCupMode)) {
+        nextAutoSave[match.id] = { status: "error", detail: "Falta seleccionar equipo que pasa." };
         return;
       }
 
@@ -623,11 +659,10 @@ export function PickBoard() {
         return;
       }
 
-      const [seasons, matches, existingPicks, globalPickBoard] = await Promise.all([
+      const [seasons, matches, existingPicks] = await Promise.all([
         backendFetch<Season[]>("/seasons", accessToken),
         backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken),
         backendFetch<Pick[]>(`/my-picks?matchday_id=${selectedMatchday.id}`, accessToken),
-        backendFetch<GlobalPickBoard>(`/global-picks?matchday_id=${selectedMatchday.id}`, accessToken),
       ]);
 
       const selectedSeason =
@@ -649,7 +684,7 @@ export function PickBoard() {
         selectedMatchday,
         matches,
         existingPicks,
-        globalPickBoard,
+        globalPickBoard: null,
         error: null,
       }));
     } catch (loadError) {
@@ -695,11 +730,119 @@ export function PickBoard() {
     }));
   }
 
+  const selectedSeasonMembership =
+    state.selectedSeason && state.me
+      ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
+      : null;
+  const approvedVipForSelectedMatchday =
+    state.selectedMatchday
+      ? state.vipCompetitions.find(
+          (vip) =>
+            vip.my_membership?.status === "approved" &&
+            vip.matchdays.some((matchday) => matchday.id === state.selectedMatchday?.id),
+        ) ?? null
+      : null;
+  const approvedVipContextsForSelectedMatchday = useMemo(
+    () =>
+      state.selectedMatchday
+        ? state.vipCompetitions.filter(
+            (vip) =>
+              vip.competition_kind === "matchday" &&
+              vip.my_membership?.status === "approved" &&
+              vip.matchdays.some((matchday) => matchday.id === state.selectedMatchday?.id),
+          )
+        : [],
+    [state.selectedMatchday, state.vipCompetitions],
+  );
+  const globalContextOptions = useMemo<PickContextOption[]>(() => {
+    const options: PickContextOption[] = [];
+
+    if (state.selectedSeason && selectedSeasonMembership?.can_participate) {
+      options.push({
+        value: `season:${state.selectedSeason.id}`,
+        label: `Torneo regular · ${state.selectedSeason.name}`,
+        helper: "Todos los jugadores activos de la temporada",
+      });
+    }
+
+    options.push(
+      ...approvedVipContextsForSelectedMatchday.map((vip) => ({
+        value: `vip:${vip.id}`,
+        label: `VIP · ${vip.name}`,
+        helper: `Participantes aprobados en ${vip.name}`,
+      })),
+    );
+
+    return options;
+  }, [approvedVipContextsForSelectedMatchday, selectedSeasonMembership?.can_participate, state.selectedSeason]);
+  const activeGlobalContext =
+    globalContextOptions.find((option) => option.value === selectedGlobalContext)?.value ??
+    globalContextOptions[0]?.value ??
+    "";
+  const activeGlobalContextOption =
+    globalContextOptions.find((option) => option.value === activeGlobalContext) ?? null;
+
+  useEffect(() => {
+    setSelectedGlobalContext((current) => {
+      if (globalContextOptions.some((option) => option.value === current)) {
+        return current;
+      }
+      return globalContextOptions[0]?.value ?? "";
+    });
+  }, [globalContextOptions]);
+
+  useEffect(() => {
+    async function loadGlobalPickBoard() {
+      if (!state.selectedMatchday || !activeGlobalContext) {
+        setGlobalBoardLoading(false);
+        setGlobalPickError(null);
+        setState((current) =>
+          current.globalPickBoard === null ? current : { ...current, globalPickBoard: null },
+        );
+        return;
+      }
+
+      try {
+        setGlobalBoardLoading(true);
+        const accessToken = await getBrowserAccessToken();
+        const globalPickBoard = await backendFetch<GlobalPickBoard>(
+          buildGlobalPicksUrl(state.selectedMatchday.id, activeGlobalContext),
+          accessToken,
+        );
+        setGlobalPickError(null);
+        setState((current) => ({
+          ...current,
+          globalPickBoard,
+        }));
+      } catch (loadError) {
+        setGlobalPickError(
+          loadError instanceof Error ? loadError.message : "No se pudieron cargar los picks globales",
+        );
+        setState((current) => ({
+          ...current,
+          globalPickBoard: null,
+        }));
+      } finally {
+        setGlobalBoardLoading(false);
+      }
+    }
+
+    void loadGlobalPickBoard();
+  }, [activeGlobalContext, state.selectedMatchday]);
+
   async function savePick(matchId: string) {
     try {
       const currentForm = forms[matchId];
       const match = state.matches.find((row) => row.id === matchId);
       const selection = deriveSelectionFromForm(currentForm, useNflMode);
+
+      if (match && isMissingAdvancingTeamSelection(match, currentForm, useWorldCupMode)) {
+        setAutoSave((current) => ({
+          ...current,
+          [matchId]: { status: "error", detail: "Falta seleccionar equipo que pasa." },
+        }));
+        return;
+      }
 
       if (!match || !selection || !isPickFormComplete(match, currentForm, useNflMode, useWorldCupMode)) {
         return;
@@ -787,18 +930,6 @@ export function PickBoard() {
   const previousMatchday = selectedIndex > 0 ? seasonMatchdays[selectedIndex - 1] : null;
   const nextMatchday =
     selectedIndex >= 0 && selectedIndex < seasonMatchdays.length - 1 ? seasonMatchdays[selectedIndex + 1] : null;
-  const selectedSeasonMembership =
-    state.selectedSeason && state.me
-      ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
-      : null;
-  const approvedVipForSelectedMatchday =
-    state.selectedMatchday
-      ? state.vipCompetitions.find(
-          (vip) =>
-            vip.my_membership?.status === "approved" &&
-            vip.matchdays.some((matchday) => matchday.id === state.selectedMatchday?.id),
-        ) ?? null
-      : null;
   const canPickSelectedMatchday = Boolean(selectedSeasonMembership?.can_participate || approvedVipForSelectedMatchday);
   const globalCellByKey = Object.fromEntries(
     (state.globalPickBoard?.cells ?? []).map((cell) => [getGlobalCellKey(cell.profile_id, cell.match_id), cell]),
@@ -959,6 +1090,7 @@ export function PickBoard() {
               );
               const pickDisabled = match.is_locked || !match.is_ready_for_picks || !canPickSelectedMatchday;
               const canPickAdvancingTeam = requiresAdvancingTeam(match, state.selectedSeason) && match.is_ready_for_picks;
+              const missingAdvancingTeamSelection = isMissingAdvancingTeamSelection(match, form, useWorldCupMode);
               const homeAdvances = canPickAdvancingTeam && form?.advancing_team_id === match.home_team_id;
               const awayAdvances = canPickAdvancingTeam && form?.advancing_team_id === match.away_team_id;
               const teamPickBaseClass =
@@ -1168,6 +1300,11 @@ export function PickBoard() {
                       Este cruce todavia esta sembrado con placeholders. Los picks se habilitan en cuanto queden definidos ambos equipos.
                     </div>
                   ) : null}
+                  {missingAdvancingTeamSelection ? (
+                    <div className="mt-2 rounded-xl border border-rose-300/20 bg-rose-400/10 px-3 py-2 text-[10px] text-rose-100">
+                      Falta seleccionar equipo que pasa para guardar este pick.
+                    </div>
+                  ) : null}
                   {existingPick?.is_admin_override ? (
                     <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-[10px] text-amber-100">
                       {buildOverrideMessage(existingPick)}
@@ -1182,14 +1319,45 @@ export function PickBoard() {
 
       {activeTab === "global" ? (
         <section className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[10px] uppercase tracking-[0.18em] text-steel/80">Picks Globales</p>
-            <p className="text-[10px] text-steel">
-              Los picks de otros jugadores se revelan en cuanto se cierra el pick de ese partido.
-            </p>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,320px)] lg:items-end">
+            <div className="space-y-1">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-steel/80">Picks Globales</p>
+              <p className="text-[10px] text-steel">
+                Los picks de otros jugadores se revelan en cuanto se cierra el pick de ese partido.
+              </p>
+            </div>
+            {globalContextOptions.length > 1 ? (
+              <label className="space-y-1 text-xs">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Contexto</span>
+                <select
+                  value={activeGlobalContext}
+                  onChange={(event) => setSelectedGlobalContext(event.target.value)}
+                  className="field-control text-xs"
+                >
+                  {globalContextOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
 
-          {!state.globalPickBoard || state.globalPickBoard.players.length === 0 || visibleGlobalMatches.length === 0 ? (
+          {activeGlobalContextOption ? (
+            <p className="text-[10px] text-steel">{activeGlobalContextOption.helper}</p>
+          ) : null}
+
+          {globalPickError ? <p className="text-sm text-coral">{globalPickError}</p> : null}
+
+          {globalBoardLoading ? (
+            <p className="text-sm text-steel">Cargando picks globales...</p>
+          ) : globalContextOptions.length === 0 ? (
+            <p className="text-sm text-steel">
+              No tienes acceso a picks globales para esta jornada. Si te activan en el torneo regular o en una VIP,
+              aparecera aqui.
+            </p>
+          ) : !state.globalPickBoard || state.globalPickBoard.players.length === 0 || visibleGlobalMatches.length === 0 ? (
             <p className="text-sm text-steel">
               {matchScope === "today"
                 ? "No hay juegos de hoy para mostrar en picks globales."

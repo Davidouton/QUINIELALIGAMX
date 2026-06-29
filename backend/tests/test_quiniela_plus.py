@@ -166,3 +166,87 @@ def test_user_distribution_can_filter_by_regular_or_vip_context() -> None:
         assert vip_payload["matches"][0]["selection_distribution"]["draw_count"] == 0
         assert vip_payload["matches"][0]["selection_distribution"]["away_count"] == 0
     app.dependency_overrides.clear()
+
+
+def test_user_distribution_includes_active_players_even_if_they_do_not_count_for_scoring() -> None:
+    late_profile_id = "10000000-0000-0000-0000-000000000077"
+
+    db = SessionLocal()
+    try:
+        late_profile = Profile(
+            id=late_profile_id,
+            auth_user_id="77777777-7777-7777-7777-777777777777",
+            email="late@example.com",
+            display_name="Alta tardia",
+            is_active=True,
+        )
+        season = Season(
+            id=WORLD_CUP_SEASON_ID,
+            name="World Cup 2026",
+            slug="world-cup-2026",
+            tournament_format=TournamentFormat.WORLD_CUP,
+            is_active=True,
+        )
+        matchday = Matchday(
+            id=WORLD_CUP_MATCHDAY_ID,
+            season_id=WORLD_CUP_SEASON_ID,
+            number=1,
+            name="Jornada Mundialista 1",
+            status=MatchdayStatus.ACTIVE,
+            starts_at=datetime.now(UTC),
+            ends_at=datetime.now(UTC) + timedelta(days=1),
+        )
+        match = Match(
+            id=WORLD_CUP_MATCH_ID,
+            matchday_id=WORLD_CUP_MATCHDAY_ID,
+            home_team_id=TEAM_A_ID,
+            away_team_id=TEAM_B_ID,
+            kickoff_at=datetime.now(UTC) + timedelta(hours=4),
+            picks_lock_at=datetime.now(UTC) + timedelta(hours=2),
+            status=MatchStatus.SCHEDULED,
+        )
+        db.add_all(
+            [
+                late_profile,
+                season,
+                matchday,
+                match,
+                SeasonMembership(
+                    season_id=WORLD_CUP_SEASON_ID,
+                    profile_id=PROFILE_USER_ID,
+                    is_active=True,
+                    is_paid=True,
+                ),
+                SeasonMembership(
+                    season_id=WORLD_CUP_SEASON_ID,
+                    profile_id=late_profile_id,
+                    is_active=True,
+                    is_paid=True,
+                    eligible_for_scoring=False,
+                    eligible_locked_at=datetime.now(UTC),
+                ),
+                UserPick(
+                    profile_id=PROFILE_USER_ID,
+                    match_id=WORLD_CUP_MATCH_ID,
+                    selection=PickSelection.HOME,
+                    predicted_home_score=2,
+                    predicted_away_score=1,
+                ),
+            ]
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    with get_user_client() as test_client:
+        response = test_client.get(
+            f"/api/v1/quiniela-plus/user-distribution?context_type=season&context_id={WORLD_CUP_SEASON_ID}",
+            headers={"Authorization": "Bearer test-token"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload["matches"]) == 1
+        assert payload["matches"][0]["total_picks"] == 1
+        assert payload["matches"][0]["selection_distribution"]["home_count"] == 1
+    app.dependency_overrides.clear()

@@ -51,7 +51,15 @@ def list_my_pick_results(
 @router.get("/global-picks", response_model=GlobalPickBoardOut)
 def list_global_picks(
     matchday_id: str = Query(...),
+    context_type: str | None = Query(default=None),
+    context_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(get_current_profile),
 ) -> GlobalPickBoardOut:
-    return service.list_global_picks(db, current_profile, matchday_id=matchday_id)
+    return service.list_global_picks(
+        db,
+        current_profile,
+        matchday_id=matchday_id,
+        context_type=context_type,
+        context_id=context_id,
+    )

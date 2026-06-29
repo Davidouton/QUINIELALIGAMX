@@ -239,7 +239,7 @@ class QuinielaPlusService:
             )
             has_access = any(
                 membership.profile_id == current_profile.id
-                and self.season_eligibility_service.counts_for_scoring(db, season, membership)
+                and self.season_eligibility_service.can_participate(db, season, membership)
                 for membership in memberships
             )
             if not has_access and not is_admin:
@@ -248,7 +248,7 @@ class QuinielaPlusService:
             participant_profile_ids = [
                 membership.profile_id
                 for membership in memberships
-                if self.season_eligibility_service.counts_for_scoring(db, season, membership)
+                if self.season_eligibility_service.can_participate(db, season, membership)
             ]
             title = f"Distribucion de usuarios · {season.name}"
             match_query = match_query.where(Matchday.season_id == season.id)

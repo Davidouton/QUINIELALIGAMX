@@ -22,6 +22,7 @@ from app.models.entities import (
     TournamentFormat,
     UserPick,
     VipCompetition,
+    VipCompetitionKind,
     VipCompetitionMatchday,
     VipMembership,
     VipMembershipStatus,
@@ -249,6 +250,8 @@ class PickService:
         db: Session,
         profile: Profile,
         matchday_id: str,
+        context_type: str | None = None,
+        context_id: str | None = None,
     ) -> GlobalPickBoardOut:
         matchday = db.get(Matchday, matchday_id)
         if matchday is None:
@@ -273,33 +276,25 @@ class PickService:
             ).all()
         official_results_by_match_id = {result.match_id: result for result in result_rows}
         teams = self._load_teams(db, matches)
-
-        regular_player_rows = db.execute(
-            select(Profile.id, Profile.display_name)
-            .join(SeasonMembership, SeasonMembership.profile_id == Profile.id)
-            .where(
-                SeasonMembership.season_id == matchday.season_id,
-                SeasonMembership.is_active.is_(True),
-                Profile.is_active.is_(True),
-            )
-        ).all()
-        vip_player_rows = db.execute(
-            select(Profile.id, Profile.display_name)
-            .join(VipMembership, VipMembership.profile_id == Profile.id)
-            .join(VipCompetition, VipCompetition.id == VipMembership.vip_competition_id)
-            .join(VipCompetitionMatchday, VipCompetitionMatchday.vip_competition_id == VipCompetition.id)
-            .where(
-                VipMembership.status == VipMembershipStatus.APPROVED,
-                VipCompetition.is_active.is_(True),
-                VipCompetitionMatchday.matchday_id == matchday_id,
-                Profile.is_active.is_(True),
-            )
-        ).all()
-
-        player_rows_by_id = {
-            profile_id: display_name
-            for profile_id, display_name in [*regular_player_rows, *vip_player_rows]
-        }
+        participant_profile_ids = self._resolve_global_pick_participant_ids(
+            db,
+            profile,
+            matchday,
+            context_type=context_type,
+            context_id=context_id,
+        )
+        player_rows = (
+            db.execute(
+                select(Profile.id, Profile.display_name)
+                .where(
+                    Profile.id.in_(participant_profile_ids),
+                    Profile.is_active.is_(True),
+                )
+            ).all()
+            if participant_profile_ids
+            else []
+        )
+        player_rows_by_id = {profile_id: display_name for profile_id, display_name in player_rows}
 
         players = [
             GlobalPickPlayerOut(profile_id=profile_id, display_name=display_name)
@@ -652,6 +647,115 @@ class PickService:
                 VipCompetitionMatchday.matchday_id == matchday_id,
             )
             .limit(1)
+        )
+
+    def _resolve_global_pick_participant_ids(
+        self,
+        db: Session,
+        profile: Profile,
+        matchday: Matchday,
+        context_type: str | None = None,
+        context_id: str | None = None,
+    ) -> list[str]:
+        season = db.get(Season, matchday.season_id)
+        if season is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+
+        regular_membership = self.membership_repo.get_for_profile_and_season(db, profile.id, matchday.season_id)
+        can_view_regular_context = self.eligibility_service.can_participate(db, season, regular_membership)
+        approved_matchday_vip_ids = self._approved_vip_ids_for_matchday(db, profile.id, matchday.id)
+
+        if context_type is None and context_id is None:
+            if can_view_regular_context:
+                context_type = "season"
+                context_id = matchday.season_id
+            elif approved_matchday_vip_ids:
+                context_type = "vip"
+                context_id = approved_matchday_vip_ids[0]
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes acceso a picks globales para esta jornada",
+                )
+        elif not context_type or not context_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Debes enviar context_type y context_id juntos",
+            )
+
+        if context_type == "season":
+            if context_id != matchday.season_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La temporada seleccionada no corresponde a esta jornada",
+                )
+            if not can_view_regular_context:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes acceso a este contexto",
+                )
+
+            memberships = self.membership_repo.list_for_season(db, season.id)
+            return sorted(
+                {
+                    membership.profile_id
+                    for membership in memberships
+                    if self.eligibility_service.can_participate(db, season, membership)
+                }
+            )
+
+        if context_type == "vip":
+            vip = db.get(VipCompetition, context_id)
+            if vip is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+            if vip.competition_kind != VipCompetitionKind.MATCHDAY:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Esta VIP no usa picks por jornada",
+                )
+
+            vip_has_matchday = db.scalar(
+                select(VipCompetitionMatchday.id).where(
+                    VipCompetitionMatchday.vip_competition_id == vip.id,
+                    VipCompetitionMatchday.matchday_id == matchday.id,
+                )
+            )
+            if vip_has_matchday is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La VIP seleccionada no incluye esta jornada.",
+                )
+            if context_id not in approved_matchday_vip_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes acceso a este contexto",
+                )
+
+            return list(
+                db.scalars(
+                    select(VipMembership.profile_id).where(
+                        VipMembership.vip_competition_id == vip.id,
+                        VipMembership.status == VipMembershipStatus.APPROVED,
+                    )
+                )
+            )
+
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="context_type invalido")
+
+    def _approved_vip_ids_for_matchday(self, db: Session, profile_id: str, matchday_id: str) -> list[str]:
+        return list(
+            db.scalars(
+                select(VipMembership.vip_competition_id)
+                .join(VipCompetition, VipCompetition.id == VipMembership.vip_competition_id)
+                .join(VipCompetitionMatchday, VipCompetitionMatchday.vip_competition_id == VipCompetition.id)
+                .where(
+                    VipMembership.profile_id == profile_id,
+                    VipMembership.status == VipMembershipStatus.APPROVED,
+                    VipCompetition.is_active.is_(True),
+                    VipCompetitionMatchday.matchday_id == matchday_id,
+                )
+                .order_by(VipCompetition.name.asc())
+            )
         )
 
     def _season_id_for_match(self, db: Session, match: Match) -> str:
