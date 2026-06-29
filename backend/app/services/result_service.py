@@ -60,7 +60,8 @@ class ResultService:
             stmt = stmt.where(Match.matchday_id == matchday_id)
 
         rows = db.execute(stmt).all()
-        return [self._to_result_out(db, match_result, match) for match_result, match in rows]
+        team_map = self._load_team_map(db, [match for _, match in rows])
+        return [self._to_result_out(match_result, match, team_map) for match_result, match in rows]
 
     def list_published_results(self, db: Session, matchday_id: str | None = None) -> list[PublishedResultOut]:
         stmt = (
@@ -74,9 +75,10 @@ class ResultService:
             stmt = stmt.where(Match.matchday_id == matchday_id)
 
         rows = db.execute(stmt).all()
+        team_map = self._load_team_map(db, [match for _, match, _ in rows])
         results: list[PublishedResultOut] = []
         for match_result, match, published in rows:
-            base = self._to_result_out(db, match_result, match)
+            base = self._to_result_out(match_result, match, team_map)
             results.append(PublishedResultOut(**base.model_dump(), published_at=published.published_at))
         return results
 
@@ -91,7 +93,11 @@ class ResultService:
             stmt = stmt.where(Match.matchday_id == matchday_id)
 
         rows = db.execute(stmt).all()
-        return [self._to_admin_result_out(db, match, match_result, published) for match, match_result, published in rows]
+        team_map = self._load_team_map(db, [match for match, _, _ in rows])
+        return [
+            self._to_admin_result_out(match, match_result, published, team_map)
+            for match, match_result, published in rows
+        ]
 
     def save_admin_result(
         self,
@@ -137,7 +143,8 @@ class ResultService:
         published = db.scalar(
             select(PublishedMatchday).where(PublishedMatchday.matchday_id == match.matchday_id)
         )
-        return self._to_admin_result_out(db, match, result, published)
+        team_map = self._load_team_map(db, [match])
+        return self._to_admin_result_out(match, result, published, team_map)
 
     def clear_manual_override(self, db: Session, match_id: str) -> AdminResultRowOut:
         match = db.get(Match, match_id)
@@ -187,7 +194,8 @@ class ResultService:
         published = db.scalar(
             select(PublishedMatchday).where(PublishedMatchday.matchday_id == match.matchday_id)
         )
-        return self._to_admin_result_out(db, match, result, published)
+        team_map = self._load_team_map(db, [match])
+        return self._to_admin_result_out(match, result, published, team_map)
 
     def clear_admin_result(self, db: Session, match_id: str) -> AdminResultRowOut:
         match = db.get(Match, match_id)
@@ -209,11 +217,17 @@ class ResultService:
         published = db.scalar(
             select(PublishedMatchday).where(PublishedMatchday.matchday_id == match.matchday_id)
         )
-        return self._to_admin_result_out(db, match, None, published)
+        team_map = self._load_team_map(db, [match])
+        return self._to_admin_result_out(match, None, published, team_map)
 
-    def _to_result_out(self, db: Session, match_result: MatchResult, match: Match) -> ResultOut:
-        home_team = db.get(Team, match.home_team_id) if match.home_team_id else None
-        away_team = db.get(Team, match.away_team_id) if match.away_team_id else None
+    def _to_result_out(
+        self,
+        match_result: MatchResult,
+        match: Match,
+        team_map: dict[str, Team],
+    ) -> ResultOut:
+        home_team = team_map.get(match.home_team_id) if match.home_team_id else None
+        away_team = team_map.get(match.away_team_id) if match.away_team_id else None
         return ResultOut(
             match_id=match.id,
             matchday_id=match.matchday_id,
@@ -227,13 +241,13 @@ class ResultService:
 
     def _to_admin_result_out(
         self,
-        db: Session,
         match: Match,
         match_result: MatchResult | None,
         published: PublishedMatchday | None,
+        team_map: dict[str, Team],
     ) -> AdminResultRowOut:
-        home_team = db.get(Team, match.home_team_id) if match.home_team_id else None
-        away_team = db.get(Team, match.away_team_id) if match.away_team_id else None
+        home_team = team_map.get(match.home_team_id) if match.home_team_id else None
+        away_team = team_map.get(match.away_team_id) if match.away_team_id else None
         return AdminResultRowOut(
             match_id=match.id,
             matchday_id=match.matchday_id,
@@ -257,6 +271,20 @@ class ResultService:
             source_provider_name=match_result.source_provider_name if match_result is not None else None,
             is_manual_override=match_result.is_manual_override if match_result is not None else False,
         )
+
+    def _load_team_map(self, db: Session, matches: list[Match]) -> dict[str, Team]:
+        team_ids = {
+            team_id
+            for match in matches
+            for team_id in (match.home_team_id, match.away_team_id)
+            if team_id is not None
+        }
+        if not team_ids:
+            return {}
+        return {
+            team.id: team
+            for team in db.scalars(select(Team).where(Team.id.in_(team_ids)))
+        }
 
     def _ensure_match_ready_for_results(self, match: Match) -> None:
         if match.home_team_id is not None and match.away_team_id is not None:

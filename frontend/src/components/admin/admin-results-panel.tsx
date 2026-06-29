@@ -113,7 +113,9 @@ export function AdminResultsPanel() {
   async function loadResults(matchdayId: string, accessToken?: string) {
     const token = accessToken ?? (await getBrowserAccessToken());
     const suffix = matchdayId ? `?matchday_id=${matchdayId}` : "";
-    const rows = await backendFetch<AdminResultRow[]>(`/admin/results${suffix}`, token);
+    const rows = await backendFetch<AdminResultRow[]>(`/admin/results${suffix}`, token, {
+      timeoutMs: 30000,
+    });
     setResults(rows);
     setDrafts(Object.fromEntries(rows.map((row) => [row.match_id, buildDraft(row)])));
   }
@@ -333,18 +335,18 @@ export function AdminResultsPanel() {
       const accessToken = await getBrowserAccessToken();
       const response = await backendFetch<{
         status: string;
-        evaluated_picks: number;
-        weekly_leaders: number;
-        weekly_awards: number;
-        vip_competitions_recalculated: number;
+        message?: string;
       }>(
         "/admin/results/recalculate",
         accessToken,
         { method: "POST" },
       );
-      setMessage(
-        `Recalculo listo: ${response.evaluated_picks} picks evaluados, ${response.vip_competitions_recalculated} VIPs recalculadas.`,
-      );
+      window.setTimeout(() => {
+        void refreshCurrentRows(accessToken).catch((caughtError) => {
+          setError(caughtError instanceof Error ? caughtError.message : "No se pudo refrescar la jornada");
+        });
+      }, 4000);
+      setMessage(response.message ?? "Recalculo iniciado. Refresca en unos segundos para ver los cambios.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo recalcular el scoring");
     } finally {

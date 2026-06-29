@@ -2662,17 +2662,14 @@ def pull_admin_quiniela_plus_advanced_stats(
 
 @router.post("/results/recalculate")
 def recalculate_results(
-    db: Session = Depends(get_db),
+    background_tasks: BackgroundTasks,
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
-) -> dict[str, int | str]:
-    summary = ScoringService().recalculate(db)
-    vip_competitions_recalculated = recalculate_all_vips(db)
+) -> dict[str, str]:
+    background_tasks.add_task(run_scoring_recalculate_background)
+    background_tasks.add_task(run_all_vip_recalculate_background)
     return {
-        "status": "recalculated",
-        "evaluated_picks": summary["evaluated_picks"],
-        "weekly_leaders": summary["weekly_leaders"],
-        "weekly_awards": summary["weekly_awards"],
-        "vip_competitions_recalculated": vip_competitions_recalculated,
+        "status": "recalculate_started",
+        "message": "Scoring general y VIP en recalculo.",
     }
 
 
