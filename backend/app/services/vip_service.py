@@ -52,19 +52,35 @@ class VipService:
     def get_join_lock(self, db: Session, vip_id: str) -> dict[str, object]:
         return self._join_lock_for_vip(db, vip_id)
 
-    def list_public_vips(self, db: Session, profile: Profile) -> list[VipCompetitionOut]:
-        vip_rows = list(
-            db.scalars(
-                select(VipCompetition)
-                .where(VipCompetition.is_active.is_(True))
-                .order_by(VipCompetition.created_at.desc(), VipCompetition.name.asc())
-            )
+    def list_public_vips(
+        self,
+        db: Session,
+        profile: Profile,
+        *,
+        vip_id: str | None = None,
+        include_leaderboard: bool = True,
+        include_member_dashboard: bool = True,
+        include_approved_members: bool = True,
+        include_team_winner_details: bool = True,
+    ) -> list[VipCompetitionOut]:
+        statement = (
+            select(VipCompetition)
+            .where(VipCompetition.is_active.is_(True))
+            .order_by(VipCompetition.created_at.desc(), VipCompetition.name.asc())
         )
+        if vip_id is not None:
+            statement = statement.where(VipCompetition.id == vip_id)
+        vip_rows = list(db.scalars(statement))
         if not vip_rows:
             return []
 
-        self._repair_revealed_team_winner_assignments(db, [row.id for row in vip_rows])
-        bundle = self._load_bundle(db, [row.id for row in vip_rows])
+        if include_team_winner_details:
+            self._repair_revealed_team_winner_assignments(db, [row.id for row in vip_rows])
+        bundle = self._load_bundle(
+            db,
+            [row.id for row in vip_rows],
+            include_team_winner_details=include_team_winner_details,
+        )
         result: list[VipCompetitionOut] = []
         for vip in vip_rows:
             memberships = bundle["memberships_by_vip"].get(vip.id, [])
@@ -72,20 +88,28 @@ class VipService:
             my_membership = next((membership for membership in memberships if membership.profile_id == profile.id), None)
             join_lock = bundle["join_locks_by_vip"].get(vip.id, {})
             matchdays = bundle["matchdays_by_vip"].get(vip.id, [])
-            leaderboard = self._build_leaderboard(
-                vip.id,
-                matchdays,
-                memberships,
-                bundle["profile_names"],
-                db,
+            leaderboard = (
+                self._build_leaderboard(
+                    vip.id,
+                    matchdays,
+                    memberships,
+                    bundle["profile_names"],
+                    db,
+                )
+                if include_leaderboard
+                else []
             )
-            matchday_points, performance_race = self._build_member_dashboard(
-                db,
-                vip=vip,
-                matchdays=matchdays,
-                memberships=memberships,
-                profile=profile,
-                profile_names=bundle["profile_names"],
+            matchday_points, performance_race = (
+                self._build_member_dashboard(
+                    db,
+                    vip=vip,
+                    matchdays=matchdays,
+                    memberships=memberships,
+                    profile=profile,
+                    profile_names=bundle["profile_names"],
+                )
+                if include_member_dashboard
+                else ([], None)
             )
             result.append(
                 VipCompetitionOut(
@@ -114,22 +138,34 @@ class VipService:
                     join_lock_at=join_lock.get("lock_at"),
                     join_lock_match_label=join_lock.get("match_label"),
                     my_membership=self._membership_out(my_membership, bundle["profile_names"]) if my_membership else None,
-                    approved_members=[
-                        self._membership_out(membership, bundle["profile_names"])
-                        for membership in memberships
-                        if membership.status == VipMembershipStatus.APPROVED
-                    ],
+                    approved_members=(
+                        [
+                            self._membership_out(membership, bundle["profile_names"])
+                            for membership in memberships
+                            if membership.status == VipMembershipStatus.APPROVED
+                        ]
+                        if include_approved_members
+                        else []
+                    ),
                     leaderboard=leaderboard,
                     matchday_points=matchday_points,
                     performance_race=performance_race,
-                    team_winner_teams=self._team_winner_team_outs(
-                        bundle["team_winner_teams_by_vip"].get(vip.id, []),
-                        bundle["team_names"],
+                    team_winner_teams=(
+                        self._team_winner_team_outs(
+                            bundle["team_winner_teams_by_vip"].get(vip.id, []),
+                            bundle["team_names"],
+                        )
+                        if include_team_winner_details
+                        else []
                     ),
-                    team_winner_entries=self._team_winner_entry_outs(
-                        team_entries,
-                        bundle["team_names"],
-                        bundle["team_status_by_id"],
+                    team_winner_entries=(
+                        self._team_winner_entry_outs(
+                            team_entries,
+                            bundle["team_names"],
+                            bundle["team_status_by_id"],
+                        )
+                        if include_team_winner_details
+                        else []
                     ),
                 )
             )
@@ -753,6 +789,7 @@ class VipService:
         self,
         db: Session,
         vip_ids: list[str],
+        include_team_winner_details: bool = True,
         include_creator_names: bool = False,
     ) -> dict[str, object]:
         matchday_rows = db.execute(
@@ -796,12 +833,16 @@ class VipService:
             if membership.decided_by_profile_id and decision_display_name:
                 profile_names[membership.decided_by_profile_id] = decision_display_name
 
-        team_winner_team_rows = list(
-            db.scalars(
-                select(VipTeamWinnerTeam)
-                .where(VipTeamWinnerTeam.vip_competition_id.in_(vip_ids))
-                .order_by(VipTeamWinnerTeam.created_at.asc())
+        team_winner_team_rows = (
+            list(
+                db.scalars(
+                    select(VipTeamWinnerTeam)
+                    .where(VipTeamWinnerTeam.vip_competition_id.in_(vip_ids))
+                    .order_by(VipTeamWinnerTeam.created_at.asc())
+                )
             )
+            if include_team_winner_details
+            else []
         )
         team_winner_teams_by_vip: dict[str, list[VipTeamWinnerTeam]] = {}
         team_ids: set[str] = set()
@@ -809,12 +850,16 @@ class VipService:
             team_winner_teams_by_vip.setdefault(row.vip_competition_id, []).append(row)
             team_ids.add(row.team_id)
 
-        team_winner_entry_rows = list(
-            db.scalars(
-                select(VipTeamWinnerEntry)
-                .where(VipTeamWinnerEntry.vip_competition_id.in_(vip_ids))
-                .order_by(VipTeamWinnerEntry.reveal_order.asc().nulls_last(), VipTeamWinnerEntry.created_at.asc())
+        team_winner_entry_rows = (
+            list(
+                db.scalars(
+                    select(VipTeamWinnerEntry)
+                    .where(VipTeamWinnerEntry.vip_competition_id.in_(vip_ids))
+                    .order_by(VipTeamWinnerEntry.reveal_order.asc().nulls_last(), VipTeamWinnerEntry.created_at.asc())
+                )
             )
+            if include_team_winner_details
+            else []
         )
         team_winner_entries_by_vip: dict[str, list[VipTeamWinnerEntry]] = {}
         for row in team_winner_entry_rows:

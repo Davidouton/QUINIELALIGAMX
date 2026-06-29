@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
+import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AppBootstrap, GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
@@ -485,7 +486,9 @@ export function PickBoard() {
           matchdays,
           teams: teamRows,
         } = bootstrap;
-        const vipCompetitions = await backendFetch<VipCompetition[]>("/vip", accessToken);
+        const vipCompetitions = await backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, {
+          cacheTtlMs: CATALOG_CACHE_TTL_MS,
+        });
         const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
         const activeMatchday =

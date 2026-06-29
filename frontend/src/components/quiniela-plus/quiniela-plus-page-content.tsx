@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
@@ -575,7 +576,7 @@ export function QuinielaPlusPageContent() {
         const accessToken = await getBrowserAccessToken();
         const [meResponse, vipResponse, oddsResponse, advancedStatsResponse, valueLabResponse] = await Promise.all([
           backendFetch<Me>("/me", accessToken),
-          backendFetch<VipCompetition[]>("/vip", accessToken),
+          backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken),
           backendFetch<QuinielaPlusOddsSneakPeek>("/quiniela-plus/odds-sneak-peek", accessToken),
           backendFetch<QuinielaPlusAdvancedStats>("/quiniela-plus/advanced-stats", accessToken),
           backendFetch<QuinielaPlusValueLab>("/quiniela-plus/value-lab", accessToken),

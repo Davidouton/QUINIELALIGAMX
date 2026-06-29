@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AdvancedStatsPanel } from "@/components/dashboard/advanced-stats-panel";
 import { MatchdayPointsTable } from "@/components/dashboard/matchday-points-table";
 import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { PerformanceRaceChart } from "@/components/dashboard/performance-race-chart";
 import { Card } from "@/components/ui/card";
-import { backendFetch } from "@/lib/api/backend";
+import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
+import { VIP_SUMMARY_PATH, buildVipDetailPath } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { env } from "@/lib/env";
@@ -57,6 +58,7 @@ type DashboardState = {
 type DashboardTab = "general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios";
 type DashboardDefaultView = "regular" | `vip:${string}`;
 const DASHBOARD_DEFAULT_VIEW_STORAGE_KEY = "qm-dashboard-default-view";
+type SeasonMetricsCacheEntry = Pick<DashboardState, "summary" | "advancedStats" | "performanceRace" | "matchdayPoints">;
 
 const initialState: DashboardState = {
   me: null,
@@ -277,7 +279,67 @@ export function DashboardHome() {
   const [isTabMenuOpen, setIsTabMenuOpen] = useState(false);
   const [dashboardDefaultView, setDashboardDefaultView] = useState<DashboardDefaultView>(readStoredDashboardDefaultView);
   const [hasAppliedDashboardDefault, setHasAppliedDashboardDefault] = useState(false);
+  const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
+  const seasonMetricsCacheRef = useRef<Record<string, SeasonMetricsCacheEntry>>({});
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
+
+  async function loadSeasonMetrics(
+    seasonId: string,
+    accessToken?: string,
+  ): Promise<SeasonMetricsCacheEntry> {
+    const [matchdayPointsResult, summaryResult, advancedStatsResult, performanceRaceResult] =
+      await Promise.allSettled([
+        backendFetch<MyMatchdayPointsEntry[]>(
+          `/leaderboard/my-matchdays?season_id=${seasonId}`,
+          accessToken,
+          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+        ),
+        backendFetch<DashboardSummary>(
+          `/me/dashboard-summary?season_id=${seasonId}`,
+          accessToken,
+          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+        ),
+        backendFetch<AdvancedStats>(
+          `/me/advanced-stats?season_id=${seasonId}`,
+          accessToken,
+          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+        ),
+        backendFetch<PerformanceRace>(
+          `/leaderboard/my-race?season_id=${seasonId}`,
+          accessToken,
+          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+        ),
+      ]);
+
+    return {
+      matchdayPoints: readSettledValue(matchdayPointsResult, []),
+      summary: readSettledValue(summaryResult, null),
+      advancedStats: readSettledValue(advancedStatsResult, null),
+      performanceRace: readSettledValue(performanceRaceResult, null),
+    };
+  }
+
+  async function loadSupplementalDashboardData(
+    seasonId: string | null,
+    accessToken?: string,
+  ) {
+    const [personalTrophiesResult, vipCompetitionsResult, leaderboardResult] = await Promise.allSettled([
+      backendFetch<PersonalTrophyRecord[]>("/me/trophies", accessToken),
+      backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
+      seasonId
+        ? backendFetch<LeaderboardEntry[]>(`/leaderboard/overall?season_id=${seasonId}`, accessToken, {
+            cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+          })
+        : Promise.resolve([] as LeaderboardEntry[]),
+    ]);
+
+    setState((current) => ({
+      ...current,
+      personalTrophies: readSettledValue(personalTrophiesResult, current.personalTrophies),
+      vipCompetitions: readSettledValue(vipCompetitionsResult, current.vipCompetitions),
+      leaderboard: readSettledValue(leaderboardResult, current.leaderboard),
+    }));
+  }
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
     try {
@@ -306,35 +368,25 @@ export function DashboardHome() {
       const selectedSeason =
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
         resolveSeasonForContext(seasons, seasonIdParam, competitionId);
-
-      const [matchesResult, pickResultsResult, matchdayPointsResult, summaryResult, advancedStatsResult, performanceRaceResult] =
-        await Promise.allSettled([
-        backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken),
-        backendFetch<PickResultRow[]>(`/my-pick-results?matchday_id=${selectedMatchday.id}`, accessToken),
-        backendFetch<MyMatchdayPointsEntry[]>(
-          `/leaderboard/my-matchdays?season_id=${selectedSeason?.id ?? selectedMatchday.season_id}`,
-          accessToken,
-        ),
-        backendFetch<DashboardSummary>(
-          `/me/dashboard-summary?season_id=${selectedSeason?.id ?? selectedMatchday.season_id}`,
-          accessToken,
-        ),
-        backendFetch<AdvancedStats>(
-          `/me/advanced-stats?season_id=${selectedSeason?.id ?? selectedMatchday.season_id}`,
-          accessToken,
-        ),
-        backendFetch<PerformanceRace>(
-          `/leaderboard/my-race?season_id=${selectedSeason?.id ?? selectedMatchday.season_id}`,
-          accessToken,
-        ),
+      const seasonMetricsId = selectedSeason?.id ?? selectedMatchday.season_id;
+      const cachedSeasonMetrics = seasonMetricsCacheRef.current[seasonMetricsId] ?? null;
+      const [matchesResult, pickResultsResult] = await Promise.allSettled([
+        backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken, {
+          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+        }),
+        backendFetch<PickResultRow[]>(`/my-pick-results?matchday_id=${selectedMatchday.id}`, accessToken, {
+          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+        }),
       ]);
+      const seasonMetrics =
+        cachedSeasonMetrics ??
+        (await loadSeasonMetrics(seasonMetricsId, accessToken));
+      if (!cachedSeasonMetrics) {
+        seasonMetricsCacheRef.current[seasonMetricsId] = seasonMetrics;
+      }
 
       const matches = readSettledValue(matchesResult, []);
       const pickResults = readSettledValue(pickResultsResult, []);
-      const matchdayPoints = readSettledValue(matchdayPointsResult, []);
-      const summary = readSettledValue(summaryResult, null);
-      const advancedStats = readSettledValue(advancedStatsResult, null);
-      const performanceRace = readSettledValue(performanceRaceResult, null);
 
       setState((current) => ({
         ...current,
@@ -342,12 +394,12 @@ export function DashboardHome() {
         matchdays,
         selectedMatchday,
         selectedSeason,
-        summary,
-        advancedStats,
-        performanceRace,
+        summary: seasonMetrics.summary,
+        advancedStats: seasonMetrics.advancedStats,
+        performanceRace: seasonMetrics.performanceRace,
         matches,
         pickResults,
-        matchdayPoints,
+        matchdayPoints: seasonMetrics.matchdayPoints,
         error: null,
       }));
     } catch {
@@ -372,7 +424,9 @@ export function DashboardHome() {
       try {
         const accessToken = await getBrowserAccessToken().catch(() => undefined);
 
-        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken);
+        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken, {
+          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+        });
         const {
           me,
           seasons,
@@ -380,12 +434,6 @@ export function DashboardHome() {
           active_matchdays: activeMatchdays,
           teams,
         } = bootstrap;
-        const [personalTrophiesResult, vipCompetitionsResult] = await Promise.allSettled([
-          backendFetch<PersonalTrophyRecord[]>("/me/trophies", accessToken),
-          backendFetch<VipCompetition[]>("/vip", accessToken),
-        ]);
-        const personalTrophies = readSettledValue(personalTrophiesResult, []);
-        const vipCompetitions = readSettledValue(vipCompetitionsResult, []);
 
         const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
@@ -399,15 +447,6 @@ export function DashboardHome() {
           preferredSeason ??
           seasons.find((season) => season.id === selectedMatchday?.season_id) ??
           null;
-        const leaderboardResult = selectedSeason
-          ? await Promise.allSettled([
-              backendFetch<LeaderboardEntry[]>(`/leaderboard/overall?season_id=${selectedSeason.id}`, accessToken),
-            ])
-          : [];
-        const leaderboard =
-          leaderboardResult.length > 0
-            ? readSettledValue(leaderboardResult[0], [])
-            : [];
 
         if (selectedSeason) {
           const nextCompetitionId = selectedSeason.competition_id ?? "";
@@ -424,11 +463,10 @@ export function DashboardHome() {
           selectedMatchday,
           selectedSeason,
           teams,
-          leaderboard,
-          vipCompetitions,
-          personalTrophies,
           error: null,
         }));
+
+        void loadSupplementalDashboardData(selectedSeason?.id ?? null, accessToken);
 
         if (selectedMatchday) {
           await loadSelectedMatchday(selectedMatchday.id, seasons, matchdays);
@@ -449,6 +487,46 @@ export function DashboardHome() {
 
     void load();
   }, [competitionId, seasonIdParam, setSeasonId]);
+
+  useEffect(() => {
+    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+    const selectedVipIdFromView = dashboardDefaultView.startsWith("vip:") ? dashboardDefaultView.slice(4) : selectedVipBoardId;
+    const selectedVipCompetition =
+      approvedVipCompetitions.find((vip) => vip.id === selectedVipIdFromView) ??
+      approvedVipCompetitions.find((vip) => vip.id === selectedVipBoardId) ??
+      null;
+
+    if (!selectedVipCompetition || loadedVipDetailIds.includes(selectedVipCompetition.id)) {
+      return;
+    }
+
+    const vipId = selectedVipCompetition.id;
+    let cancelled = false;
+    async function loadVipDetails() {
+      try {
+        const accessToken = await getBrowserAccessToken().catch(() => undefined);
+        const rows = await backendFetch<VipCompetition[]>(buildVipDetailPath(vipId), accessToken, {
+          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+        });
+        const detail = rows[0];
+        if (!detail || cancelled) {
+          return;
+        }
+        setState((current) => ({
+          ...current,
+          vipCompetitions: current.vipCompetitions.map((vip) => (vip.id === detail.id ? detail : vip)),
+        }));
+        setLoadedVipDetailIds((current) => (current.includes(detail.id) ? current : [...current, detail.id]));
+      } catch {
+        return;
+      }
+    }
+
+    void loadVipDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardDefaultView, loadedVipDetailIds, selectedVipBoardId, state.vipCompetitions]);
 
   useEffect(() => {
     async function loadUpcomingMatchdays() {

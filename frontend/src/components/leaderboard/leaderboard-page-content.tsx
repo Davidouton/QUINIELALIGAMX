@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { backendFetch } from "@/lib/api/backend";
+import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
+import { VIP_SUMMARY_PATH, buildVipDetailPath } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AppBootstrap, LeaderboardEntry, Matchday, Me, Season, VipCompetition } from "@/types/api";
@@ -40,6 +41,8 @@ export function LeaderboardPageContent() {
   const [state, setState] = useState<LeaderboardState>(initialState);
   const [selectedBoardId, setSelectedBoardId] = useState("regular");
   const [loading, setLoading] = useState(true);
+  const [loadingVipBoardId, setLoadingVipBoardId] = useState("");
+  const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
   const loadLeaderboard = useCallback(async () => {
@@ -47,13 +50,19 @@ export function LeaderboardPageContent() {
     try {
       const accessToken = await getBrowserAccessToken();
 
-      const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken);
+      const [bootstrap, vipCompetitions] = await Promise.all([
+        backendFetch<AppBootstrap>("/bootstrap", accessToken, {
+          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+        }),
+        backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, {
+          cacheTtlMs: CATALOG_CACHE_TTL_MS,
+        }),
+      ]);
       const {
         me,
         active_matchdays: activeMatchdays,
         seasons,
       } = bootstrap;
-      const vipCompetitions = await backendFetch<VipCompetition[]>("/vip", accessToken);
       const selectedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
       const selectedSeasonMembership =
         selectedSeason
@@ -64,6 +73,7 @@ export function LeaderboardPageContent() {
         ? await backendFetch<LeaderboardEntry[]>(
             `/leaderboard/overall?season_id=${selectedSeason.id}`,
             accessToken,
+            { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
           )
         : [];
       const activeMatchday =
@@ -98,6 +108,48 @@ export function LeaderboardPageContent() {
   useEffect(() => {
     void loadLeaderboard();
   }, [loadLeaderboard]);
+
+  useEffect(() => {
+    if (!selectedBoardId.startsWith("vip:")) {
+      return;
+    }
+
+    const vipId = selectedBoardId.slice(4);
+    if (!vipId || loadedVipDetailIds.includes(vipId)) {
+      return;
+    }
+
+    let cancelled = false;
+    async function loadVipBoard() {
+      try {
+        setLoadingVipBoardId(vipId);
+        const accessToken = await getBrowserAccessToken();
+        const rows = await backendFetch<VipCompetition[]>(buildVipDetailPath(vipId), accessToken, {
+          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+        });
+        const detail = rows[0];
+        if (!detail || cancelled) {
+          return;
+        }
+        setState((current) => ({
+          ...current,
+          vipCompetitions: current.vipCompetitions.map((vip) => (vip.id === detail.id ? detail : vip)),
+        }));
+        setLoadedVipDetailIds((current) => (current.includes(vipId) ? current : [...current, vipId]));
+      } catch {
+        return;
+      } finally {
+        if (!cancelled) {
+          setLoadingVipBoardId((current) => (current === vipId ? "" : current));
+        }
+      }
+    }
+
+    void loadVipBoard();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadedVipDetailIds, selectedBoardId]);
 
   const approvedVipCompetitions = useMemo(
     () => state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved"),
@@ -151,6 +203,7 @@ export function LeaderboardPageContent() {
       : "Tabla general del torneo";
   const activeSectionLabel = selectedVipCompetition ? "Tabla VIP" : "Tabla general";
   const activeParticipantsCount = selectedVipCompetition ? selectedVipCompetition.approved_members_count : activeEntries.length;
+  const isLoadingActiveVipBoard = Boolean(selectedVipCompetition && loadingVipBoardId === selectedVipCompetition.id);
 
   useEffect(() => {
     if (boardOptions.length === 0) {
@@ -234,6 +287,10 @@ export function LeaderboardPageContent() {
             </button>
           </div>
         </div>
+
+        {isLoadingActiveVipBoard ? (
+          <p className="text-sm text-steel">Cargando tabla VIP...</p>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
           <div className="space-y-1">
