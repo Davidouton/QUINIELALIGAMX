@@ -52,6 +52,8 @@ class SeasonEligibilityService:
     def counts_for_scoring(self, db: Session, season: Season, membership: SeasonMembership | None) -> bool:
         if membership is None:
             return False
-        if not self.is_locked(db, season) and membership.eligible_locked_at is None:
-            return bool(membership.is_active and membership.eligible_for_scoring)
+        if membership.eligible_locked_at is None:
+            # Until the eligibility snapshot is frozen, the current membership
+            # activity is the best available source of truth.
+            return bool(membership.is_active)
         return bool(membership.eligible_for_scoring)

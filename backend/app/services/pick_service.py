@@ -803,7 +803,6 @@ class PickService:
     def _is_match_locked(self, db: Session, match: Match, now: datetime | None = None) -> bool:
         return (
             match.status == MatchStatus.FINAL
-            or self._match_has_official_result(db, match.id)
             or (now or datetime.now(UTC)) >= ensure_utc(match.picks_lock_at)
         )
 

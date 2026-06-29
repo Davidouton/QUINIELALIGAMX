@@ -1,8 +1,9 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.entities import HistoricalChampion, Matchday, Profile, Season, SeasonMembership, StandingsMatchday, StandingsOverall, TrophyAsset
+from app.models.entities import HistoricalChampion, Matchday, Profile, Season, StandingsMatchday, StandingsOverall, TrophyAsset
 from app.repositories.leaderboard_repository import LeaderboardRepository
+from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.leaderboard import (
     HallOfFameEntry,
     HallOfFameResponse,
@@ -13,20 +14,50 @@ from app.schemas.leaderboard import (
     PerformanceRaceResponse,
 )
 from app.services.scoring_service import ScoringService
+from app.services.season_eligibility_service import SeasonEligibilityService
 
 
 class LeaderboardService:
     def __init__(self) -> None:
         self.repo = LeaderboardRepository()
+        self.membership_repo = SeasonMembershipRepository()
+        self.eligibility_service = SeasonEligibilityService()
 
     def list_overall(self, db: Session, season_id: str | None = None) -> list[LeaderboardEntry]:
         season = self._resolve_season(db, season_id)
         rows = self.repo.list_overall(db, season.id if season is not None else None)
-        return [self._overall_entry(standing, profile) for standing, profile in rows]
+        season_cache: dict[str, Season | None] = {}
+        membership_cache: dict[tuple[str, str], bool] = {}
+        return [
+            self._overall_entry(standing, profile)
+            for standing, profile in rows
+            if self._counts_for_scoring(
+                db,
+                standing.season_id,
+                standing.profile_id,
+                season_cache=season_cache,
+                membership_cache=membership_cache,
+            )
+        ]
 
     def list_matchday(self, db: Session, matchday_id: str) -> list[LeaderboardEntry]:
+        matchday = db.get(Matchday, matchday_id)
+        if matchday is None:
+            return []
         rows = self.repo.list_matchday(db, matchday_id)
-        return [self._matchday_entry(standing, profile) for standing, profile in rows]
+        season_cache: dict[str, Season | None] = {}
+        membership_cache: dict[tuple[str, str], bool] = {}
+        return [
+            self._matchday_entry(standing, profile)
+            for standing, profile in rows
+            if self._counts_for_scoring(
+                db,
+                matchday.season_id,
+                standing.profile_id,
+                season_cache=season_cache,
+                membership_cache=membership_cache,
+            )
+        ]
 
     def list_profile_matchdays(
         self,
@@ -125,15 +156,21 @@ class LeaderboardService:
             select(StandingsMatchday, Profile)
             .join(Profile, Profile.id == StandingsMatchday.profile_id)
             .join(Matchday, Matchday.id == StandingsMatchday.matchday_id)
-            .join(
-                SeasonMembership,
-                (SeasonMembership.season_id == Matchday.season_id)
-                & (SeasonMembership.profile_id == StandingsMatchday.profile_id),
-            )
             .where(StandingsMatchday.matchday_id.in_([matchday.id for matchday in tournament_matchdays]))
-            .where(SeasonMembership.eligible_for_scoring.is_(True))
             .order_by(StandingsMatchday.matchday_id.asc(), StandingsMatchday.rank_position.asc(), Profile.display_name.asc())
         ).all()
+        membership_cache: dict[tuple[str, str], bool] = {}
+        standings_rows = [
+            (standing, standing_profile)
+            for standing, standing_profile in standings_rows
+            if self._counts_for_scoring(
+                db,
+                season.id,
+                standing.profile_id,
+                season_cache={season.id: season},
+                membership_cache=membership_cache,
+            )
+        ]
 
         standings_by_matchday: dict[str, list[tuple[StandingsMatchday, Profile]]] = {}
         totals_by_profile: dict[str, int] = {}
@@ -228,24 +265,36 @@ class LeaderboardService:
         overall_rows = db.execute(
             select(StandingsOverall, Profile)
             .join(Profile, Profile.id == StandingsOverall.profile_id)
-            .join(
-                SeasonMembership,
-                (SeasonMembership.season_id == StandingsOverall.season_id)
-                & (SeasonMembership.profile_id == StandingsOverall.profile_id),
-            )
-            .where(SeasonMembership.eligible_for_scoring.is_(True))
         ).all()
         matchday_rows = db.execute(
-            select(StandingsMatchday, Profile)
+            select(StandingsMatchday, Profile, Matchday)
             .join(Profile, Profile.id == StandingsMatchday.profile_id)
             .join(Matchday, Matchday.id == StandingsMatchday.matchday_id)
-            .join(
-                SeasonMembership,
-                (SeasonMembership.season_id == Matchday.season_id)
-                & (SeasonMembership.profile_id == StandingsMatchday.profile_id),
-            )
-            .where(SeasonMembership.eligible_for_scoring.is_(True))
         ).all()
+        season_cache: dict[str, Season | None] = {}
+        membership_cache: dict[tuple[str, str], bool] = {}
+        overall_rows = [
+            (standing, profile)
+            for standing, profile in overall_rows
+            if self._counts_for_scoring(
+                db,
+                standing.season_id,
+                standing.profile_id,
+                season_cache=season_cache,
+                membership_cache=membership_cache,
+            )
+        ]
+        filtered_matchday_rows = [
+            (standing, profile)
+            for standing, profile, matchday in matchday_rows
+            if self._counts_for_scoring(
+                db,
+                matchday.season_id,
+                standing.profile_id,
+                season_cache=season_cache,
+                membership_cache=membership_cache,
+            )
+        ]
 
         points_bucket: dict[str, dict[str, int | str]] = {}
         exact_bucket: dict[str, dict[str, int | str]] = {}
@@ -263,7 +312,7 @@ class LeaderboardService:
             exact_info["value"] = int(exact_info["value"]) + standing.exact_scores
 
         weekly_bucket: dict[str, dict[str, int | str]] = {}
-        for standing, profile in matchday_rows:
+        for standing, profile in filtered_matchday_rows:
             if standing.rank_position != 1:
                 continue
             weekly_info = weekly_bucket.setdefault(
@@ -426,3 +475,24 @@ class LeaderboardService:
         if end_number < start_number:
             end_number = start_number
         return [matchday for matchday in matchdays if start_number <= matchday.number <= end_number]
+
+    def _counts_for_scoring(
+        self,
+        db: Session,
+        season_id: str,
+        profile_id: str,
+        *,
+        season_cache: dict[str, Season | None],
+        membership_cache: dict[tuple[str, str], bool],
+    ) -> bool:
+        if season_id not in season_cache:
+            season_cache[season_id] = db.get(Season, season_id)
+        season = season_cache[season_id]
+        if season is None:
+            return False
+
+        membership_key = (season_id, profile_id)
+        if membership_key not in membership_cache:
+            membership = self.membership_repo.get_for_profile_and_season(db, profile_id, season_id)
+            membership_cache[membership_key] = self.eligibility_service.counts_for_scoring(db, season, membership)
+        return membership_cache[membership_key]

@@ -2412,7 +2412,7 @@ def add_admin_vip_membership(
         current_profile=current_profile,
     )
     background_tasks.add_task(run_vip_recalculate_background, vip_id)
-    return admin_vip_row(db, vip_id, include_leaderboard=False)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
 
 
 @router.put("/vip/{vip_id}/team-winner/config", response_model=AdminVipCompetitionOut)
@@ -2499,7 +2499,7 @@ def approve_admin_vip_membership(
         payload=payload,
     )
     background_tasks.add_task(run_vip_recalculate_background, vip_id)
-    return admin_vip_row(db, vip_id, include_leaderboard=False)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
 
 
 @router.post("/vip/{vip_id}/memberships/{membership_id}/reject", response_model=AdminVipCompetitionOut)
@@ -2520,7 +2520,7 @@ def reject_admin_vip_membership(
         payload=payload,
     )
     background_tasks.add_task(run_vip_recalculate_background, vip_id)
-    return admin_vip_row(db, vip_id, include_leaderboard=False)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
 
 
 @router.post("/vip/{vip_id}/memberships/{membership_id}/remove", response_model=AdminVipCompetitionOut)
@@ -2540,7 +2540,7 @@ def remove_admin_vip_membership(
         payload=payload,
     )
     background_tasks.add_task(run_vip_recalculate_background, vip_id)
-    return admin_vip_row(db, vip_id, include_leaderboard=False)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
 
 
 @router.post("/vip/{vip_id}/memberships/{membership_id}/payment", response_model=AdminVipCompetitionOut)
@@ -2559,7 +2559,7 @@ def update_admin_vip_membership_payment(
         current_profile=current_profile,
         payload=payload,
     )
-    return admin_vip_row(db, vip_id, include_leaderboard=False)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
 
 
 @router.put("/results/{match_id}", response_model=AdminResultRowOut)

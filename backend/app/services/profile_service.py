@@ -305,7 +305,7 @@ class ProfileService:
         participant_ids = {
             membership.profile_id
             for membership in self.membership_repo.list_for_season(db, season.id)
-            if membership.eligible_for_scoring
+            if self.eligibility_service.counts_for_scoring(db, season, membership)
         }
         participant_ids.update(row.profile_id for row in standings_rows)
 

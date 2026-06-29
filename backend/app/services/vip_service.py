@@ -1161,36 +1161,7 @@ class VipService:
         ]
 
     def _ensure_vip_standings_table(self, db: Session) -> None:
-        db.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS vip_standings (
-                  id UUID PRIMARY KEY,
-                  vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
-                  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-                  total_points INTEGER NOT NULL DEFAULT 0,
-                  correct_results INTEGER NOT NULL DEFAULT 0,
-                  exact_scores INTEGER NOT NULL DEFAULT 0,
-                  rank_position INTEGER NOT NULL DEFAULT 0,
-                  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-                  CONSTRAINT uq_vip_standing_profile UNIQUE (vip_competition_id, profile_id)
-                )
-                """
-            )
-        )
-        db.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_vip_standings_vip_rank "
-                "ON vip_standings(vip_competition_id, rank_position)"
-            )
-        )
-        db.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS idx_vip_standings_profile "
-                "ON vip_standings(profile_id)"
-            )
-        )
+        VipStanding.__table__.create(bind=db.get_bind(), checkfirst=True)
 
     def _vip_pick_score_rows(
         self,
