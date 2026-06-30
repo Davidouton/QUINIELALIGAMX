@@ -253,13 +253,13 @@ function ScorePair({
     (advancingTeamId === homeTeamId || advancingTeamId === awayTeamId);
   const homeClassName = shouldColorAdvance
     ? advancingTeamId === homeTeamId
-      ? "text-emerald-100"
-      : "text-rose-100/80"
+      ? "font-extrabold text-emerald-800"
+      : "font-extrabold text-rose-700"
     : "text-current";
   const awayClassName = shouldColorAdvance
     ? advancingTeamId === awayTeamId
-      ? "text-emerald-100"
-      : "text-rose-100/80"
+      ? "font-extrabold text-emerald-800"
+      : "font-extrabold text-rose-700"
     : "text-current";
 
   return (
