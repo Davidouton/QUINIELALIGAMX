@@ -253,20 +253,28 @@ function ScorePair({
     (advancingTeamId === homeTeamId || advancingTeamId === awayTeamId);
   const homeClassName = shouldColorAdvance
     ? advancingTeamId === homeTeamId
-      ? "font-extrabold text-emerald-800"
-      : "font-extrabold text-rose-700"
+      ? "font-extrabold text-current"
+      : "text-current"
     : "text-current";
   const awayClassName = shouldColorAdvance
     ? advancingTeamId === awayTeamId
-      ? "font-extrabold text-emerald-800"
-      : "font-extrabold text-rose-700"
+      ? "font-extrabold text-current"
+      : "text-current"
     : "text-current";
+  const homeStyle =
+    shouldColorAdvance && advancingTeamId === homeTeamId
+      ? { textShadow: "0 0 8px rgba(16, 185, 129, 0.95), 0 0 16px rgba(16, 185, 129, 0.55)" }
+      : undefined;
+  const awayStyle =
+    shouldColorAdvance && advancingTeamId === awayTeamId
+      ? { textShadow: "0 0 8px rgba(16, 185, 129, 0.95), 0 0 16px rgba(16, 185, 129, 0.55)" }
+      : undefined;
 
   return (
     <>
-      <span className={homeClassName}>{homeScore}</span>
+      <span className={homeClassName} style={homeStyle}>{homeScore}</span>
       <span>-</span>
-      <span className={awayClassName}>{awayScore}</span>
+      <span className={awayClassName} style={awayStyle}>{awayScore}</span>
     </>
   );
 }
