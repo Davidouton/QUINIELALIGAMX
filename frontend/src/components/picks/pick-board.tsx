@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
+import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -84,6 +84,10 @@ function buildFormFromPick(pick?: Pick): PickFormState {
     predicted_away_score: pick ? String(pick.predicted_away_score) : "",
     advancing_team_id: pick?.advancing_team_id ?? "",
   };
+}
+
+function buildGlobalBoardCacheKey(matchdayId: string, contextValue: string) {
+  return `${matchdayId}::${contextValue}`;
 }
 
 function isKnockoutMatch(match: Match) {
@@ -511,6 +515,7 @@ export function PickBoard() {
   const [globalPickError, setGlobalPickError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const globalBoardCacheRef = useRef<Record<string, GlobalPickBoard>>({});
   const teamById = Object.fromEntries(teams.map((team) => [team.id, team]));
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
   const useWorldCupMode = isWorldCupSeason(state.selectedSeason);
@@ -529,7 +534,9 @@ export function PickBoard() {
     async function loadBoard() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken);
+        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken, {
+          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+        });
         const {
           me,
           active_matchdays: activeMatchdays,
@@ -583,8 +590,12 @@ export function PickBoard() {
         }
 
         const [matches, existingPicks] = await Promise.all([
-          backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken),
-          backendFetch<Pick[]>(`/my-picks?matchday_id=${selectedMatchday.id}`, accessToken),
+          backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken, {
+            cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+          }),
+          backendFetch<Pick[]>(`/my-picks?matchday_id=${selectedMatchday.id}`, accessToken, {
+            cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+          }),
         ]);
 
         const nextForms: FormsMap = {};
@@ -715,9 +726,13 @@ export function PickBoard() {
       }
 
       const [seasons, matches, existingPicks] = await Promise.all([
-        backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
-        backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken),
-        backendFetch<Pick[]>(`/my-picks?matchday_id=${selectedMatchday.id}`, accessToken),
+        Promise.resolve(state.seasons),
+        backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken, {
+          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+        }),
+        backendFetch<Pick[]>(`/my-picks?matchday_id=${selectedMatchday.id}`, accessToken, {
+          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+        }),
       ]);
 
       const selectedSeason =
@@ -848,6 +863,10 @@ export function PickBoard() {
 
   useEffect(() => {
     async function loadGlobalPickBoard() {
+      if (activeTab !== "global") {
+        return;
+      }
+
       if (!state.selectedMatchday || !activeGlobalContext) {
         setGlobalBoardLoading(false);
         setGlobalPickError(null);
@@ -857,13 +876,27 @@ export function PickBoard() {
         return;
       }
 
+      const cacheKey = buildGlobalBoardCacheKey(state.selectedMatchday.id, activeGlobalContext);
+      const cachedBoard = globalBoardCacheRef.current[cacheKey];
+      if (cachedBoard) {
+        setGlobalBoardLoading(false);
+        setGlobalPickError(null);
+        setState((current) => ({
+          ...current,
+          globalPickBoard: cachedBoard,
+        }));
+        return;
+      }
+
       try {
         setGlobalBoardLoading(true);
         const accessToken = await getBrowserAccessToken();
         const globalPickBoard = await backendFetch<GlobalPickBoard>(
           buildGlobalPicksUrl(state.selectedMatchday.id, activeGlobalContext),
           accessToken,
+          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
         );
+        globalBoardCacheRef.current[cacheKey] = globalPickBoard;
         setGlobalPickError(null);
         setState((current) => ({
           ...current,
@@ -883,7 +916,7 @@ export function PickBoard() {
     }
 
     void loadGlobalPickBoard();
-  }, [activeGlobalContext, state.selectedMatchday]);
+  }, [activeGlobalContext, activeTab, state.selectedMatchday]);
 
   async function savePick(matchId: string) {
     try {

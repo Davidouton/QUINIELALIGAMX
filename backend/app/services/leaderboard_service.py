@@ -27,7 +27,7 @@ class LeaderboardService:
         season = self._resolve_season(db, season_id)
         rows = self.repo.list_overall(db, season.id if season is not None else None)
         season_cache: dict[str, Season | None] = {}
-        membership_cache: dict[tuple[str, str], bool] = {}
+        eligible_profile_ids_cache: dict[str, set[str]] = {}
         return [
             self._overall_entry(standing, profile)
             for standing, profile in rows
@@ -36,7 +36,7 @@ class LeaderboardService:
                 standing.season_id,
                 standing.profile_id,
                 season_cache=season_cache,
-                membership_cache=membership_cache,
+                eligible_profile_ids_cache=eligible_profile_ids_cache,
             )
         ]
 
@@ -46,7 +46,7 @@ class LeaderboardService:
             return []
         rows = self.repo.list_matchday(db, matchday_id)
         season_cache: dict[str, Season | None] = {}
-        membership_cache: dict[tuple[str, str], bool] = {}
+        eligible_profile_ids_cache: dict[str, set[str]] = {}
         return [
             self._matchday_entry(standing, profile)
             for standing, profile in rows
@@ -55,7 +55,7 @@ class LeaderboardService:
                 matchday.season_id,
                 standing.profile_id,
                 season_cache=season_cache,
-                membership_cache=membership_cache,
+                eligible_profile_ids_cache=eligible_profile_ids_cache,
             )
         ]
 
@@ -159,7 +159,7 @@ class LeaderboardService:
             .where(StandingsMatchday.matchday_id.in_([matchday.id for matchday in tournament_matchdays]))
             .order_by(StandingsMatchday.matchday_id.asc(), StandingsMatchday.rank_position.asc(), Profile.display_name.asc())
         ).all()
-        membership_cache: dict[tuple[str, str], bool] = {}
+        eligible_profile_ids_cache: dict[str, set[str]] = {}
         standings_rows = [
             (standing, standing_profile)
             for standing, standing_profile in standings_rows
@@ -168,7 +168,7 @@ class LeaderboardService:
                 season.id,
                 standing.profile_id,
                 season_cache={season.id: season},
-                membership_cache=membership_cache,
+                eligible_profile_ids_cache=eligible_profile_ids_cache,
             )
         ]
 
@@ -272,7 +272,7 @@ class LeaderboardService:
             .join(Matchday, Matchday.id == StandingsMatchday.matchday_id)
         ).all()
         season_cache: dict[str, Season | None] = {}
-        membership_cache: dict[tuple[str, str], bool] = {}
+        eligible_profile_ids_cache: dict[str, set[str]] = {}
         overall_rows = [
             (standing, profile)
             for standing, profile in overall_rows
@@ -281,7 +281,7 @@ class LeaderboardService:
                 standing.season_id,
                 standing.profile_id,
                 season_cache=season_cache,
-                membership_cache=membership_cache,
+                eligible_profile_ids_cache=eligible_profile_ids_cache,
             )
         ]
         filtered_matchday_rows = [
@@ -292,7 +292,7 @@ class LeaderboardService:
                 matchday.season_id,
                 standing.profile_id,
                 season_cache=season_cache,
-                membership_cache=membership_cache,
+                eligible_profile_ids_cache=eligible_profile_ids_cache,
             )
         ]
 
@@ -483,7 +483,7 @@ class LeaderboardService:
         profile_id: str,
         *,
         season_cache: dict[str, Season | None],
-        membership_cache: dict[tuple[str, str], bool],
+        eligible_profile_ids_cache: dict[str, set[str]],
     ) -> bool:
         if season_id not in season_cache:
             season_cache[season_id] = db.get(Season, season_id)
@@ -491,8 +491,11 @@ class LeaderboardService:
         if season is None:
             return False
 
-        membership_key = (season_id, profile_id)
-        if membership_key not in membership_cache:
-            membership = self.membership_repo.get_for_profile_and_season(db, profile_id, season_id)
-            membership_cache[membership_key] = self.eligibility_service.counts_for_scoring(db, season, membership)
-        return membership_cache[membership_key]
+        if season_id not in eligible_profile_ids_cache:
+            memberships = self.membership_repo.list_for_season(db, season_id)
+            eligible_profile_ids_cache[season_id] = {
+                membership.profile_id
+                for membership in memberships
+                if self.eligibility_service.counts_for_scoring(db, season, membership)
+            }
+        return profile_id in eligible_profile_ids_cache[season_id]

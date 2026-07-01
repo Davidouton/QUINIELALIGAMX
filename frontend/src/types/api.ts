@@ -916,6 +916,18 @@ export interface PerformanceRace {
   points: PerformanceRacePoint[];
 }
 
+export interface DashboardHomeBundle {
+  summary: DashboardSummary;
+  advanced_stats: AdvancedStats;
+  performance_race: PerformanceRace;
+  matchday_points: MyMatchdayPointsEntry[];
+  personal_trophies: PersonalTrophyRecord[];
+  vip_competitions: VipCompetition[];
+  leaderboard: LeaderboardEntry[];
+  matches: Match[];
+  pick_results: PickResultRow[];
+}
+
 export interface HallOfFameEntry {
   profile_id: string;
   display_name: string;

@@ -110,7 +110,57 @@ class PickService:
             stmt = stmt.where(Match.matchday_id == matchday_id)
 
         rows = db.execute(stmt).all()
-        return [self._build_pick_out(db, pick, match) for pick, match in rows]
+        matches = [match for _, match in rows]
+        teams = self._load_teams(db, matches)
+        override_profiles = self._load_override_profiles(
+            db,
+            [pick.overridden_by_profile_id for pick, _ in rows if pick.overridden_by_profile_id is not None],
+        )
+
+        return [
+            PickOut(
+                id=pick.id,
+                profile_id=pick.profile_id,
+                match_id=pick.match_id,
+                matchday_id=match.matchday_id,
+                selection=pick.selection,
+                predicted_home_score=pick.predicted_home_score,
+                predicted_away_score=pick.predicted_away_score,
+                advancing_team_id=pick.advancing_team_id,
+                spread_selection=pick.spread_selection,
+                spread_line_value=pick.spread_line_value,
+                home_team_name=(
+                    teams[match.home_team_id].name
+                    if match.home_team_id is not None and match.home_team_id in teams
+                    else match.home_placeholder or "Local"
+                ),
+                away_team_name=(
+                    teams[match.away_team_id].name
+                    if match.away_team_id is not None and match.away_team_id in teams
+                    else match.away_placeholder or "Visitante"
+                ),
+                stage_type=match.stage_type.value,
+                group_label=match.group_label,
+                bracket_slot=match.bracket_slot,
+                home_placeholder=match.home_placeholder,
+                away_placeholder=match.away_placeholder,
+                kickoff_at=match.kickoff_at,
+                is_locked=self._is_match_locked(db, match),
+                is_ready_for_picks=self._match_has_confirmed_teams(match),
+                is_admin_override=pick.is_admin_override,
+                admin_override_note=pick.admin_override_note,
+                overridden_by_profile_id=pick.overridden_by_profile_id,
+                overridden_by_display_name=(
+                    override_profiles[pick.overridden_by_profile_id].display_name
+                    if pick.overridden_by_profile_id is not None and pick.overridden_by_profile_id in override_profiles
+                    else None
+                ),
+                overridden_at=pick.overridden_at,
+                created_at=pick.created_at,
+                updated_at=pick.updated_at,
+            )
+            for pick, match in rows
+        ]
 
     def list_my_pick_results(
         self,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { VIP_SUMMARY_PATH, buildVipDetailPath } from "@/lib/api/vip";
@@ -37,12 +37,15 @@ const initialState: LeaderboardState = {
   error: null,
 };
 
+const LEADERBOARD_VISIBILITY_REFRESH_STALE_MS = 60_000;
+
 export function LeaderboardPageContent() {
   const [state, setState] = useState<LeaderboardState>(initialState);
   const [selectedBoardId, setSelectedBoardId] = useState("regular");
   const [loading, setLoading] = useState(true);
   const [loadingVipBoardId, setLoadingVipBoardId] = useState("");
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
+  const lastLoadedAtRef = useRef(0);
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
   const loadLeaderboard = useCallback(async () => {
@@ -95,6 +98,7 @@ export function LeaderboardPageContent() {
         vipCompetitions,
         error: null,
       });
+      lastLoadedAtRef.current = Date.now();
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -221,7 +225,10 @@ export function LeaderboardPageContent() {
 
   useEffect(() => {
     function refreshWhenVisible() {
-      if (document.visibilityState === "visible") {
+      if (
+        document.visibilityState === "visible" &&
+        Date.now() - lastLoadedAtRef.current >= LEADERBOARD_VISIBILITY_REFRESH_STALE_MS
+      ) {
         void loadLeaderboard();
       }
     }

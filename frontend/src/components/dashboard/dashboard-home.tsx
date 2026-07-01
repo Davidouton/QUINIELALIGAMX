@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AdvancedStatsPanel } from "@/components/dashboard/advanced-stats-panel";
 import { MatchdayPointsTable } from "@/components/dashboard/matchday-points-table";
 import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { PerformanceRaceChart } from "@/components/dashboard/performance-race-chart";
 import { Card } from "@/components/ui/card";
-import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
-import { VIP_SUMMARY_PATH, buildVipDetailPath } from "@/lib/api/vip";
+import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
+import { buildVipDetailPath } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { env } from "@/lib/env";
@@ -16,6 +16,7 @@ import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
   AdvancedStats,
   AppBootstrap,
+  DashboardHomeBundle,
   DashboardSummary,
   LeaderboardEntry,
   Match,
@@ -58,7 +59,6 @@ type DashboardState = {
 type DashboardTab = "general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios";
 type DashboardDefaultView = "regular" | `vip:${string}`;
 const DASHBOARD_DEFAULT_VIEW_STORAGE_KEY = "qm-dashboard-default-view";
-type SeasonMetricsCacheEntry = Pick<DashboardState, "summary" | "advancedStats" | "performanceRace" | "matchdayPoints">;
 
 const initialState: DashboardState = {
   me: null,
@@ -249,10 +249,6 @@ function isWorldCupSeason(season: Season | null) {
   return season?.tournament_format === "world_cup";
 }
 
-function readSettledValue<T>(result: PromiseSettledResult<T>, fallback: T) {
-  return result.status === "fulfilled" ? result.value : fallback;
-}
-
 function readStoredDashboardDefaultView(): DashboardDefaultView {
   if (typeof window === "undefined") {
     return "regular";
@@ -271,6 +267,18 @@ function writeStoredDashboardDefaultView(value: DashboardDefaultView) {
   }
 }
 
+function buildDashboardHomePath(seasonId?: string | null, matchdayId?: string | null) {
+  const params = new URLSearchParams();
+  if (seasonId) {
+    params.set("season_id", seasonId);
+  }
+  if (matchdayId) {
+    params.set("matchday_id", matchdayId);
+  }
+  const query = params.toString();
+  return query ? `/me/dashboard-home?${query}` : "/me/dashboard-home";
+}
+
 export function DashboardHome() {
   const [state, setState] = useState<DashboardState>(initialState);
   const [loading, setLoading] = useState(true);
@@ -280,66 +288,7 @@ export function DashboardHome() {
   const [dashboardDefaultView, setDashboardDefaultView] = useState<DashboardDefaultView>(readStoredDashboardDefaultView);
   const [hasAppliedDashboardDefault, setHasAppliedDashboardDefault] = useState(false);
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
-  const seasonMetricsCacheRef = useRef<Record<string, SeasonMetricsCacheEntry>>({});
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
-
-  async function loadSeasonMetrics(
-    seasonId: string,
-    accessToken?: string,
-  ): Promise<SeasonMetricsCacheEntry> {
-    const [matchdayPointsResult, summaryResult, advancedStatsResult, performanceRaceResult] =
-      await Promise.allSettled([
-        backendFetch<MyMatchdayPointsEntry[]>(
-          `/leaderboard/my-matchdays?season_id=${seasonId}`,
-          accessToken,
-          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
-        ),
-        backendFetch<DashboardSummary>(
-          `/me/dashboard-summary?season_id=${seasonId}`,
-          accessToken,
-          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
-        ),
-        backendFetch<AdvancedStats>(
-          `/me/advanced-stats?season_id=${seasonId}`,
-          accessToken,
-          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
-        ),
-        backendFetch<PerformanceRace>(
-          `/leaderboard/my-race?season_id=${seasonId}`,
-          accessToken,
-          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
-        ),
-      ]);
-
-    return {
-      matchdayPoints: readSettledValue(matchdayPointsResult, []),
-      summary: readSettledValue(summaryResult, null),
-      advancedStats: readSettledValue(advancedStatsResult, null),
-      performanceRace: readSettledValue(performanceRaceResult, null),
-    };
-  }
-
-  async function loadSupplementalDashboardData(
-    seasonId: string | null,
-    accessToken?: string,
-  ) {
-    const [personalTrophiesResult, vipCompetitionsResult, leaderboardResult] = await Promise.allSettled([
-      backendFetch<PersonalTrophyRecord[]>("/me/trophies", accessToken),
-      backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
-      seasonId
-        ? backendFetch<LeaderboardEntry[]>(`/leaderboard/overall?season_id=${seasonId}`, accessToken, {
-            cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
-          })
-        : Promise.resolve([] as LeaderboardEntry[]),
-    ]);
-
-    setState((current) => ({
-      ...current,
-      personalTrophies: readSettledValue(personalTrophiesResult, current.personalTrophies),
-      vipCompetitions: readSettledValue(vipCompetitionsResult, current.vipCompetitions),
-      leaderboard: readSettledValue(leaderboardResult, current.leaderboard),
-    }));
-  }
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
     try {
@@ -368,25 +317,11 @@ export function DashboardHome() {
       const selectedSeason =
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
         resolveSeasonForContext(seasons, seasonIdParam, competitionId);
-      const seasonMetricsId = selectedSeason?.id ?? selectedMatchday.season_id;
-      const cachedSeasonMetrics = seasonMetricsCacheRef.current[seasonMetricsId] ?? null;
-      const [matchesResult, pickResultsResult] = await Promise.allSettled([
-        backendFetch<Match[]>(`/matches?matchday_id=${selectedMatchday.id}`, accessToken, {
-          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
-        }),
-        backendFetch<PickResultRow[]>(`/my-pick-results?matchday_id=${selectedMatchday.id}`, accessToken, {
-          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
-        }),
-      ]);
-      const seasonMetrics =
-        cachedSeasonMetrics ??
-        (await loadSeasonMetrics(seasonMetricsId, accessToken));
-      if (!cachedSeasonMetrics) {
-        seasonMetricsCacheRef.current[seasonMetricsId] = seasonMetrics;
-      }
-
-      const matches = readSettledValue(matchesResult, []);
-      const pickResults = readSettledValue(pickResultsResult, []);
+      const dashboardBundle = await backendFetch<DashboardHomeBundle>(
+        buildDashboardHomePath(selectedSeason?.id ?? selectedMatchday.season_id, selectedMatchday.id),
+        accessToken,
+        { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+      );
 
       setState((current) => ({
         ...current,
@@ -394,12 +329,15 @@ export function DashboardHome() {
         matchdays,
         selectedMatchday,
         selectedSeason,
-        summary: seasonMetrics.summary,
-        advancedStats: seasonMetrics.advancedStats,
-        performanceRace: seasonMetrics.performanceRace,
-        matches,
-        pickResults,
-        matchdayPoints: seasonMetrics.matchdayPoints,
+        summary: dashboardBundle.summary,
+        advancedStats: dashboardBundle.advanced_stats,
+        performanceRace: dashboardBundle.performance_race,
+        matches: dashboardBundle.matches,
+        pickResults: dashboardBundle.pick_results,
+        matchdayPoints: dashboardBundle.matchday_points,
+        personalTrophies: dashboardBundle.personal_trophies,
+        vipCompetitions: dashboardBundle.vip_competitions,
+        leaderboard: dashboardBundle.leaderboard,
         error: null,
       }));
     } catch {
@@ -466,13 +404,25 @@ export function DashboardHome() {
           error: null,
         }));
 
-        void loadSupplementalDashboardData(selectedSeason?.id ?? null, accessToken);
+        const dashboardBundle = await backendFetch<DashboardHomeBundle>(
+          buildDashboardHomePath(selectedSeason?.id ?? null, selectedMatchday?.id ?? null),
+          accessToken,
+          { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+        );
 
-        if (selectedMatchday) {
-          await loadSelectedMatchday(selectedMatchday.id, seasons, matchdays);
-        } else {
-          setLoading(false);
-        }
+        setState((current) => ({
+          ...current,
+          summary: dashboardBundle.summary,
+          advancedStats: dashboardBundle.advanced_stats,
+          performanceRace: dashboardBundle.performance_race,
+          matches: dashboardBundle.matches,
+          pickResults: dashboardBundle.pick_results,
+          matchdayPoints: dashboardBundle.matchday_points,
+          personalTrophies: dashboardBundle.personal_trophies,
+          vipCompetitions: dashboardBundle.vip_competitions,
+          leaderboard: dashboardBundle.leaderboard,
+        }));
+        setLoading(false);
       } catch (error) {
         setState((current) => ({
           ...current,

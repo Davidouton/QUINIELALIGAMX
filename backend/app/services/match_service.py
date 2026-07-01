@@ -30,6 +30,7 @@ class MatchService:
     def list_matches(self, db: Session, matchday_id: str | None = None) -> list[MatchOut]:
         matches = self.repo.list_matches(db, matchday_id=matchday_id)
         match_ids = [match.id for match in matches]
+        teams_by_id = self._load_teams_by_id(db, matches)
         latest_odds_by_match_id = self.odds_repo.list_latest_by_match_ids(
             db,
             match_ids,
@@ -45,9 +46,9 @@ class MatchService:
         inferred_group_labels = self._infer_group_labels(db, matches)
         return [
             self._to_match_out(
-                db,
                 match,
-                latest_odds_by_match_id.get(match.id),
+                teams_by_id=teams_by_id,
+                odds=latest_odds_by_match_id.get(match.id),
                 inferred_group_label=inferred_group_labels.get(match.id),
                 has_official_result=match.id in official_result_match_ids,
             )
@@ -58,6 +59,7 @@ class MatchService:
         match = self.repo.get_by_id(db, match_id)
         if match is None:
             return None
+        teams_by_id = self._load_teams_by_id(db, [match])
         latest_odds_by_match_id = self.odds_repo.list_latest_by_match_ids(db, [match.id])
         inferred_group_labels = self._infer_group_labels(db, [match])
         has_official_result = db.scalar(
@@ -67,24 +69,24 @@ class MatchService:
             )
         ) is not None
         return self._to_match_out(
-            db,
             match,
-            latest_odds_by_match_id.get(match.id),
+            teams_by_id=teams_by_id,
+            odds=latest_odds_by_match_id.get(match.id),
             inferred_group_label=inferred_group_labels.get(match.id),
             has_official_result=has_official_result,
         )
 
     def _to_match_out(
         self,
-        db: Session,
         match: Match,
-        odds: Odds | None = None,
         *,
+        teams_by_id: dict[str, Team],
+        odds: Odds | None = None,
         inferred_group_label: str | None = None,
         has_official_result: bool = False,
     ) -> MatchOut:
-        home_team = db.get(Team, match.home_team_id) if match.home_team_id else None
-        away_team = db.get(Team, match.away_team_id) if match.away_team_id else None
+        home_team = teams_by_id.get(match.home_team_id) if match.home_team_id else None
+        away_team = teams_by_id.get(match.away_team_id) if match.away_team_id else None
         now = datetime.now(UTC)
         home_probability, draw_probability, away_probability = self._build_devigged_probabilities(odds)
         is_ready_for_picks = match.home_team_id is not None and match.away_team_id is not None
@@ -185,6 +187,18 @@ class MatchService:
             if home_group and home_group == away_group:
                 inferred_labels[match.id] = home_group
         return inferred_labels
+
+    def _load_teams_by_id(self, db: Session, matches: list[Match]) -> dict[str, Team]:
+        team_ids = {
+            team_id
+            for match in matches
+            for team_id in (match.home_team_id, match.away_team_id)
+            if team_id is not None
+        }
+        if not team_ids:
+            return {}
+        teams = db.scalars(select(Team).where(Team.id.in_(team_ids))).all()
+        return {team.id: team for team in teams}
 
     def _build_participant_name(self, team: Team | None, placeholder: str | None, fallback: str) -> str:
         if team is not None:

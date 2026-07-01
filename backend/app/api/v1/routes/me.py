@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_profile
 from app.core.database import get_db
 from app.models.entities import Profile
+from app.schemas.dashboard import DashboardHomeOut
 from app.repositories.profile_repository import ProfileRepository
 from app.repositories.team_repository import TeamRepository
 from app.schemas.profile import (
@@ -15,12 +16,20 @@ from app.schemas.profile import (
     PrizeSummaryResponse,
     RegisteredUserOption,
 )
+from app.services.leaderboard_service import LeaderboardService
+from app.services.match_service import MatchService
+from app.services.pick_service import PickService
 from app.services.profile_service import ProfileService
+from app.services.vip_service import VipService
 
 router = APIRouter()
 service = ProfileService()
 team_repo = TeamRepository()
 profile_repo = ProfileRepository()
+leaderboard_service = LeaderboardService()
+match_service = MatchService()
+pick_service = PickService()
+vip_service = VipService()
 
 
 @router.get("/me", response_model=MeResponse)
@@ -113,6 +122,33 @@ def get_advanced_stats(
     current_profile: Profile = Depends(get_current_profile),
 ) -> AdvancedStatsResponse:
     return service.build_advanced_stats(db, current_profile, season_id=season_id)
+
+
+@router.get("/me/dashboard-home", response_model=DashboardHomeOut)
+def get_dashboard_home(
+    season_id: str | None = Query(default=None),
+    matchday_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> DashboardHomeOut:
+    return DashboardHomeOut(
+        summary=service.build_dashboard_summary(db, current_profile, season_id=season_id),
+        advanced_stats=service.build_advanced_stats(db, current_profile, season_id=season_id),
+        performance_race=leaderboard_service.get_performance_race(db, current_profile, season_id=season_id),
+        matchday_points=leaderboard_service.list_profile_matchdays(db, current_profile, season_id=season_id),
+        personal_trophies=service.list_personal_trophies(db, current_profile),
+        vip_competitions=vip_service.list_public_vips(
+            db,
+            current_profile,
+            include_leaderboard=False,
+            include_member_dashboard=False,
+            include_approved_members=False,
+            include_team_winner_details=False,
+        ),
+        leaderboard=leaderboard_service.list_overall(db, season_id=season_id) if season_id else [],
+        matches=match_service.list_matches(db, matchday_id=matchday_id) if matchday_id else [],
+        pick_results=pick_service.list_my_pick_results(db, current_profile, matchday_id=matchday_id) if matchday_id else [],
+    )
 
 
 @router.get("/me/trophies", response_model=list[PersonalTrophyOut])
