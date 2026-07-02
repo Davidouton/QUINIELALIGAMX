@@ -193,6 +193,15 @@ def run_vip_recalculate_for_matchday_background(matchday_id: str) -> None:
         db.close()
 
 
+def run_scoring_and_vip_recalculate_for_matchday_background(matchday_id: str) -> None:
+    db = SessionLocal()
+    try:
+        ScoringService().recalculate(db)
+        recalculate_vips_for_matchday(db, matchday_id)
+    finally:
+        db.close()
+
+
 def run_all_vip_recalculate_background() -> None:
     db = SessionLocal()
     try:
@@ -2566,51 +2575,52 @@ def update_admin_vip_membership_payment(
 def update_admin_result(
     match_id: str,
     payload: AdminResultUpdateRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.save_admin_result(db, match_id, payload, updated_by=current_profile)
-    ScoringService().recalculate(db)
-    recalculate_vips_for_matchday(db, result.matchday_id)
+    background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, result.matchday_id)
     return result
 
 
 @router.post("/results/{match_id}/clear-override", response_model=AdminResultRowOut)
 def clear_admin_result_override(
     match_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_manual_override(db, match_id)
-    ScoringService().recalculate(db)
-    recalculate_vips_for_matchday(db, result.matchday_id)
+    background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, result.matchday_id)
     return result
 
 
 @router.delete("/results/{match_id}", response_model=AdminResultRowOut)
 def clear_admin_result(
     match_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_admin_result(db, match_id)
-    ScoringService().recalculate(db)
-    recalculate_vips_for_matchday(db, result.matchday_id)
+    background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, result.matchday_id)
     return result
 
 
 @router.post("/results/sync", response_model=SyncResponse)
 def sync_admin_results(
+    background_tasks: BackgroundTasks,
     matchday_id: str | None = None,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SyncResponse:
     response = SyncResponse(**sync_results(db, get_results_provider(), matchday_id=matchday_id))
-    ScoringService().recalculate(db)
     if matchday_id is not None:
-        recalculate_vips_for_matchday(db, matchday_id)
+        background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, matchday_id)
     else:
-        recalculate_all_vips(db)
+        background_tasks.add_task(run_scoring_recalculate_background)
+        background_tasks.add_task(run_all_vip_recalculate_background)
     return response
 
 
@@ -2676,6 +2686,7 @@ def recalculate_results(
 @router.post("/matchdays/{matchday_id}/publish")
 def publish_matchday(
     matchday_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> dict[str, str]:
@@ -2697,13 +2708,10 @@ def publish_matchday(
     matchday.status = MatchdayStatus.PUBLISHED
     db.add(matchday)
     db.commit()
-    scoring_summary = ScoringService().recalculate(db)
-    vip_competitions_recalculated = recalculate_vips_for_matchday(db, matchday_id)
+    background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, matchday_id)
     return {
         "status": "published",
         "matchday_id": matchday_id,
-        "recalculate_status": "recalculated",
-        "vip_recalculate_status": "recalculated",
-        "evaluated_picks": str(scoring_summary["evaluated_picks"]),
-        "vip_competitions_recalculated": str(vip_competitions_recalculated),
+        "recalculate_status": "started",
+        "vip_recalculate_status": "started",
     }

@@ -246,11 +246,7 @@ export function AdminResultsPanel() {
       } catch {
         // The saved row is already reflected locally; a later reload can reconcile the full table.
       }
-      if (savedRow.is_published) {
-        setMessage("Resultado guardado. Scoring general y VIP recalculado.");
-      } else {
-        setMessage("Resultado guardado. Scoring general y VIP recalculado.");
-      }
+      setMessage("Resultado guardado. Recalculo general y VIP en proceso.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el resultado");
     } finally {
@@ -273,7 +269,7 @@ export function AdminResultsPanel() {
         },
       );
       await refreshCurrentRows(accessToken);
-      setMessage(`${response.records_processed} resultados sincronizados. Scoring general y VIP recalculado.`);
+      setMessage(`${response.records_processed} resultados sincronizados. Recalculo general y VIP en proceso.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudieron bajar resultados");
     } finally {
@@ -291,7 +287,7 @@ export function AdminResultsPanel() {
         method: "POST",
       });
       await refreshCurrentRows(accessToken);
-      setMessage("Override manual quitado. Scoring general y VIP recalculado.");
+      setMessage("Override manual quitado. Recalculo general y VIP en proceso.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo quitar el override");
     } finally {
@@ -319,7 +315,7 @@ export function AdminResultsPanel() {
         method: "DELETE",
       });
       await refreshCurrentRows(accessToken);
-      setMessage("Resultado limpiado. Scoring general y VIP recalculado.");
+      setMessage("Resultado limpiado. Recalculo general y VIP en proceso.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo limpiar el resultado");
     } finally {
@@ -407,8 +403,8 @@ export function AdminResultsPanel() {
       await refreshCurrentRows(accessToken);
       setMessage(
         isAlreadyPublished
-          ? "Publicacion actualizada."
-          : "Jornada publicada.",
+          ? "Publicacion actualizada. Recalculo general y VIP en proceso."
+          : "Jornada publicada. Recalculo general y VIP en proceso.",
       );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo publicar la jornada");
