@@ -13,6 +13,7 @@ from app.schemas.analytics import (
     AnalyticsKpiOut,
     AnalyticsRecentEventOut,
     AnalyticsScreenStatOut,
+    AnalyticsUserStatOut,
 )
 
 
@@ -46,13 +47,26 @@ class AnalyticsService:
         db.add(event)
         db.commit()
 
-    def build_admin_stats(self, db: Session, *, days: int) -> AdminAnalyticsStatsOut:
+    def build_admin_stats(
+        self,
+        db: Session,
+        *,
+        days: int,
+        profile_id: str | None = None,
+    ) -> AdminAnalyticsStatsOut:
         self.ensure_schema(db)
         window_days = max(1, min(days, 90))
         window_start = datetime.now(UTC) - timedelta(days=window_days)
 
         base_filter = AnalyticsEvent.created_at >= window_start
+        if profile_id:
+            base_filter = base_filter & (AnalyticsEvent.profile_id == profile_id)
         count_if = lambda condition: func.sum(case((condition, 1), else_=0))
+
+        selected_profile_display_name = None
+        if profile_id:
+            selected_profile = db.get(Profile, profile_id)
+            selected_profile_display_name = selected_profile.display_name if selected_profile is not None else None
 
         kpi_row = db.execute(
             select(
@@ -74,6 +88,34 @@ class AnalyticsService:
                 ),
             ).where(base_filter)
         ).one()
+
+        user_rows = db.execute(
+            select(
+                AnalyticsEvent.profile_id,
+                Profile.display_name,
+                count_if(AnalyticsEvent.event_name == "screen_viewed"),
+                count_if(AnalyticsEvent.category == "action"),
+                count_if(AnalyticsEvent.success.is_(False)),
+                func.avg(
+                    case(
+                        (
+                            (AnalyticsEvent.event_name == "screen_loaded")
+                            & AnalyticsEvent.duration_ms.is_not(None)
+                            & AnalyticsEvent.success.is_not(False),
+                            AnalyticsEvent.duration_ms,
+                        ),
+                        else_=None,
+                    )
+                ),
+                func.max(AnalyticsEvent.created_at),
+            )
+            .select_from(AnalyticsEvent)
+            .join(Profile, Profile.id == AnalyticsEvent.profile_id)
+            .where(base_filter)
+            .group_by(AnalyticsEvent.profile_id, Profile.display_name)
+            .order_by(count_if(AnalyticsEvent.event_name == "screen_viewed").desc(), func.max(AnalyticsEvent.created_at).desc())
+            .limit(20)
+        ).all()
 
         screen_rows = db.execute(
             select(
@@ -150,6 +192,8 @@ class AnalyticsService:
         return AdminAnalyticsStatsOut(
             window_days=window_days,
             generated_at=datetime.now(UTC),
+            selected_profile_id=profile_id,
+            selected_profile_display_name=selected_profile_display_name,
             kpis=AnalyticsKpiOut(
                 total_events=int(kpi_row[0] or 0),
                 unique_users=int(kpi_row[1] or 0),
@@ -158,6 +202,18 @@ class AnalyticsService:
                 failure_events=int(kpi_row[4] or 0),
                 avg_screen_load_ms=float(kpi_row[5]) if kpi_row[5] is not None else None,
             ),
+            users=[
+                AnalyticsUserStatOut(
+                    profile_id=row[0],
+                    display_name=row[1],
+                    screen_views=int(row[2] or 0),
+                    action_events=int(row[3] or 0),
+                    failure_events=int(row[4] or 0),
+                    avg_load_ms=float(row[5]) if row[5] is not None else None,
+                    last_seen_at=row[6],
+                )
+                for row in user_rows
+            ],
             screens=[
                 AnalyticsScreenStatOut(
                     screen_name=str(row[0]),

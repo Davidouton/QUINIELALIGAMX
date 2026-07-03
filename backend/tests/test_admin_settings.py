@@ -440,8 +440,21 @@ def test_admin_can_capture_analytics_events_and_read_admin_stats(admin_client: T
     assert payload["kpis"]["screen_views"] >= 1
     assert payload["kpis"]["action_events"] >= 1
     assert payload["kpis"]["failure_events"] >= 1
+    assert payload["selected_profile_id"] is None
     assert any(screen["screen_name"] == "Picks" for screen in payload["screens"])
     assert any(event["event_name"] == "pick_saved" for event in payload["top_events"])
+    assert any(user["display_name"] == "Usuario Demo" for user in payload["users"])
+
+    filtered_stats_response = admin_client.get(
+        f"/api/v1/admin/stats?days=7&profile_id={PROFILE_USER_ID}",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert filtered_stats_response.status_code == 200
+    filtered_payload = filtered_stats_response.json()
+    assert filtered_payload["selected_profile_id"] == PROFILE_USER_ID
+    assert filtered_payload["selected_profile_display_name"] == "Usuario Demo"
+    assert filtered_payload["kpis"]["unique_users"] == 1
+    assert all(event["profile_id"] == PROFILE_USER_ID for event in filtered_payload["recent_events"])
 
     db = SessionLocal()
     try:

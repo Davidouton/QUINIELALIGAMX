@@ -86,10 +86,23 @@ class AnalyticsRecentEventOut(BaseModel):
     duration_ms: int | None = None
 
 
+class AnalyticsUserStatOut(BaseModel):
+    profile_id: str
+    display_name: str
+    screen_views: int
+    action_events: int
+    failure_events: int
+    avg_load_ms: float | None = None
+    last_seen_at: datetime | None = None
+
+
 class AdminAnalyticsStatsOut(BaseModel):
     window_days: int
     generated_at: datetime
+    selected_profile_id: str | None = None
+    selected_profile_display_name: str | None = None
     kpis: AnalyticsKpiOut
+    users: list[AnalyticsUserStatOut]
     screens: list[AnalyticsScreenStatOut]
     top_events: list[AnalyticsEventStatOut]
     daily: list[AnalyticsDailyStatOut]

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminAnalyticsStats } from "@/types/api";
+import type { AdminAnalyticsStats, AdminUser } from "@/types/api";
 
 const dayOptions = [1, 7, 30];
 
@@ -39,6 +39,8 @@ function formatPercent(part: number, total: number) {
 
 export function AdminStatsPanel() {
   const [days, setDays] = useState(7);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState("");
   const [stats, setStats] = useState<AdminAnalyticsStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,10 +51,20 @@ export function AdminStatsPanel() {
       setError(null);
       try {
         const accessToken = await getBrowserAccessToken();
-        const response = await backendFetch<AdminAnalyticsStats>(`/admin/stats?days=${days}`, accessToken, {
-          cacheTtlMs: 15000,
-        });
-        setStats(response);
+        const params = new URLSearchParams({ days: String(days) });
+        if (selectedProfileId) {
+          params.set("profile_id", selectedProfileId);
+        }
+        const [statsResponse, usersResponse] = await Promise.all([
+          backendFetch<AdminAnalyticsStats>(`/admin/stats?${params.toString()}`, accessToken, {
+            cacheTtlMs: 15000,
+          }),
+          backendFetch<AdminUser[]>("/admin/users", accessToken, {
+            cacheTtlMs: 15000,
+          }),
+        ]);
+        setStats(statsResponse);
+        setUsers(usersResponse);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los stats");
       } finally {
@@ -61,7 +73,7 @@ export function AdminStatsPanel() {
     }
 
     void loadStats();
-  }, [days]);
+  }, [days, selectedProfileId]);
 
   const maxDailyViews = useMemo(
     () => Math.max(...(stats?.daily.map((row) => row.screen_views) ?? [0]), 1),
@@ -111,6 +123,26 @@ export function AdminStatsPanel() {
               );
             })}
           </div>
+          <label className="block space-y-1.5">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-steel">Usuario</span>
+            <select
+              value={selectedProfileId}
+              onChange={(event) => setSelectedProfileId(event.target.value)}
+              className="field-control min-w-[220px] text-sm"
+            >
+              <option value="">Todos los usuarios</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="text-[11px] text-steel">
+            {stats.selected_profile_display_name
+              ? `Filtrando: ${stats.selected_profile_display_name}`
+              : "Filtrando: todos"}
+          </p>
           <p className="text-[11px] text-steel">Actualizado: {formatDateTime(stats.generated_at)}</p>
         </div>
       </section>
@@ -138,7 +170,43 @@ export function AdminStatsPanel() {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="rounded-[22px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
+          <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Usuarios</p>
+          <h2 className="mt-2 text-lg font-semibold text-ink">Quien entra mas</h2>
+          <div className="mt-4 space-y-3">
+            {stats.users.length > 0 ? (
+              stats.users.map((user) => (
+                <button
+                  key={user.profile_id}
+                  type="button"
+                  onClick={() => setSelectedProfileId((current) => (current === user.profile_id ? "" : user.profile_id))}
+                  className="block w-full rounded-[16px] border border-white/[0.05] bg-night/20 px-4 py-3 text-left transition hover:border-white/[0.1] hover:bg-night/30"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-ink">{user.display_name}</p>
+                      <p className="mt-1 text-[11px] text-steel">
+                        Ultima actividad: {user.last_seen_at ? formatDateTime(user.last_seen_at) : "-"}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-ink">{user.screen_views} entradas</p>
+                      <p className="mt-1 text-[11px] text-steel">{user.action_events} acciones</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-steel">
+                    <span>Fallos: {user.failure_events}</span>
+                    <span>Carga: {formatLoadMs(user.avg_load_ms)}</span>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <p className="text-sm text-steel">Todavia no hay actividad de usuarios en esta ventana.</p>
+            )}
+          </div>
+        </div>
+
         <div className="rounded-[22px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -173,7 +241,9 @@ export function AdminStatsPanel() {
             ))}
           </div>
         </div>
+      </section>
 
+      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="space-y-6">
           <div className="rounded-[22px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
             <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Eventos</p>

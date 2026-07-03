@@ -197,6 +197,16 @@ export interface AnalyticsDailyStat {
   unique_users: number;
 }
 
+export interface AnalyticsUserStat {
+  profile_id: string;
+  display_name: string;
+  screen_views: number;
+  action_events: number;
+  failure_events: number;
+  avg_load_ms: number | null;
+  last_seen_at: string | null;
+}
+
 export interface AnalyticsRecentEvent {
   id: string;
   created_at: string;
@@ -213,7 +223,10 @@ export interface AnalyticsRecentEvent {
 export interface AdminAnalyticsStats {
   window_days: number;
   generated_at: string;
+  selected_profile_id: string | null;
+  selected_profile_display_name: string | null;
   kpis: AnalyticsKpi;
+  users: AnalyticsUserStat[];
   screens: AnalyticsScreenStat[];
   top_events: AnalyticsEventStat[];
   daily: AnalyticsDailyStat[];

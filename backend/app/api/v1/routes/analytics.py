@@ -23,7 +23,8 @@ def capture_analytics_event(
 @router.get("/admin/stats", response_model=AdminAnalyticsStatsOut)
 def get_admin_analytics_stats(
     days: int = Query(7, ge=1, le=90),
+    profile_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminAnalyticsStatsOut:
-    return analytics_service.build_admin_stats(db, days=days)
+    return analytics_service.build_admin_stats(db, days=days, profile_id=profile_id)
