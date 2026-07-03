@@ -568,6 +568,28 @@ class VipService:
         db.commit()
         db.expire_all()
 
+    def reset_team_winner_draw(self, db: Session, vip_id: str) -> None:
+        vip = self._get_team_winner_vip(db, vip_id)
+        entries = list(
+            db.scalars(
+                select(VipTeamWinnerEntry)
+                .where(VipTeamWinnerEntry.vip_competition_id == vip.id)
+                .order_by(VipTeamWinnerEntry.created_at.asc(), VipTeamWinnerEntry.display_name.asc())
+            )
+        )
+        if not entries:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay participantes para resetear")
+        if not any(entry.reveal_order or entry.assigned_team_id or entry.revealed_at for entry in entries):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El sorteo todavia no ha sido corrido")
+
+        for entry in entries:
+            entry.assigned_team_id = None
+            entry.reveal_order = None
+            entry.revealed_at = None
+            db.add(entry)
+        db.commit()
+        db.expire_all()
+
     def _repair_revealed_team_winner_assignments(self, db: Session, vip_ids: list[str]) -> None:
         if not vip_ids:
             return

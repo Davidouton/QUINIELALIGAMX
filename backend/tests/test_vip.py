@@ -590,6 +590,31 @@ def test_admin_can_run_team_winner_vip_draw_and_mark_eliminated(admin_client: Te
     assert len(revealed_entries) == 1
     assert revealed_entries[0]["assigned_team_id"] is not None
 
+    reset_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/team-winner/reset-draw",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert reset_response.status_code == 200
+    reset_payload = reset_response.json()
+    assert all(entry["reveal_order"] is None for entry in reset_payload["team_winner_entries"])
+    assert all(entry["revealed_at"] is None for entry in reset_payload["team_winner_entries"])
+    assert all(entry["assigned_team_id"] is None for entry in reset_payload["team_winner_entries"])
+
+    rerun_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/team-winner/draw",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert rerun_response.status_code == 200
+    rerun_payload = rerun_response.json()
+    assert all(entry["reveal_order"] for entry in rerun_payload["team_winner_entries"])
+
+    reveal_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/team-winner/reveal-next",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert reveal_response.status_code == 200
+    reveal_payload = reveal_response.json()
+
     team_row = reveal_payload["team_winner_teams"][0]
     eliminated_response = admin_client.put(
         f"/api/v1/admin/vip/{vip_id}/team-winner/teams/{team_row['id']}/status",

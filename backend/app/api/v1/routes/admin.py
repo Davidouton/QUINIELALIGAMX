@@ -2446,6 +2446,16 @@ def run_admin_vip_team_winner_draw(
     return admin_vip_row(db, vip_id, include_leaderboard=False)
 
 
+@router.post("/vip/{vip_id}/team-winner/reset-draw", response_model=AdminVipCompetitionOut)
+def reset_admin_vip_team_winner_draw(
+    vip_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.reset_team_winner_draw(db, vip_id=vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=False)
+
+
 @router.post("/vip/{vip_id}/team-winner/reveal-next", response_model=AdminVipCompetitionOut)
 def reveal_next_admin_vip_team_winner(
     vip_id: str,

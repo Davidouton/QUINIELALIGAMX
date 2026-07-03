@@ -523,6 +523,37 @@ export function AdminVipPanel() {
     }
   }
 
+  async function handleResetTeamWinnerDraw() {
+    if (!selectedVip || !hasTeamWinnerDraw) {
+      return;
+    }
+    const confirmed = window.confirm(
+      "Esto borrara el orden y las asignaciones del sorteo para volverlo a correr. Continuar?",
+    );
+    if (!confirmed) {
+      return;
+    }
+    setSavingTeamWinner(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const updatedVip = await backendFetch<AdminVipCompetition>(
+        `/admin/vip/${selectedVip.id}/team-winner/reset-draw`,
+        accessToken,
+        { method: "POST" },
+      );
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
+      syncTeamWinnerDraft(updatedVip);
+      setMessage("Sorteo reseteado. Ya puedes volver a correrlo.");
+    } catch (caughtError) {
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo resetear el sorteo");
+      setError(`Equipo ganador: ${errorMessage}`);
+    } finally {
+      setSavingTeamWinner(false);
+    }
+  }
+
   async function handleTeamWinnerAction(pathSuffix: string, method = "POST", body: object | undefined = undefined) {
     if (!selectedVip) {
       return;
@@ -933,6 +964,14 @@ export function AdminVipPanel() {
                     className="app-pill h-9 px-4 text-sm text-mint disabled:opacity-50"
                   >
                     Guardar y sortear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleResetTeamWinnerDraw()}
+                    disabled={!selectedVip || savingTeamWinner || !hasTeamWinnerDraw}
+                    className="app-pill h-9 px-4 text-sm text-coral disabled:opacity-50"
+                  >
+                    Resetear sorteo
                   </button>
                   <button
                     type="button"
