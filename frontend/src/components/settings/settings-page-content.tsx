@@ -95,6 +95,10 @@ export function SettingsPageContent() {
     () => teams.find((team) => team.id === form.favorite_team_id) ?? null,
     [form.favorite_team_id, teams],
   );
+  const avalDisplayName = useMemo(
+    () => registeredUsers.find((user) => user.id === form.aval_profile_id)?.display_name ?? null,
+    [form.aval_profile_id, registeredUsers],
+  );
 
   useEffect(() => {
     async function load() {
@@ -158,12 +162,6 @@ export function SettingsPageContent() {
       setSaveError("Selecciona un equipo favorito para usar ese ambiente.");
       return;
     }
-    if (form.modality === "aval" && !form.aval_profile_id) {
-      setSaving(false);
-      setSaveError("Selecciona un usuario aval.");
-      return;
-    }
-
     try {
       const accessToken = await getBrowserAccessToken();
       const saved = await backendFetch<Me>("/me", accessToken, {
@@ -310,38 +308,18 @@ export function SettingsPageContent() {
               </label>
               <label className="space-y-2 text-sm">
                 <span className="text-steel">Modalidad</span>
-                <select
-                  value={form.modality}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      modality: event.target.value as PaymentModality,
-                      aval_profile_id: event.target.value === "aval" ? current.aval_profile_id : "",
-                    }))
-                  }
-                  className="field-control"
-                >
-                  <option value="pre_pago">Pre-pago</option>
-                  <option value="aval">Aval</option>
-                </select>
+                <div className="field-control flex items-center justify-between gap-3 bg-white/[0.03]">
+                  <span>{form.modality === "aval" ? "Aval" : "Pre-pago"}</span>
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-steel">Solo admin</span>
+                </div>
               </label>
               {form.modality === "aval" ? (
                 <label className="space-y-2 text-sm">
                   <span className="text-steel">Aval</span>
-                  <select
-                    value={form.aval_profile_id}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, aval_profile_id: event.target.value }))
-                    }
-                    className="field-control"
-                  >
-                    <option value="">Selecciona usuario</option>
-                    {registeredUsers.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.display_name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="field-control flex items-center justify-between gap-3 bg-white/[0.03]">
+                    <span>{avalDisplayName ?? "Aval asignado por admin"}</span>
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-steel">Solo admin</span>
+                  </div>
                 </label>
               ) : null}
             </div>

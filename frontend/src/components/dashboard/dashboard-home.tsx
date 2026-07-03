@@ -8,6 +8,7 @@ import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { PerformanceRaceChart } from "@/components/dashboard/performance-race-chart";
 import { Card } from "@/components/ui/card";
 import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
+import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { buildVipDetailPath } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
@@ -291,6 +292,7 @@ export function DashboardHome() {
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
       setLoading(true);
       const accessToken = await getBrowserAccessToken().catch(() => undefined);
@@ -340,7 +342,18 @@ export function DashboardHome() {
         leaderboard: dashboardBundle.leaderboard,
         error: null,
       }));
-    } catch {
+      void trackAnalyticsEvent({
+        category: "screen",
+        event_name: "screen_loaded",
+        route_path: "/dashboard",
+        screen_name: getDashboardScreenName("/dashboard"),
+        season_id: selectedSeason?.id ?? selectedMatchday.season_id,
+        matchday_id: selectedMatchday.id,
+        competition_id: selectedSeason?.competition_id ?? null,
+        success: true,
+        duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+      });
+    } catch (error) {
       setState((current) => ({
         ...current,
         selectedMatchday: matchdaysOverride?.find((matchday) => matchday.id === matchdayId) ?? current.selectedMatchday,
@@ -352,6 +365,20 @@ export function DashboardHome() {
         matchdayPoints: [],
         error: null,
       }));
+      void trackAnalyticsEvent({
+        category: "screen",
+        event_name: "screen_load_failed",
+        route_path: "/dashboard",
+        screen_name: getDashboardScreenName("/dashboard"),
+        matchday_id: matchdayId,
+        season_id: seasonIdParam,
+        competition_id: competitionId || null,
+        success: false,
+        duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+        metadata: {
+          message: error instanceof Error ? error.message : "dashboard_matchday_failed",
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -359,6 +386,7 @@ export function DashboardHome() {
 
   useEffect(() => {
     async function load() {
+      const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
       try {
         const accessToken = await getBrowserAccessToken().catch(() => undefined);
 
@@ -422,6 +450,17 @@ export function DashboardHome() {
           vipCompetitions: dashboardBundle.vip_competitions,
           leaderboard: dashboardBundle.leaderboard,
         }));
+        void trackAnalyticsEvent({
+          category: "screen",
+          event_name: "screen_loaded",
+          route_path: "/dashboard",
+          screen_name: getDashboardScreenName("/dashboard"),
+          season_id: selectedSeason?.id ?? null,
+          matchday_id: selectedMatchday?.id ?? null,
+          competition_id: selectedSeason?.competition_id ?? null,
+          success: true,
+          duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+        });
         setLoading(false);
       } catch (error) {
         setState((current) => ({
@@ -431,6 +470,19 @@ export function DashboardHome() {
               ? error.message
               : "No se pudo cargar el dashboard",
         }));
+        void trackAnalyticsEvent({
+          category: "screen",
+          event_name: "screen_load_failed",
+          route_path: "/dashboard",
+          screen_name: getDashboardScreenName("/dashboard"),
+          season_id: seasonIdParam,
+          competition_id: competitionId || null,
+          success: false,
+          duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+          metadata: {
+            message: error instanceof Error ? error.message : "dashboard_failed",
+          },
+        });
         setLoading(false);
       }
     }

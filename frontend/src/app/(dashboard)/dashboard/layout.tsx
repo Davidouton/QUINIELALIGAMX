@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 
+import { DashboardAnalyticsTracker } from "@/components/layout/dashboard-analytics-tracker";
 import { DashboardIdleSessionGuard } from "@/components/layout/dashboard-idle-session-guard";
 import { DashboardThemeBridge } from "@/components/layout/dashboard-theme-bridge";
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar";
@@ -20,6 +21,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="min-h-screen">
+      <DashboardAnalyticsTracker />
       <DashboardThemeBridge />
       <DashboardIdleSessionGuard />
       <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 pb-28 pt-4 sm:px-6 sm:py-8 lg:flex-row lg:pb-8">

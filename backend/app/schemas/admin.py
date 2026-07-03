@@ -32,6 +32,7 @@ class AdminUserCreateRequest(BaseModel):
     password: str | None = Field(default=None, min_length=6, max_length=72)
     season_id: str
     is_active: bool = True
+    season_membership_active: bool = False
     is_paid: bool = False
     modality: str = "pre_pago"
     aval_profile_id: str | None = None

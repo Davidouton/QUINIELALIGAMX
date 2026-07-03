@@ -34,6 +34,7 @@ type NewUserDraft = {
   email: string;
   display_name: string;
   password: string;
+  season_membership_active: boolean;
   is_paid: boolean;
   modality: string;
   aval_profile_id: string;
@@ -44,6 +45,7 @@ const initialNewUserDraft: NewUserDraft = {
   email: "",
   display_name: "",
   password: "",
+  season_membership_active: false,
   is_paid: false,
   modality: "pre_pago",
   aval_profile_id: "",
@@ -351,6 +353,7 @@ export function AdminUsersPanel() {
           password: newUserDraft.password.trim() || null,
           season_id: selectedSeasonId,
           is_active: true,
+          season_membership_active: newUserDraft.season_membership_active,
           is_paid: newUserDraft.is_paid,
           modality: newUserDraft.modality,
           aval_profile_id: newUserDraft.modality === "aval" ? newUserDraft.aval_profile_id : null,
@@ -359,7 +362,11 @@ export function AdminUsersPanel() {
       });
       setNewUserDraft(initialNewUserDraft);
       await loadUsers(selectedSeasonId, accessToken);
-      setMessage(`${createdUser.display_name}: usuario creado y alta enviada para ${selectedSeason?.name ?? "el torneo"}.`);
+      setMessage(
+        newUserDraft.season_membership_active
+          ? `${createdUser.display_name}: usuario creado y dado de alta en ${selectedSeason?.name ?? "el torneo"}.`
+          : `${createdUser.display_name}: usuario creado sin meterlo todavia a ${selectedSeason?.name ?? "ese torneo"}.`,
+      );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo crear el usuario");
     } finally {
@@ -601,6 +608,15 @@ export function AdminUsersPanel() {
             />
           </label>
           <div className="flex flex-col gap-2">
+            <label className="flex h-10 items-center gap-2 text-sm text-steel">
+              <input
+                checked={newUserDraft.season_membership_active}
+                onChange={(event) => updateNewUserDraft({ season_membership_active: event.target.checked })}
+                type="checkbox"
+                className="h-4 w-4 accent-emerald-400"
+              />
+              Alta torneo
+            </label>
             <label className="flex h-10 items-center gap-2 text-sm text-steel">
               <input
                 checked={newUserDraft.is_paid}

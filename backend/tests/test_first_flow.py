@@ -58,7 +58,7 @@ def test_registered_users_returns_other_profiles(client):
     assert rows[0]["display_name"] == "Lider Semanal"
 
 
-def test_update_me_supports_aval_modality(client):
+def test_update_me_cannot_change_modality_or_aval(client):
     response = client.put(
         "/api/v1/me",
         json={
@@ -77,8 +77,8 @@ def test_update_me_supports_aval_modality(client):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["modality"] == "aval"
-    assert payload["aval_profile_id"] == PROFILE_LEADER_ID
+    assert payload["modality"] == "pre_pago"
+    assert payload["aval_profile_id"] is None
     assert payload["bank_name"] == "BBVA"
 
 

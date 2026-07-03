@@ -402,6 +402,38 @@ class UserPick(Base):
     )
 
 
+class AnalyticsEvent(Base):
+    __tablename__ = "analytics_events"
+    __table_args__ = (
+        Index("idx_analytics_events_created_at", "created_at"),
+        Index("idx_analytics_events_profile_created", "profile_id", "created_at"),
+        Index("idx_analytics_events_screen_created", "screen_name", "created_at"),
+        Index("idx_analytics_events_event_created", "event_name", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    category: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    event_name: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    route_path: Mapped[str | None] = mapped_column(String(255), index=True)
+    screen_name: Mapped[str | None] = mapped_column(String(120), index=True)
+    season_id: Mapped[str | None] = mapped_column(UUID_SQL, ForeignKey("seasons.id", ondelete="SET NULL"), index=True)
+    matchday_id: Mapped[str | None] = mapped_column(UUID_SQL, ForeignKey("matchdays.id", ondelete="SET NULL"), index=True)
+    competition_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("competitions.id", ondelete="SET NULL"),
+        index=True,
+    )
+    success: Mapped[bool | None] = mapped_column(Boolean)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    metadata_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class MatchResult(Base):
     __tablename__ = "match_results"
 

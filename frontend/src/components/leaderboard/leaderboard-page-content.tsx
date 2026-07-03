@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
+import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { VIP_SUMMARY_PATH, buildVipDetailPath } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -49,6 +50,7 @@ export function LeaderboardPageContent() {
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
   const loadLeaderboard = useCallback(async () => {
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     setLoading(true);
     try {
       const accessToken = await getBrowserAccessToken();
@@ -98,12 +100,36 @@ export function LeaderboardPageContent() {
         vipCompetitions,
         error: null,
       });
+      void trackAnalyticsEvent({
+        category: "screen",
+        event_name: "screen_loaded",
+        route_path: "/dashboard/leaderboard",
+        screen_name: getDashboardScreenName("/dashboard/leaderboard"),
+        season_id: selectedSeason?.id ?? null,
+        matchday_id: activeMatchday?.id ?? null,
+        competition_id: selectedSeason?.competition_id ?? null,
+        success: true,
+        duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+      });
       lastLoadedAtRef.current = Date.now();
     } catch (error) {
       setState((current) => ({
         ...current,
         error: error instanceof Error ? error.message : "No se pudo cargar la tabla general",
       }));
+      void trackAnalyticsEvent({
+        category: "screen",
+        event_name: "screen_load_failed",
+        route_path: "/dashboard/leaderboard",
+        screen_name: getDashboardScreenName("/dashboard/leaderboard"),
+        season_id: seasonIdParam,
+        competition_id: competitionId || null,
+        success: false,
+        duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+        metadata: {
+          message: error instanceof Error ? error.message : "leaderboard_failed",
+        },
+      });
     } finally {
       setLoading(false);
     }

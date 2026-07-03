@@ -1,5 +1,6 @@
 from app.models.base import Base
 from app.models.entities import (
+    AnalyticsEvent,
     CommerceSettings,
     Competition,
     HistoricalChampion,
@@ -58,6 +59,7 @@ from app.models.quiniela_plus_value import (
 
 __all__ = [
     "Base",
+    "AnalyticsEvent",
     "CommerceSettings",
     "Competition",
     "HistoricalChampion",

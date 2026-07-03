@@ -18,6 +18,7 @@ from app.core.datetime import ensure_utc
 from app.core.security import AuthUser
 from app.main import app
 from app.models.entities import (
+    AnalyticsEvent,
     Match,
     Matchday,
     Profile,
@@ -213,6 +214,7 @@ def test_admin_can_create_invited_user_with_season_membership(
             "display_name": "Usuario Nuevo",
             "season_id": SEASON_ID,
             "is_active": True,
+            "season_membership_active": True,
             "is_paid": True,
             "modality": "pre_pago",
         },
@@ -242,6 +244,53 @@ def test_admin_can_create_invited_user_with_season_membership(
     assert profile.display_name == "Usuario Nuevo"
     assert membership.is_active is True
     assert membership.is_paid is True
+
+
+def test_admin_create_user_does_not_auto_join_selected_season(
+    admin_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSupabaseAdminService:
+        def invite_user(self, *, email: str, display_name: str) -> AuthUser:
+            return AuthUser(
+                auth_user_id="30000000-0000-0000-0000-000000000011",
+                email=email,
+                raw_claims={"user_metadata": {"display_name": display_name}},
+            )
+
+    monkeypatch.setattr(admin_routes, "supabase_admin_service", FakeSupabaseAdminService())
+
+    response = admin_client.post(
+        "/api/v1/admin/users",
+        json={
+            "email": "sin-alta@example.com",
+            "display_name": "Usuario Sin Alta",
+            "season_id": SEASON_ID,
+            "is_active": True,
+            "is_paid": False,
+            "modality": "pre_pago",
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["selected_season_membership"]["is_active"] is False
+    assert payload["selected_season_membership"]["is_paid"] is False
+
+    db = SessionLocal()
+    try:
+        membership = (
+            db.query(SeasonMembership)
+            .join(Profile, Profile.id == SeasonMembership.profile_id)
+            .filter(Profile.email == "sin-alta@example.com", SeasonMembership.season_id == SEASON_ID)
+            .one()
+        )
+    finally:
+        db.close()
+
+    assert membership.is_active is False
+    assert membership.eligible_for_scoring is False
 
 
 def test_admin_can_update_user_password(
@@ -313,8 +362,92 @@ def test_admin_can_bulk_create_users_with_passwords(
         db.close()
 
     assert profile.display_name == "Usuario Bulk"
-    assert membership.is_active is True
+    assert membership.is_active is False
     assert membership.is_paid is True
+
+
+def test_admin_can_capture_analytics_events_and_read_admin_stats(admin_client: TestClient) -> None:
+    response = admin_client.post(
+        "/api/v1/analytics/events",
+        json={
+            "category": "screen",
+            "event_name": "screen_viewed",
+            "route_path": "/dashboard/picks",
+            "screen_name": "Picks",
+            "season_id": SEASON_ID,
+            "matchday_id": MATCHDAY_ID,
+            "success": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert response.status_code == 202
+
+    response = admin_client.post(
+        "/api/v1/analytics/events",
+        json={
+            "category": "screen",
+            "event_name": "screen_loaded",
+            "route_path": "/dashboard/picks",
+            "screen_name": "Picks",
+            "season_id": SEASON_ID,
+            "matchday_id": MATCHDAY_ID,
+            "success": True,
+            "duration_ms": 1420,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert response.status_code == 202
+
+    response = admin_client.post(
+        "/api/v1/analytics/events",
+        json={
+            "category": "action",
+            "event_name": "pick_saved",
+            "route_path": "/dashboard/picks",
+            "screen_name": "Picks",
+            "season_id": SEASON_ID,
+            "matchday_id": MATCHDAY_ID,
+            "success": True,
+            "metadata": {"match_id": MATCH_ONE_ID},
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert response.status_code == 202
+
+    response = admin_client.post(
+        "/api/v1/analytics/events",
+        json={
+            "category": "screen",
+            "event_name": "screen_load_failed",
+            "route_path": "/dashboard/leaderboard",
+            "screen_name": "Ranking",
+            "season_id": SEASON_ID,
+            "success": False,
+            "metadata": {"message": "timeout"},
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert response.status_code == 202
+
+    stats_response = admin_client.get(
+        "/api/v1/admin/stats?days=7",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert stats_response.status_code == 200
+    payload = stats_response.json()
+    assert payload["kpis"]["total_events"] >= 4
+    assert payload["kpis"]["screen_views"] >= 1
+    assert payload["kpis"]["action_events"] >= 1
+    assert payload["kpis"]["failure_events"] >= 1
+    assert any(screen["screen_name"] == "Picks" for screen in payload["screens"])
+    assert any(event["event_name"] == "pick_saved" for event in payload["top_events"])
+
+    db = SessionLocal()
+    try:
+        assert db.query(AnalyticsEvent).count() >= 4
+    finally:
+        db.close()
 
 
 def test_admin_bulk_import_updates_existing_user_password(

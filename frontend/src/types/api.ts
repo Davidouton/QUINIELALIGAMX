@@ -164,6 +164,62 @@ export interface AdminPickRow {
   updated_at: string | null;
 }
 
+export interface AnalyticsKpi {
+  total_events: number;
+  unique_users: number;
+  screen_views: number;
+  action_events: number;
+  failure_events: number;
+  avg_screen_load_ms: number | null;
+}
+
+export interface AnalyticsScreenStat {
+  screen_name: string;
+  route_path: string | null;
+  views: number;
+  unique_users: number;
+  avg_load_ms: number | null;
+  failures: number;
+}
+
+export interface AnalyticsEventStat {
+  category: string;
+  event_name: string;
+  count: number;
+  unique_users: number;
+}
+
+export interface AnalyticsDailyStat {
+  day: string;
+  screen_views: number;
+  action_events: number;
+  failure_events: number;
+  unique_users: number;
+}
+
+export interface AnalyticsRecentEvent {
+  id: string;
+  created_at: string;
+  profile_id: string | null;
+  display_name: string | null;
+  category: string;
+  event_name: string;
+  route_path: string | null;
+  screen_name: string | null;
+  success: boolean | null;
+  duration_ms: number | null;
+}
+
+export interface AdminAnalyticsStats {
+  window_days: number;
+  generated_at: string;
+  kpis: AnalyticsKpi;
+  screens: AnalyticsScreenStat[];
+  top_events: AnalyticsEventStat[];
+  daily: AnalyticsDailyStat[];
+  recent_events: AnalyticsRecentEvent[];
+}
+
 export interface GlobalPickPlayer {
   profile_id: string;
   display_name: string;

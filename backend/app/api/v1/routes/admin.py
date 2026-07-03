@@ -1251,7 +1251,8 @@ def _bulk_payload_from_row(
         display_name=display_name or "",
         password=password,
         season_id=season_id,
-        is_active=_parse_bool(_get_csv_value(row, "is_active", "activo", "alta"), True),
+        is_active=True,
+        season_membership_active=_parse_bool(_get_csv_value(row, "is_active", "activo", "alta"), False),
         is_paid=_parse_bool(_get_csv_value(row, "is_paid", "pagado", "paid"), False),
         modality=_get_csv_value(row, "modality", "modalidad") or "pre_pago",
         aval_profile_id=_get_csv_value(row, "aval_profile_id", "aval_id"),
@@ -1338,10 +1339,10 @@ def create_or_update_admin_user(
     membership = season_membership_repo.get_for_profile_and_season(db, profile.id, season.id)
     if membership is None:
         membership = SeasonMembership(season_id=season.id, profile_id=profile.id)
-    membership.is_active = payload.is_active
+    membership.is_active = payload.season_membership_active
     membership.is_paid = payload.is_paid
     membership.notes = normalize_optional_text(payload.notes)
-    if payload.is_active:
+    if payload.season_membership_active:
         membership.activated_at = datetime.now(UTC)
         membership.activated_by_profile_id = current_profile.id
     if not season_eligibility_service.is_locked(db, season):

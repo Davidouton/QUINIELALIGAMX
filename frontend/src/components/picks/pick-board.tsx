@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
+import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -516,6 +517,7 @@ export function PickBoard() {
   const [loading, setLoading] = useState(true);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const globalBoardCacheRef = useRef<Record<string, GlobalPickBoard>>({});
+  const trackedGlobalViewRef = useRef("");
   const teamById = Object.fromEntries(teams.map((team) => [team.id, team]));
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
   const useWorldCupMode = isWorldCupSeason(state.selectedSeason);
@@ -532,6 +534,7 @@ export function PickBoard() {
 
   useEffect(() => {
     async function loadBoard() {
+      const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
       try {
         const accessToken = await getBrowserAccessToken();
         const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken, {
@@ -619,11 +622,35 @@ export function PickBoard() {
           vipCompetitions,
           error: null,
         });
+        void trackAnalyticsEvent({
+          category: "screen",
+          event_name: "screen_loaded",
+          route_path: "/dashboard/picks",
+          screen_name: getDashboardScreenName("/dashboard/picks"),
+          season_id: selectedSeason?.id ?? null,
+          matchday_id: selectedMatchday.id,
+          competition_id: selectedSeason?.competition_id ?? null,
+          success: true,
+          duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+        });
       } catch (loadError) {
         setState((current) => ({
           ...current,
           error: loadError instanceof Error ? loadError.message : "No se pudo cargar la jornada",
         }));
+        void trackAnalyticsEvent({
+          category: "screen",
+          event_name: "screen_load_failed",
+          route_path: "/dashboard/picks",
+          screen_name: getDashboardScreenName("/dashboard/picks"),
+          season_id: seasonIdParam,
+          competition_id: competitionId || null,
+          success: false,
+          duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+          metadata: {
+            message: loadError instanceof Error ? loadError.message : "picks_failed",
+          },
+        });
       } finally {
         setLoading(false);
       }
@@ -683,14 +710,15 @@ export function PickBoard() {
         return;
       }
 
+      if (currentState?.status === "saving") {
+        nextAutoSave[match.id] = currentState;
+        return;
+      }
+
       nextAutoSave[match.id] = { status: "pending", detail: "Guardado automatico en 2 s..." };
       timers[match.id] = setTimeout(() => {
         void savePick(match.id);
       }, AUTO_SAVE_DELAY_MS);
-
-      if (currentState?.status === "saving") {
-        nextAutoSave[match.id] = currentState;
-      }
     });
 
     setAutoSave((current) => {
@@ -706,6 +734,7 @@ export function PickBoard() {
   }, [forms, state.existingPicks, state.matches, useNflMode, useWorldCupMode]);
 
   async function loadSelectedMatchday(matchdayId: string) {
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
       setLoading(true);
       const accessToken = await getBrowserAccessToken();
@@ -757,12 +786,37 @@ export function PickBoard() {
         globalPickBoard: null,
         error: null,
       }));
+      void trackAnalyticsEvent({
+        category: "screen",
+        event_name: "screen_loaded",
+        route_path: "/dashboard/picks",
+        screen_name: getDashboardScreenName("/dashboard/picks"),
+        season_id: selectedSeason?.id ?? null,
+        matchday_id: selectedMatchday.id,
+        competition_id: selectedSeason?.competition_id ?? null,
+        success: true,
+        duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+      });
     } catch (loadError) {
       setState((current) => ({
         ...current,
         error:
           loadError instanceof Error ? loadError.message : "No se pudo cargar la jornada seleccionada",
       }));
+      void trackAnalyticsEvent({
+        category: "screen",
+        event_name: "screen_load_failed",
+        route_path: "/dashboard/picks",
+        screen_name: getDashboardScreenName("/dashboard/picks"),
+        season_id: state.selectedSeason?.id ?? seasonIdParam,
+        matchday_id: matchdayId,
+        competition_id: state.selectedSeason?.competition_id ?? competitionId ?? null,
+        success: false,
+        duration_ms: Math.round((typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt),
+        metadata: {
+          message: loadError instanceof Error ? loadError.message : "picks_matchday_failed",
+        },
+      });
     } finally {
       setLoading(false);
     }
@@ -902,6 +956,24 @@ export function PickBoard() {
           ...current,
           globalPickBoard,
         }));
+        if (trackedGlobalViewRef.current !== cacheKey) {
+          trackedGlobalViewRef.current = cacheKey;
+          void trackAnalyticsEvent({
+            category: "action",
+            event_name: "global_picks_viewed",
+            route_path: "/dashboard/picks",
+            screen_name: getDashboardScreenName("/dashboard/picks"),
+            season_id: state.selectedSeason?.id ?? null,
+            matchday_id: state.selectedMatchday.id,
+            competition_id: state.selectedSeason?.competition_id ?? null,
+            success: true,
+            metadata: {
+              context: activeGlobalContext,
+              players: globalPickBoard.players.length,
+              matches: globalPickBoard.matches.length,
+            },
+          });
+        }
       } catch (loadError) {
         setGlobalPickError(
           loadError instanceof Error ? loadError.message : "No se pudieron cargar los picks globales",
@@ -985,6 +1057,20 @@ export function PickBoard() {
         ...current,
         [matchId]: { status: "saved", detail: "Pick guardado automaticamente." },
       }));
+      void trackAnalyticsEvent({
+        category: "action",
+        event_name: existing ? "pick_updated" : "pick_saved",
+        route_path: "/dashboard/picks",
+        screen_name: getDashboardScreenName("/dashboard/picks"),
+        season_id: state.selectedSeason?.id ?? null,
+        matchday_id: state.selectedMatchday?.id ?? null,
+        competition_id: state.selectedSeason?.competition_id ?? null,
+        success: true,
+        metadata: {
+          match_id: matchId,
+          has_advancing_team: Boolean(currentForm.advancing_team_id),
+        },
+      });
     } catch (submitError) {
       setAutoSave((current) => ({
         ...current,
@@ -997,6 +1083,20 @@ export function PickBoard() {
         ...current,
         error: submitError instanceof Error ? submitError.message : "No se pudo guardar el pick",
       }));
+      void trackAnalyticsEvent({
+        category: "action",
+        event_name: "pick_save_failed",
+        route_path: "/dashboard/picks",
+        screen_name: getDashboardScreenName("/dashboard/picks"),
+        season_id: state.selectedSeason?.id ?? null,
+        matchday_id: state.selectedMatchday?.id ?? null,
+        competition_id: state.selectedSeason?.competition_id ?? null,
+        success: false,
+        metadata: {
+          match_id: matchId,
+          message: submitError instanceof Error ? submitError.message : "pick_save_failed",
+        },
+      });
     }
   }
 
