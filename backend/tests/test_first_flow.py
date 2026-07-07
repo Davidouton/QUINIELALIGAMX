@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from conftest import MATCH_ONE_ID, MATCHDAY_ID, PROFILE_LEADER_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
-from app.models.entities import MatchResult, Matchday, MatchdayStatus, Season, StandingsMatchday
+from app.models.entities import MatchResult, Matchday, MatchdayStatus, Profile, RoleCode, Season, SeasonMembership, StandingsMatchday, StandingsOverall
 
 
 def test_first_flow(client):
@@ -47,6 +47,91 @@ def test_first_flow(client):
     leaderboard = client.get("/api/v1/leaderboard/overall")
     assert leaderboard.status_code == 200
     assert leaderboard.json()[0]["display_name"] == "Lider Semanal"
+
+
+def test_overall_leaderboard_recomputes_stale_tie_positions(client):
+    third_profile_id = "10000000-0000-0000-0000-000000000003"
+    fourth_profile_id = "10000000-0000-0000-0000-000000000004"
+    third_membership_id = "70000000-0000-0000-0000-000000000003"
+    fourth_membership_id = "70000000-0000-0000-0000-000000000004"
+
+    db = SessionLocal()
+    try:
+        db.query(StandingsOverall).delete()
+        db.add_all(
+            [
+                Profile(
+                    id=third_profile_id,
+                    auth_user_id="33333333-3333-3333-3333-333333333333",
+                    email="third@example.com",
+                    display_name="Isaac Rayon",
+                    role_code=RoleCode.USER,
+                    is_active=True,
+                ),
+                Profile(
+                    id=fourth_profile_id,
+                    auth_user_id="44444444-4444-4444-4444-444444444444",
+                    email="fourth@example.com",
+                    display_name="Mario Martinez",
+                    role_code=RoleCode.USER,
+                    is_active=True,
+                ),
+                SeasonMembership(
+                    id=third_membership_id,
+                    season_id=SEASON_ID,
+                    profile_id=third_profile_id,
+                    is_active=True,
+                    is_paid=True,
+                ),
+                SeasonMembership(
+                    id=fourth_membership_id,
+                    season_id=SEASON_ID,
+                    profile_id=fourth_profile_id,
+                    is_active=True,
+                    is_paid=True,
+                ),
+                StandingsOverall(
+                    season_id=SEASON_ID,
+                    profile_id=PROFILE_USER_ID,
+                    total_points=232,
+                    correct_results=62,
+                    exact_scores=14,
+                    rank_position=1,
+                ),
+                StandingsOverall(
+                    season_id=SEASON_ID,
+                    profile_id=PROFILE_LEADER_ID,
+                    total_points=232,
+                    correct_results=62,
+                    exact_scores=14,
+                    rank_position=1,
+                ),
+                StandingsOverall(
+                    season_id=SEASON_ID,
+                    profile_id=third_profile_id,
+                    total_points=232,
+                    correct_results=63,
+                    exact_scores=13,
+                    rank_position=3,
+                ),
+                StandingsOverall(
+                    season_id=SEASON_ID,
+                    profile_id=fourth_profile_id,
+                    total_points=229,
+                    correct_results=61,
+                    exact_scores=13,
+                    rank_position=4,
+                ),
+            ]
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    leaderboard = client.get(f"/api/v1/leaderboard/overall?season_id={SEASON_ID}")
+    assert leaderboard.status_code == 200
+    rows = leaderboard.json()
+    assert [row["rank_position"] for row in rows[:4]] == [1, 1, 1, 4]
 
 
 def test_registered_users_returns_other_profiles(client):

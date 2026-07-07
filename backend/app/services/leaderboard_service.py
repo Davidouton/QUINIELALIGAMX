@@ -28,8 +28,8 @@ class LeaderboardService:
         rows = self.repo.list_overall(db, season.id if season is not None else None)
         season_cache: dict[str, Season | None] = {}
         eligible_profile_ids_cache: dict[str, set[str]] = {}
-        return [
-            self._overall_entry(standing, profile)
+        eligible_rows = [
+            (standing, profile)
             for standing, profile in rows
             if self._counts_for_scoring(
                 db,
@@ -39,6 +39,7 @@ class LeaderboardService:
                 eligible_profile_ids_cache=eligible_profile_ids_cache,
             )
         ]
+        return self._overall_entries(eligible_rows)
 
     def list_matchday(self, db: Session, matchday_id: str) -> list[LeaderboardEntry]:
         matchday = db.get(Matchday, matchday_id)
@@ -47,8 +48,8 @@ class LeaderboardService:
         rows = self.repo.list_matchday(db, matchday_id)
         season_cache: dict[str, Season | None] = {}
         eligible_profile_ids_cache: dict[str, set[str]] = {}
-        return [
-            self._matchday_entry(standing, profile)
+        eligible_rows = [
+            (standing, profile)
             for standing, profile in rows
             if self._counts_for_scoring(
                 db,
@@ -58,6 +59,7 @@ class LeaderboardService:
                 eligible_profile_ids_cache=eligible_profile_ids_cache,
             )
         ]
+        return self._matchday_entries(eligible_rows)
 
     def list_profile_matchdays(
         self,
@@ -414,27 +416,63 @@ class LeaderboardService:
             exact_scores=exact_scores,
         )
 
-    def _overall_entry(self, standing: StandingsOverall, profile: Profile) -> LeaderboardEntry:
-        return LeaderboardEntry(
-            profile_id=profile.id,
-            display_name=profile.display_name,
-            role_code=profile.role_code.value,
-            total_points=standing.total_points,
-            correct_results=standing.correct_results,
-            exact_scores=standing.exact_scores,
-            rank_position=standing.rank_position,
+    def _overall_entries(self, rows: list[tuple[StandingsOverall, Profile]]) -> list[LeaderboardEntry]:
+        sorted_rows = sorted(
+            rows,
+            key=lambda item: (
+                -item[0].total_points,
+                -item[0].exact_scores,
+                item[1].display_name.lower(),
+            ),
         )
+        ranked_entries: list[LeaderboardEntry] = []
+        previous_points: int | None = None
+        previous_rank = 0
+        for index, (standing, profile) in enumerate(sorted_rows, start=1):
+            if previous_points is None or standing.total_points != previous_points:
+                previous_rank = index
+                previous_points = standing.total_points
+            ranked_entries.append(
+                LeaderboardEntry(
+                    profile_id=profile.id,
+                    display_name=profile.display_name,
+                    role_code=profile.role_code.value,
+                    total_points=standing.total_points,
+                    correct_results=standing.correct_results,
+                    exact_scores=standing.exact_scores,
+                    rank_position=previous_rank,
+                )
+            )
+        return ranked_entries
 
-    def _matchday_entry(self, standing: StandingsMatchday, profile: Profile) -> LeaderboardEntry:
-        return LeaderboardEntry(
-            profile_id=profile.id,
-            display_name=profile.display_name,
-            role_code=profile.role_code.value,
-            total_points=standing.total_points,
-            correct_results=standing.correct_results,
-            exact_scores=standing.exact_scores,
-            rank_position=standing.rank_position,
+    def _matchday_entries(self, rows: list[tuple[StandingsMatchday, Profile]]) -> list[LeaderboardEntry]:
+        sorted_rows = sorted(
+            rows,
+            key=lambda item: (
+                -item[0].total_points,
+                -item[0].exact_scores,
+                item[1].display_name.lower(),
+            ),
         )
+        ranked_entries: list[LeaderboardEntry] = []
+        previous_points: int | None = None
+        previous_rank = 0
+        for index, (standing, profile) in enumerate(sorted_rows, start=1):
+            if previous_points is None or standing.total_points != previous_points:
+                previous_rank = index
+                previous_points = standing.total_points
+            ranked_entries.append(
+                LeaderboardEntry(
+                    profile_id=profile.id,
+                    display_name=profile.display_name,
+                    role_code=profile.role_code.value,
+                    total_points=standing.total_points,
+                    correct_results=standing.correct_results,
+                    exact_scores=standing.exact_scores,
+                    rank_position=previous_rank,
+                )
+            )
+        return ranked_entries
 
     def _profile_matchday_entry(
         self,
