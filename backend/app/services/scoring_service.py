@@ -317,10 +317,10 @@ class ScoringService:
         rows: list[tuple[str, dict[str, int]]],
     ) -> list[tuple[str, dict[str, int], int]]:
         ranked_rows: list[tuple[str, dict[str, int], int]] = []
-        previous_signature: tuple[int, int] | None = None
+        previous_signature: int | None = None
         previous_rank = 0
         for index, (profile_id, values) in enumerate(rows, start=1):
-            current_signature = (values["total_points"], values["exact_scores"])
+            current_signature = values["total_points"]
             if previous_signature is None or current_signature != previous_signature:
                 previous_rank = index
                 previous_signature = current_signature

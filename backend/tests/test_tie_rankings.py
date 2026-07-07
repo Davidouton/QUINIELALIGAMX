@@ -95,6 +95,24 @@ def test_scoring_uses_competition_ranking_for_tied_points():
         db.close()
 
 
+def test_competition_ranking_ignores_hidden_tiebreakers_for_position():
+    ranked_rows = ScoringService._apply_competition_ranks(
+        [
+            ("a", {"total_points": 232, "correct_results": 62, "exact_scores": 14}),
+            ("b", {"total_points": 232, "correct_results": 62, "exact_scores": 14}),
+            ("c", {"total_points": 232, "correct_results": 63, "exact_scores": 13}),
+            ("d", {"total_points": 229, "correct_results": 61, "exact_scores": 13}),
+        ]
+    )
+
+    assert [(profile_id, rank_position) for profile_id, _values, rank_position in ranked_rows] == [
+        ("a", 1),
+        ("b", 1),
+        ("c", 1),
+        ("d", 4),
+    ]
+
+
 def test_prize_shares_split_absorbed_places_by_tied_group():
     shares_first = ScoringService.calculate_prize_shares(
         ranked_rows=[
