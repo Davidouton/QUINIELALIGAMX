@@ -114,6 +114,25 @@ function toApiDateTime(value: string) {
   return date.toISOString();
 }
 
+function normalizeVipCompetition(vip: AdminVipCompetition): AdminVipCompetition {
+  const questionPoolQuestions = Array.isArray(vip.question_pool_questions)
+    ? vip.question_pool_questions.map((question) => ({
+        ...question,
+        options: Array.isArray(question.options) ? question.options : [],
+      }))
+    : [];
+
+  return {
+    ...vip,
+    matchdays: Array.isArray(vip.matchdays) ? vip.matchdays : [],
+    memberships: Array.isArray(vip.memberships) ? vip.memberships : [],
+    leaderboard: Array.isArray(vip.leaderboard) ? vip.leaderboard : [],
+    team_winner_teams: Array.isArray(vip.team_winner_teams) ? vip.team_winner_teams : [],
+    team_winner_entries: Array.isArray(vip.team_winner_entries) ? vip.team_winner_entries : [],
+    question_pool_questions: questionPoolQuestions,
+  };
+}
+
 function toFormState(vip: AdminVipCompetition | null, seasons: Season[]): FormState {
   if (!vip) {
     return {
@@ -223,33 +242,36 @@ export function AdminVipPanel() {
     teamWinnerTeamIds.length >= teamWinnerParticipantCount;
 
   function syncTeamWinnerDraft(vip: AdminVipCompetition | null) {
-    setTeamWinnerTeamIds(vip?.team_winner_teams.map((team) => team.team_id) ?? []);
+    const normalizedVip = vip ? normalizeVipCompetition(vip) : null;
+    setTeamWinnerTeamIds(normalizedVip?.team_winner_teams.map((team) => team.team_id) ?? []);
     setTeamWinnerProfileIds(
-      vip?.team_winner_entries
+      normalizedVip?.team_winner_entries
         .filter((entry) => !entry.is_house && entry.profile_id)
         .map((entry) => entry.profile_id as string) ?? [],
     );
-    const houseEntry = vip?.team_winner_entries.find((entry) => entry.is_house) ?? null;
+    const houseEntry = normalizedVip?.team_winner_entries.find((entry) => entry.is_house) ?? null;
     setIncludeHouse(Boolean(houseEntry));
     setHouseLabel(houseEntry?.display_name ?? "Casa");
   }
 
   function syncQuestionDraft(vip: AdminVipCompetition | null) {
+    const normalizedVip = vip ? normalizeVipCompetition(vip) : null;
     setQuestionForm({
       ...initialQuestionForm,
-      sortOrder: String((vip?.question_pool_questions.length ?? 0) + 1),
+      sortOrder: String((normalizedVip?.question_pool_questions.length ?? 0) + 1),
     });
   }
 
   async function loadPanel(preferredVipId = selectedVipId) {
     const accessToken = await getBrowserAccessToken();
-    const [seasonRows, matchdayRows, vipRows, userRows, teamRows] = await Promise.all([
+    const [seasonRows, matchdayRows, rawVipRows, userRows, teamRows] = await Promise.all([
       backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Matchday[]>("/matchdays", accessToken),
       backendFetch<AdminVipCompetition[]>("/admin/vip", accessToken),
       backendFetch<AdminUser[]>("/admin/users", accessToken),
       backendFetch<Team[]>("/teams", accessToken),
     ]);
+    const vipRows = rawVipRows.map(normalizeVipCompetition);
 
     setSeasons(seasonRows);
     setMatchdays(matchdayRows);
@@ -272,14 +294,15 @@ export function AdminVipPanel() {
 
   async function loadVipDetail(vipId: string, accessToken?: string) {
     const token = accessToken ?? (await getBrowserAccessToken());
-    const detailedVip = await backendFetch<AdminVipCompetition>(`/admin/vip/${vipId}`, token);
+    const detailedVip = normalizeVipCompetition(await backendFetch<AdminVipCompetition>(`/admin/vip/${vipId}`, token));
     setVips((current) => current.map((vip) => (vip.id === detailedVip.id ? detailedVip : vip)));
   }
 
   function replaceVipAndRefreshDetail(updatedVip: AdminVipCompetition, accessToken?: string) {
-    setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+    const normalizedVip = normalizeVipCompetition(updatedVip);
+    setVips((current) => current.map((vip) => (vip.id === normalizedVip.id ? normalizedVip : vip)));
     window.setTimeout(() => {
-      void loadVipDetail(updatedVip.id, accessToken).catch((caughtError) => {
+      void loadVipDetail(normalizedVip.id, accessToken).catch((caughtError) => {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudo refrescar el detalle VIP");
       });
     }, 1200);
