@@ -256,6 +256,22 @@ class VipQuestionPoolResponseRequest(BaseModel):
     option_id: str = Field(min_length=1)
 
 
+class VipQuestionPoolBulkResponseItem(BaseModel):
+    question_id: str = Field(min_length=1)
+    option_id: str | None = None
+
+
+class VipQuestionPoolBulkResponseRequest(BaseModel):
+    questions: list[VipQuestionPoolBulkResponseItem] = Field(default_factory=list, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_questions(self) -> "VipQuestionPoolBulkResponseRequest":
+        question_ids = [row.question_id for row in self.questions]
+        if len(question_ids) != len(set(question_ids)):
+            raise ValueError("No repitas preguntas dentro del guardado por lote")
+        return self
+
+
 class AdminVipCompetitionOut(BaseModel):
     id: str
     season_id: str

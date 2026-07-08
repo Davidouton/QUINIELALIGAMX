@@ -4,7 +4,12 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_profile
 from app.core.database import get_db
 from app.models.entities import Profile
-from app.schemas.vip import VipCompetitionOut, VipQuestionPoolResponseRequest, VipRequestJoinResponse
+from app.schemas.vip import (
+    VipCompetitionOut,
+    VipQuestionPoolBulkResponseRequest,
+    VipQuestionPoolResponseRequest,
+    VipRequestJoinResponse,
+)
 from app.services.vip_service import VipService
 
 router = APIRouter()
@@ -57,6 +62,25 @@ def save_vip_question_pool_response(
         db,
         vip_id=vip_id,
         question_id=question_id,
+        profile=current_profile,
+        payload=payload,
+    )
+    rows = service.list_public_vips(db, current_profile, vip_id=vip_id)
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+    return rows[0]
+
+
+@router.put("/vip/{vip_id}/questions/responses", response_model=VipCompetitionOut)
+def save_vip_question_pool_responses_bulk(
+    vip_id: str,
+    payload: VipQuestionPoolBulkResponseRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> VipCompetitionOut:
+    service.save_question_pool_responses_bulk(
+        db,
+        vip_id=vip_id,
         profile=current_profile,
         payload=payload,
     )

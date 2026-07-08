@@ -39,6 +39,14 @@ function formatMexicoDate(value: string | null) {
   }).format(date);
 }
 
+function shortenQuestionLabel(value: string, maxLength = 44) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
 function statusCopy(status: VipMembershipStatus | null) {
   if (status === "approved") {
     return { label: "Aprobado", tone: "text-mint", dot: "bg-mint" };
@@ -145,7 +153,9 @@ export function VipPageContent() {
   const [loading, setLoading] = useState(true);
   const [requestingVipId, setRequestingVipId] = useState<string | null>(null);
   const [payingVipId, setPayingVipId] = useState<string | null>(null);
-  const [respondingQuestionId, setRespondingQuestionId] = useState<string | null>(null);
+  const [savingQuestionResponses, setSavingQuestionResponses] = useState(false);
+  const [selectedQuestionId, setSelectedQuestionId] = useState("");
+  const [questionResponseDrafts, setQuestionResponseDrafts] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -154,6 +164,36 @@ export function VipPageContent() {
     [selectedVipId, vips],
   );
   const selectedVipPricing = selectedVip ? pricingByVipId[selectedVip.id] ?? null : null;
+  const questionPoolQuestions = useMemo(
+    () =>
+      [...(selectedVip?.question_pool_questions ?? [])].sort((left, right) => {
+        if (left.sort_order !== right.sort_order) {
+          return left.sort_order - right.sort_order;
+        }
+        return left.prompt.localeCompare(right.prompt);
+      }),
+    [selectedVip],
+  );
+  const selectedQuestion =
+    questionPoolQuestions.find((question) => question.id === selectedQuestionId) ?? questionPoolQuestions[0] ?? null;
+  const savedQuestionResponses = useMemo(
+    () =>
+      Object.fromEntries(
+        questionPoolQuestions.map((question) => [question.id, question.selected_option_id ?? null]),
+      ) as Record<string, string | null>,
+    [questionPoolQuestions],
+  );
+  const draftQuestionResponses = useMemo(
+    () => ({
+      ...savedQuestionResponses,
+      ...questionResponseDrafts,
+    }),
+    [questionResponseDrafts, savedQuestionResponses],
+  );
+  const answeredQuestionCount = questionPoolQuestions.filter((question) => Boolean(draftQuestionResponses[question.id])).length;
+  const pendingQuestionResponseCount = questionPoolQuestions.filter(
+    (question) => draftQuestionResponses[question.id] !== savedQuestionResponses[question.id],
+  ).length;
   const selectedTeamWinnerEntries = useMemo(() => {
     if (!selectedVip || selectedVip.competition_kind !== "team_winner") {
       return [];
@@ -189,6 +229,18 @@ export function VipPageContent() {
       ...pendingApprovedMembers,
     ];
   }, [selectedVip]);
+
+  useEffect(() => {
+    if (!questionPoolQuestions.some((question) => question.id === selectedQuestionId)) {
+      setSelectedQuestionId(questionPoolQuestions[0]?.id ?? "");
+    }
+  }, [questionPoolQuestions, selectedQuestionId]);
+
+  useEffect(() => {
+    setQuestionResponseDrafts(
+      Object.fromEntries(questionPoolQuestions.map((question) => [question.id, question.selected_option_id ?? null])),
+    );
+  }, [questionPoolQuestions]);
 
   async function loadVips() {
     const accessToken = await getBrowserAccessToken();
@@ -265,23 +317,39 @@ export function VipPageContent() {
     }
   }
 
-  async function handleQuestionPoolResponse(vipId: string, questionId: string, optionId: string) {
-    setRespondingQuestionId(questionId);
+  function handleSelectQuestionResponse(questionId: string, optionId: string) {
+    setQuestionResponseDrafts((current) => ({
+      ...current,
+      [questionId]: current[questionId] === optionId ? null : optionId,
+    }));
+  }
+
+  async function handleSaveQuestionPoolResponses(vipId: string) {
+    const changedQuestions = questionPoolQuestions
+      .map((question) => ({
+        question_id: question.id,
+        option_id: draftQuestionResponses[question.id] ?? null,
+      }))
+      .filter((row) => row.option_id !== savedQuestionResponses[row.question_id]);
+    if (changedQuestions.length === 0) {
+      setMessage("No hay cambios por guardar.");
+      return;
+    }
+    setSavingQuestionResponses(true);
     setError(null);
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      await backendFetch<VipCompetition>(`/vip/${vipId}/questions/${questionId}/response`, accessToken, {
+      const updatedVip = await backendFetch<VipCompetition>(`/vip/${vipId}/questions/responses`, accessToken, {
         method: "PUT",
-        body: JSON.stringify({ option_id: optionId }),
+        body: JSON.stringify({ questions: changedQuestions }),
       });
-      await loadVips();
-      setSelectedVipId(vipId);
-      setMessage("Respuesta guardada.");
+      setVips((current) => current.map((vip) => (vip.id === updatedVip.id ? updatedVip : vip)));
+      setMessage(changedQuestions.length === 1 ? "Respuesta guardada." : "Respuestas guardadas.");
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar tu respuesta");
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron guardar tus respuestas");
     } finally {
-      setRespondingQuestionId(null);
+      setSavingQuestionResponses(false);
     }
   }
 
@@ -525,59 +593,129 @@ export function VipPageContent() {
                           : "Sin bloqueo configurado"}
                       </p>
                     </div>
-                    <p className="text-sm font-semibold text-ink">
-                      {selectedVip.question_pool_questions.filter((question) => question.selected_option_id).length}/
-                      {selectedVip.question_pool_questions.length} respondidas
-                    </p>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-ink">
+                        {answeredQuestionCount}/{questionPoolQuestions.length} respondidas
+                      </p>
+                      <p className="text-xs text-steel">
+                        {pendingQuestionResponseCount > 0
+                          ? `${pendingQuestionResponseCount} cambios por guardar`
+                          : "Todo guardado"}
+                      </p>
+                    </div>
                   </div>
-                  <div className="grid gap-3">
-                    {selectedVip.question_pool_questions.map((question) => {
-                      const canAnswer =
-                        selectedVip.my_membership?.status === "approved" &&
-                        !selectedVip.join_locked &&
-                        question.is_active;
-                      return (
-                        <div key={question.id} className="rounded-[8px] border border-white/[0.06] px-4 py-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-steel">
-                                Pregunta {question.sort_order} · {question.points} pts
-                              </p>
-                              <h3 className="mt-2 text-base font-semibold text-ink">{question.prompt}</h3>
-                            </div>
-                            {!question.is_active ? <span className="text-xs text-coral">Inactiva</span> : null}
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <p className="text-sm text-steel">Selecciona varias respuestas y guarda todo junto.</p>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveQuestionPoolResponses(selectedVip.id)}
+                      disabled={savingQuestionResponses || pendingQuestionResponseCount === 0}
+                      className="app-pill px-4 disabled:opacity-50"
+                    >
+                      {savingQuestionResponses ? "Guardando..." : "Guardar respuestas"}
+                    </button>
+                  </div>
+                  <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+                    <div className="rounded-[10px] border border-white/[0.06] p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-steel">Preguntas</p>
+                        <p className="text-xs text-steel">
+                          {answeredQuestionCount}/{questionPoolQuestions.length}
+                        </p>
+                      </div>
+                      <div className="mt-3 max-h-[520px] space-y-2 overflow-y-auto pr-1">
+                        {questionPoolQuestions.map((question) => {
+                          const draftOptionId = draftQuestionResponses[question.id] ?? null;
+                          const savedOptionId = savedQuestionResponses[question.id] ?? null;
+                          const isAnswered = Boolean(draftOptionId);
+                          const hasPendingChange = draftOptionId !== savedOptionId;
+                          const isActive = selectedQuestion?.id === question.id;
+                          return (
+                            <button
+                              key={question.id}
+                              type="button"
+                              onClick={() => setSelectedQuestionId(question.id)}
+                              className={`w-full rounded-[10px] border px-3 py-3 text-left transition ${
+                                isActive
+                                  ? "border-white/[0.18] bg-white/[0.08] text-ink"
+                                  : hasPendingChange
+                                    ? "border-sky-300/35 bg-sky-300/10 text-ink"
+                                    : isAnswered
+                                      ? "border-mint/25 bg-mint/10 text-mint"
+                                      : "border-white/[0.06] bg-white/[0.02] text-steel hover:border-white/[0.12]"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.14em]">
+                                    P{question.sort_order} · {question.points} pts
+                                  </p>
+                                  <p className="mt-1 truncate text-sm">{shortenQuestionLabel(question.prompt)}</p>
+                                </div>
+                                <span className="text-[10px] uppercase tracking-[0.14em]">
+                                  {hasPendingChange ? "Draft" : isAnswered ? "OK" : "Pend"}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {selectedQuestion ? (
+                      <div className="rounded-[10px] border border-white/[0.06] px-4 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                              Pregunta {selectedQuestion.sort_order} · {selectedQuestion.points} pts
+                            </p>
+                            <h3 className="mt-2 text-base font-semibold text-ink">{selectedQuestion.prompt}</h3>
                           </div>
-                          <div className="mt-4 grid gap-2">
-                            {question.options.map((option) => {
-                              const selected = question.selected_option_id === option.id;
-                              const solved = option.is_correct;
-                              return (
-                                <button
-                                  key={option.id}
-                                  type="button"
-                                  onClick={() => void handleQuestionPoolResponse(selectedVip.id, question.id, option.id)}
-                                  disabled={!canAnswer || respondingQuestionId === question.id}
-                                  className={`rounded-[8px] border px-3 py-3 text-left text-sm transition ${
-                                    solved
-                                      ? "border-mint/40 bg-mint/10 text-mint"
-                                      : selected
-                                        ? "border-sky-300/35 bg-sky-300/10 text-ink"
-                                        : "border-white/[0.06] text-ink hover:border-white/[0.16]"
-                                  } disabled:opacity-80`}
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span>{option.option_text}</span>
-                                    <span className="text-xs">
-                                      {solved ? "Correcta" : selected ? "Tu respuesta" : ""}
-                                    </span>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
+                          {!selectedQuestion.is_active ? <span className="text-xs text-coral">Inactiva</span> : null}
                         </div>
-                      );
-                    })}
+                        <div className="mt-4 grid gap-2">
+                          {selectedQuestion.options.map((option) => {
+                            const draftSelected = draftQuestionResponses[selectedQuestion.id] === option.id;
+                            const savedSelected = savedQuestionResponses[selectedQuestion.id] === option.id;
+                            const solved = option.is_correct;
+                            const canAnswer =
+                              selectedVip.my_membership?.status === "approved" &&
+                              !selectedVip.join_locked &&
+                              selectedQuestion.is_active;
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => handleSelectQuestionResponse(selectedQuestion.id, option.id)}
+                                disabled={!canAnswer || savingQuestionResponses}
+                                className={`rounded-[8px] border px-3 py-3 text-left text-sm transition ${
+                                  solved
+                                    ? "border-mint/40 bg-mint/10 text-mint"
+                                    : draftSelected
+                                      ? "border-sky-300/35 bg-sky-300/10 text-ink"
+                                      : "border-white/[0.06] text-ink hover:border-white/[0.16]"
+                                } disabled:opacity-80`}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <span>{option.option_text}</span>
+                                  <span className="text-xs">
+                                    {solved
+                                      ? "Correcta"
+                                      : draftSelected
+                                        ? draftSelected !== savedSelected
+                                          ? "Pendiente"
+                                          : "Tu respuesta"
+                                        : savedSelected
+                                          ? "Guardada"
+                                          : ""}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

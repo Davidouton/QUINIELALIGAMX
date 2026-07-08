@@ -50,6 +50,7 @@ from app.schemas.vip import (
     VipPerformanceRacePointOut,
     VipQuestionPoolOptionOut,
     VipQuestionPoolQuestionOut,
+    VipQuestionPoolBulkResponseRequest,
     VipQuestionPoolResponseRequest,
     VipTeamWinnerEntryOut,
     VipTeamWinnerTeamOut,
@@ -960,6 +961,93 @@ class VipService:
         else:
             response.selected_option_id = option.id
         db.add(response)
+        db.commit()
+
+    def save_question_pool_responses_bulk(
+        self,
+        db: Session,
+        vip_id: str,
+        profile: Profile,
+        payload: VipQuestionPoolBulkResponseRequest,
+    ) -> None:
+        vip = self._get_question_pool_vip(db, vip_id)
+        self._ensure_question_pool_tables(db)
+        if vip.questions_lock_at is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP no tiene bloqueo configurado")
+        if datetime.now(UTC) >= ensure_utc(vip.questions_lock_at):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP ya cerro respuestas")
+
+        membership = db.scalar(
+            select(VipMembership).where(
+                VipMembership.vip_competition_id == vip.id,
+                VipMembership.profile_id == profile.id,
+                VipMembership.status == VipMembershipStatus.APPROVED,
+            )
+        )
+        if membership is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo miembros aprobados pueden responder")
+
+        question_ids = [row.question_id for row in payload.questions]
+        questions = list(
+            db.scalars(
+                select(VipQuestionPoolQuestion).where(
+                    VipQuestionPoolQuestion.vip_competition_id == vip.id,
+                    VipQuestionPoolQuestion.id.in_(question_ids),
+                    VipQuestionPoolQuestion.is_active.is_(True),
+                )
+            )
+        )
+        questions_by_id = {question.id: question for question in questions}
+        if len(questions_by_id) != len(question_ids):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hay preguntas VIP invalidas en el lote")
+
+        option_rows = list(
+            db.scalars(
+                select(VipQuestionPoolOption)
+                .where(VipQuestionPoolOption.question_id.in_(question_ids))
+                .order_by(VipQuestionPoolOption.question_id.asc(), VipQuestionPoolOption.sort_order.asc())
+            )
+        )
+        options_by_question: dict[str, dict[str, VipQuestionPoolOption]] = {}
+        for option in option_rows:
+            options_by_question.setdefault(option.question_id, {})[option.id] = option
+
+        existing_responses = list(
+            db.scalars(
+                select(VipQuestionPoolResponse).where(
+                    VipQuestionPoolResponse.profile_id == profile.id,
+                    VipQuestionPoolResponse.question_id.in_(question_ids),
+                )
+            )
+        )
+        responses_by_question = {response.question_id: response for response in existing_responses}
+
+        for row in payload.questions:
+            if row.option_id is None:
+                continue
+            if row.option_id not in options_by_question.get(row.question_id, {}):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Una de tus respuestas no pertenece a su pregunta",
+                )
+
+        for row in payload.questions:
+            existing_response = responses_by_question.get(row.question_id)
+            if row.option_id is None:
+                if existing_response is not None:
+                    db.delete(existing_response)
+                continue
+            if existing_response is None:
+                existing_response = VipQuestionPoolResponse(
+                    vip_competition_id=vip.id,
+                    question_id=row.question_id,
+                    profile_id=profile.id,
+                    selected_option_id=row.option_id,
+                )
+            else:
+                existing_response.selected_option_id = row.option_id
+            db.add(existing_response)
+
         db.commit()
 
     def decide_membership(
