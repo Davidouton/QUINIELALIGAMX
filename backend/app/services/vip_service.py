@@ -3,7 +3,7 @@ from decimal import Decimal
 import random
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, inspect, select, text
 from sqlalchemy.orm import Session, aliased
 
 from app.core.datetime import ensure_utc
@@ -58,6 +58,7 @@ from app.services.scoring_service import ScoringService
 
 class VipService:
     def get_join_lock(self, db: Session, vip_id: str) -> dict[str, object]:
+        self._ensure_question_pool_schema(db)
         return self._join_lock_for_vip(db, vip_id)
 
     def list_public_vips(
@@ -71,6 +72,7 @@ class VipService:
         include_approved_members: bool = True,
         include_team_winner_details: bool = True,
     ) -> list[VipCompetitionOut]:
+        self._ensure_question_pool_schema(db)
         statement = (
             select(VipCompetition)
             .where(VipCompetition.is_active.is_(True))
@@ -189,6 +191,7 @@ class VipService:
         return result
 
     def request_join(self, db: Session, vip_id: str, profile: Profile) -> VipMembership:
+        self._ensure_question_pool_schema(db)
         vip = db.get(VipCompetition, vip_id)
         if vip is None or not vip.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
@@ -239,6 +242,7 @@ class VipService:
         include_leaderboard: bool = True,
         vip_id: str | None = None,
     ) -> list[AdminVipCompetitionOut]:
+        self._ensure_question_pool_schema(db)
         statement = select(VipCompetition).order_by(
             VipCompetition.created_at.desc(),
             VipCompetition.name.asc(),
@@ -334,6 +338,7 @@ class VipService:
         payload: AdminVipUpsertRequest,
         current_profile: Profile,
     ) -> VipCompetition:
+        self._ensure_question_pool_schema(db)
         season, matchdays = self._resolve_vip_season_and_matchdays(db, payload)
         vip = VipCompetition(
             season_id=season.id,
@@ -361,6 +366,7 @@ class VipService:
         vip_id: str,
         payload: AdminVipUpsertRequest,
     ) -> VipCompetition:
+        self._ensure_question_pool_schema(db)
         vip = db.get(VipCompetition, vip_id)
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
@@ -390,6 +396,7 @@ class VipService:
         return vip
 
     def delete_admin_vip(self, db: Session, vip_id: str) -> None:
+        self._ensure_question_pool_schema(db)
         vip = db.get(VipCompetition, vip_id)
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
@@ -418,6 +425,7 @@ class VipService:
         payload: AdminVipMembershipAddRequest,
         current_profile: Profile,
     ) -> VipMembership:
+        self._ensure_question_pool_schema(db)
         vip = db.get(VipCompetition, vip_id)
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
@@ -991,6 +999,7 @@ class VipService:
         return self._membership_out(membership, profile_names)
 
     def recalculate_vip_standings(self, db: Session, vip_id: str) -> int:
+        self._ensure_question_pool_schema(db)
         vip = db.get(VipCompetition, vip_id)
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
@@ -1576,6 +1585,38 @@ class VipService:
 
     def _ensure_vip_standings_table(self, db: Session) -> None:
         VipStanding.__table__.create(bind=db.get_bind(), checkfirst=True)
+
+    def _ensure_question_pool_schema(self, db: Session) -> None:
+        bind = db.get_bind()
+        inspector = inspect(bind)
+        table_names = set(inspector.get_table_names())
+
+        if "vip_competitions" in table_names:
+            vip_competition_columns = {column["name"] for column in inspector.get_columns("vip_competitions")}
+            if "questions_lock_at" not in vip_competition_columns:
+                db.execute(text("ALTER TABLE vip_competitions ADD COLUMN questions_lock_at TIMESTAMP WITH TIME ZONE"))
+                db.commit()
+
+        self._ensure_question_pool_tables(db)
+        db.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_question_pool_questions_vip_sort "
+                "ON vip_question_pool_questions(vip_competition_id, sort_order)"
+            )
+        )
+        db.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_question_pool_options_question_sort "
+                "ON vip_question_pool_options(question_id, sort_order)"
+            )
+        )
+        db.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_question_pool_responses_vip_profile "
+                "ON vip_question_pool_responses(vip_competition_id, profile_id)"
+            )
+        )
+        db.commit()
 
     def _ensure_question_pool_tables(self, db: Session) -> None:
         VipQuestionPoolQuestion.__table__.create(bind=db.get_bind(), checkfirst=True)
