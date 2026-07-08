@@ -15,8 +15,17 @@ type FormState = {
   firstPlacePct: string;
   secondPlacePct: string;
   thirdPlacePct: string;
+  questionsLockAt: string;
   isActive: boolean;
   matchdayIds: string[];
+};
+
+type QuestionFormState = {
+  prompt: string;
+  points: string;
+  sortOrder: string;
+  isActive: boolean;
+  options: string[];
 };
 
 const initialForm: FormState = {
@@ -28,8 +37,17 @@ const initialForm: FormState = {
   firstPlacePct: "0",
   secondPlacePct: "0",
   thirdPlacePct: "0",
+  questionsLockAt: "",
   isActive: true,
   matchdayIds: [],
+};
+
+const initialQuestionForm: QuestionFormState = {
+  prompt: "",
+  points: "1",
+  sortOrder: "1",
+  isActive: true,
+  options: ["", ""],
 };
 
 const flatFieldClass =
@@ -52,6 +70,37 @@ function getCaughtMessage(caughtError: unknown, fallback: string) {
   return caughtError instanceof Error ? caughtError.message : fallback;
 }
 
+function toDateTimeLocalValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const formatter = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return formatter.format(date).replace(" ", "T");
+}
+
+function toApiDateTime(value: string) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toISOString();
+}
+
 function toFormState(vip: AdminVipCompetition | null, seasons: Season[]): FormState {
   if (!vip) {
     return {
@@ -68,6 +117,7 @@ function toFormState(vip: AdminVipCompetition | null, seasons: Season[]): FormSt
     firstPlacePct: String(vip.first_place_pct),
     secondPlacePct: String(vip.second_place_pct),
     thirdPlacePct: String(vip.third_place_pct),
+    questionsLockAt: toDateTimeLocalValue(vip.questions_lock_at),
     isActive: vip.is_active,
     matchdayIds: vip.matchdays.map((matchday) => matchday.id),
   };
@@ -89,10 +139,14 @@ export function AdminVipPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingTeamWinner, setSavingTeamWinner] = useState(false);
+  const [savingQuestion, setSavingQuestion] = useState(false);
   const [deletingVip, setDeletingVip] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [recalculatingVip, setRecalculatingVip] = useState(false);
   const [processingMembershipId, setProcessingMembershipId] = useState<string | null>(null);
+  const [gradingQuestionId, setGradingQuestionId] = useState<string | null>(null);
+  const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
+  const [questionForm, setQuestionForm] = useState<QuestionFormState>(initialQuestionForm);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -142,6 +196,7 @@ export function AdminVipPanel() {
   const teamWinnerEntries = selectedVip?.team_winner_entries ?? [];
   const teamWinnerTeams = selectedVip?.team_winner_teams ?? [];
   const isTeamWinnerMode = form.competitionKind === "team_winner";
+  const isQuestionPoolMode = form.competitionKind === "question_pool";
   const teamWinnerParticipantCount = teamWinnerProfileIds.length + (includeHouse ? 1 : 0);
   const hasTeamWinnerDraw = teamWinnerEntries.some((entry) => entry.reveal_order);
   const revealedTeamWinnerCount = teamWinnerEntries.filter((entry) => entry.revealed_at).length;
@@ -166,6 +221,13 @@ export function AdminVipPanel() {
     setHouseLabel(houseEntry?.display_name ?? "Casa");
   }
 
+  function syncQuestionDraft(vip: AdminVipCompetition | null) {
+    setQuestionForm({
+      ...initialQuestionForm,
+      sortOrder: String((vip?.question_pool_questions.length ?? 0) + 1),
+    });
+  }
+
   async function loadPanel(preferredVipId = selectedVipId) {
     const accessToken = await getBrowserAccessToken();
     const [seasonRows, matchdayRows, vipRows, userRows, teamRows] = await Promise.all([
@@ -187,6 +249,7 @@ export function AdminVipPanel() {
     setForm(toFormState(nextSelectedVip, seasonRows));
     setAddMemberProfileId("");
     syncTeamWinnerDraft(nextSelectedVip);
+    syncQuestionDraft(nextSelectedVip);
     if (nextSelectedVip) {
       void loadVipDetail(nextSelectedVip.id, accessToken).catch((caughtError) => {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el detalle VIP");
@@ -228,6 +291,7 @@ export function AdminVipPanel() {
     setForm(toFormState(null, seasons));
     setAddMemberProfileId("");
     syncTeamWinnerDraft(null);
+    syncQuestionDraft(null);
     setMessage(null);
     setError(null);
   }
@@ -237,6 +301,7 @@ export function AdminVipPanel() {
     setForm(toFormState(vip, seasons));
     setAddMemberProfileId("");
     syncTeamWinnerDraft(vip);
+    syncQuestionDraft(vip);
     setMessage(null);
     setError(null);
     void loadVipDetail(vip.id).catch((caughtError) => {
@@ -348,6 +413,7 @@ export function AdminVipPanel() {
           second_place_pct: Number(form.secondPlacePct || 0),
           third_place_pct: Number(form.thirdPlacePct || 0),
           matchday_ids: form.competitionKind === "matchday" ? form.matchdayIds : [],
+          questions_lock_at: form.competitionKind === "question_pool" ? toApiDateTime(form.questionsLockAt) : null,
           is_active: form.isActive,
         }),
       });
@@ -381,6 +447,7 @@ export function AdminVipPanel() {
       setSelectedVipId(nextSelectedVip?.id ?? "");
       setForm(toFormState(nextSelectedVip, seasons));
       syncTeamWinnerDraft(nextSelectedVip);
+      syncQuestionDraft(nextSelectedVip);
       setMessage("VIP borrada.");
     } catch (caughtError) {
       const errorMessage = getCaughtMessage(caughtError, "No se pudo borrar la VIP");
@@ -593,6 +660,117 @@ export function AdminVipPanel() {
     });
   }
 
+  function updateQuestionOption(index: number, value: string) {
+    setQuestionForm((current) => ({
+      ...current,
+      options: current.options.map((option, optionIndex) => (optionIndex === index ? value : option)),
+    }));
+  }
+
+  function addQuestionOption() {
+    setQuestionForm((current) =>
+      current.options.length >= 5 ? current : { ...current, options: [...current.options, ""] },
+    );
+  }
+
+  function removeQuestionOption(index: number) {
+    setQuestionForm((current) =>
+      current.options.length <= 2
+        ? current
+        : { ...current, options: current.options.filter((_option, optionIndex) => optionIndex !== index) },
+    );
+  }
+
+  async function handleCreateQuestionPoolQuestion() {
+    if (!selectedVip) {
+      return;
+    }
+    setSavingQuestion(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const updatedVip = await backendFetch<AdminVipCompetition>(
+        `/admin/vip/${selectedVip.id}/questions`,
+        accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            prompt: questionForm.prompt,
+            points: Number(questionForm.points || 1),
+            sort_order: Number(questionForm.sortOrder || 1),
+            is_active: questionForm.isActive,
+            options: questionForm.options,
+          }),
+        },
+      );
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
+      syncQuestionDraft(updatedVip);
+      setMessage("Pregunta VIP guardada.");
+    } catch (caughtError) {
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo guardar la pregunta VIP");
+      setError(`Preguntas VIP: ${errorMessage}`);
+    } finally {
+      setSavingQuestion(false);
+    }
+  }
+
+  async function handleDeleteQuestionPoolQuestion(questionId: string) {
+    if (!selectedVip) {
+      return;
+    }
+    const confirmed = window.confirm("Vas a borrar esta pregunta VIP y sus respuestas. Continuar?");
+    if (!confirmed) {
+      return;
+    }
+    setDeletingQuestionId(questionId);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const updatedVip = await backendFetch<AdminVipCompetition>(
+        `/admin/vip/${selectedVip.id}/questions/${questionId}`,
+        accessToken,
+        { method: "DELETE" },
+      );
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
+      syncQuestionDraft(updatedVip);
+      setMessage("Pregunta VIP eliminada.");
+    } catch (caughtError) {
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo borrar la pregunta VIP");
+      setError(`Preguntas VIP: ${errorMessage}`);
+    } finally {
+      setDeletingQuestionId(null);
+    }
+  }
+
+  async function handleSetQuestionPoolCorrectOption(questionId: string, optionId: string | null) {
+    if (!selectedVip) {
+      return;
+    }
+    setGradingQuestionId(questionId);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const updatedVip = await backendFetch<AdminVipCompetition>(
+        `/admin/vip/${selectedVip.id}/questions/${questionId}/correct-option`,
+        accessToken,
+        {
+          method: "PUT",
+          body: JSON.stringify({ option_id: optionId }),
+        },
+      );
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
+      setMessage(optionId ? "Respuesta correcta guardada." : "Respuesta correcta limpiada.");
+    } catch (caughtError) {
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo guardar la respuesta correcta");
+      setError(`Preguntas VIP: ${errorMessage}`);
+    } finally {
+      setGradingQuestionId(null);
+    }
+  }
+
   async function requestVipPaymentUpdate(accessToken: string | undefined, membershipId: string, isPaid: boolean) {
     if (!selectedVip) {
       throw new Error("Selecciona una VIP");
@@ -711,20 +889,34 @@ export function AdminVipPanel() {
                 </div>
                 <div>
                   <p className="uppercase tracking-[0.18em]">
-                    {vip.competition_kind === "team_winner" ? "Equipos" : "Jornadas"}
+                    {vip.competition_kind === "team_winner"
+                      ? "Equipos"
+                      : vip.competition_kind === "question_pool"
+                        ? "Preguntas"
+                        : "Jornadas"}
                   </p>
                   <p className="mt-1 text-sm font-semibold text-ink">
-                    {vip.competition_kind === "team_winner" ? vip.team_winner_teams.length : vip.matchdays.length}
+                    {vip.competition_kind === "team_winner"
+                      ? vip.team_winner_teams.length
+                      : vip.competition_kind === "question_pool"
+                        ? vip.question_pool_questions.length
+                        : vip.matchdays.length}
                   </p>
                 </div>
                 <div>
                   <p className="uppercase tracking-[0.18em]">
-                    {vip.competition_kind === "team_winner" ? "Sorteo" : "Pendientes"}
+                    {vip.competition_kind === "team_winner"
+                      ? "Sorteo"
+                      : vip.competition_kind === "question_pool"
+                        ? "Respuestas"
+                        : "Pendientes"}
                   </p>
                   <p className="mt-1 text-sm font-semibold text-ink">
                     {vip.competition_kind === "team_winner"
                       ? `${vip.team_winner_entries.filter((entry) => entry.revealed_at).length}/${vip.team_winner_entries.length}`
-                      : vip.pending_requests_count}
+                      : vip.competition_kind === "question_pool"
+                        ? vip.question_pool_questions.reduce((sum, question) => sum + question.responses_count, 0)
+                        : vip.pending_requests_count}
                   </p>
                 </div>
               </div>
@@ -783,6 +975,7 @@ export function AdminVipPanel() {
                 >
                   <option value="matchday">VIP por jornadas</option>
                   <option value="team_winner">Equipo ganador</option>
+                  <option value="question_pool">Preguntas / trivia</option>
                 </select>
               </label>
               <label className="grid gap-1 lg:col-span-2">
@@ -818,6 +1011,17 @@ export function AdminVipPanel() {
                   ))}
                 </select>
               </label>
+              {isQuestionPoolMode ? (
+                <label className="grid gap-1">
+                  <span className={flatLabelClass}>Bloqueo respuestas</span>
+                  <input
+                    type="datetime-local"
+                    value={form.questionsLockAt}
+                    onChange={(event) => setForm((current) => ({ ...current, questionsLockAt: event.target.value }))}
+                    className={flatFieldClass}
+                  />
+                </label>
+              ) : null}
               <label className="grid gap-1">
                 <span className={flatLabelClass}>Costo entrada</span>
                 <input
@@ -938,6 +1142,183 @@ export function AdminVipPanel() {
             </div>
             ) : null}
           </section>
+
+          {isQuestionPoolMode ? (
+            <section className="space-y-5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.22em] text-steel">Preguntas VIP</p>
+                  <h3 className="mt-2 text-lg font-semibold text-ink">Configurar trivia</h3>
+                </div>
+                <div className="text-sm text-steel">
+                  {form.questionsLockAt
+                    ? `Cierra respuestas: ${form.questionsLockAt.replace("T", " ")}`
+                    : "Define arriba el bloqueo global"}
+                </div>
+              </div>
+
+              {!selectedVip ? (
+                <p className="text-sm text-steel">
+                  Primero crea la VIP y luego agrega las preguntas con sus opciones.
+                </p>
+              ) : (
+                <>
+                  <div className="grid gap-4 rounded-[10px] border border-white/[0.06] p-4 xl:grid-cols-[minmax(0,1.5fr)_160px_120px]">
+                    <label className="grid gap-1 xl:col-span-3">
+                      <span className={flatLabelClass}>Pregunta</span>
+                      <textarea
+                        value={questionForm.prompt}
+                        onChange={(event) => setQuestionForm((current) => ({ ...current, prompt: event.target.value }))}
+                        className="field-control min-h-[92px] rounded-[8px] border-white/[0.08] bg-transparent px-3 py-3 text-sm"
+                        placeholder="Ej. Quien levantara el trofeo en la final?"
+                      />
+                    </label>
+                    <label className="grid gap-1">
+                      <span className={flatLabelClass}>Puntos</span>
+                      <input
+                        value={questionForm.points}
+                        onChange={(event) =>
+                          setQuestionForm((current) => ({ ...current, points: event.target.value.replace(/[^\d]/g, "") }))
+                        }
+                        className={flatFieldClass}
+                      />
+                    </label>
+                    <label className="grid gap-1">
+                      <span className={flatLabelClass}>Orden</span>
+                      <input
+                        value={questionForm.sortOrder}
+                        onChange={(event) =>
+                          setQuestionForm((current) => ({ ...current, sortOrder: event.target.value.replace(/[^\d]/g, "") }))
+                        }
+                        className={flatFieldClass}
+                      />
+                    </label>
+                    <label className="grid gap-1">
+                      <span className={flatLabelClass}>Activa</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuestionForm((current) => ({ ...current, isActive: !current.isActive }))}
+                        className={`h-9 rounded-[6px] border px-3 text-left text-sm font-semibold ${
+                          questionForm.isActive
+                            ? "border-mint/30 bg-mint/10 text-mint"
+                            : "border-coral/30 bg-coral/10 text-coral"
+                        }`}
+                      >
+                        {questionForm.isActive ? "Si" : "No"}
+                      </button>
+                    </label>
+                    <div className="xl:col-span-3 space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-steel">Opciones</p>
+                        <button
+                          type="button"
+                          onClick={addQuestionOption}
+                          disabled={questionForm.options.length >= 5}
+                          className="text-xs font-semibold text-mint disabled:opacity-50"
+                        >
+                          Agregar opcion
+                        </button>
+                      </div>
+                      <div className="grid gap-2">
+                        {questionForm.options.map((option, index) => (
+                          <div key={`question-option-${index}`} className="flex items-center gap-2">
+                            <input
+                              value={option}
+                              onChange={(event) => updateQuestionOption(index, event.target.value)}
+                              className={`${flatFieldClass} flex-1`}
+                              placeholder={`Opcion ${index + 1}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeQuestionOption(index)}
+                              disabled={questionForm.options.length <= 2}
+                              className="app-pill h-9 px-3 text-coral disabled:opacity-50"
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="xl:col-span-3 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateQuestionPoolQuestion()}
+                        disabled={savingQuestion}
+                        className="app-pill px-4 disabled:opacity-50"
+                      >
+                        {savingQuestion ? "Guardando..." : "Guardar pregunta"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                        Preguntas cargadas · {selectedVip.question_pool_questions.length}
+                      </p>
+                    </div>
+                    <div className="grid gap-3">
+                      {selectedVip.question_pool_questions.map((question) => (
+                        <div key={question.id} className="rounded-[10px] border border-white/[0.06] p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                                Orden {question.sort_order} · {question.points} pts · {question.responses_count} respuestas
+                              </p>
+                              <h4 className="mt-2 text-base font-semibold text-ink">{question.prompt}</h4>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <select
+                                value={question.options.find((option) => option.is_correct)?.id ?? ""}
+                                onChange={(event) =>
+                                  void handleSetQuestionPoolCorrectOption(question.id, event.target.value || null)
+                                }
+                                disabled={gradingQuestionId === question.id}
+                                className={`${flatFieldClass} min-w-[220px]`}
+                              >
+                                <option value="">Sin correcta</option>
+                                {question.options.map((option) => (
+                                  <option key={option.id} value={option.id}>
+                                    {option.option_text}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteQuestionPoolQuestion(question.id)}
+                                disabled={deletingQuestionId === question.id}
+                                className="app-pill px-4 text-coral disabled:opacity-50"
+                              >
+                                {deletingQuestionId === question.id ? "Borrando..." : "Borrar"}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mt-4 grid gap-2">
+                            {question.options.map((option) => (
+                              <div
+                                key={option.id}
+                                className={`rounded-[8px] border px-3 py-2 text-sm ${
+                                  option.is_correct ? "border-mint/30 bg-mint/10 text-mint" : "border-white/[0.06] text-ink"
+                                }`}
+                              >
+                                {option.option_text}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {selectedVip.question_pool_questions.length === 0 ? (
+                        <p className="rounded-[8px] border border-white/[0.06] px-4 py-4 text-sm text-steel">
+                          Todavia no hay preguntas cargadas en esta VIP.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              )}
+            </section>
+          ) : null}
 
           {isTeamWinnerMode ? (
             <section className="space-y-5">

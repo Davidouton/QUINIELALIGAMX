@@ -76,6 +76,7 @@ class VipMembershipStatus(str, Enum):
 class VipCompetitionKind(str, Enum):
     MATCHDAY = "matchday"
     TEAM_WINNER = "team_winner"
+    QUESTION_POOL = "question_pool"
 
 
 class PickReminderKind(str, Enum):
@@ -574,6 +575,7 @@ class VipCompetition(Base):
     second_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     third_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    questions_lock_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_profile_id: Mapped[str | None] = mapped_column(
         UUID_SQL,
         ForeignKey("profiles.id", ondelete="SET NULL"),
@@ -705,6 +707,85 @@ class VipTeamWinnerEntry(Base):
     reveal_order: Mapped[int | None] = mapped_column(Integer)
     revealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_paid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class VipQuestionPoolQuestion(Base):
+    __tablename__ = "vip_question_pool_questions"
+    __table_args__ = (
+        Index("idx_vip_question_pool_questions_vip_sort", "vip_competition_id", "sort_order"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    vip_competition_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("vip_competitions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    prompt: Mapped[str] = mapped_column(Text)
+    points: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class VipQuestionPoolOption(Base):
+    __tablename__ = "vip_question_pool_options"
+    __table_args__ = (
+        Index("idx_vip_question_pool_options_question_sort", "question_id", "sort_order"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    question_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("vip_question_pool_questions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    option_text: Mapped[str] = mapped_column(String(240))
+    sort_order: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    is_correct: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class VipQuestionPoolResponse(Base):
+    __tablename__ = "vip_question_pool_responses"
+    __table_args__ = (
+        UniqueConstraint("question_id", "profile_id", name="uq_vip_question_pool_response_profile"),
+        Index("idx_vip_question_pool_responses_vip_profile", "vip_competition_id", "profile_id"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    vip_competition_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("vip_competitions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    question_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("vip_question_pool_questions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    profile_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    selected_option_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("vip_question_pool_options.id", ondelete="CASCADE"),
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

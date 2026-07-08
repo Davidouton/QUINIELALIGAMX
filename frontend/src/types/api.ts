@@ -299,7 +299,7 @@ export interface VipMatchday {
   name: string;
 }
 
-export type VipCompetitionKind = "matchday" | "team_winner";
+export type VipCompetitionKind = "matchday" | "team_winner" | "question_pool";
 
 export interface VipLeaderboardEntry {
   profile_id: string;
@@ -308,6 +308,25 @@ export interface VipLeaderboardEntry {
   correct_results: number;
   exact_scores: number;
   rank_position: number;
+}
+
+export interface VipQuestionPoolOption {
+  id: string;
+  option_text: string;
+  sort_order: number;
+  is_correct: boolean;
+}
+
+export interface VipQuestionPoolQuestion {
+  id: string;
+  prompt: string;
+  points: number;
+  sort_order: number;
+  is_active: boolean;
+  selected_option_id: string | null;
+  answered_at: string | null;
+  responses_count: number;
+  options: VipQuestionPoolOption[];
 }
 
 export interface VipTeamWinnerTeam {
@@ -361,6 +380,7 @@ export interface VipCompetition {
   second_place_pct: number;
   third_place_pct: number;
   is_active: boolean;
+  questions_lock_at: string | null;
   matchdays: VipMatchday[];
   approved_members_count: number;
   pending_requests_count: number;
@@ -381,6 +401,7 @@ export interface VipCompetition {
   performance_race: PerformanceRace | null;
   team_winner_teams: VipTeamWinnerTeam[];
   team_winner_entries: VipTeamWinnerEntry[];
+  question_pool_questions: VipQuestionPoolQuestion[];
 }
 
 export interface VipJoinResponse {
@@ -400,6 +421,7 @@ export interface AdminVipCompetition {
   second_place_pct: number;
   third_place_pct: number;
   is_active: boolean;
+  questions_lock_at: string | null;
   created_by_profile_id: string | null;
   created_by_display_name: string | null;
   matchdays: VipMatchday[];
@@ -419,6 +441,7 @@ export interface AdminVipCompetition {
   leaderboard: VipLeaderboardEntry[];
   team_winner_teams: VipTeamWinnerTeam[];
   team_winner_entries: VipTeamWinnerEntry[];
+  question_pool_questions: VipQuestionPoolQuestion[];
 }
 
 export interface PricingRule {

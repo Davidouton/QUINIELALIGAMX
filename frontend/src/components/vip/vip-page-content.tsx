@@ -73,6 +73,9 @@ function getVipModeLabel(vip: VipCompetition) {
   if (vip.competition_kind === "team_winner") {
     return `${vip.team_winner_teams.length} equipos`;
   }
+  if (vip.competition_kind === "question_pool") {
+    return `${vip.question_pool_questions.length} preguntas`;
+  }
   return `Jornadas ${vip.matchdays.map((matchday) => matchday.number).join(", ")}`;
 }
 
@@ -142,6 +145,7 @@ export function VipPageContent() {
   const [loading, setLoading] = useState(true);
   const [requestingVipId, setRequestingVipId] = useState<string | null>(null);
   const [payingVipId, setPayingVipId] = useState<string | null>(null);
+  const [respondingQuestionId, setRespondingQuestionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -261,6 +265,26 @@ export function VipPageContent() {
     }
   }
 
+  async function handleQuestionPoolResponse(vipId: string, questionId: string, optionId: string) {
+    setRespondingQuestionId(questionId);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch<VipCompetition>(`/vip/${vipId}/questions/${questionId}/response`, accessToken, {
+        method: "PUT",
+        body: JSON.stringify({ option_id: optionId }),
+      });
+      await loadVips();
+      setSelectedVipId(vipId);
+      setMessage("Respuesta guardada.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar tu respuesta");
+    } finally {
+      setRespondingQuestionId(null);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando espacios VIP...</p>;
   }
@@ -275,7 +299,7 @@ export function VipPageContent() {
         <p className="text-[11px] uppercase tracking-[0.28em] text-steel">VIP</p>
         <h1 className="text-2xl font-semibold text-ink">VIP</h1>
         <p className="max-w-3xl text-sm text-steel">
-          Consulta tus VIPs por jornadas y sorteos especiales como Equipo ganador.
+          Consulta tus VIPs por jornadas, sorteos especiales y dinamicas de preguntas.
         </p>
       </section>
 
@@ -487,6 +511,74 @@ export function VipPageContent() {
                       .map((matchday) => `J${matchday.number} ${matchday.name}`)
                       .join(" · ")}
                   </p>
+                </div>
+              ) : null}
+
+              {selectedVip.competition_kind === "question_pool" ? (
+                <div className="space-y-4 border-y border-white/[0.06] py-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.18em] text-steel">Preguntas VIP</p>
+                      <p className="mt-1 text-sm text-steel">
+                        {selectedVip.questions_lock_at
+                          ? `Cierre de respuestas: ${formatMexicoDate(selectedVip.questions_lock_at) ?? selectedVip.questions_lock_at}`
+                          : "Sin bloqueo configurado"}
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-ink">
+                      {selectedVip.question_pool_questions.filter((question) => question.selected_option_id).length}/
+                      {selectedVip.question_pool_questions.length} respondidas
+                    </p>
+                  </div>
+                  <div className="grid gap-3">
+                    {selectedVip.question_pool_questions.map((question) => {
+                      const canAnswer =
+                        selectedVip.my_membership?.status === "approved" &&
+                        !selectedVip.join_locked &&
+                        question.is_active;
+                      return (
+                        <div key={question.id} className="rounded-[8px] border border-white/[0.06] px-4 py-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                                Pregunta {question.sort_order} · {question.points} pts
+                              </p>
+                              <h3 className="mt-2 text-base font-semibold text-ink">{question.prompt}</h3>
+                            </div>
+                            {!question.is_active ? <span className="text-xs text-coral">Inactiva</span> : null}
+                          </div>
+                          <div className="mt-4 grid gap-2">
+                            {question.options.map((option) => {
+                              const selected = question.selected_option_id === option.id;
+                              const solved = option.is_correct;
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={() => void handleQuestionPoolResponse(selectedVip.id, question.id, option.id)}
+                                  disabled={!canAnswer || respondingQuestionId === question.id}
+                                  className={`rounded-[8px] border px-3 py-3 text-left text-sm transition ${
+                                    solved
+                                      ? "border-mint/40 bg-mint/10 text-mint"
+                                      : selected
+                                        ? "border-sky-300/35 bg-sky-300/10 text-ink"
+                                        : "border-white/[0.06] text-ink hover:border-white/[0.16]"
+                                  } disabled:opacity-80`}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span>{option.option_text}</span>
+                                    <span className="text-xs">
+                                      {solved ? "Correcta" : selected ? "Tu respuesta" : ""}
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : null}
 

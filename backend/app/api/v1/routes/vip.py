@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_profile
 from app.core.database import get_db
 from app.models.entities import Profile
-from app.schemas.vip import VipCompetitionOut, VipRequestJoinResponse
+from app.schemas.vip import VipCompetitionOut, VipQuestionPoolResponseRequest, VipRequestJoinResponse
 from app.services.vip_service import VipService
 
 router = APIRouter()
@@ -43,3 +43,24 @@ def request_vip_join(
         vip_id=vip_id,
         membership=service.get_membership_out(db, membership),
     )
+
+
+@router.put("/vip/{vip_id}/questions/{question_id}/response", response_model=VipCompetitionOut)
+def save_vip_question_pool_response(
+    vip_id: str,
+    question_id: str,
+    payload: VipQuestionPoolResponseRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> VipCompetitionOut:
+    service.save_question_pool_response(
+        db,
+        vip_id=vip_id,
+        question_id=question_id,
+        profile=current_profile,
+        payload=payload,
+    )
+    rows = service.list_public_vips(db, current_profile, vip_id=vip_id)
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+    return rows[0]

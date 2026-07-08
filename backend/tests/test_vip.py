@@ -626,6 +626,78 @@ def test_admin_can_run_team_winner_vip_draw_and_mark_eliminated(admin_client: Te
     assert eliminated_team["is_eliminated"] is True
 
 
+def test_admin_can_run_question_pool_vip_and_score_answers(admin_client: TestClient) -> None:
+    create_response = admin_client.post(
+        "/api/v1/admin/vip",
+        json={
+            "competition_kind": "question_pool",
+            "season_id": SEASON_ID,
+            "name": "VIP FINAL WC 2026",
+            "entry_fee_amount": 150,
+            "admin_commission_pct": 10,
+            "first_place_pct": 100,
+            "second_place_pct": 0,
+            "third_place_pct": 0,
+            "matchday_ids": [],
+            "questions_lock_at": (datetime.now(UTC) + timedelta(hours=2)).isoformat(),
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_response.status_code == 201
+    vip_id = create_response.json()["id"]
+
+    add_self_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/memberships",
+        json={"profile_id": PROFILE_USER_ID, "is_paid": True},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert add_self_response.status_code == 200
+
+    add_leader_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/memberships",
+        json={"profile_id": PROFILE_LEADER_ID, "is_paid": True},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert add_leader_response.status_code == 200
+
+    question_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/questions",
+        json={
+            "prompt": "Quien gana la final?",
+            "points": 7,
+            "sort_order": 1,
+            "is_active": True,
+            "options": ["Mexico", "Brasil", "Francia"],
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert question_response.status_code == 200
+    question_payload = question_response.json()
+    question = question_payload["question_pool_questions"][0]
+    mexico_option = next(option for option in question["options"] if option["option_text"] == "Mexico")
+
+    answer_response = admin_client.put(
+        f"/api/v1/vip/{vip_id}/questions/{question['id']}/response",
+        json={"option_id": mexico_option["id"]},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert answer_response.status_code == 200
+    answered_question = answer_response.json()["question_pool_questions"][0]
+    assert answered_question["selected_option_id"] == mexico_option["id"]
+
+    correct_response = admin_client.put(
+        f"/api/v1/admin/vip/{vip_id}/questions/{question['id']}/correct-option",
+        json={"option_id": mexico_option["id"]},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert correct_response.status_code == 200
+    leaderboard = correct_response.json()["leaderboard"]
+    assert leaderboard[0]["profile_id"] == PROFILE_USER_ID
+    assert leaderboard[0]["total_points"] == 7
+    assert leaderboard[0]["rank_position"] == 1
+
+
 def test_admin_can_delete_vip(admin_client: TestClient) -> None:
     create_response = admin_client.post(
         "/api/v1/admin/vip",

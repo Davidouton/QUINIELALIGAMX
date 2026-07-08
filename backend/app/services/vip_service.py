@@ -3,7 +3,7 @@ from decimal import Decimal
 import random
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session, aliased
 
 from app.core.datetime import ensure_utc
@@ -20,6 +20,9 @@ from app.models.entities import (
     VipCompetition,
     VipCompetitionKind,
     VipCompetitionMatchday,
+    VipQuestionPoolOption,
+    VipQuestionPoolQuestion,
+    VipQuestionPoolResponse,
     VipMembership,
     VipMembershipStatus,
     VipStanding,
@@ -31,6 +34,8 @@ from app.schemas.vip import (
     AdminVipMembershipAddRequest,
     AdminVipMembershipDecisionRequest,
     AdminVipMembershipPaymentRequest,
+    AdminVipQuestionPoolCorrectOptionRequest,
+    AdminVipQuestionPoolQuestionUpsertRequest,
     AdminVipTeamWinnerConfigRequest,
     AdminVipTeamWinnerEntryPaymentRequest,
     AdminVipTeamWinnerTeamStatusRequest,
@@ -42,6 +47,9 @@ from app.schemas.vip import (
     VipMembershipOut,
     VipPerformanceRaceOut,
     VipPerformanceRacePointOut,
+    VipQuestionPoolOptionOut,
+    VipQuestionPoolQuestionOut,
+    VipQuestionPoolResponseRequest,
     VipTeamWinnerEntryOut,
     VipTeamWinnerTeamOut,
 )
@@ -124,6 +132,7 @@ class VipService:
                     second_place_pct=float(vip.second_place_pct),
                     third_place_pct=float(vip.third_place_pct),
                     is_active=vip.is_active,
+                    questions_lock_at=vip.questions_lock_at,
                     matchdays=matchdays,
                     approved_members_count=sum(1 for membership in memberships if membership.status == VipMembershipStatus.APPROVED),
                     pending_requests_count=sum(1 for membership in memberships if membership.status == VipMembershipStatus.PENDING),
@@ -166,6 +175,14 @@ class VipService:
                         )
                         if include_team_winner_details
                         else []
+                    ),
+                    question_pool_questions=self._question_pool_question_outs(
+                        bundle["question_pool_questions_by_vip"].get(vip.id, []),
+                        bundle["question_pool_options_by_question"],
+                        bundle["question_pool_responses_by_question_profile"],
+                        profile.id,
+                        include_correct_answers=bool(join_lock.get("locked", False)),
+                        include_response_counts=False,
                     ),
                 )
             )
@@ -247,6 +264,7 @@ class VipService:
                 second_place_pct=float(vip.second_place_pct),
                 third_place_pct=float(vip.third_place_pct),
                 is_active=vip.is_active,
+                questions_lock_at=vip.questions_lock_at,
                 created_by_profile_id=vip.created_by_profile_id,
                 created_by_display_name=(
                     bundle["profile_names"].get(vip.created_by_profile_id)
@@ -298,6 +316,14 @@ class VipService:
                     bundle["team_names"],
                     bundle["team_status_by_id"],
                 ),
+                question_pool_questions=self._question_pool_question_outs(
+                    bundle["question_pool_questions_by_vip"].get(vip.id, []),
+                    bundle["question_pool_options_by_question"],
+                    bundle["question_pool_responses_by_question_profile"],
+                    None,
+                    include_correct_answers=True,
+                    include_response_counts=True,
+                ),
             )
             for vip in vip_rows
         ]
@@ -319,6 +345,7 @@ class VipService:
             second_place_pct=Decimal(str(payload.second_place_pct)),
             third_place_pct=Decimal(str(payload.third_place_pct)),
             is_active=payload.is_active,
+            questions_lock_at=ensure_utc(payload.questions_lock_at) if payload.questions_lock_at else None,
             created_by_profile_id=current_profile.id,
         )
         db.add(vip)
@@ -339,6 +366,7 @@ class VipService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
 
         season, matchdays = self._resolve_vip_season_and_matchdays(db, payload)
+        previous_kind = vip.competition_kind
         vip.season_id = season.id
         vip.competition_kind = payload.competition_kind
         vip.name = payload.name.strip()
@@ -348,8 +376,14 @@ class VipService:
         vip.second_place_pct = Decimal(str(payload.second_place_pct))
         vip.third_place_pct = Decimal(str(payload.third_place_pct))
         vip.is_active = payload.is_active
+        vip.questions_lock_at = ensure_utc(payload.questions_lock_at) if payload.questions_lock_at else None
         db.add(vip)
         db.flush()
+        if previous_kind != payload.competition_kind:
+            if previous_kind == VipCompetitionKind.TEAM_WINNER:
+                self._clear_team_winner_data(db, vip.id)
+            if previous_kind == VipCompetitionKind.QUESTION_POOL:
+                self._clear_question_pool_data(db, vip.id)
         self._replace_matchdays(db, vip.id, matchdays)
         db.commit()
         db.refresh(vip)
@@ -360,10 +394,20 @@ class VipService:
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
 
+        question_ids = list(
+            db.scalars(
+                select(VipQuestionPoolQuestion.id).where(VipQuestionPoolQuestion.vip_competition_id == vip.id)
+            )
+        )
+        if question_ids:
+            db.execute(delete(VipQuestionPoolResponse).where(VipQuestionPoolResponse.question_id.in_(question_ids)))
+            db.execute(delete(VipQuestionPoolOption).where(VipQuestionPoolOption.question_id.in_(question_ids)))
+        db.execute(delete(VipQuestionPoolQuestion).where(VipQuestionPoolQuestion.vip_competition_id == vip.id))
         db.execute(delete(VipTeamWinnerEntry).where(VipTeamWinnerEntry.vip_competition_id == vip.id))
         db.execute(delete(VipTeamWinnerTeam).where(VipTeamWinnerTeam.vip_competition_id == vip.id))
         db.execute(delete(VipMembership).where(VipMembership.vip_competition_id == vip.id))
         db.execute(delete(VipCompetitionMatchday).where(VipCompetitionMatchday.vip_competition_id == vip.id))
+        db.execute(delete(VipStanding).where(VipStanding.vip_competition_id == vip.id))
         db.delete(vip)
         db.commit()
 
@@ -676,6 +720,190 @@ class VipService:
         db.add(entry)
         db.commit()
 
+    def create_question_pool_question(
+        self,
+        db: Session,
+        vip_id: str,
+        payload: AdminVipQuestionPoolQuestionUpsertRequest,
+    ) -> VipQuestionPoolQuestion:
+        vip = self._get_question_pool_vip(db, vip_id)
+        self._ensure_question_pool_tables(db)
+        question = VipQuestionPoolQuestion(
+            vip_competition_id=vip.id,
+            prompt=payload.prompt.strip(),
+            points=payload.points,
+            sort_order=payload.sort_order,
+            is_active=payload.is_active,
+        )
+        db.add(question)
+        db.flush()
+        for index, option_text in enumerate(payload.options, start=1):
+            db.add(
+                VipQuestionPoolOption(
+                    question_id=question.id,
+                    option_text=option_text,
+                    sort_order=index,
+                )
+            )
+        db.commit()
+        db.refresh(question)
+        return question
+
+    def update_question_pool_question(
+        self,
+        db: Session,
+        vip_id: str,
+        question_id: str,
+        payload: AdminVipQuestionPoolQuestionUpsertRequest,
+    ) -> VipQuestionPoolQuestion:
+        vip = self._get_question_pool_vip(db, vip_id)
+        self._ensure_question_pool_tables(db)
+        question = db.get(VipQuestionPoolQuestion, question_id)
+        if question is None or question.vip_competition_id != vip.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pregunta VIP no encontrada")
+
+        existing_options = list(
+            db.scalars(
+                select(VipQuestionPoolOption)
+                .where(VipQuestionPoolOption.question_id == question.id)
+                .order_by(VipQuestionPoolOption.sort_order.asc(), VipQuestionPoolOption.created_at.asc())
+            )
+        )
+        existing_option_texts = [option.option_text.strip() for option in existing_options]
+        clean_option_texts = [option.strip() for option in payload.options]
+        responses_count = db.scalar(
+            select(func.count())
+            .select_from(VipQuestionPoolResponse)
+            .where(VipQuestionPoolResponse.question_id == question.id)
+        ) or 0
+        if responses_count > 0 and clean_option_texts != existing_option_texts:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No puedes cambiar opciones de una pregunta que ya tiene respuestas",
+            )
+
+        question.prompt = payload.prompt.strip()
+        question.points = payload.points
+        question.sort_order = payload.sort_order
+        question.is_active = payload.is_active
+        db.add(question)
+
+        if responses_count == 0:
+            db.execute(delete(VipQuestionPoolOption).where(VipQuestionPoolOption.question_id == question.id))
+            for index, option_text in enumerate(clean_option_texts, start=1):
+                db.add(
+                    VipQuestionPoolOption(
+                        question_id=question.id,
+                        option_text=option_text,
+                        sort_order=index,
+                    )
+                )
+        else:
+            for index, option in enumerate(existing_options, start=1):
+                option.sort_order = index
+                db.add(option)
+
+        db.commit()
+        db.refresh(question)
+        return question
+
+    def delete_question_pool_question(
+        self,
+        db: Session,
+        vip_id: str,
+        question_id: str,
+    ) -> None:
+        vip = self._get_question_pool_vip(db, vip_id)
+        self._ensure_question_pool_tables(db)
+        question = db.get(VipQuestionPoolQuestion, question_id)
+        if question is None or question.vip_competition_id != vip.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pregunta VIP no encontrada")
+
+        db.execute(delete(VipQuestionPoolResponse).where(VipQuestionPoolResponse.question_id == question.id))
+        db.execute(delete(VipQuestionPoolOption).where(VipQuestionPoolOption.question_id == question.id))
+        db.delete(question)
+        db.commit()
+
+    def set_question_pool_correct_option(
+        self,
+        db: Session,
+        vip_id: str,
+        question_id: str,
+        payload: AdminVipQuestionPoolCorrectOptionRequest,
+    ) -> None:
+        vip = self._get_question_pool_vip(db, vip_id)
+        self._ensure_question_pool_tables(db)
+        question = db.get(VipQuestionPoolQuestion, question_id)
+        if question is None or question.vip_competition_id != vip.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pregunta VIP no encontrada")
+
+        options = list(
+            db.scalars(
+                select(VipQuestionPoolOption)
+                .where(VipQuestionPoolOption.question_id == question.id)
+                .order_by(VipQuestionPoolOption.sort_order.asc(), VipQuestionPoolOption.created_at.asc())
+            )
+        )
+        option_ids = {option.id for option in options}
+        if payload.option_id is not None and payload.option_id not in option_ids:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Opcion correcta invalida")
+
+        for option in options:
+            option.is_correct = option.id == payload.option_id
+            db.add(option)
+        db.commit()
+
+    def save_question_pool_response(
+        self,
+        db: Session,
+        vip_id: str,
+        question_id: str,
+        profile: Profile,
+        payload: VipQuestionPoolResponseRequest,
+    ) -> None:
+        vip = self._get_question_pool_vip(db, vip_id)
+        self._ensure_question_pool_tables(db)
+        if vip.questions_lock_at is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP no tiene bloqueo configurado")
+        if datetime.now(UTC) >= ensure_utc(vip.questions_lock_at):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP ya cerro respuestas")
+
+        membership = db.scalar(
+            select(VipMembership).where(
+                VipMembership.vip_competition_id == vip.id,
+                VipMembership.profile_id == profile.id,
+                VipMembership.status == VipMembershipStatus.APPROVED,
+            )
+        )
+        if membership is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo miembros aprobados pueden responder")
+
+        question = db.get(VipQuestionPoolQuestion, question_id)
+        if question is None or question.vip_competition_id != vip.id or not question.is_active:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pregunta VIP no encontrada")
+
+        option = db.get(VipQuestionPoolOption, payload.option_id)
+        if option is None or option.question_id != question.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Opcion invalida")
+
+        response = db.scalar(
+            select(VipQuestionPoolResponse).where(
+                VipQuestionPoolResponse.question_id == question.id,
+                VipQuestionPoolResponse.profile_id == profile.id,
+            )
+        )
+        if response is None:
+            response = VipQuestionPoolResponse(
+                vip_competition_id=vip.id,
+                question_id=question.id,
+                profile_id=profile.id,
+                selected_option_id=option.id,
+            )
+        else:
+            response.selected_option_id = option.id
+        db.add(response)
+        db.commit()
+
     def decide_membership(
         self,
         db: Session,
@@ -768,6 +996,7 @@ class VipService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
 
         self._ensure_vip_standings_table(db)
+        self._ensure_question_pool_tables(db)
         memberships = list(
             db.scalars(
                 select(VipMembership).where(
@@ -777,20 +1006,26 @@ class VipService:
             )
         )
         profile_ids = [membership.profile_id for membership in memberships]
-        matchday_ids = list(
-            db.scalars(
-                select(VipCompetitionMatchday.matchday_id).where(
-                    VipCompetitionMatchday.vip_competition_id == vip.id,
-                )
-            )
-        )
 
         db.execute(delete(VipStanding).where(VipStanding.vip_competition_id == vip.id))
-        if not profile_ids or not matchday_ids:
+        if not profile_ids:
             db.commit()
             return 0
 
-        totals = self._calculate_leaderboard_totals(db, matchday_ids, profile_ids)
+        if vip.competition_kind == VipCompetitionKind.QUESTION_POOL:
+            totals = self._calculate_question_pool_leaderboard_totals(db, vip.id, profile_ids)
+        else:
+            matchday_ids = list(
+                db.scalars(
+                    select(VipCompetitionMatchday.matchday_id).where(
+                        VipCompetitionMatchday.vip_competition_id == vip.id,
+                    )
+                )
+            )
+            if not matchday_ids:
+                db.commit()
+                return 0
+            totals = self._calculate_leaderboard_totals(db, matchday_ids, profile_ids)
         profile_names = self._profile_names(db, profile_ids)
         ranked_rows = self._rank_leaderboard_totals(totals, profile_names)
         for profile_id, values, rank_position in ranked_rows:
@@ -814,18 +1049,20 @@ class VipService:
         include_team_winner_details: bool = True,
         include_creator_names: bool = False,
     ) -> dict[str, object]:
+        self._ensure_question_pool_tables(db)
         matchday_rows = db.execute(
             select(VipCompetitionMatchday, Matchday)
             .join(Matchday, Matchday.id == VipCompetitionMatchday.matchday_id)
             .where(VipCompetitionMatchday.vip_competition_id.in_(vip_ids))
             .order_by(Matchday.number.asc(), Matchday.name.asc())
         ).all()
+        vip_rows = list(db.scalars(select(VipCompetition).where(VipCompetition.id.in_(vip_ids))).all())
         matchdays_by_vip: dict[str, list[VipMatchdayOut]] = {}
         matchday_ids_by_vip: dict[str, list[str]] = {}
         season_ids: set[str] = set()
         season_ids.update(
             row.season_id
-            for row in db.scalars(select(VipCompetition).where(VipCompetition.id.in_(vip_ids))).all()
+            for row in vip_rows
         )
         for link, matchday in matchday_rows:
             season_ids.add(matchday.season_id)
@@ -895,10 +1132,53 @@ class VipService:
         } if team_ids else {}
         team_status_by_id = {row.team_id: row for row in team_winner_team_rows}
 
+        question_rows = list(
+            db.scalars(
+                select(VipQuestionPoolQuestion)
+                .where(VipQuestionPoolQuestion.vip_competition_id.in_(vip_ids))
+                .order_by(VipQuestionPoolQuestion.sort_order.asc(), VipQuestionPoolQuestion.created_at.asc())
+            )
+        )
+        question_pool_questions_by_vip: dict[str, list[VipQuestionPoolQuestion]] = {}
+        question_ids: list[str] = []
+        for row in question_rows:
+            question_pool_questions_by_vip.setdefault(row.vip_competition_id, []).append(row)
+            question_ids.append(row.id)
+
+        option_rows = (
+            list(
+                db.scalars(
+                    select(VipQuestionPoolOption)
+                    .where(VipQuestionPoolOption.question_id.in_(question_ids))
+                    .order_by(VipQuestionPoolOption.sort_order.asc(), VipQuestionPoolOption.created_at.asc())
+                )
+            )
+            if question_ids
+            else []
+        )
+        question_pool_options_by_question: dict[str, list[VipQuestionPoolOption]] = {}
+        for row in option_rows:
+            question_pool_options_by_question.setdefault(row.question_id, []).append(row)
+
+        response_rows = (
+            list(
+                db.scalars(
+                    select(VipQuestionPoolResponse)
+                    .where(VipQuestionPoolResponse.question_id.in_(question_ids))
+                    .order_by(VipQuestionPoolResponse.updated_at.desc(), VipQuestionPoolResponse.created_at.desc())
+                )
+            )
+            if question_ids
+            else []
+        )
+        question_pool_responses_by_question_profile: dict[tuple[str, str], VipQuestionPoolResponse] = {}
+        for row in response_rows:
+            question_pool_responses_by_question_profile[(row.question_id, row.profile_id)] = row
+
         if include_creator_names:
             vip_creator_ids = [
                 vip.created_by_profile_id
-                for vip in db.scalars(select(VipCompetition).where(VipCompetition.id.in_(vip_ids))).all()
+                for vip in vip_rows
                 if vip.created_by_profile_id
             ]
             profile_names.update(self._profile_names(db, vip_creator_ids))
@@ -910,24 +1190,30 @@ class VipService:
 
         return {
             "matchdays_by_vip": matchdays_by_vip,
-            "join_locks_by_vip": self._join_locks_for_vips(db, matchday_ids_by_vip),
+            "join_locks_by_vip": self._join_locks_for_vips(db, vip_rows, matchday_ids_by_vip),
             "memberships_by_vip": memberships_by_vip,
             "team_winner_teams_by_vip": team_winner_teams_by_vip,
             "team_winner_entries_by_vip": team_winner_entries_by_vip,
             "team_names": team_names,
             "team_status_by_id": team_status_by_id,
+            "question_pool_questions_by_vip": question_pool_questions_by_vip,
+            "question_pool_options_by_question": question_pool_options_by_question,
+            "question_pool_responses_by_question_profile": question_pool_responses_by_question_profile,
             "profile_names": profile_names,
             "season_names": season_names,
         }
 
     def _join_lock_for_vip(self, db: Session, vip_id: str) -> dict[str, object]:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None:
+            return {"locked": False, "lock_at": None, "match_label": None}
         matchday_ids = [
             row.matchday_id
             for row in db.scalars(
                 select(VipCompetitionMatchday).where(VipCompetitionMatchday.vip_competition_id == vip_id)
             ).all()
         ]
-        return self._join_locks_for_vips(db, {vip_id: matchday_ids}).get(
+        return self._join_locks_for_vips(db, [vip], {vip_id: matchday_ids}).get(
             vip_id,
             {"locked": False, "lock_at": None, "match_label": None},
         )
@@ -935,11 +1221,24 @@ class VipService:
     def _join_locks_for_vips(
         self,
         db: Session,
+        vip_rows: list[VipCompetition],
         matchday_ids_by_vip: dict[str, list[str]],
     ) -> dict[str, dict[str, object]]:
         all_matchday_ids = sorted({matchday_id for ids in matchday_ids_by_vip.values() for matchday_id in ids})
+        now = datetime.now(UTC)
+        result: dict[str, dict[str, object]] = {}
+        vip_by_id = {vip.id: vip for vip in vip_rows}
+        for vip in vip_rows:
+            if vip.competition_kind == VipCompetitionKind.QUESTION_POOL and vip.questions_lock_at is not None:
+                lock_at = ensure_utc(vip.questions_lock_at)
+                result[vip.id] = {
+                    "locked": now >= lock_at,
+                    "lock_at": lock_at,
+                    "match_label": "el cierre de preguntas",
+                }
+
         if not all_matchday_ids:
-            return {}
+            return result
 
         home_team = aliased(Team)
         away_team = aliased(Team)
@@ -961,9 +1260,10 @@ class VipService:
         for match, matchday, home_name, away_name in rows:
             rows_by_matchday.setdefault(matchday.id, []).append((match, matchday, home_name, away_name))
 
-        now = datetime.now(UTC)
-        result: dict[str, dict[str, object]] = {}
         for vip_id, matchday_ids in matchday_ids_by_vip.items():
+            vip = vip_by_id.get(vip_id)
+            if vip is not None and vip.competition_kind == VipCompetitionKind.QUESTION_POOL:
+                continue
             selected_row = next(
                 (
                     rows_by_matchday[matchday_id][0]
@@ -1004,14 +1304,19 @@ class VipService:
         if any(profile_id not in profile_name_map for profile_id in approved_profile_ids):
             profile_name_map.update(self._profile_names(db, approved_profile_ids))
 
-        if not matchdays:
-            return []
-
         cached_rows = self._cached_leaderboard(vip_id, approved_profile_ids, profile_name_map, db)
         if cached_rows is not None:
             return cached_rows
 
-        totals = self._calculate_leaderboard_totals(db, [matchday.id for matchday in matchdays], approved_profile_ids)
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None:
+            return []
+        if vip.competition_kind == VipCompetitionKind.QUESTION_POOL:
+            totals = self._calculate_question_pool_leaderboard_totals(db, vip_id, approved_profile_ids)
+        else:
+            if not matchdays:
+                return []
+            totals = self._calculate_leaderboard_totals(db, [matchday.id for matchday in matchdays], approved_profile_ids)
         ranked_rows = self._rank_leaderboard_totals(totals, profile_name_map)
         return self._leaderboard_outs(ranked_rows, profile_name_map)
 
@@ -1025,6 +1330,9 @@ class VipService:
         profile: Profile,
         profile_names: dict[str, str],
     ) -> tuple[list[VipMatchdayPointsEntryOut], VipPerformanceRaceOut | None]:
+        if vip.competition_kind == VipCompetitionKind.QUESTION_POOL:
+            return [], None
+
         approved_memberships = [membership for membership in memberships if membership.status == VipMembershipStatus.APPROVED]
         approved_profile_ids = [membership.profile_id for membership in approved_memberships]
         if profile.id not in approved_profile_ids or not matchdays:
@@ -1170,6 +1478,40 @@ class VipService:
             bucket["exact_scores"] += values["exact_scores"]
         return totals
 
+    def _calculate_question_pool_leaderboard_totals(
+        self,
+        db: Session,
+        vip_id: str,
+        profile_ids: list[str],
+    ) -> dict[str, dict[str, int]]:
+        totals: dict[str, dict[str, int]] = {
+            profile_id: {"total_points": 0, "correct_results": 0, "exact_scores": 0}
+            for profile_id in profile_ids
+        }
+        if not profile_ids:
+            return totals
+
+        rows = db.execute(
+            select(VipQuestionPoolResponse, VipQuestionPoolQuestion, VipQuestionPoolOption)
+            .join(VipQuestionPoolQuestion, VipQuestionPoolQuestion.id == VipQuestionPoolResponse.question_id)
+            .join(VipQuestionPoolOption, VipQuestionPoolOption.id == VipQuestionPoolResponse.selected_option_id)
+            .where(
+                VipQuestionPoolResponse.vip_competition_id == vip_id,
+                VipQuestionPoolResponse.profile_id.in_(profile_ids),
+                VipQuestionPoolQuestion.is_active.is_(True),
+            )
+        ).all()
+        for response, question, selected_option in rows:
+            if not selected_option.is_correct:
+                continue
+            bucket = totals.setdefault(
+                response.profile_id,
+                {"total_points": 0, "correct_results": 0, "exact_scores": 0},
+            )
+            bucket["total_points"] += question.points
+            bucket["correct_results"] += 1
+        return totals
+
     def _rank_leaderboard_totals(
         self,
         totals: dict[str, dict[str, int]],
@@ -1234,6 +1576,11 @@ class VipService:
 
     def _ensure_vip_standings_table(self, db: Session) -> None:
         VipStanding.__table__.create(bind=db.get_bind(), checkfirst=True)
+
+    def _ensure_question_pool_tables(self, db: Session) -> None:
+        VipQuestionPoolQuestion.__table__.create(bind=db.get_bind(), checkfirst=True)
+        VipQuestionPoolOption.__table__.create(bind=db.get_bind(), checkfirst=True)
+        VipQuestionPoolResponse.__table__.create(bind=db.get_bind(), checkfirst=True)
 
     def _vip_pick_score_rows(
         self,
@@ -1357,6 +1704,14 @@ class VipService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP no es de Equipo ganador")
         return vip
 
+    def _get_question_pool_vip(self, db: Session, vip_id: str) -> VipCompetition:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+        if vip.competition_kind != VipCompetitionKind.QUESTION_POOL:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP no es de preguntas")
+        return vip
+
     def _season_competition_id(self, db: Session, season_id: str) -> str | None:
         season = db.get(Season, season_id)
         return season.competition_id if season else None
@@ -1370,6 +1725,21 @@ class VipService:
                     matchday_id=matchday.id,
                 )
             )
+
+    def _clear_team_winner_data(self, db: Session, vip_id: str) -> None:
+        db.execute(delete(VipTeamWinnerEntry).where(VipTeamWinnerEntry.vip_competition_id == vip_id))
+        db.execute(delete(VipTeamWinnerTeam).where(VipTeamWinnerTeam.vip_competition_id == vip_id))
+
+    def _clear_question_pool_data(self, db: Session, vip_id: str) -> None:
+        question_ids = list(
+            db.scalars(
+                select(VipQuestionPoolQuestion.id).where(VipQuestionPoolQuestion.vip_competition_id == vip_id)
+            )
+        )
+        if question_ids:
+            db.execute(delete(VipQuestionPoolResponse).where(VipQuestionPoolResponse.question_id.in_(question_ids)))
+            db.execute(delete(VipQuestionPoolOption).where(VipQuestionPoolOption.question_id.in_(question_ids)))
+        db.execute(delete(VipQuestionPoolQuestion).where(VipQuestionPoolQuestion.vip_competition_id == vip_id))
 
     def _profile_names(self, db: Session, profile_ids: list[str | None]) -> dict[str, str]:
         clean_ids = sorted({profile_id for profile_id in profile_ids if profile_id})
@@ -1449,6 +1819,52 @@ class VipService:
                     reveal_order=row.reveal_order,
                     revealed_at=row.revealed_at,
                     is_paid=row.is_paid,
+                )
+            )
+        return result
+
+    def _question_pool_question_outs(
+        self,
+        questions: list[VipQuestionPoolQuestion],
+        options_by_question: dict[str, list[VipQuestionPoolOption]],
+        responses_by_question_profile: dict[tuple[str, str], VipQuestionPoolResponse],
+        profile_id: str | None,
+        *,
+        include_correct_answers: bool,
+        include_response_counts: bool,
+    ) -> list[VipQuestionPoolQuestionOut]:
+        result: list[VipQuestionPoolQuestionOut] = []
+        for question in questions:
+            question_options = options_by_question.get(question.id, [])
+            selected_response = (
+                responses_by_question_profile.get((question.id, profile_id))
+                if profile_id is not None
+                else None
+            )
+            responses_count = (
+                sum(1 for question_id, _profile_id in responses_by_question_profile.keys() if question_id == question.id)
+                if include_response_counts
+                else 0
+            )
+            result.append(
+                VipQuestionPoolQuestionOut(
+                    id=question.id,
+                    prompt=question.prompt,
+                    points=question.points,
+                    sort_order=question.sort_order,
+                    is_active=question.is_active,
+                    selected_option_id=selected_response.selected_option_id if selected_response else None,
+                    answered_at=selected_response.updated_at if selected_response else None,
+                    responses_count=responses_count,
+                    options=[
+                        VipQuestionPoolOptionOut(
+                            id=option.id,
+                            option_text=option.option_text,
+                            sort_order=option.sort_order,
+                            is_correct=option.is_correct if include_correct_answers else False,
+                        )
+                        for option in question_options
+                    ],
                 )
             )
         return result

@@ -22,6 +22,25 @@ class VipLeaderboardEntryOut(BaseModel):
     rank_position: int
 
 
+class VipQuestionPoolOptionOut(BaseModel):
+    id: str
+    option_text: str
+    sort_order: int
+    is_correct: bool = False
+
+
+class VipQuestionPoolQuestionOut(BaseModel):
+    id: str
+    prompt: str
+    points: int
+    sort_order: int
+    is_active: bool = True
+    selected_option_id: str | None = None
+    answered_at: datetime | None = None
+    responses_count: int = 0
+    options: list[VipQuestionPoolOptionOut] = []
+
+
 class VipMatchdayPointsEntryOut(BaseModel):
     matchday_id: str
     season_id: str
@@ -102,7 +121,7 @@ class VipCompetitionOut(BaseModel):
     id: str
     season_id: str
     season_name: str
-    competition_kind: Literal["matchday", "team_winner"] = "matchday"
+    competition_kind: Literal["matchday", "team_winner", "question_pool"] = "matchday"
     name: str
     entry_fee_amount: float
     admin_commission_pct: float = 0
@@ -110,6 +129,7 @@ class VipCompetitionOut(BaseModel):
     second_place_pct: float = 0
     third_place_pct: float = 0
     is_active: bool
+    questions_lock_at: datetime | None = None
     matchdays: list[VipMatchdayOut] = []
     approved_members_count: int = 0
     pending_requests_count: int = 0
@@ -130,6 +150,7 @@ class VipCompetitionOut(BaseModel):
     performance_race: VipPerformanceRaceOut | None = None
     team_winner_teams: list[VipTeamWinnerTeamOut] = []
     team_winner_entries: list[VipTeamWinnerEntryOut] = []
+    question_pool_questions: list[VipQuestionPoolQuestionOut] = []
 
 
 class VipRequestJoinResponse(BaseModel):
@@ -138,7 +159,7 @@ class VipRequestJoinResponse(BaseModel):
 
 
 class AdminVipUpsertRequest(BaseModel):
-    competition_kind: Literal["matchday", "team_winner"] = "matchday"
+    competition_kind: Literal["matchday", "team_winner", "question_pool"] = "matchday"
     season_id: str | None = None
     name: str = Field(min_length=1, max_length=160)
     entry_fee_amount: float = Field(default=0, ge=0, le=1000000)
@@ -147,6 +168,7 @@ class AdminVipUpsertRequest(BaseModel):
     second_place_pct: float = Field(default=0, ge=0, le=100)
     third_place_pct: float = Field(default=0, ge=0, le=100)
     matchday_ids: list[str] = Field(default_factory=list)
+    questions_lock_at: datetime | None = None
     is_active: bool = True
 
     @model_validator(mode="after")
@@ -156,8 +178,10 @@ class AdminVipUpsertRequest(BaseModel):
             raise ValueError("La suma de 1er, 2do y 3er lugar no puede rebasar 100%")
         if self.competition_kind == "matchday" and not self.matchday_ids:
             raise ValueError("Selecciona al menos una jornada para la VIP")
-        if self.competition_kind == "team_winner" and not self.season_id:
-            raise ValueError("Selecciona una temporada para Equipo ganador")
+        if self.competition_kind in {"team_winner", "question_pool"} and not self.season_id:
+            raise ValueError("Selecciona una temporada para esta VIP")
+        if self.competition_kind == "question_pool" and self.questions_lock_at is None:
+            raise ValueError("Define fecha y hora de bloqueo para la VIP de preguntas")
         return self
 
 
@@ -192,11 +216,35 @@ class AdminVipTeamWinnerTeamStatusRequest(BaseModel):
     is_champion: bool = False
 
 
+class AdminVipQuestionPoolQuestionUpsertRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=1000)
+    points: int = Field(default=1, ge=1, le=1000)
+    sort_order: int = Field(default=1, ge=1, le=999)
+    is_active: bool = True
+    options: list[str] = Field(default_factory=list, min_length=2, max_length=5)
+
+    @model_validator(mode="after")
+    def validate_options(self) -> "AdminVipQuestionPoolQuestionUpsertRequest":
+        cleaned = [option.strip() for option in self.options if option.strip()]
+        if len(cleaned) < 2 or len(cleaned) > 5:
+            raise ValueError("Cada pregunta debe tener entre 2 y 5 opciones")
+        self.options = cleaned
+        return self
+
+
+class AdminVipQuestionPoolCorrectOptionRequest(BaseModel):
+    option_id: str | None = None
+
+
+class VipQuestionPoolResponseRequest(BaseModel):
+    option_id: str = Field(min_length=1)
+
+
 class AdminVipCompetitionOut(BaseModel):
     id: str
     season_id: str
     season_name: str
-    competition_kind: Literal["matchday", "team_winner"] = "matchday"
+    competition_kind: Literal["matchday", "team_winner", "question_pool"] = "matchday"
     name: str
     entry_fee_amount: float
     admin_commission_pct: float = 0
@@ -204,6 +252,7 @@ class AdminVipCompetitionOut(BaseModel):
     second_place_pct: float = 0
     third_place_pct: float = 0
     is_active: bool
+    questions_lock_at: datetime | None = None
     created_by_profile_id: str | None = None
     created_by_display_name: str | None = None
     matchdays: list[VipMatchdayOut] = []
@@ -223,3 +272,4 @@ class AdminVipCompetitionOut(BaseModel):
     leaderboard: list[VipLeaderboardEntryOut] = []
     team_winner_teams: list[VipTeamWinnerTeamOut] = []
     team_winner_entries: list[VipTeamWinnerEntryOut] = []
+    question_pool_questions: list[VipQuestionPoolQuestionOut] = []

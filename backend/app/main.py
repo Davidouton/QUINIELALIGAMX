@@ -503,6 +503,7 @@ def run_startup_migrations() -> None:
                 "third_place_pct": "ALTER TABLE vip_competitions ADD COLUMN third_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
                 "is_active": "ALTER TABLE vip_competitions ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE",
                 "created_by_profile_id": "ALTER TABLE vip_competitions ADD COLUMN created_by_profile_id UUID",
+                "questions_lock_at": "ALTER TABLE vip_competitions ADD COLUMN questions_lock_at TIMESTAMP WITH TIME ZONE",
             }
             for column_name, statement in missing_vip_competition_columns.items():
                 if column_name not in vip_competition_column_names:
@@ -667,6 +668,77 @@ def run_startup_migrations() -> None:
                     "ON vip_team_winner_entries(vip_competition_id)"
                 )
             )
+
+        if "vip_question_pool_questions" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS vip_question_pool_questions (
+                      id UUID PRIMARY KEY,
+                      vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
+                      prompt TEXT NOT NULL,
+                      points INTEGER NOT NULL DEFAULT 1,
+                      sort_order INTEGER NOT NULL DEFAULT 1,
+                      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_question_pool_questions_vip_sort "
+                "ON vip_question_pool_questions(vip_competition_id, sort_order)"
+            )
+        )
+
+        if "vip_question_pool_options" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS vip_question_pool_options (
+                      id UUID PRIMARY KEY,
+                      question_id UUID NOT NULL REFERENCES vip_question_pool_questions(id) ON DELETE CASCADE,
+                      option_text VARCHAR(240) NOT NULL,
+                      sort_order INTEGER NOT NULL DEFAULT 1,
+                      is_correct BOOLEAN NOT NULL DEFAULT FALSE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_question_pool_options_question_sort "
+                "ON vip_question_pool_options(question_id, sort_order)"
+            )
+        )
+
+        if "vip_question_pool_responses" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS vip_question_pool_responses (
+                      id UUID PRIMARY KEY,
+                      vip_competition_id UUID NOT NULL REFERENCES vip_competitions(id) ON DELETE CASCADE,
+                      question_id UUID NOT NULL REFERENCES vip_question_pool_questions(id) ON DELETE CASCADE,
+                      profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      selected_option_id UUID NOT NULL REFERENCES vip_question_pool_options(id) ON DELETE CASCADE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_vip_question_pool_response_profile UNIQUE (question_id, profile_id)
+                    )
+                    """
+                )
+            )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_vip_question_pool_responses_vip_profile "
+                "ON vip_question_pool_responses(vip_competition_id, profile_id)"
+            )
+        )
 
         if "pricing_rules" not in table_names:
             connection.execute(

@@ -102,6 +102,8 @@ from app.schemas.vip import (
     AdminVipMembershipAddRequest,
     AdminVipMembershipDecisionRequest,
     AdminVipMembershipPaymentRequest,
+    AdminVipQuestionPoolCorrectOptionRequest,
+    AdminVipQuestionPoolQuestionUpsertRequest,
     AdminVipTeamWinnerConfigRequest,
     AdminVipTeamWinnerEntryPaymentRequest,
     AdminVipTeamWinnerTeamStatusRequest,
@@ -2434,6 +2436,56 @@ def configure_admin_vip_team_winner(
 ) -> AdminVipCompetitionOut:
     vip_service.configure_team_winner(db, vip_id=vip_id, payload=payload)
     return admin_vip_row(db, vip_id, include_leaderboard=False)
+
+
+@router.post("/vip/{vip_id}/questions", response_model=AdminVipCompetitionOut)
+def create_admin_vip_question_pool_question(
+    vip_id: str,
+    payload: AdminVipQuestionPoolQuestionUpsertRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.create_question_pool_question(db, vip_id=vip_id, payload=payload)
+    vip_service.recalculate_vip_standings(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
+@router.put("/vip/{vip_id}/questions/{question_id}", response_model=AdminVipCompetitionOut)
+def update_admin_vip_question_pool_question(
+    vip_id: str,
+    question_id: str,
+    payload: AdminVipQuestionPoolQuestionUpsertRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.update_question_pool_question(db, vip_id=vip_id, question_id=question_id, payload=payload)
+    vip_service.recalculate_vip_standings(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
+@router.delete("/vip/{vip_id}/questions/{question_id}", response_model=AdminVipCompetitionOut)
+def delete_admin_vip_question_pool_question(
+    vip_id: str,
+    question_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.delete_question_pool_question(db, vip_id=vip_id, question_id=question_id)
+    vip_service.recalculate_vip_standings(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
+@router.put("/vip/{vip_id}/questions/{question_id}/correct-option", response_model=AdminVipCompetitionOut)
+def set_admin_vip_question_pool_correct_option(
+    vip_id: str,
+    question_id: str,
+    payload: AdminVipQuestionPoolCorrectOptionRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.set_question_pool_correct_option(db, vip_id=vip_id, question_id=question_id, payload=payload)
+    vip_service.recalculate_vip_standings(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
 
 
 @router.post("/vip/{vip_id}/team-winner/draw", response_model=AdminVipCompetitionOut)
