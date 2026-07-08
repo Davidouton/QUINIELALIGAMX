@@ -30,6 +30,7 @@ from app.models.entities import (
     VipTeamWinnerTeam,
 )
 from app.schemas.vip import (
+    AdminVipQuestionPoolBulkCorrectOptionRequest,
     AdminVipCompetitionOut,
     AdminVipMembershipAddRequest,
     AdminVipMembershipDecisionRequest,
@@ -859,6 +860,55 @@ class VipService:
         for option in options:
             option.is_correct = option.id == payload.option_id
             db.add(option)
+        db.commit()
+
+    def set_question_pool_correct_options_bulk(
+        self,
+        db: Session,
+        vip_id: str,
+        payload: AdminVipQuestionPoolBulkCorrectOptionRequest,
+    ) -> None:
+        vip = self._get_question_pool_vip(db, vip_id)
+        self._ensure_question_pool_tables(db)
+
+        question_ids = [row.question_id for row in payload.questions]
+        questions = list(
+            db.scalars(
+                select(VipQuestionPoolQuestion).where(
+                    VipQuestionPoolQuestion.vip_competition_id == vip.id,
+                    VipQuestionPoolQuestion.id.in_(question_ids),
+                )
+            )
+        )
+        questions_by_id = {question.id: question for question in questions}
+        if len(questions_by_id) != len(question_ids):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hay preguntas VIP invalidas en el lote")
+
+        option_rows = list(
+            db.scalars(
+                select(VipQuestionPoolOption)
+                .where(VipQuestionPoolOption.question_id.in_(question_ids))
+                .order_by(VipQuestionPoolOption.question_id.asc(), VipQuestionPoolOption.sort_order.asc())
+            )
+        )
+        options_by_question: dict[str, list[VipQuestionPoolOption]] = {}
+        for option in option_rows:
+            options_by_question.setdefault(option.question_id, []).append(option)
+
+        for row in payload.questions:
+            options = options_by_question.get(row.question_id, [])
+            option_ids = {option.id for option in options}
+            if row.option_id is not None and row.option_id not in option_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Una de las opciones correctas no pertenece a su pregunta",
+                )
+
+        for row in payload.questions:
+            for option in options_by_question.get(row.question_id, []):
+                option.is_correct = option.id == row.option_id
+                db.add(option)
+
         db.commit()
 
     def save_question_pool_response(

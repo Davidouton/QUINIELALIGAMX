@@ -98,6 +98,7 @@ from app.schemas.rules import RulePageOut, RulePageUpdateRequest
 from app.schemas.season import SeasonOut
 from app.schemas.team import TeamOut
 from app.schemas.vip import (
+    AdminVipQuestionPoolBulkCorrectOptionRequest,
     AdminVipCompetitionOut,
     AdminVipMembershipAddRequest,
     AdminVipMembershipDecisionRequest,
@@ -2484,6 +2485,18 @@ def set_admin_vip_question_pool_correct_option(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
     vip_service.set_question_pool_correct_option(db, vip_id=vip_id, question_id=question_id, payload=payload)
+    vip_service.recalculate_vip_standings(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
+@router.put("/vip/{vip_id}/questions/correct-options", response_model=AdminVipCompetitionOut)
+def set_admin_vip_question_pool_correct_options_bulk(
+    vip_id: str,
+    payload: AdminVipQuestionPoolBulkCorrectOptionRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.set_question_pool_correct_options_bulk(db, vip_id=vip_id, payload=payload)
     vip_service.recalculate_vip_standings(db, vip_id)
     return admin_vip_row(db, vip_id, include_leaderboard=True)
 

@@ -236,6 +236,22 @@ class AdminVipQuestionPoolCorrectOptionRequest(BaseModel):
     option_id: str | None = None
 
 
+class AdminVipQuestionPoolBulkCorrectOptionItem(BaseModel):
+    question_id: str = Field(min_length=1)
+    option_id: str | None = None
+
+
+class AdminVipQuestionPoolBulkCorrectOptionRequest(BaseModel):
+    questions: list[AdminVipQuestionPoolBulkCorrectOptionItem] = Field(default_factory=list, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_unique_questions(self) -> "AdminVipQuestionPoolBulkCorrectOptionRequest":
+        question_ids = [row.question_id for row in self.questions]
+        if len(question_ids) != len(set(question_ids)):
+            raise ValueError("No repitas preguntas dentro del guardado por lote")
+        return self
+
+
 class VipQuestionPoolResponseRequest(BaseModel):
     option_id: str = Field(min_length=1)
 

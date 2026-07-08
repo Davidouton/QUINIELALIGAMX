@@ -126,6 +126,14 @@ function formatLocalDateTimeLabel(value: string) {
   return value.replace("T", " ");
 }
 
+function shortenQuestionLabel(value: string, maxLength = 52) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
 function normalizeVipCompetition(vip: AdminVipCompetition): AdminVipCompetition {
   const questionPoolQuestions = Array.isArray(vip.question_pool_questions)
     ? vip.question_pool_questions.map((question) => ({
@@ -188,9 +196,10 @@ export function AdminVipPanel() {
   const [addingMember, setAddingMember] = useState(false);
   const [recalculatingVip, setRecalculatingVip] = useState(false);
   const [processingMembershipId, setProcessingMembershipId] = useState<string | null>(null);
-  const [gradingQuestionId, setGradingQuestionId] = useState<string | null>(null);
+  const [savingQuestionAnswers, setSavingQuestionAnswers] = useState(false);
   const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
   const [selectedQuestionId, setSelectedQuestionId] = useState("");
+  const [questionCorrectOptionDrafts, setQuestionCorrectOptionDrafts] = useState<Record<string, string | null>>({});
   const [questionForm, setQuestionForm] = useState<QuestionFormState>(initialQuestionForm);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -255,8 +264,28 @@ export function AdminVipPanel() {
   const selectedQuestion =
     questionPoolQuestions.find((question) => question.id === selectedQuestionId) ?? questionPoolQuestions[0] ?? null;
   const questionPoolTotalPoints = questionPoolQuestions.reduce((sum, question) => sum + question.points, 0);
+  const savedQuestionCorrectOptions = useMemo(
+    () =>
+      Object.fromEntries(
+        questionPoolQuestions.map((question) => [
+          question.id,
+          question.options.find((option) => option.is_correct)?.id ?? null,
+        ]),
+      ) as Record<string, string | null>,
+    [questionPoolQuestions],
+  );
+  const draftQuestionCorrectOptions = useMemo(
+    () => ({
+      ...savedQuestionCorrectOptions,
+      ...questionCorrectOptionDrafts,
+    }),
+    [questionCorrectOptionDrafts, savedQuestionCorrectOptions],
+  );
   const questionPoolResolvedCount = questionPoolQuestions.filter((question) =>
-    question.options.some((option) => option.is_correct),
+    Boolean(draftQuestionCorrectOptions[question.id]),
+  ).length;
+  const questionPoolPendingSaveCount = questionPoolQuestions.filter(
+    (question) => draftQuestionCorrectOptions[question.id] !== savedQuestionCorrectOptions[question.id],
   ).length;
   const teamWinnerParticipantCount = teamWinnerProfileIds.length + (includeHouse ? 1 : 0);
   const hasTeamWinnerDraw = teamWinnerEntries.some((entry) => entry.reveal_order);
@@ -289,6 +318,14 @@ export function AdminVipPanel() {
       ...initialQuestionForm,
       sortOrder: String((normalizedVip?.question_pool_questions.length ?? 0) + 1),
     });
+    setQuestionCorrectOptionDrafts(
+      Object.fromEntries(
+        (normalizedVip?.question_pool_questions ?? []).map((question) => [
+          question.id,
+          question.options.find((option) => option.is_correct)?.id ?? null,
+        ]),
+      ),
+    );
   }
 
   async function loadPanel(preferredVipId = selectedVipId) {
@@ -847,30 +884,49 @@ export function AdminVipPanel() {
     }
   }
 
-  async function handleSetQuestionPoolCorrectOption(questionId: string, optionId: string | null) {
+  function handleSelectQuestionPoolCorrectOption(questionId: string, optionId: string | null) {
+    setQuestionCorrectOptionDrafts((current) => ({ ...current, [questionId]: optionId }));
+  }
+
+  async function handleSaveQuestionPoolCorrectOptions() {
     if (!selectedVip) {
       return;
     }
-    setGradingQuestionId(questionId);
+    const changedQuestions = questionPoolQuestions
+      .map((question) => ({
+        question_id: question.id,
+        option_id: draftQuestionCorrectOptions[question.id] ?? null,
+      }))
+      .filter((row) => row.option_id !== savedQuestionCorrectOptions[row.question_id]);
+    if (changedQuestions.length === 0) {
+      setMessage("No hay cambios de respuestas correctas por guardar.");
+      return;
+    }
+    setSavingQuestionAnswers(true);
     setError(null);
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      const updatedVip = await backendFetch<AdminVipCompetition>(
-        `/admin/vip/${selectedVip.id}/questions/${questionId}/correct-option`,
+      const updatedVip = normalizeVipCompetition(await backendFetch<AdminVipCompetition>(
+        `/admin/vip/${selectedVip.id}/questions/correct-options`,
         accessToken,
         {
           method: "PUT",
-          body: JSON.stringify({ option_id: optionId }),
+          body: JSON.stringify({ questions: changedQuestions }),
         },
-      );
+      ));
       replaceVipAndRefreshDetail(updatedVip, accessToken);
-      setMessage(optionId ? "Respuesta correcta guardada." : "Respuesta correcta limpiada.");
+      syncQuestionDraft(updatedVip);
+      setMessage(
+        changedQuestions.length === 1
+          ? "Respuesta correcta guardada."
+          : `${changedQuestions.length} respuestas correctas guardadas.`,
+      );
     } catch (caughtError) {
-      const errorMessage = getCaughtMessage(caughtError, "No se pudo guardar la respuesta correcta");
+      const errorMessage = getCaughtMessage(caughtError, "No se pudieron guardar las respuestas correctas");
       setError(`Preguntas VIP: ${errorMessage}`);
     } finally {
-      setGradingQuestionId(null);
+      setSavingQuestionAnswers(false);
     }
   }
 
@@ -1378,103 +1434,148 @@ export function AdminVipPanel() {
                     </div>
                     {questionPoolQuestions.length > 0 ? (
                       <div className="space-y-4">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="text-xs uppercase tracking-[0.18em] text-steel">
-                              Selector de pregunta
-                            </p>
-                            <p className="text-xs text-steel">
-                              {questionPoolResolvedCount}/{questionPoolQuestions.length} calificadas
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.18em] text-steel">Calificacion por lote</p>
+                            <p className="mt-1 text-sm text-steel">
+                              Selecciona respuestas en varias preguntas y guarda todo junto.
                             </p>
                           </div>
-                          <div className="flex gap-2 overflow-x-auto pb-1">
-                            {questionPoolQuestions.map((question) => {
-                              const isResolved = question.options.some((option) => option.is_correct);
-                              const isActive = selectedQuestion?.id === question.id;
-                              return (
-                                <button
-                                  key={question.id}
-                                  type="button"
-                                  onClick={() => setSelectedQuestionId(question.id)}
-                                  className={`min-w-[92px] rounded-[10px] border px-3 py-2 text-left text-xs transition ${
-                                    isActive
-                                      ? "border-white/[0.18] bg-white/[0.08] text-ink"
-                                      : isResolved
-                                        ? "border-mint/25 bg-mint/10 text-mint"
-                                        : "border-white/[0.06] bg-white/[0.02] text-steel hover:border-white/[0.12]"
-                                  }`}
-                                >
-                                  <p className="font-semibold">P{question.sort_order}</p>
-                                  <p className="mt-1">{question.points} pts</p>
-                                </button>
-                              );
-                            })}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-steel">
+                              {questionPoolPendingSaveCount > 0
+                                ? `${questionPoolPendingSaveCount} cambios pendientes`
+                                : "Sin cambios pendientes"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveQuestionPoolCorrectOptions()}
+                              disabled={savingQuestionAnswers || questionPoolPendingSaveCount === 0}
+                              className="app-pill px-4 disabled:opacity-50"
+                            >
+                              {savingQuestionAnswers ? "Guardando..." : "Guardar correctas"}
+                            </button>
                           </div>
                         </div>
 
-                        {selectedQuestion ? (
-                          <div className="rounded-[10px] border border-white/[0.06] p-4">
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                              <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-steel">
-                                  Orden {selectedQuestion.sort_order} · {selectedQuestion.points} pts · {selectedQuestion.responses_count} respuestas
-                                </p>
-                                <h4 className="mt-2 text-base font-semibold text-ink">{selectedQuestion.prompt}</h4>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSetQuestionPoolCorrectOption(selectedQuestion.id, null)}
-                                  disabled={
-                                    gradingQuestionId === selectedQuestion.id ||
-                                    !selectedQuestion.options.some((option) => option.is_correct)
-                                  }
-                                  className="app-pill px-4 text-steel disabled:opacity-50"
-                                >
-                                  Limpiar correcta
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleDeleteQuestionPoolQuestion(selectedQuestion.id)}
-                                  disabled={deletingQuestionId === selectedQuestion.id}
-                                  className="app-pill px-4 text-coral disabled:opacity-50"
-                                >
-                                  {deletingQuestionId === selectedQuestion.id ? "Borrando..." : "Borrar"}
-                                </button>
-                              </div>
+                        <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+                          <div className="rounded-[10px] border border-white/[0.06] p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="text-xs uppercase tracking-[0.18em] text-steel">Preguntas</p>
+                              <p className="text-xs text-steel">
+                                {questionPoolResolvedCount}/{questionPoolQuestions.length}
+                              </p>
                             </div>
-                            <div className="mt-2 text-sm text-steel">
-                              Da click en la opcion correcta para marcarla.
-                            </div>
-                            <div className="mt-4 grid gap-2">
-                              {selectedQuestion.options.map((option) => (
-                                <button
-                                  key={option.id}
-                                  type="button"
-                                  onClick={() =>
-                                    void handleSetQuestionPoolCorrectOption(
-                                      selectedQuestion.id,
-                                      option.is_correct ? null : option.id,
-                                    )
-                                  }
-                                  disabled={gradingQuestionId === selectedQuestion.id}
-                                  className={`rounded-[8px] border px-3 py-3 text-left text-sm transition ${
-                                    option.is_correct
-                                      ? "border-mint/30 bg-mint/10 text-mint"
-                                      : "border-white/[0.06] text-ink hover:border-white/[0.16]"
-                                  } disabled:opacity-70`}
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span>{option.option_text}</span>
-                                    <span className="text-xs font-semibold uppercase tracking-[0.14em]">
-                                      {option.is_correct ? "Correcta" : "Marcar"}
-                                    </span>
-                                  </div>
-                                </button>
-                              ))}
+                            <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1">
+                              {questionPoolQuestions.map((question) => {
+                                const draftOptionId = draftQuestionCorrectOptions[question.id] ?? null;
+                                const savedOptionId = savedQuestionCorrectOptions[question.id] ?? null;
+                                const isResolved = Boolean(draftOptionId);
+                                const hasPendingChange = draftOptionId !== savedOptionId;
+                                const isActive = selectedQuestion?.id === question.id;
+                                return (
+                                  <button
+                                    key={question.id}
+                                    type="button"
+                                    onClick={() => setSelectedQuestionId(question.id)}
+                                    className={`w-full rounded-[10px] border px-3 py-3 text-left transition ${
+                                      isActive
+                                        ? "border-white/[0.18] bg-white/[0.08] text-ink"
+                                        : hasPendingChange
+                                          ? "border-gold/30 bg-gold/10 text-gold"
+                                          : isResolved
+                                            ? "border-mint/25 bg-mint/10 text-mint"
+                                            : "border-white/[0.06] bg-white/[0.02] text-steel hover:border-white/[0.12]"
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.14em]">
+                                          P{question.sort_order} · {question.points} pts
+                                        </p>
+                                        <p className="mt-1 truncate text-sm">
+                                          {shortenQuestionLabel(question.prompt)}
+                                        </p>
+                                      </div>
+                                      <span className="text-[10px] uppercase tracking-[0.14em]">
+                                        {hasPendingChange ? "Draft" : isResolved ? "OK" : "Pend"}
+                                      </span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
-                        ) : null}
+
+                          {selectedQuestion ? (
+                            <div className="rounded-[10px] border border-white/[0.06] p-4">
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                  <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                                    Orden {selectedQuestion.sort_order} · {selectedQuestion.points} pts · {selectedQuestion.responses_count} respuestas
+                                  </p>
+                                  <h4 className="mt-2 text-base font-semibold text-ink">{selectedQuestion.prompt}</h4>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSelectQuestionPoolCorrectOption(selectedQuestion.id, null)}
+                                    className="app-pill px-4 text-steel"
+                                  >
+                                    Limpiar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteQuestionPoolQuestion(selectedQuestion.id)}
+                                    disabled={deletingQuestionId === selectedQuestion.id}
+                                    className="app-pill px-4 text-coral disabled:opacity-50"
+                                  >
+                                    {deletingQuestionId === selectedQuestion.id ? "Borrando..." : "Borrar"}
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="mt-2 text-sm text-steel">
+                                Marca localmente la opcion correcta. Se guarda hasta que des click en `Guardar correctas`.
+                              </div>
+                              <div className="mt-4 grid gap-2">
+                                {selectedQuestion.options.map((option) => {
+                                  const isDraftCorrect = draftQuestionCorrectOptions[selectedQuestion.id] === option.id;
+                                  const wasSavedCorrect = savedQuestionCorrectOptions[selectedQuestion.id] === option.id;
+                                  return (
+                                    <button
+                                      key={option.id}
+                                      type="button"
+                                      onClick={() =>
+                                        handleSelectQuestionPoolCorrectOption(
+                                          selectedQuestion.id,
+                                          isDraftCorrect ? null : option.id,
+                                        )
+                                      }
+                                      className={`rounded-[8px] border px-3 py-3 text-left text-sm transition ${
+                                        isDraftCorrect
+                                          ? "border-mint/30 bg-mint/10 text-mint"
+                                          : "border-white/[0.06] text-ink hover:border-white/[0.16]"
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span>{option.option_text}</span>
+                                        <span className="text-xs font-semibold uppercase tracking-[0.14em]">
+                                          {isDraftCorrect
+                                            ? questionPoolPendingSaveCount > 0 && !wasSavedCorrect
+                                              ? "Draft"
+                                              : "Correcta"
+                                            : wasSavedCorrect
+                                              ? "Guardada"
+                                              : "Marcar"}
+                                        </span>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     ) : (
                       <p className="rounded-[8px] border border-white/[0.06] px-4 py-4 text-sm text-steel">
