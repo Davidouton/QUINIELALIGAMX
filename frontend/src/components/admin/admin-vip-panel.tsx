@@ -94,7 +94,20 @@ function toApiDateTime(value: string) {
   if (!value) {
     return null;
   }
-  const date = new Date(value);
+  const trimmed = value.trim();
+  const isoLikeMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (isoLikeMatch) {
+    const [, year, month, day, hour, minute] = isoLikeMatch;
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), 0);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  const localizedMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})$/);
+  if (localizedMatch) {
+    const [, day, month, year, hour, minute] = localizedMatch;
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), 0);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  const date = new Date(trimmed);
   if (Number.isNaN(date.getTime())) {
     return null;
   }
@@ -286,6 +299,17 @@ export function AdminVipPanel() {
     void runLoad();
   }, []);
 
+  useEffect(() => {
+    if (form.seasonId || seasons.length === 0) {
+      return;
+    }
+    const fallbackSeasonId = seasons.find((season) => season.is_active)?.id ?? seasons[0]?.id ?? "";
+    if (!fallbackSeasonId) {
+      return;
+    }
+    setForm((current) => ({ ...current, seasonId: fallbackSeasonId }));
+  }, [form.seasonId, seasons]);
+
   function resetForNewVip() {
     setSelectedVipId("");
     setForm(toFormState(null, seasons));
@@ -401,11 +425,12 @@ export function AdminVipPanel() {
       const accessToken = await getBrowserAccessToken();
       const path = selectedVipId ? `/admin/vip/${selectedVipId}` : "/admin/vip";
       const method = selectedVipId ? "PUT" : "POST";
+      const seasonId = form.seasonId || seasons.find((season) => season.is_active)?.id || seasons[0]?.id || "";
       const savedVip = await backendFetch<AdminVipCompetition>(path, accessToken, {
         method,
         body: JSON.stringify({
           competition_kind: form.competitionKind,
-          season_id: form.seasonId,
+          season_id: seasonId,
           name: form.name,
           entry_fee_amount: Number(form.entryFeeAmount || 0),
           admin_commission_pct: Number(form.adminCommissionPct || 0),
