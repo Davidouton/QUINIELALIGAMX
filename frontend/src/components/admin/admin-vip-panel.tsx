@@ -264,14 +264,27 @@ export function AdminVipPanel() {
 
   async function loadPanel(preferredVipId = selectedVipId) {
     const accessToken = await getBrowserAccessToken();
-    const [seasonRows, matchdayRows, rawVipRows, userRows, teamRows] = await Promise.all([
+    const [seasonsResult, matchdaysResult, vipResult, usersResult, teamsResult] = await Promise.allSettled([
       backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Matchday[]>("/matchdays", accessToken),
       backendFetch<AdminVipCompetition[]>("/admin/vip", accessToken),
       backendFetch<AdminUser[]>("/admin/users", accessToken),
       backendFetch<Team[]>("/teams", accessToken),
     ]);
+
+    const seasonRows = seasonsResult.status === "fulfilled" ? seasonsResult.value : [];
+    const matchdayRows = matchdaysResult.status === "fulfilled" ? matchdaysResult.value : [];
+    const rawVipRows = vipResult.status === "fulfilled" ? vipResult.value : [];
+    const userRows = usersResult.status === "fulfilled" ? usersResult.value : [];
+    const teamRows = teamsResult.status === "fulfilled" ? teamsResult.value : [];
     const vipRows = rawVipRows.map(normalizeVipCompetition);
+    const loadErrors = [
+      seasonsResult.status === "rejected" ? `Temporadas: ${getCaughtMessage(seasonsResult.reason, "Load failed")}` : null,
+      matchdaysResult.status === "rejected" ? `Jornadas: ${getCaughtMessage(matchdaysResult.reason, "Load failed")}` : null,
+      vipResult.status === "rejected" ? `VIPs: ${getCaughtMessage(vipResult.reason, "Load failed")}` : null,
+      usersResult.status === "rejected" ? `Usuarios: ${getCaughtMessage(usersResult.reason, "Load failed")}` : null,
+      teamsResult.status === "rejected" ? `Equipos: ${getCaughtMessage(teamsResult.reason, "Load failed")}` : null,
+    ].filter((value): value is string => Boolean(value));
 
     setSeasons(seasonRows);
     setMatchdays(matchdayRows);
@@ -285,6 +298,7 @@ export function AdminVipPanel() {
     setAddMemberProfileId("");
     syncTeamWinnerDraft(nextSelectedVip);
     syncQuestionDraft(nextSelectedVip);
+    setError(loadErrors.length > 0 ? loadErrors.join(" | ") : null);
     if (nextSelectedVip) {
       void loadVipDetail(nextSelectedVip.id, accessToken).catch((caughtError) => {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el detalle VIP");
