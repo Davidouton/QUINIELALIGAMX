@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AdminUser, AdminVipCompetition, Matchday, Season, Team, VipCompetitionKind } from "@/types/api";
 
@@ -114,6 +115,17 @@ function toApiDateTime(value: string) {
   return date.toISOString();
 }
 
+function formatLocalDateTimeLabel(value: string) {
+  if (!value) {
+    return "";
+  }
+  const isoValue = toApiDateTime(value);
+  if (isoValue) {
+    return formatMexicoCityDateTime(isoValue);
+  }
+  return value.replace("T", " ");
+}
+
 function normalizeVipCompetition(vip: AdminVipCompetition): AdminVipCompetition {
   const questionPoolQuestions = Array.isArray(vip.question_pool_questions)
     ? vip.question_pool_questions.map((question) => ({
@@ -178,6 +190,7 @@ export function AdminVipPanel() {
   const [processingMembershipId, setProcessingMembershipId] = useState<string | null>(null);
   const [gradingQuestionId, setGradingQuestionId] = useState<string | null>(null);
   const [deletingQuestionId, setDeletingQuestionId] = useState<string | null>(null);
+  const [selectedQuestionId, setSelectedQuestionId] = useState("");
   const [questionForm, setQuestionForm] = useState<QuestionFormState>(initialQuestionForm);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -229,6 +242,22 @@ export function AdminVipPanel() {
   const teamWinnerTeams = selectedVip?.team_winner_teams ?? [];
   const isTeamWinnerMode = form.competitionKind === "team_winner";
   const isQuestionPoolMode = form.competitionKind === "question_pool";
+  const questionPoolQuestions = useMemo(
+    () =>
+      [...(selectedVip?.question_pool_questions ?? [])].sort((left, right) => {
+        if (left.sort_order !== right.sort_order) {
+          return left.sort_order - right.sort_order;
+        }
+        return left.prompt.localeCompare(right.prompt);
+      }),
+    [selectedVip],
+  );
+  const selectedQuestion =
+    questionPoolQuestions.find((question) => question.id === selectedQuestionId) ?? questionPoolQuestions[0] ?? null;
+  const questionPoolTotalPoints = questionPoolQuestions.reduce((sum, question) => sum + question.points, 0);
+  const questionPoolResolvedCount = questionPoolQuestions.filter((question) =>
+    question.options.some((option) => option.is_correct),
+  ).length;
   const teamWinnerParticipantCount = teamWinnerProfileIds.length + (includeHouse ? 1 : 0);
   const hasTeamWinnerDraw = teamWinnerEntries.some((entry) => entry.reveal_order);
   const revealedTeamWinnerCount = teamWinnerEntries.filter((entry) => entry.revealed_at).length;
@@ -347,8 +376,15 @@ export function AdminVipPanel() {
     setForm((current) => ({ ...current, seasonId: fallbackSeasonId }));
   }, [form.seasonId, seasons]);
 
+  useEffect(() => {
+    if (!questionPoolQuestions.some((question) => question.id === selectedQuestionId)) {
+      setSelectedQuestionId(questionPoolQuestions[0]?.id ?? "");
+    }
+  }, [questionPoolQuestions, selectedQuestionId]);
+
   function resetForNewVip() {
     setSelectedVipId("");
+    setSelectedQuestionId("");
     setForm(toFormState(null, seasons));
     setAddMemberProfileId("");
     syncTeamWinnerDraft(null);
@@ -359,6 +395,7 @@ export function AdminVipPanel() {
 
   function selectVip(vip: AdminVipCompetition) {
     setSelectedVipId(vip.id);
+    setSelectedQuestionId(vip.question_pool_questions[0]?.id ?? "");
     setForm(toFormState(vip, seasons));
     setAddMemberProfileId("");
     syncTeamWinnerDraft(vip);
@@ -752,7 +789,7 @@ export function AdminVipPanel() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      const updatedVip = await backendFetch<AdminVipCompetition>(
+      const updatedVip = normalizeVipCompetition(await backendFetch<AdminVipCompetition>(
         `/admin/vip/${selectedVip.id}/questions`,
         accessToken,
         {
@@ -765,9 +802,13 @@ export function AdminVipPanel() {
             options: questionForm.options,
           }),
         },
-      );
+      ));
+      const nextSelectedQuestion =
+        [...updatedVip.question_pool_questions].sort((left, right) => left.sort_order - right.sort_order).at(-1) ??
+        null;
       replaceVipAndRefreshDetail(updatedVip, accessToken);
       syncQuestionDraft(updatedVip);
+      setSelectedQuestionId(nextSelectedQuestion?.id ?? "");
       setMessage("Pregunta VIP guardada.");
     } catch (caughtError) {
       const errorMessage = getCaughtMessage(caughtError, "No se pudo guardar la pregunta VIP");
@@ -1074,7 +1115,7 @@ export function AdminVipPanel() {
                 </select>
               </label>
               {isQuestionPoolMode ? (
-                <label className="grid gap-1">
+                <label className="grid gap-1 lg:col-span-2">
                   <span className={flatLabelClass}>Bloqueo respuestas</span>
                   <input
                     type="datetime-local"
@@ -1214,7 +1255,7 @@ export function AdminVipPanel() {
                 </div>
                 <div className="text-sm text-steel">
                   {form.questionsLockAt
-                    ? `Cierra respuestas: ${form.questionsLockAt.replace("T", " ")}`
+                    ? `Cierra respuestas: ${formatLocalDateTimeLabel(form.questionsLockAt)}`
                     : "Define arriba el bloqueo global"}
                 </div>
               </div>
@@ -1315,67 +1356,131 @@ export function AdminVipPanel() {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs uppercase tracking-[0.18em] text-steel">
-                        Preguntas cargadas · {selectedVip.question_pool_questions.length}
-                      </p>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-[10px] border border-white/[0.06] px-4 py-3">
+                        <p className={flatLabelClass}>Preguntas</p>
+                        <p className="mt-1 text-lg font-semibold text-ink">{questionPoolQuestions.length}</p>
+                      </div>
+                      <div className="rounded-[10px] border border-white/[0.06] px-4 py-3">
+                        <p className={flatLabelClass}>Puntos totales</p>
+                        <p className="mt-1 text-lg font-semibold text-ink">{questionPoolTotalPoints}</p>
+                      </div>
+                      <div className="rounded-[10px] border border-white/[0.06] px-4 py-3">
+                        <p className={flatLabelClass}>Con correcta</p>
+                        <p className="mt-1 text-lg font-semibold text-mint">{questionPoolResolvedCount}</p>
+                      </div>
+                      <div className="rounded-[10px] border border-white/[0.06] px-4 py-3">
+                        <p className={flatLabelClass}>Pendientes</p>
+                        <p className="mt-1 text-lg font-semibold text-gold">
+                          {Math.max(questionPoolQuestions.length - questionPoolResolvedCount, 0)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="grid gap-3">
-                      {selectedVip.question_pool_questions.map((question) => (
-                        <div key={question.id} className="rounded-[10px] border border-white/[0.06] p-4">
-                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                            <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-steel">
-                                Orden {question.sort_order} · {question.points} pts · {question.responses_count} respuestas
-                              </p>
-                              <h4 className="mt-2 text-base font-semibold text-ink">{question.prompt}</h4>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <select
-                                value={question.options.find((option) => option.is_correct)?.id ?? ""}
-                                onChange={(event) =>
-                                  void handleSetQuestionPoolCorrectOption(question.id, event.target.value || null)
-                                }
-                                disabled={gradingQuestionId === question.id}
-                                className={`${flatFieldClass} min-w-[220px]`}
-                              >
-                                <option value="">Sin correcta</option>
-                                {question.options.map((option) => (
-                                  <option key={option.id} value={option.id}>
-                                    {option.option_text}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => void handleDeleteQuestionPoolQuestion(question.id)}
-                                disabled={deletingQuestionId === question.id}
-                                className="app-pill px-4 text-coral disabled:opacity-50"
-                              >
-                                {deletingQuestionId === question.id ? "Borrando..." : "Borrar"}
-                              </button>
-                            </div>
+                    {questionPoolQuestions.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                              Selector de pregunta
+                            </p>
+                            <p className="text-xs text-steel">
+                              {questionPoolResolvedCount}/{questionPoolQuestions.length} calificadas
+                            </p>
                           </div>
-                          <div className="mt-4 grid gap-2">
-                            {question.options.map((option) => (
-                              <div
-                                key={option.id}
-                                className={`rounded-[8px] border px-3 py-2 text-sm ${
-                                  option.is_correct ? "border-mint/30 bg-mint/10 text-mint" : "border-white/[0.06] text-ink"
-                                }`}
-                              >
-                                {option.option_text}
-                              </div>
-                            ))}
+                          <div className="flex gap-2 overflow-x-auto pb-1">
+                            {questionPoolQuestions.map((question) => {
+                              const isResolved = question.options.some((option) => option.is_correct);
+                              const isActive = selectedQuestion?.id === question.id;
+                              return (
+                                <button
+                                  key={question.id}
+                                  type="button"
+                                  onClick={() => setSelectedQuestionId(question.id)}
+                                  className={`min-w-[92px] rounded-[10px] border px-3 py-2 text-left text-xs transition ${
+                                    isActive
+                                      ? "border-white/[0.18] bg-white/[0.08] text-ink"
+                                      : isResolved
+                                        ? "border-mint/25 bg-mint/10 text-mint"
+                                        : "border-white/[0.06] bg-white/[0.02] text-steel hover:border-white/[0.12]"
+                                  }`}
+                                >
+                                  <p className="font-semibold">P{question.sort_order}</p>
+                                  <p className="mt-1">{question.points} pts</p>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-                      ))}
-                      {selectedVip.question_pool_questions.length === 0 ? (
-                        <p className="rounded-[8px] border border-white/[0.06] px-4 py-4 text-sm text-steel">
-                          Todavia no hay preguntas cargadas en esta VIP.
-                        </p>
-                      ) : null}
-                    </div>
+
+                        {selectedQuestion ? (
+                          <div className="rounded-[10px] border border-white/[0.06] p-4">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                                  Orden {selectedQuestion.sort_order} · {selectedQuestion.points} pts · {selectedQuestion.responses_count} respuestas
+                                </p>
+                                <h4 className="mt-2 text-base font-semibold text-ink">{selectedQuestion.prompt}</h4>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSetQuestionPoolCorrectOption(selectedQuestion.id, null)}
+                                  disabled={
+                                    gradingQuestionId === selectedQuestion.id ||
+                                    !selectedQuestion.options.some((option) => option.is_correct)
+                                  }
+                                  className="app-pill px-4 text-steel disabled:opacity-50"
+                                >
+                                  Limpiar correcta
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeleteQuestionPoolQuestion(selectedQuestion.id)}
+                                  disabled={deletingQuestionId === selectedQuestion.id}
+                                  className="app-pill px-4 text-coral disabled:opacity-50"
+                                >
+                                  {deletingQuestionId === selectedQuestion.id ? "Borrando..." : "Borrar"}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mt-2 text-sm text-steel">
+                              Da click en la opcion correcta para marcarla.
+                            </div>
+                            <div className="mt-4 grid gap-2">
+                              {selectedQuestion.options.map((option) => (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={() =>
+                                    void handleSetQuestionPoolCorrectOption(
+                                      selectedQuestion.id,
+                                      option.is_correct ? null : option.id,
+                                    )
+                                  }
+                                  disabled={gradingQuestionId === selectedQuestion.id}
+                                  className={`rounded-[8px] border px-3 py-3 text-left text-sm transition ${
+                                    option.is_correct
+                                      ? "border-mint/30 bg-mint/10 text-mint"
+                                      : "border-white/[0.06] text-ink hover:border-white/[0.16]"
+                                  } disabled:opacity-70`}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span>{option.option_text}</span>
+                                    <span className="text-xs font-semibold uppercase tracking-[0.14em]">
+                                      {option.is_correct ? "Correcta" : "Marcar"}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="rounded-[8px] border border-white/[0.06] px-4 py-4 text-sm text-steel">
+                        Todavia no hay preguntas cargadas en esta VIP.
+                      </p>
+                    )}
                   </div>
                 </>
               )}
