@@ -313,6 +313,10 @@ class SeasonCreateRequest(BaseModel):
     competition_id: str | None = None
     tournament_format: TournamentFormat = TournamentFormat.STANDARD
     is_active: bool = False
+    survivor_enabled: bool = False
+    survivor_name: str | None = Field(default=None, max_length=160)
+    survivor_max_lives: int = Field(default=1, ge=1, le=10)
+    survivor_registration_lock_at: datetime | None = None
 
 
 class SeasonUpdateRequest(SeasonCreateRequest):

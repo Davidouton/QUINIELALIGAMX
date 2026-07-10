@@ -1,9 +1,12 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_profile
 from app.core.database import get_db
-from app.models.entities import Profile
+from app.models.entities import Profile, Season, SeasonMembership
+from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.dashboard import DashboardHomeOut
 from app.repositories.team_repository import TeamRepository
 from app.schemas.profile import (
@@ -19,14 +22,17 @@ from app.services.leaderboard_service import LeaderboardService
 from app.services.match_service import MatchService
 from app.services.pick_service import PickService
 from app.services.profile_service import ProfileService
+from app.services.season_eligibility_service import SeasonEligibilityService
 from app.services.vip_service import VipService
 
 router = APIRouter()
 service = ProfileService()
 team_repo = TeamRepository()
+season_membership_repo = SeasonMembershipRepository()
 leaderboard_service = LeaderboardService()
 match_service = MatchService()
 pick_service = PickService()
+season_eligibility_service = SeasonEligibilityService()
 vip_service = VipService()
 
 
@@ -82,6 +88,47 @@ def get_registered_users(
     current_profile: Profile = Depends(get_current_profile),
 ) -> list[RegisteredUserOption]:
     return service.list_registered_user_options(db, current_profile)
+
+
+@router.post("/me/seasons/{season_id}/join", response_model=MeResponse)
+def join_season(
+    season_id: str,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> MeResponse:
+    season = db.get(Season, season_id)
+    if season is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada no encontrada")
+    lock_at = season_eligibility_service.get_effective_lock_at(db, season)
+    if lock_at is not None and datetime.now(UTC) >= lock_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La ventana de inscripcion para esta temporada ya cerro",
+        )
+
+    membership = season_membership_repo.get_for_profile_and_season(db, current_profile.id, season.id)
+    if membership is None:
+        membership = SeasonMembership(
+            season_id=season.id,
+            profile_id=current_profile.id,
+        )
+
+    is_aval_member = current_profile.modality == "aval"
+    if is_aval_member:
+        membership.is_active = True
+        if membership.activated_at is None:
+            membership.activated_at = datetime.now(UTC)
+    elif not membership.is_active:
+        membership.is_active = False
+        membership.activated_at = None
+
+    if not season_eligibility_service.is_locked(db, season):
+        membership.eligible_for_scoring = bool(membership.is_active)
+        membership.eligible_locked_at = None
+
+    season_membership_repo.save(db, membership)
+    db.commit()
+    return service.build_me_response(db, current_profile, season_id=season.id)
 
 
 @router.get("/me/prize-summary", response_model=PrizeSummaryResponse)

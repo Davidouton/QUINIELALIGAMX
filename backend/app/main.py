@@ -112,6 +112,16 @@ def run_startup_migrations() -> None:
                 "tournament_format": (
                     "ALTER TABLE seasons ADD COLUMN tournament_format VARCHAR(24) NOT NULL DEFAULT 'standard'"
                 ),
+                "survivor_enabled": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
+                "survivor_name": "ALTER TABLE seasons ADD COLUMN survivor_name VARCHAR(160)",
+                "survivor_max_lives": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_max_lives INTEGER NOT NULL DEFAULT 1"
+                ),
+                "survivor_registration_lock_at": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_registration_lock_at TIMESTAMP WITH TIME ZONE"
+                ),
                 "start_matchday_id": "ALTER TABLE seasons ADD COLUMN start_matchday_id UUID",
                 "end_matchday_id": "ALTER TABLE seasons ADD COLUMN end_matchday_id UUID",
                 "participants_lock_at": "ALTER TABLE seasons ADD COLUMN participants_lock_at TIMESTAMP WITH TIME ZONE",
@@ -150,6 +160,7 @@ def run_startup_migrations() -> None:
                 text("CREATE INDEX IF NOT EXISTS idx_seasons_tournament_format ON seasons(tournament_format)")
             )
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_seasons_competition_id ON seasons(competition_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_seasons_survivor_enabled ON seasons(survivor_enabled)"))
 
         if "matches" in table_names:
             match_columns = {column["name"]: column for column in inspector.get_columns("matches")}
@@ -391,6 +402,56 @@ def run_startup_migrations() -> None:
             for column_name, statement in missing_membership_columns.items():
                 if column_name not in membership_column_names:
                     connection.execute(text(statement))
+
+        if "survivor_memberships" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS survivor_memberships (
+                      id UUID PRIMARY KEY,
+                      season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+                      profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      joined_at TIMESTAMP WITH TIME ZONE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_survivor_memberships UNIQUE (season_id, profile_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_survivor_memberships_season_profile "
+                    "ON survivor_memberships(season_id, profile_id)"
+                )
+            )
+
+        if "survivor_picks" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS survivor_picks (
+                      id UUID PRIMARY KEY,
+                      season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+                      profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      matchday_id UUID NOT NULL REFERENCES matchdays(id) ON DELETE CASCADE,
+                      match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+                      team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_survivor_picks_week UNIQUE (season_id, profile_id, matchday_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_survivor_picks_profile_matchday "
+                    "ON survivor_picks(profile_id, matchday_id)"
+                )
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_survivor_picks_team_id ON survivor_picks(team_id)"))
 
         if "pick_reminder_email_events" not in table_names:
             connection.execute(

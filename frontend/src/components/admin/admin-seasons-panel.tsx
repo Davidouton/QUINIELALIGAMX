@@ -12,6 +12,10 @@ type SeasonFormState = {
   competition_id: string;
   tournament_format: TournamentFormat;
   is_active: boolean;
+  survivor_enabled: boolean;
+  survivor_name: string;
+  survivor_max_lives: string;
+  survivor_registration_lock_at: string;
 };
 
 const initialSeasonForm: SeasonFormState = {
@@ -20,6 +24,10 @@ const initialSeasonForm: SeasonFormState = {
   competition_id: "",
   tournament_format: "standard",
   is_active: false,
+  survivor_enabled: false,
+  survivor_name: "",
+  survivor_max_lives: "1",
+  survivor_registration_lock_at: "",
 };
 
 export function AdminSeasonsPanel() {
@@ -77,6 +85,9 @@ export function AdminSeasonsPanel() {
         body: JSON.stringify({
           ...seasonForm,
           competition_id: seasonForm.competition_id || null,
+          survivor_name: seasonForm.survivor_name || null,
+          survivor_max_lives: Number(seasonForm.survivor_max_lives || 1),
+          survivor_registration_lock_at: seasonForm.survivor_registration_lock_at || null,
         }),
       });
       await loadSeasons();
@@ -105,6 +116,10 @@ export function AdminSeasonsPanel() {
           competition_id: season.competition_id,
           tournament_format: season.tournament_format,
           is_active: true,
+          survivor_enabled: season.survivor_enabled,
+          survivor_name: season.survivor_name,
+          survivor_max_lives: season.survivor_max_lives,
+          survivor_registration_lock_at: season.survivor_registration_lock_at,
         }),
       });
       await loadSeasons();
@@ -191,6 +206,47 @@ export function AdminSeasonsPanel() {
             />
             Marcar como temporada activa
           </label>
+          <div className="rounded-[18px] border border-white/6 bg-white/[0.03] p-4">
+            <label className="flex items-center gap-3 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={seasonForm.survivor_enabled}
+                onChange={(event) =>
+                  setSeasonForm((current) => ({ ...current, survivor_enabled: event.target.checked }))
+                }
+              />
+              Habilitar survivor en esta temporada
+            </label>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <input
+                value={seasonForm.survivor_name}
+                onChange={(event) => setSeasonForm((current) => ({ ...current, survivor_name: event.target.value }))}
+                placeholder="Survivor Liga MX"
+                className="field-control"
+                disabled={!seasonForm.survivor_enabled}
+              />
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={seasonForm.survivor_max_lives}
+                onChange={(event) =>
+                  setSeasonForm((current) => ({ ...current, survivor_max_lives: event.target.value }))
+                }
+                className="field-control"
+                disabled={!seasonForm.survivor_enabled}
+              />
+              <input
+                type="datetime-local"
+                value={seasonForm.survivor_registration_lock_at}
+                onChange={(event) =>
+                  setSeasonForm((current) => ({ ...current, survivor_registration_lock_at: event.target.value }))
+                }
+                className="field-control"
+                disabled={!seasonForm.survivor_enabled}
+              />
+            </div>
+          </div>
           <button type="submit" disabled={saving === "season"} className="app-pill-active px-4 disabled:opacity-60">
             {saving === "season"
               ? "Guardando..."
@@ -228,6 +284,7 @@ export function AdminSeasonsPanel() {
               <col className="w-[200px]" />
               <col className="w-[110px]" />
               <col className="w-[130px]" />
+              <col className="w-[130px]" />
               <col className="w-[110px]" />
               <col className="w-[190px]" />
             </colgroup>
@@ -237,6 +294,7 @@ export function AdminSeasonsPanel() {
                 <th className="px-3 py-3">Temporada</th>
                 <th className="px-3 py-3">Slug</th>
                 <th className="px-3 py-3">Formato</th>
+                <th className="px-3 py-3">Survivor</th>
                 <th className="px-3 py-3">Estado</th>
                 <th className="px-3 py-3">Acciones</th>
               </tr>
@@ -252,6 +310,9 @@ export function AdminSeasonsPanel() {
                   <td className="px-3 py-3 text-steel">
                     {season.tournament_format === "world_cup" ? "Mundial" : "Standard"}
                   </td>
+                  <td className="px-3 py-3 text-steel">
+                    {season.survivor_enabled ? `${season.survivor_name ?? "Survivor"} · ${season.survivor_max_lives} vidas` : "Off"}
+                  </td>
                   <td className="px-3 py-3 text-steel">{season.is_active ? "Activa" : "Historica"}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2 whitespace-nowrap">
@@ -265,6 +326,12 @@ export function AdminSeasonsPanel() {
                             competition_id: season.competition_id ?? "",
                             tournament_format: season.tournament_format,
                             is_active: season.is_active,
+                            survivor_enabled: season.survivor_enabled,
+                            survivor_name: season.survivor_name ?? "",
+                            survivor_max_lives: String(season.survivor_max_lives ?? 1),
+                            survivor_registration_lock_at: season.survivor_registration_lock_at
+                              ? season.survivor_registration_lock_at.slice(0, 16)
+                              : "",
                           });
                         }}
                         className="app-pill h-9 min-w-[76px] px-3 text-[11px]"

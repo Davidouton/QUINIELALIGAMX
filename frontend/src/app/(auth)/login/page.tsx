@@ -86,7 +86,6 @@ export default function LoginPage() {
         </div>
         <p className="eyebrow">Acceso</p>
         <h1 className="mt-4 text-4xl font-semibold text-ink">Iniciar sesion</h1>
-        <p className="mt-3 text-sm text-steel">Entra al panel y captura la jornada con ritmo de prime time.</p>
         <div className="mt-8 space-y-5">
           <input
             value={email}

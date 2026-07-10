@@ -90,6 +90,7 @@ export function getDashboardScreenName(pathname: string) {
     "/dashboard/picks": "Picks",
     "/dashboard/leaderboard": "Ranking",
     "/dashboard/vip": "VIP",
+    "/dashboard/survivor": "Survivor",
     "/dashboard/prizes": "Premios",
     "/dashboard/quiniela-plus": "Quiniela Plus",
     "/dashboard/results": "Resultados",

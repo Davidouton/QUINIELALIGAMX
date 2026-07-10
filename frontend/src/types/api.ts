@@ -902,6 +902,95 @@ export interface AppBootstrap {
   teams: Team[];
 }
 
+export interface SurvivorCurrentMatchday {
+  id: string;
+  number: number;
+  name: string;
+  starts_at: string;
+  ends_at: string;
+}
+
+export interface SurvivorPick {
+  id: string;
+  matchday_id: string;
+  matchday_number: number;
+  matchday_name: string;
+  match_id: string;
+  team_id: string;
+  team_name: string;
+  team_short_name: string;
+  team_crest_url: string | null;
+  opponent_team_name: string;
+  opponent_team_short_name: string;
+  opponent_team_crest_url: string | null;
+  kickoff_at: string;
+  result_status: "pending" | "won" | "lost" | "draw";
+  consumed_life: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SurvivorMembership {
+  season_id: string;
+  is_active: boolean;
+  joined_at: string | null;
+  max_lives: number;
+  remaining_lives: number;
+  lives_spent: number;
+  alive: boolean;
+  used_team_ids: string[];
+  used_team_names: string[];
+  current_pick: SurvivorPick | null;
+}
+
+export interface SurvivorAvailableTeam {
+  team_id: string;
+  team_name: string;
+  team_short_name: string;
+  team_crest_url: string | null;
+  opponent_team_id: string | null;
+  opponent_team_name: string;
+  opponent_team_short_name: string;
+  opponent_team_crest_url: string | null;
+  match_id: string;
+  kickoff_at: string;
+  is_locked: boolean;
+  already_used: boolean;
+  is_current_pick: boolean;
+}
+
+export interface SurvivorLeaderboardEntry {
+  profile_id: string;
+  display_name: string;
+  remaining_lives: number;
+  lives_spent: number;
+  total_picks: number;
+  alive: boolean;
+  last_pick_team_name: string | null;
+}
+
+export interface SurvivorSeasonSummary {
+  season_id: string;
+  season_name: string;
+  competition_id: string | null;
+  competition_name: string | null;
+  survivor_enabled: boolean;
+  survivor_name: string;
+  survivor_max_lives: number;
+  registration_lock_at: string | null;
+  registration_open: boolean;
+  total_entries: number;
+}
+
+export interface SurvivorBoard {
+  season: SurvivorSeasonSummary;
+  current_matchday: SurvivorCurrentMatchday | null;
+  my_membership: SurvivorMembership | null;
+  my_picks: SurvivorPick[];
+  available_teams: SurvivorAvailableTeam[];
+  leaderboard: SurvivorLeaderboardEntry[];
+}
+
 export interface UserSeasonMembership {
   season_id: string;
   season_name: string;
@@ -1113,6 +1202,10 @@ export interface Season {
   competition_sport_name: string | null;
   tournament_format: TournamentFormat;
   is_active: boolean;
+  survivor_enabled: boolean;
+  survivor_name: string | null;
+  survivor_max_lives: number;
+  survivor_registration_lock_at: string | null;
   start_matchday_id: string | null;
   end_matchday_id: string | null;
   participants_lock_at: string | null;

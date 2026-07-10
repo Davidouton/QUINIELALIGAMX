@@ -16,6 +16,7 @@ from app.api.v1.routes.quiniela_plus import router as quiniela_plus_router
 from app.api.v1.routes.results import router as results_router
 from app.api.v1.routes.rules import router as rules_router
 from app.api.v1.routes.seasons import router as seasons_router
+from app.api.v1.routes.survivor import router as survivor_router
 from app.api.v1.routes.teams import router as teams_router
 from app.api.v1.routes.vip import router as vip_router
 from app.api.v1.routes.world_cup import router as world_cup_router
@@ -29,6 +30,7 @@ api_router.include_router(payments_router, tags=["payments"])
 api_router.include_router(quiniela_plus_router, tags=["quiniela-plus"])
 api_router.include_router(competitions_router, tags=["competitions"])
 api_router.include_router(seasons_router, tags=["seasons"])
+api_router.include_router(survivor_router, tags=["survivor"])
 api_router.include_router(teams_router, tags=["teams"])
 api_router.include_router(matchdays_router, tags=["matchdays"])
 api_router.include_router(matches_router, tags=["matches"])

@@ -1,17 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { DashboardSeasonSwitcher } from "@/components/layout/dashboard-season-switcher";
 import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
+import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
+import { resolveSeasonForContext } from "@/lib/dashboard-season";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { cn } from "@/lib/utils";
+import type { Season } from "@/types/api";
 
 const baseLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
+  { href: "/dashboard/survivor", label: "Survivor", shortLabel: "Sur" },
   { href: "/dashboard/world-cup", label: "Mundial", shortLabel: "WC" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
@@ -29,6 +33,7 @@ const primaryMobileLinks = [
   { href: "/dashboard/quiniela-plus", label: "Q+" },
   { href: "/dashboard/leaderboard", label: "Ranking" },
   { href: "/dashboard", label: "Inicio" },
+  { href: "/dashboard/survivor", label: "Surv" },
   { href: "/dashboard/prizes", label: "Premios" },
   { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks" },
@@ -52,10 +57,38 @@ export function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { buildHrefWithSeason } = useDashboardSeasonParam();
+  const { buildHrefWithSeason, competitionId, seasonId } = useDashboardSeasonParam();
   const canViewAdmin = useAdminVisibility();
-  const links = canViewAdmin ? [adminLink, ...baseLinks] : baseLinks;
-  const mobilePrimaryLinks = canViewAdmin ? [adminLink, ...primaryMobileLinks] : primaryMobileLinks;
+  const [seasons, setSeasons] = useState<Season[]>([]);
+
+  useEffect(() => {
+    async function loadSeasons() {
+      try {
+        const rows = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        setSeasons(rows);
+      } catch {
+        setSeasons([]);
+      }
+    }
+
+    void loadSeasons();
+  }, []);
+
+  const activeSeason = useMemo(
+    () => resolveSeasonForContext(seasons, seasonId, competitionId),
+    [competitionId, seasonId, seasons],
+  );
+  const isWorldCupContext = activeSeason?.tournament_format === "world_cup";
+  const visibleBaseLinks = useMemo(
+    () => baseLinks.filter((link) => !isWorldCupContext || link.href !== "/dashboard/survivor"),
+    [isWorldCupContext],
+  );
+  const visibleMobilePrimaryLinks = useMemo(
+    () => primaryMobileLinks.filter((link) => !isWorldCupContext || link.href !== "/dashboard/survivor"),
+    [isWorldCupContext],
+  );
+  const links = canViewAdmin ? [adminLink, ...visibleBaseLinks] : visibleBaseLinks;
+  const mobilePrimaryLinksResolved = canViewAdmin ? [adminLink, ...visibleMobilePrimaryLinks] : visibleMobilePrimaryLinks;
   const currentLink = links.find((link) => pathname === link.href) ?? links[0];
 
   async function handleSignOut() {
@@ -121,7 +154,7 @@ export function DashboardSidebar() {
                 </Link>
               ) : null}
               <div className="grid grid-cols-2 gap-2">
-                {baseLinks.map((link) => (
+                {visibleBaseLinks.map((link) => (
                   <Link
                     key={link.href}
                     href={buildHrefWithSeason(link.href)}
@@ -141,8 +174,8 @@ export function DashboardSidebar() {
         </div>
 
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-night/95 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3 backdrop-blur-xl">
-          <div className={cn("grid gap-1.5", canViewAdmin ? "grid-cols-7" : "grid-cols-6")}>
-            {mobilePrimaryLinks.map((link) => (
+          <div className={cn("grid gap-1.5", canViewAdmin ? "grid-cols-8" : "grid-cols-7")}>
+            {mobilePrimaryLinksResolved.map((link) => (
               <Link
                 key={link.href}
                 href={buildHrefWithSeason(link.href)}
@@ -195,7 +228,7 @@ export function DashboardSidebar() {
           ) : null}
 
           <div className="space-y-3">
-            {baseLinks.map((link) => (
+            {visibleBaseLinks.map((link) => (
               <Link
                 key={link.href}
                 href={buildHrefWithSeason(link.href)}

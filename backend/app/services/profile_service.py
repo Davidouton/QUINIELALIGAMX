@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -132,6 +133,14 @@ class ProfileService:
             season_row.id: season_row
             for season_row in db.scalars(select(Season).where(Season.id.in_(membership_season_ids))).all()
         } if membership_season_ids else {}
+        did_sync_aval_memberships = self._synchronize_aval_memberships(
+            db,
+            profile,
+            membership_rows,
+            seasons_by_id,
+        )
+        if did_sync_aval_memberships:
+            db.commit()
         membership_out_rows = [
             self._season_membership_out(db, membership_row, seasons_by_id.get(membership_row.season_id))
             for membership_row in membership_rows
@@ -179,6 +188,44 @@ class ProfileService:
             selected_season_membership=selected_membership_out,
             season_memberships=membership_out_rows,
         )
+
+    def _synchronize_aval_memberships(
+        self,
+        db: Session,
+        profile: Profile,
+        memberships: list,
+        seasons_by_id: dict[str, Season],
+    ) -> bool:
+        if profile.modality != "aval":
+            return False
+
+        did_change = False
+        now = datetime.now(UTC)
+        for membership in memberships:
+            season = seasons_by_id.get(membership.season_id)
+            if season is None:
+                continue
+
+            membership_changed = False
+            if not membership.is_active:
+                membership.is_active = True
+                membership_changed = True
+            if membership.activated_at is None:
+                membership.activated_at = now
+                membership_changed = True
+            if not self.eligibility_service.is_locked(db, season):
+                if not membership.eligible_for_scoring:
+                    membership.eligible_for_scoring = True
+                    membership_changed = True
+                if membership.eligible_locked_at is not None:
+                    membership.eligible_locked_at = None
+                    membership_changed = True
+
+            if membership_changed:
+                db.add(membership)
+                did_change = True
+
+        return did_change
 
     def list_registered_user_options(self, db: Session, current_profile: Profile) -> list[RegisteredUserOption]:
         return [

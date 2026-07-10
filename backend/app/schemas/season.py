@@ -15,13 +15,17 @@ class SeasonOut(BaseModel):
     competition_sport_name: str | None = None
     tournament_format: TournamentFormat = TournamentFormat.STANDARD
     is_active: bool
+    survivor_enabled: bool = False
+    survivor_name: str | None = None
+    survivor_max_lives: int = 1
+    survivor_registration_lock_at: datetime | None = None
     start_matchday_id: str | None = None
     end_matchday_id: str | None = None
     participants_lock_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
-    @field_serializer("participants_lock_at", "created_at", "updated_at")
+    @field_serializer("survivor_registration_lock_at", "participants_lock_at", "created_at", "updated_at")
     def serialize_datetimes(self, value: datetime | None) -> str | None:
         if value is None:
             return None

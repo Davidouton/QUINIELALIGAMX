@@ -190,6 +190,10 @@ class Season(Base):
         index=True,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    survivor_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    survivor_name: Mapped[str | None] = mapped_column(String(160))
+    survivor_max_lives: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    survivor_registration_lock_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     start_matchday_id: Mapped[str | None] = mapped_column(UUID_SQL, nullable=True, index=True)
     end_matchday_id: Mapped[str | None] = mapped_column(UUID_SQL, nullable=True, index=True)
     participants_lock_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -527,6 +531,41 @@ class SeasonMembership(Base):
         index=True,
     )
     notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class SurvivorMembership(Base):
+    __tablename__ = "survivor_memberships"
+    __table_args__ = (UniqueConstraint("season_id", "profile_id", name="uq_survivor_memberships"),)
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    season_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("seasons.id", ondelete="CASCADE"), index=True)
+    profile_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class SurvivorPick(Base):
+    __tablename__ = "survivor_picks"
+    __table_args__ = (UniqueConstraint("season_id", "profile_id", "matchday_id", name="uq_survivor_picks_week"),)
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    season_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("seasons.id", ondelete="CASCADE"), index=True)
+    profile_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    matchday_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("matchdays.id", ondelete="CASCADE"), index=True)
+    match_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("matches.id", ondelete="CASCADE"), index=True)
+    team_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

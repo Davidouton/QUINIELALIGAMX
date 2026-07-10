@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 import { AdvancedStatsPanel } from "@/components/dashboard/advanced-stats-panel";
 import { MatchdayPointsTable } from "@/components/dashboard/matchday-points-table";
@@ -29,6 +30,7 @@ import type {
   PerformanceRace,
   PublishedResult,
   Season,
+  SurvivorBoard,
   Team,
   VipCompetition,
 } from "@/types/api";
@@ -54,6 +56,7 @@ type DashboardState = {
     matchday: Matchday;
     matches: Match[];
   }[];
+  survivorBoard: SurvivorBoard | null;
   error: string | null;
 };
 
@@ -79,6 +82,7 @@ const initialState: DashboardState = {
   publishedResults: [],
   personalTrophies: [],
   upcomingMatchdayGroups: [],
+  survivorBoard: null,
   error: null,
 };
 
@@ -250,6 +254,10 @@ function isWorldCupSeason(season: Season | null) {
   return season?.tournament_format === "world_cup";
 }
 
+function isSurvivorAvailableForSeason(season: Season | null) {
+  return season?.tournament_format === "standard" || Boolean(season?.survivor_enabled);
+}
+
 function readStoredDashboardDefaultView(): DashboardDefaultView {
   if (typeof window === "undefined") {
     return "regular";
@@ -283,13 +291,14 @@ function buildDashboardHomePath(seasonId?: string | null, matchdayId?: string | 
 export function DashboardHome() {
   const [state, setState] = useState<DashboardState>(initialState);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DashboardTab>("general");
   const [selectedVipBoardId, setSelectedVipBoardId] = useState("");
   const [isTabMenuOpen, setIsTabMenuOpen] = useState(false);
   const [dashboardDefaultView, setDashboardDefaultView] = useState<DashboardDefaultView>(readStoredDashboardDefaultView);
   const [hasAppliedDashboardDefault, setHasAppliedDashboardDefault] = useState(false);
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
-  const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
+  const { seasonId: seasonIdParam, competitionId, setSeasonId, buildHrefWithSeason } = useDashboardSeasonParam();
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
     const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -437,6 +446,17 @@ export function DashboardHome() {
           accessToken,
           { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
         );
+        let survivorBoard: SurvivorBoard | null = null;
+        if (accessToken && isSurvivorAvailableForSeason(selectedSeason)) {
+          try {
+            survivorBoard = await backendFetch<SurvivorBoard>(
+              `/survivor/board?season_id=${selectedSeason.id}`,
+              accessToken,
+            );
+          } catch {
+            survivorBoard = null;
+          }
+        }
 
         setState((current) => ({
           ...current,
@@ -449,6 +469,7 @@ export function DashboardHome() {
           personalTrophies: dashboardBundle.personal_trophies,
           vipCompetitions: dashboardBundle.vip_competitions,
           leaderboard: dashboardBundle.leaderboard,
+          survivorBoard,
         }));
         void trackAnalyticsEvent({
           category: "screen",
@@ -665,6 +686,70 @@ export function DashboardHome() {
     setIsTabMenuOpen(false);
   }
 
+  async function handleJoinSeason() {
+    if (!state.selectedSeason) {
+      return;
+    }
+    setActionLoading("season");
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const meResponse = await backendFetch<Me>(`/me/seasons/${state.selectedSeason.id}/join`, accessToken, {
+        method: "POST",
+      });
+      let survivorBoard = state.survivorBoard;
+      if (isSurvivorAvailableForSeason(state.selectedSeason)) {
+        try {
+          survivorBoard = await backendFetch<SurvivorBoard>(
+            `/survivor/board?season_id=${state.selectedSeason.id}`,
+            accessToken,
+          );
+        } catch {
+          survivorBoard = null;
+        }
+      }
+      setState((current) => ({
+        ...current,
+        me: meResponse,
+        survivorBoard,
+        error: null,
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "No se pudo completar la inscripcion",
+      }));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleJoinSurvivor() {
+    if (!state.selectedSeason) {
+      return;
+    }
+    setActionLoading("survivor");
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const survivorBoard = await backendFetch<SurvivorBoard>(
+        `/survivor/seasons/${state.selectedSeason.id}/join`,
+        accessToken,
+        { method: "POST" },
+      );
+      setState((current) => ({
+        ...current,
+        survivorBoard,
+        error: null,
+      }));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error.message : "No se pudo completar la inscripcion a survivor",
+      }));
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando dashboard...</p>;
   }
@@ -704,6 +789,18 @@ export function DashboardHome() {
     state.selectedSeason && state.me
       ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
       : null;
+  const isLigaMxSeason = state.selectedSeason?.tournament_format === "standard";
+  const hasActiveLigaMxMembership = Boolean(selectedSeasonMembership?.is_active);
+  const isPrePagoPendingApproval = Boolean(
+    selectedSeasonMembership && !selectedSeasonMembership.is_active && state.me?.modality === "pre_pago",
+  );
+  const canJoinSurvivor = Boolean(isLigaMxSeason && isSurvivorAvailableForSeason(state.selectedSeason));
+  const hasSurvivorMembership = Boolean(state.survivorBoard?.my_membership);
+  const shouldShowLigaMxActionPanel = Boolean(
+    state.me &&
+      isLigaMxSeason &&
+      (!hasActiveLigaMxMembership || (canJoinSurvivor && !hasSurvivorMembership)),
+  );
   const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
   const hasApprovedVipCompetition = approvedVipCompetitions.length > 0;
   const canViewRegularDashboard = Boolean(selectedSeasonMembership?.can_participate);
@@ -786,7 +883,83 @@ export function DashboardHome() {
                 {state.me ? `Hola, ${state.me.display_name}` : "Dashboard"}
               </h1>
             </div>
-            {state.me && state.selectedSeason && !selectedSeasonMembership?.can_participate && !hasApprovedVipCompetition ? (
+            {shouldShowLigaMxActionPanel ? (
+              <div className="mt-3 max-w-4xl rounded-2xl border border-coral/25 bg-coral/10 px-4 py-4 text-sm text-ink">
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-coral">Liga MX</p>
+                    <p className="mt-2 text-sm text-sand/90">
+                      Desde aqui ya deberias poder darte de alta en la quiniela de Liga MX y en Survivor sin salir del dashboard.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-[18px] border border-white/8 bg-night/20 px-4 py-4">
+                      <p className="text-sm font-semibold text-ink">Inscripcion a Liga MX</p>
+                      <p className="mt-2 text-xs text-steel">
+                        {hasActiveLigaMxMembership
+                          ? "Ya estas activo y puntuando en la liga."
+                          : isPrePagoPendingApproval
+                            ? "Tu alta ya fue solicitada. Falta autorizacion de admin para activarte en la liga."
+                            : state.me?.modality === "aval"
+                              ? "Tu modalidad aval entra automaticamente en cuanto te inscribes."
+                              : "Solicita tu alta para que admin te autorice si estas en pre-pago."}
+                      </p>
+                      <div className="mt-4">
+                        {hasActiveLigaMxMembership ? (
+                          <span className="app-pill-active px-4 text-sm text-ink">Activo</span>
+                        ) : isPrePagoPendingApproval ? (
+                          <span className="app-pill px-4 text-sm">Pendiente admin</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleJoinSeason()}
+                            disabled={actionLoading === "season"}
+                            className="secondary-button disabled:opacity-60"
+                          >
+                            {actionLoading === "season" ? "Guardando..." : "Inscripcion a Liga MX"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-[18px] border border-white/8 bg-night/20 px-4 py-4">
+                      <p className="text-sm font-semibold text-ink">Inscripcion a Survivor</p>
+                      <p className="mt-2 text-xs text-steel">
+                        {canJoinSurvivor
+                          ? hasSurvivorMembership
+                            ? "Ya estas dentro de Survivor en esta temporada."
+                            : "Activa tu entrada a Survivor para capturar un equipo por jornada."
+                          : "Survivor todavia no esta habilitado para esta temporada."}
+                      </p>
+                      <div className="mt-4">
+                        {canJoinSurvivor ? (
+                          hasSurvivorMembership ? (
+                            <Link
+                              href={buildHrefWithSeason("/dashboard/survivor")}
+                              className="app-pill-active px-4 text-sm text-ink"
+                            >
+                              Ir a Survivor
+                            </Link>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void handleJoinSurvivor()}
+                              disabled={actionLoading === "survivor"}
+                              className="secondary-button disabled:opacity-60"
+                            >
+                              {actionLoading === "survivor" ? "Inscribiendo..." : "Inscripcion a Survivor"}
+                            </button>
+                          )
+                        ) : (
+                          <span className="app-pill px-4 text-sm">Proximamente</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : state.me && state.selectedSeason && !selectedSeasonMembership?.can_participate && !hasApprovedVipCompetition ? (
               <div className="mt-3 max-w-2xl rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
                 Tu cuenta esta activa y puedes entrar al dashboard, pero aun no estas dado de alta en
                 {" "}{state.selectedSeason.name}. Cuando admin confirme tu acceso, te activa el torneo.
