@@ -1034,15 +1034,17 @@ def set_active_matchday(db: Session, matchday_to_activate: Matchday) -> None:
 def get_admin_settings_payload(
     db: Session,
     *,
+    season_id: str | None = None,
     evaluated_picks: int | None = None,
     weekly_leaders: int | None = None,
 ) -> AdminSettingsOut:
     active_season = db.scalar(select(Season).where(Season.is_active.is_(True)).order_by(Season.created_at.desc()))
-    if active_season is not None:
-        did_freeze = season_eligibility_service.freeze_season_if_due(db, active_season)
+    target_season = season_repo.get_by_id(db, season_id) if season_id else active_season
+    if target_season is not None:
+        did_freeze = season_eligibility_service.freeze_season_if_due(db, target_season)
         if did_freeze:
             db.commit()
-            db.refresh(active_season)
+            db.refresh(target_season)
     stored_rules = {
         rule.rule_key: rule.points
         for rule in db.scalars(select(ScoringRule).where(ScoringRule.is_active.is_(True)))
@@ -1060,37 +1062,37 @@ def get_admin_settings_payload(
     first_place_pct = Decimal("0")
     second_place_pct = Decimal("0")
     third_place_pct = Decimal("0")
-    if active_season is not None:
-        participants_lock_at = season_eligibility_service.get_effective_lock_at(db, active_season)
-        participants_locked = season_eligibility_service.is_locked(db, active_season)
-        memberships = season_membership_repo.list_for_season(db, active_season.id)
+    if target_season is not None:
+        participants_lock_at = season_eligibility_service.get_effective_lock_at(db, target_season)
+        participants_locked = season_eligibility_service.is_locked(db, target_season)
+        memberships = season_membership_repo.list_for_season(db, target_season.id)
         eligible_participants = sum(1 for membership in memberships if membership.eligible_for_scoring)
         confirmed_participants = sum(1 for membership in memberships if membership.is_active)
-        entry_fee_amount = active_season.entry_fee_amount
-        weekly_first_place_amount = active_season.weekly_first_place_amount
-        weekly_second_place_amount = active_season.weekly_second_place_amount
-        weekly_third_place_amount = active_season.weekly_third_place_amount
-        admin_commission_pct = active_season.admin_commission_pct
-        reserve_pct = active_season.reserve_pct
-        first_place_pct = active_season.first_place_pct
-        second_place_pct = active_season.second_place_pct
-        third_place_pct = active_season.third_place_pct
+        entry_fee_amount = target_season.entry_fee_amount
+        weekly_first_place_amount = target_season.weekly_first_place_amount
+        weekly_second_place_amount = target_season.weekly_second_place_amount
+        weekly_third_place_amount = target_season.weekly_third_place_amount
+        admin_commission_pct = target_season.admin_commission_pct
+        reserve_pct = target_season.reserve_pct
+        first_place_pct = target_season.first_place_pct
+        second_place_pct = target_season.second_place_pct
+        third_place_pct = target_season.third_place_pct
 
     tournament_matchdays_count = 0
-    if active_season is not None:
+    if target_season is not None:
         season_matchdays = list(
             db.scalars(
                 select(Matchday)
-                .where(Matchday.season_id == active_season.id)
+                .where(Matchday.season_id == target_season.id)
                 .order_by(Matchday.number.asc())
             )
         )
         start_number = next(
-            (matchday.number for matchday in season_matchdays if matchday.id == active_season.start_matchday_id),
+            (matchday.number for matchday in season_matchdays if matchday.id == target_season.start_matchday_id),
             None,
         )
         end_number = next(
-            (matchday.number for matchday in season_matchdays if matchday.id == active_season.end_matchday_id),
+            (matchday.number for matchday in season_matchdays if matchday.id == target_season.end_matchday_id),
             None,
         )
         filtered_matchdays = [
@@ -1114,8 +1116,11 @@ def get_admin_settings_payload(
 
     return AdminSettingsOut(
         active_season_id=active_season.id if active_season is not None else None,
-        start_matchday_id=active_season.start_matchday_id if active_season is not None else None,
-        end_matchday_id=active_season.end_matchday_id if active_season is not None else None,
+        selected_season_id=target_season.id if target_season is not None else None,
+        selected_season_name=target_season.name if target_season is not None else None,
+        selected_tournament_format=target_season.tournament_format if target_season is not None else None,
+        start_matchday_id=target_season.start_matchday_id if target_season is not None else None,
+        end_matchday_id=target_season.end_matchday_id if target_season is not None else None,
         participants_lock_at=participants_lock_at,
         participants_locked=participants_locked,
         eligible_participants=eligible_participants,
@@ -1670,15 +1675,17 @@ def upsert_user_season_membership(
 
 @router.get("/settings", response_model=AdminSettingsOut)
 def get_admin_settings(
+    season_id: str | None = None,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminSettingsOut:
-    return get_admin_settings_payload(db)
+    return get_admin_settings_payload(db, season_id=season_id)
 
 
 @router.put("/settings", response_model=AdminSettingsOut)
 def update_admin_settings(
     payload: AdminSettingsUpdateRequest,
+    set_active: bool = True,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminSettingsOut:
@@ -1736,7 +1743,8 @@ def update_admin_settings(
     season.second_place_pct = Decimal(str(payload.second_place_pct))
     season.third_place_pct = Decimal(str(payload.third_place_pct))
 
-    set_active_season(db, season)
+    if set_active:
+        set_active_season(db, season)
     season_repo.save(db, season)
     upsert_scoring_rule(db, "result_correct", payload.result_correct_points)
     upsert_scoring_rule(db, "exact_score", payload.exact_score_points)
@@ -1744,6 +1752,7 @@ def update_admin_settings(
     recalculate_summary = ScoringService().recalculate(db)
     return get_admin_settings_payload(
         db,
+        season_id=season.id,
         evaluated_picks=recalculate_summary["evaluated_picks"],
         weekly_leaders=recalculate_summary["weekly_leaders"],
     )

@@ -167,6 +167,9 @@ class AdminPickRowOut(BaseModel):
 
 class AdminSettingsOut(BaseModel):
     active_season_id: str | None = None
+    selected_season_id: str | None = None
+    selected_season_name: str | None = None
+    selected_tournament_format: TournamentFormat | None = None
     start_matchday_id: str | None = None
     end_matchday_id: str | None = None
     participants_lock_at: datetime | None = None

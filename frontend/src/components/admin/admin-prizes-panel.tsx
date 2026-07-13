@@ -47,21 +47,24 @@ function mapSettingsToPrizeForm(settings: AdminSettings): PrizeFormState {
 export function AdminPrizesPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
+  const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [form, setForm] = useState<PrizeFormState>(initialForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function loadPrizeSettings() {
+  async function loadPrizeSettings(seasonId?: string) {
     const accessToken = await getBrowserAccessToken();
+    const suffix = seasonId ? `?season_id=${seasonId}` : "";
     const [seasonRows, settingsResponse] = await Promise.all([
       backendFetch<Season[]>("/seasons", accessToken),
-      backendFetch<AdminSettings>("/admin/settings", accessToken),
+      backendFetch<AdminSettings>(`/admin/settings${suffix}`, accessToken),
     ]);
 
     setSeasons(seasonRows);
     setSettings(settingsResponse);
+    setSelectedSeasonId(settingsResponse.selected_season_id ?? settingsResponse.active_season_id ?? "");
     setForm(mapSettingsToPrizeForm(settingsResponse));
   }
 
@@ -81,8 +84,12 @@ export function AdminPrizesPanel() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!settings?.active_season_id) {
-      setError("Primero define un torneo activo en Configuracion.");
+    if (!settings) {
+      setError("Todavia no termina de cargar la configuracion de premios.");
+      return;
+    }
+    if (!selectedSeasonId) {
+      setError("Selecciona una temporada para editar sus premios.");
       return;
     }
 
@@ -92,10 +99,10 @@ export function AdminPrizesPanel() {
 
     try {
       const accessToken = await getBrowserAccessToken();
-      const savedSettings = await backendFetch<AdminSettings>("/admin/settings", accessToken, {
+      const savedSettings = await backendFetch<AdminSettings>("/admin/settings?set_active=false", accessToken, {
         method: "PUT",
         body: JSON.stringify({
-          active_season_id: settings.active_season_id,
+          active_season_id: selectedSeasonId,
           start_matchday_id: settings.start_matchday_id,
           end_matchday_id: settings.end_matchday_id,
           entry_fee_amount: Number(form.entry_fee_amount),
@@ -109,11 +116,13 @@ export function AdminPrizesPanel() {
           third_place_pct: Number(form.third_place_pct),
           result_correct_points: settings.result_correct_points,
           exact_score_points: settings.exact_score_points,
+          advancing_team_points: settings.advancing_team_points,
         }),
       });
       setSettings(savedSettings);
+      setSelectedSeasonId(savedSettings.selected_season_id ?? selectedSeasonId);
       setForm(mapSettingsToPrizeForm(savedSettings));
-      setMessage("Premios actualizados.");
+      setMessage(`Premios actualizados para ${savedSettings.selected_season_name ?? "la temporada"}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar premios");
     } finally {
@@ -125,6 +134,12 @@ export function AdminPrizesPanel() {
     () => seasons.find((season) => season.id === settings?.active_season_id) ?? null,
     [seasons, settings?.active_season_id],
   );
+  const selectedSeason = useMemo(
+    () => seasons.find((season) => season.id === selectedSeasonId) ?? null,
+    [seasons, selectedSeasonId],
+  );
+  const tournamentTypeLabel =
+    settings?.selected_tournament_format === "world_cup" ? "World Cup" : "Liga MX";
 
   const formatMoney = (value: number) =>
     new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(value);
@@ -135,8 +150,40 @@ export function AdminPrizesPanel() {
     <div className="space-y-6">
       <section>
         <h2 className="text-xl font-semibold text-ink">Premios del torneo</h2>
-        <p className="mt-1 text-sm text-steel">
-          {activeSeason ? activeSeason.name : "Primero define un torneo activo en Configuracion."}
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,320px)_auto_auto] lg:items-end">
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Temporada</span>
+            <select
+              value={selectedSeasonId}
+              onChange={(event) => {
+                const nextSeasonId = event.target.value;
+                setSelectedSeasonId(nextSeasonId);
+                setLoading(true);
+                setError(null);
+                setMessage(null);
+                void loadPrizeSettings(nextSeasonId).finally(() => setLoading(false));
+              }}
+              className="field-control"
+              disabled={loading || seasons.length === 0}
+            >
+              {seasons.map((season) => (
+                <option key={season.id} value={season.id}>
+                  {season.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="pb-1">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Tipo de torneo</p>
+            <p className="mt-2 text-sm font-semibold text-ink">{tournamentTypeLabel}</p>
+          </div>
+          <div className="pb-1">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Temporada activa</p>
+            <p className="mt-2 text-sm font-semibold text-ink">{activeSeason?.name ?? "Sin activa"}</p>
+          </div>
+        </div>
+        <p className="mt-3 text-sm text-steel">
+          {selectedSeason ? `Editando la bolsa y comisiones de ${selectedSeason.name}.` : "Selecciona una temporada para editar su esquema de premios."}
         </p>
       </section>
 

@@ -1303,6 +1303,9 @@ export interface OddsUnmatchedResponse {
 
 export interface AdminSettings {
   active_season_id: string | null;
+  selected_season_id: string | null;
+  selected_season_name: string | null;
+  selected_tournament_format: TournamentFormat | null;
   start_matchday_id: string | null;
   end_matchday_id: string | null;
   participants_lock_at: string | null;
