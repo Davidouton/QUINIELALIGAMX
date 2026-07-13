@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
-import { useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { isSeasonLive, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import type {
   Season,
@@ -13,6 +13,8 @@ import type {
   WorldCupNewsFeed,
   WorldCupOfficialResult,
 } from "@/types/api";
+
+const WORLD_CUP_BOARD_CACHE_KEY = "qm-world-cup-board";
 
 const stageTitles = {
   group: "Fase de grupos",
@@ -131,6 +133,32 @@ function formatNewsDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function getCachedWorldCupBoard(seasonId: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const rawValue = window.sessionStorage.getItem(`${WORLD_CUP_BOARD_CACHE_KEY}:${seasonId}`);
+    if (!rawValue) {
+      return null;
+    }
+    return JSON.parse(rawValue) as WorldCupBoard;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedWorldCupBoard(seasonId: string, board: WorldCupBoard) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(`${WORLD_CUP_BOARD_CACHE_KEY}:${seasonId}`, JSON.stringify(board));
+  } catch {
+    // Ignore browser cache write failures.
+  }
+}
+
 function groupResultsByMatchday(results: WorldCupOfficialResult[]) {
   const grouped = new Map<string, { key: string; label: string; sort: number; results: WorldCupOfficialResult[] }>();
   for (const result of results) {
@@ -185,8 +213,33 @@ export function WorldCupPageContent() {
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
 
+  async function loadBoardForSeason(seasonId: string) {
+    try {
+      const boardResponse = await backendFetch<WorldCupBoard>(`/world-cup/board?season_id=${seasonId}`, undefined, {
+        cacheTtlMs: CATALOG_CACHE_TTL_MS,
+      });
+      setCachedWorldCupBoard(seasonId, boardResponse);
+      return {
+        board: boardResponse,
+        error: null,
+      };
+    } catch (caughtError) {
+      const cachedBoard = getCachedWorldCupBoard(seasonId);
+      if (cachedBoard) {
+        return {
+          board: cachedBoard,
+          error: "Mostrando el ultimo snapshot guardado del Mundial mientras vuelve el backend.",
+        };
+      }
+      return {
+        board: null,
+        error: caughtError instanceof Error ? caughtError.message : "No se pudo cargar el tablero mundialista",
+      };
+    }
+  }
+
   const worldCupSeasons = useMemo(
-    () => seasons.filter((season) => season.tournament_format === "world_cup"),
+    () => seasons.filter((season) => season.tournament_format === "world_cup" && season.visibility_status !== "archived"),
     [seasons],
   );
   const officialResultGroups = useMemo(() => {
@@ -200,7 +253,9 @@ export function WorldCupPageContent() {
     async function loadInitial() {
       try {
         const seasonRows = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
-        const wcSeasons = seasonRows.filter((season) => season.tournament_format === "world_cup");
+        const wcSeasons = seasonRows.filter(
+          (season) => season.tournament_format === "world_cup" && season.visibility_status !== "archived",
+        );
         setSeasons(seasonRows);
         if (wcSeasons.length === 0) {
           setBoard(null);
@@ -209,6 +264,7 @@ export function WorldCupPageContent() {
         }
         const nextSeason =
           wcSeasons.find((season) => season.id === seasonIdParam) ??
+          wcSeasons.find(isSeasonLive) ??
           wcSeasons.find((season) => season.is_active) ??
           wcSeasons[0];
         const nextSeasonId = nextSeason.id;
@@ -217,11 +273,12 @@ export function WorldCupPageContent() {
         if (seasonIdParam !== nextSeasonId || competitionId !== nextCompetitionId) {
           setSeasonId(nextSeasonId, nextCompetitionId);
         }
-        const boardResponse = await backendFetch<WorldCupBoard>(`/world-cup/board?season_id=${nextSeasonId}`);
-        setBoard(boardResponse);
-        setError(null);
+        const boardState = await loadBoardForSeason(nextSeasonId);
+        setBoard(boardState.board);
+        setError(boardState.error);
       } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el tablero mundialista");
+        setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar la vista mundialista");
+        setBoard(null);
       } finally {
         setLoading(false);
       }
@@ -229,6 +286,37 @@ export function WorldCupPageContent() {
 
     void loadInitial();
   }, [competitionId, seasonIdParam, setSeasonId]);
+
+  async function handleReload() {
+    setLoading(true);
+    setError(null);
+    try {
+      const seasonRows = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+      const wcSeasons = seasonRows.filter(
+        (season) => season.tournament_format === "world_cup" && season.visibility_status !== "archived",
+      );
+      setSeasons(seasonRows);
+      if (wcSeasons.length === 0) {
+        setBoard(null);
+        return;
+      }
+      const nextSeason =
+        wcSeasons.find((season) => season.id === selectedSeasonId) ??
+        wcSeasons.find((season) => season.id === seasonIdParam) ??
+        wcSeasons.find(isSeasonLive) ??
+        wcSeasons.find((season) => season.is_active) ??
+        wcSeasons[0];
+      setSelectedSeasonId(nextSeason.id);
+      const boardState = await loadBoardForSeason(nextSeason.id);
+      setBoard(boardState.board);
+      setError(boardState.error);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo recargar el Mundial");
+      setBoard(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     setSelectedResultsGroupKey((current) => {
@@ -279,9 +367,9 @@ export function WorldCupPageContent() {
     try {
       const selectedSeason = seasons.find((season) => season.id === seasonId);
       setSeasonId(seasonId, selectedSeason?.competition_id ?? "");
-      const boardResponse = await backendFetch<WorldCupBoard>(`/world-cup/board?season_id=${seasonId}`);
-      setBoard(boardResponse);
-      setError(null);
+      const boardState = await loadBoardForSeason(seasonId);
+      setBoard(boardState.board);
+      setError(boardState.error);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo cambiar la temporada mundialista");
     } finally {
@@ -304,6 +392,16 @@ export function WorldCupPageContent() {
         </p>
       </section>
 
+      {error ? (
+        <section className="rounded-[18px] border border-coral/20 bg-coral/10 px-4 py-4">
+          <p className="text-sm text-coral">No se pudo cargar la vista del Mundial en este momento.</p>
+          <p className="mt-2 text-xs text-coral/80">{error}</p>
+          <button type="button" onClick={() => void handleReload()} className="secondary-button mt-4">
+            Reintentar
+          </button>
+        </section>
+      ) : null}
+
       {worldCupSeasons.length > 0 ? (
         <section className="max-w-[360px]">
           <label className="space-y-2 text-sm">
@@ -321,11 +419,11 @@ export function WorldCupPageContent() {
             </select>
           </label>
         </section>
-      ) : (
-        <p className="text-sm text-steel">Todavia no hay una temporada marcada como Mundial.</p>
-      )}
+      ) : null}
 
-      {error ? <p className="text-sm text-coral">{error}</p> : null}
+      {worldCupSeasons.length === 0 ? (
+        <p className="text-sm text-steel">Todavia no hay una temporada marcada como Mundial.</p>
+      ) : null}
 
       {board ? (
         <>

@@ -4,13 +4,14 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Competition, Season, TournamentFormat } from "@/types/api";
+import type { Competition, Season, SeasonVisibilityStatus, TournamentFormat } from "@/types/api";
 
 type SeasonFormState = {
   name: string;
   slug: string;
   competition_id: string;
   tournament_format: TournamentFormat;
+  visibility_status: SeasonVisibilityStatus;
   is_active: boolean;
   survivor_enabled: boolean;
   survivor_name: string;
@@ -23,6 +24,7 @@ const initialSeasonForm: SeasonFormState = {
   slug: "",
   competition_id: "",
   tournament_format: "standard",
+  visibility_status: "live",
   is_active: false,
   survivor_enabled: false,
   survivor_name: "",
@@ -115,6 +117,7 @@ export function AdminSeasonsPanel() {
           slug: season.slug,
           competition_id: season.competition_id,
           tournament_format: season.tournament_format,
+          visibility_status: season.visibility_status,
           is_active: true,
           survivor_enabled: season.survivor_enabled,
           survivor_name: season.survivor_name,
@@ -123,7 +126,7 @@ export function AdminSeasonsPanel() {
         }),
       });
       await loadSeasons();
-      setMessage(`Temporada activa: ${season.name}.`);
+      setMessage(`Temporada default: ${season.name}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo activar la temporada");
     } finally {
@@ -196,6 +199,20 @@ export function AdminSeasonsPanel() {
             <option value="standard">Liga / torneo normal</option>
             <option value="world_cup">Mundial</option>
           </select>
+          <select
+            value={seasonForm.visibility_status}
+            onChange={(event) =>
+              setSeasonForm((current) => ({
+                ...current,
+                visibility_status: event.target.value as SeasonVisibilityStatus,
+              }))
+            }
+            className="field-control"
+          >
+            <option value="live">Live</option>
+            <option value="closed">Closed</option>
+            <option value="archived">Archived</option>
+          </select>
           <label className="flex items-center gap-3 text-sm text-ink">
             <input
               type="checkbox"
@@ -204,7 +221,7 @@ export function AdminSeasonsPanel() {
                 setSeasonForm((current) => ({ ...current, is_active: event.target.checked }))
               }
             />
-            Marcar como temporada activa
+            Usar como temporada default del admin
           </label>
           <div className="rounded-[18px] border border-white/6 bg-white/[0.03] p-4">
             <label className="flex items-center gap-3 text-sm text-ink">
@@ -286,6 +303,7 @@ export function AdminSeasonsPanel() {
               <col className="w-[130px]" />
               <col className="w-[130px]" />
               <col className="w-[110px]" />
+              <col className="w-[110px]" />
               <col className="w-[190px]" />
             </colgroup>
             <thead className="app-table-head">
@@ -295,7 +313,8 @@ export function AdminSeasonsPanel() {
                 <th className="px-3 py-3">Slug</th>
                 <th className="px-3 py-3">Formato</th>
                 <th className="px-3 py-3">Survivor</th>
-                <th className="px-3 py-3">Estado</th>
+                <th className="px-3 py-3">Visibilidad</th>
+                <th className="px-3 py-3">Default</th>
                 <th className="px-3 py-3">Acciones</th>
               </tr>
             </thead>
@@ -313,7 +332,14 @@ export function AdminSeasonsPanel() {
                   <td className="px-3 py-3 text-steel">
                     {season.survivor_enabled ? `${season.survivor_name ?? "Survivor"} · ${season.survivor_max_lives} vidas` : "Off"}
                   </td>
-                  <td className="px-3 py-3 text-steel">{season.is_active ? "Activa" : "Historica"}</td>
+                  <td className="px-3 py-3 text-steel">
+                    {season.visibility_status === "live"
+                      ? "Live"
+                      : season.visibility_status === "closed"
+                        ? "Closed"
+                        : "Archived"}
+                  </td>
+                  <td className="px-3 py-3 text-steel">{season.is_active ? "Si" : "No"}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2 whitespace-nowrap">
                       <button
@@ -325,6 +351,7 @@ export function AdminSeasonsPanel() {
                             slug: season.slug,
                             competition_id: season.competition_id ?? "",
                             tournament_format: season.tournament_format,
+                            visibility_status: season.visibility_status,
                             is_active: season.is_active,
                             survivor_enabled: season.survivor_enabled,
                             survivor_name: season.survivor_name ?? "",
@@ -338,7 +365,7 @@ export function AdminSeasonsPanel() {
                       >
                         Editar
                       </button>
-                      {!season.is_active ? (
+                      {!season.is_active && season.visibility_status === "live" ? (
                         <button
                           type="button"
                           onClick={() => void handleSetActiveSeason(season)}

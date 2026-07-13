@@ -97,6 +97,7 @@ def list_seasons(
                 competition_name=resolved_competition.name if resolved_competition is not None else None,
                 competition_sport_name=resolved_competition.sport_name if resolved_competition is not None else None,
                 tournament_format=season.tournament_format,
+                visibility_status=season.visibility_status,
                 is_active=season.is_active,
                 survivor_enabled=season.survivor_enabled,
                 survivor_name=season.survivor_name,

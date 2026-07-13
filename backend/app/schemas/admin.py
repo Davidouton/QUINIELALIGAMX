@@ -9,6 +9,7 @@ from app.models.entities import (
     MatchStatus,
     PickSelection,
     RoleCode,
+    SeasonVisibilityStatus,
     TournamentFormat,
 )
 
@@ -245,6 +246,7 @@ class AdminUserOut(BaseModel):
     is_active: bool
     created_at: datetime
     selected_season_membership: AdminUserSeasonMembershipOut | None = None
+    season_memberships: list[AdminUserSeasonMembershipOut] = []
 
 
 class OddsPreviewRow(BaseModel):
@@ -312,6 +314,7 @@ class SeasonCreateRequest(BaseModel):
     slug: str
     competition_id: str | None = None
     tournament_format: TournamentFormat = TournamentFormat.STANDARD
+    visibility_status: SeasonVisibilityStatus = SeasonVisibilityStatus.LIVE
     is_active: bool = False
     survivor_enabled: bool = False
     survivor_name: str | None = Field(default=None, max_length=160)

@@ -1,6 +1,7 @@
 export type MatchdayStatus = "draft" | "active" | "closed" | "published";
 export type MatchStatus = "scheduled" | "final" | "postponed" | "cancelled";
 export type TournamentFormat = "standard" | "world_cup";
+export type SeasonVisibilityStatus = "live" | "closed" | "archived";
 export type MatchStageType =
   | "regular"
   | "group"
@@ -23,6 +24,13 @@ export type PaymentStatus =
   | "failed";
 export type VipMembershipStatus = "pending" | "approved" | "rejected";
 export type PickReminderHoursBefore = 1 | 3;
+export type DashboardWidgetId =
+  | "summary"
+  | "performance"
+  | "matchday_points"
+  | "prize_summary"
+  | "upcoming"
+  | "memberships";
 export type QuinielaPlusBillingPeriod = "weekly" | "monthly" | "quarterly" | "semiannual" | "annual";
 export type QuinielaPlusMembershipStatus = "active" | "expired" | "cancelled";
 
@@ -877,6 +885,7 @@ export interface Me {
   modality: PaymentModality;
   aval_profile_id: string | null;
   theme_preference: ThemePreference;
+  dashboard_widget_ids: DashboardWidgetId[];
   pick_reminder_email_enabled: boolean;
   pick_reminder_opening_enabled: boolean;
   pick_reminder_hours_before: PickReminderHoursBefore | null;
@@ -1201,6 +1210,7 @@ export interface Season {
   competition_name: string | null;
   competition_sport_name: string | null;
   tournament_format: TournamentFormat;
+  visibility_status: SeasonVisibilityStatus;
   is_active: boolean;
   survivor_enabled: boolean;
   survivor_name: string | null;
@@ -1354,6 +1364,7 @@ export interface AdminUser {
   is_active: boolean;
   created_at: string;
   selected_season_membership: AdminUserSeasonMembership | null;
+  season_memberships: AdminUserSeasonMembership[];
 }
 
 export interface AdminResultRow {

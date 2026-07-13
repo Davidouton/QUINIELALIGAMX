@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, field_serializer
 
 from app.core.datetime import ensure_utc
-from app.models.entities import TournamentFormat
+from app.models.entities import SeasonVisibilityStatus, TournamentFormat
 
 
 class SeasonOut(BaseModel):
@@ -14,6 +14,7 @@ class SeasonOut(BaseModel):
     competition_name: str | None = None
     competition_sport_name: str | None = None
     tournament_format: TournamentFormat = TournamentFormat.STANDARD
+    visibility_status: SeasonVisibilityStatus = SeasonVisibilityStatus.LIVE
     is_active: bool
     survivor_enabled: bool = False
     survivor_name: str | None = None

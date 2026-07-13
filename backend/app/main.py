@@ -41,6 +41,7 @@ def run_startup_migrations() -> None:
                     "ALTER TABLE profiles "
                     "ADD COLUMN theme_preference VARCHAR(32) NOT NULL DEFAULT 'standard'"
                 ),
+                "dashboard_widgets": "ALTER TABLE profiles ADD COLUMN dashboard_widgets TEXT",
                 "pick_reminder_email_enabled": (
                     "ALTER TABLE profiles "
                     "ADD COLUMN pick_reminder_email_enabled BOOLEAN NOT NULL DEFAULT FALSE"
@@ -112,6 +113,9 @@ def run_startup_migrations() -> None:
                 "tournament_format": (
                     "ALTER TABLE seasons ADD COLUMN tournament_format VARCHAR(24) NOT NULL DEFAULT 'standard'"
                 ),
+                "visibility_status": (
+                    "ALTER TABLE seasons ADD COLUMN visibility_status VARCHAR(24) NOT NULL DEFAULT 'live'"
+                ),
                 "survivor_enabled": (
                     "ALTER TABLE seasons ADD COLUMN survivor_enabled BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
@@ -158,6 +162,9 @@ def run_startup_migrations() -> None:
                     connection.execute(text(statement))
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS idx_seasons_tournament_format ON seasons(tournament_format)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_seasons_visibility_status ON seasons(visibility_status)")
             )
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_seasons_competition_id ON seasons(competition_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_seasons_survivor_enabled ON seasons(survivor_enabled)"))

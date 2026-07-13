@@ -7,6 +7,7 @@ import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { SurvivorPageContent } from "@/components/survivor/survivor-page-content";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AppBootstrap, GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
 
@@ -41,7 +42,7 @@ type PickBoardState = {
   error: string | null;
 };
 
-type PickBoardTab = "mine" | "global";
+type PickBoardTab = "mine" | "global" | "survivor";
 type PickMatchScope = "matchday" | "today";
 type PickContextOption = {
   value: string;
@@ -1105,9 +1106,13 @@ export function PickBoard() {
   }
 
   const seasonTag = getSeasonTag(state.selectedSeason);
-  const picksHeader = state.selectedMatchday
-    ? `Jornada ${state.selectedMatchday.number} - ${seasonTag}`
-    : "Sin jornada seleccionada";
+  const canShowSurvivorTab = state.selectedSeason?.tournament_format === "standard";
+  const picksHeader =
+    activeTab === "survivor"
+      ? `Picks Center · Survivor`
+      : state.selectedMatchday
+        ? `Jornada ${state.selectedMatchday.number} - ${seasonTag}`
+        : "Sin jornada seleccionada";
   const selectedSeasonId = state.selectedSeason?.id;
   const seasonMatchdays = selectedSeasonId
     ? state.matchdays
@@ -1134,62 +1139,64 @@ export function PickBoard() {
     <div className="space-y-6">
       <div className="space-y-4 px-1 py-1">
         <h1 className="text-sm font-semibold text-ink sm:text-3xl">{picksHeader}</h1>
-        {approvedVipForSelectedMatchday && !selectedSeasonMembership?.can_participate ? (
+        {activeTab !== "survivor" && approvedVipForSelectedMatchday && !selectedSeasonMembership?.can_participate ? (
           <div className="mt-4 rounded-2xl border border-mint/30 bg-mint/10 px-4 py-3 text-sm text-mint">
             Estas capturando picks para {approvedVipForSelectedMatchday.name}. No cuentan para el ranking general.
           </div>
         ) : null}
-        <div className="grid gap-2 lg:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] lg:items-end">
-          <label className="space-y-1.5 text-xs">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Temporada</span>
-            <select
-              value={state.selectedSeason?.id ?? ""}
-              onChange={(event) => void handleSeasonChange(event.target.value)}
-              className="field-control text-xs"
-            >
-              <option value="">Selecciona temporada</option>
-              {visibleSeasons.map((season) => (
-                <option key={season.id} value={season.id}>
-                  {season.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1.5 text-xs">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Jornada</span>
-            <select
-              value={state.selectedMatchday?.id ?? ""}
-              onChange={(event) => void loadSelectedMatchday(event.target.value)}
-              className="field-control text-xs"
-            >
-              <option value="">Selecciona jornada</option>
-              {seasonMatchdays.map((matchday) => (
-                <option key={matchday.id} value={matchday.id}>
-                  Jornada {matchday.number} ·{" "}
-                  {state.selectedSeason?.slug?.toUpperCase() ?? state.selectedSeason?.name ?? "Torneo"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => previousMatchday && void loadSelectedMatchday(previousMatchday.id)}
-              disabled={!previousMatchday}
-              className={pickBoardButtonClass}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              onClick={() => nextMatchday && void loadSelectedMatchday(nextMatchday.id)}
-              disabled={!nextMatchday}
-              className={pickBoardButtonClass}
-            >
-              Siguiente
-            </button>
+        {activeTab !== "survivor" ? (
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] lg:items-end">
+            <label className="space-y-1.5 text-xs">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Temporada</span>
+              <select
+                value={state.selectedSeason?.id ?? ""}
+                onChange={(event) => void handleSeasonChange(event.target.value)}
+                className="field-control text-xs"
+              >
+                <option value="">Selecciona temporada</option>
+                {visibleSeasons.map((season) => (
+                  <option key={season.id} value={season.id}>
+                    {season.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1.5 text-xs">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Jornada</span>
+              <select
+                value={state.selectedMatchday?.id ?? ""}
+                onChange={(event) => void loadSelectedMatchday(event.target.value)}
+                className="field-control text-xs"
+              >
+                <option value="">Selecciona jornada</option>
+                {seasonMatchdays.map((matchday) => (
+                  <option key={matchday.id} value={matchday.id}>
+                    Jornada {matchday.number} ·{" "}
+                    {state.selectedSeason?.slug?.toUpperCase() ?? state.selectedSeason?.name ?? "Torneo"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => previousMatchday && void loadSelectedMatchday(previousMatchday.id)}
+                disabled={!previousMatchday}
+                className={pickBoardButtonClass}
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => nextMatchday && void loadSelectedMatchday(nextMatchday.id)}
+                disabled={!nextMatchday}
+                className={pickBoardButtonClass}
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -1205,6 +1212,15 @@ export function PickBoard() {
           >
             Picks Globales
           </button>
+          {canShowSurvivorTab ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab("survivor")}
+              className={activeTab === "survivor" ? pickBoardButtonActiveClass : pickBoardButtonClass}
+            >
+              Survivor
+            </button>
+          ) : null}
           <Link
             href="/dashboard/vip"
             prefetch={false}
@@ -1213,26 +1229,30 @@ export function PickBoard() {
             VIP
           </Link>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Mostrar</span>
-          <button
-            type="button"
-            onClick={() => setMatchScope("matchday")}
-            className={matchScope === "matchday" ? pickBoardButtonActiveClass : pickBoardButtonClass}
-          >
-            Toda la jornada
-          </button>
-          <button
-            type="button"
-            onClick={() => setMatchScope("today")}
-            className={matchScope === "today" ? pickBoardButtonActiveClass : pickBoardButtonClass}
-          >
-            Juegos de hoy
-          </button>
-        </div>
+        {activeTab !== "survivor" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Mostrar</span>
+            <button
+              type="button"
+              onClick={() => setMatchScope("matchday")}
+              className={matchScope === "matchday" ? pickBoardButtonActiveClass : pickBoardButtonClass}
+            >
+              Toda la jornada
+            </button>
+            <button
+              type="button"
+              onClick={() => setMatchScope("today")}
+              className={matchScope === "today" ? pickBoardButtonActiveClass : pickBoardButtonClass}
+            >
+              Juegos de hoy
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {state.error ? <p className="text-sm text-coral">{state.error}</p> : null}
+
+      {activeTab === "survivor" ? <SurvivorPageContent /> : null}
 
       {activeTab === "mine" && visibleMatches.length === 0 ? (
         <p className="text-sm text-steel">

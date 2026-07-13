@@ -104,6 +104,14 @@ function getModalityLabel(modality: string) {
   return modality === "aval" ? "Aval" : "Pre-pago";
 }
 
+function normalizeBillingModality(modality: string | null | undefined) {
+  return modality === "aval" ? "aval" : "pre_pago";
+}
+
+function normalizeBillingAvalProfileId(modality: string, avalProfileId: string | null | undefined) {
+  return modality === "aval" ? (avalProfileId ?? "").trim() : "";
+}
+
 export function AdminUsersPanel() {
   const [me, setMe] = useState<Me | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -149,8 +157,7 @@ export function AdminUsersPanel() {
       backendFetch<Season[]>("/seasons", accessToken),
     ]);
     setMe(meResponse);
-    const worldCupSeasons = seasonRows.filter((season) => season.tournament_format === "world_cup");
-    const visibleSeasons = worldCupSeasons.length > 0 ? worldCupSeasons : seasonRows;
+    const visibleSeasons = seasonRows;
     const defaultSeasonId = visibleSeasons.find((season) => season.is_active)?.id ?? visibleSeasons[0]?.id ?? "";
     setSeasons(visibleSeasons);
     setSelectedSeasonId(defaultSeasonId);
@@ -406,6 +413,91 @@ export function AdminUsersPanel() {
     }
   }
 
+  async function handleSaveBillingBatch() {
+    const dirtyUsers = users.filter((user) => {
+      const draft = billingDrafts[user.id] ?? {
+        modality: user.modality ?? "pre_pago",
+        aval_profile_id: user.aval_profile_id ?? "",
+      };
+      return (
+        normalizeBillingModality(draft.modality) !== normalizeBillingModality(user.modality) ||
+        normalizeBillingAvalProfileId(draft.modality, draft.aval_profile_id) !==
+          normalizeBillingAvalProfileId(user.modality ?? "pre_pago", user.aval_profile_id)
+      );
+    });
+
+    if (!dirtyUsers.length) {
+      setMessage("No hay cambios de cobro pendientes por guardar.");
+      setError(null);
+      return;
+    }
+
+    const invalidAvalUsers = dirtyUsers.filter((user) => {
+      const draft = billingDrafts[user.id];
+      return normalizeBillingModality(draft?.modality) === "aval" && !draft?.aval_profile_id?.trim();
+    });
+    if (invalidAvalUsers.length) {
+      setError(`Falta seleccionar aval para ${invalidAvalUsers[0]?.display_name ?? "un usuario"}.`);
+      setMessage(null);
+      return;
+    }
+
+    setSavingKey("billing-bulk");
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const chunkSize = 5;
+      let updated = 0;
+      const failedUsers: string[] = [];
+
+      for (let index = 0; index < dirtyUsers.length; index += chunkSize) {
+        const chunk = dirtyUsers.slice(index, index + chunkSize);
+        const results = await Promise.allSettled(
+          chunk.map(async (user) => {
+            const draft = billingDrafts[user.id] ?? {
+              modality: user.modality ?? "pre_pago",
+              aval_profile_id: user.aval_profile_id ?? "",
+            };
+            await backendFetch<AdminUser>(`/admin/users/${user.id}/billing`, accessToken, {
+              method: "PUT",
+              body: JSON.stringify({
+                modality: normalizeBillingModality(draft.modality),
+                aval_profile_id:
+                  normalizeBillingModality(draft.modality) === "aval"
+                    ? normalizeBillingAvalProfileId(draft.modality, draft.aval_profile_id) || null
+                    : null,
+              }),
+            });
+            return user.id;
+          }),
+        );
+
+        results.forEach((result, chunkIndex) => {
+          if (result.status === "fulfilled") {
+            updated += 1;
+            return;
+          }
+          failedUsers.push(chunk[chunkIndex]?.display_name ?? "Usuario");
+        });
+      }
+
+      await loadUsers(selectedSeasonId, accessToken);
+      setMessage(
+        failedUsers.length
+          ? `Se guardaron ${updated} cambios de cobro; ${failedUsers.length} quedaron pendientes.`
+          : `Se guardaron ${updated} cambios de cobro.`,
+      );
+      if (failedUsers.length) {
+        setError(`No se pudieron actualizar: ${failedUsers.slice(0, 3).join(", ")}${failedUsers.length > 3 ? "..." : ""}`);
+      }
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron guardar los cambios de cobro");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
   async function handleUpdatePassword(user: AdminUser) {
     const password = passwordDrafts[user.id]?.password.trim() ?? "";
     if (password.length < 6) {
@@ -496,12 +588,24 @@ export function AdminUsersPanel() {
       membership?.is_active ? "activo" : "sin alta",
       membership?.is_paid ? "pagado" : "pendiente",
       user.is_active ? "app activa" : "app bloqueada",
+      ...user.season_memberships.map((item) => `${item.season_name} ${item.is_active ? "activo" : "inactivo"}`),
     ]
       .join(" ")
       .toLowerCase();
 
     return haystack.includes(normalizedSearch);
   });
+  const dirtyBillingCount = users.filter((user) => {
+    const draft = billingDrafts[user.id] ?? {
+      modality: user.modality ?? "pre_pago",
+      aval_profile_id: user.aval_profile_id ?? "",
+    };
+    return (
+      normalizeBillingModality(draft.modality) !== normalizeBillingModality(user.modality) ||
+      normalizeBillingAvalProfileId(draft.modality, draft.aval_profile_id) !==
+        normalizeBillingAvalProfileId(user.modality ?? "pre_pago", user.aval_profile_id)
+    );
+  }).length;
 
   return (
     <div className="space-y-6">
@@ -511,6 +615,19 @@ export function AdminUsersPanel() {
             <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">
               Accesos por temporada
             </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-steel">
+              {dirtyBillingCount} cambio{dirtyBillingCount === 1 ? "" : "s"} de cobro pendiente{dirtyBillingCount === 1 ? "" : "s"}
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleSaveBillingBatch()}
+              disabled={savingKey === "billing-bulk" || dirtyBillingCount === 0 || loading}
+              className={actionPositiveClass}
+            >
+              {savingKey === "billing-bulk" ? "Guardando..." : "Guardar cambios"}
+            </button>
           </div>
         </div>
 
@@ -741,19 +858,18 @@ export function AdminUsersPanel() {
               </label>
             </div>
             <div className="px-2 pb-2 text-[10px] text-steel/80">
-              Roles: Usuario / Admin / SAdmin
+              La temporada del selector define el alta, pago y puntaje que ves y editas en la tabla.
             </div>
-            <table className="min-w-[1450px] table-fixed text-center text-[11px] text-steel">
+            <table className="min-w-[1240px] table-fixed text-center text-[11px] text-steel">
               <colgroup>
-                <col className="w-[156px]" />
+                <col className="w-[220px]" />
                 <col className="w-[92px]" />
                 <col className="w-[78px]" />
                 <col className="w-[78px]" />
                 <col className="w-[84px]" />
                 <col className="w-[88px]" />
-                <col className="w-[210px]" />
-                <col className="w-[210px]" />
-                <col className="w-[210px]" />
+                <col className="w-[150px]" />
+                <col className="w-[190px]" />
                 <col className="w-[360px]" />
               </colgroup>
               <thead className="text-[10px] uppercase tracking-[0.18em] text-steel/85">

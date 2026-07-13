@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -20,6 +21,7 @@ from app.models.entities import (
     RoleCode,
     ScoringRule,
     Season,
+    SeasonVisibilityStatus,
     StandingsMatchday,
     TrophyAsset,
     UserPick,
@@ -46,6 +48,15 @@ class ProfileService:
         self.repo = ProfileRepository()
         self.membership_repo = SeasonMembershipRepository()
         self.eligibility_service = SeasonEligibilityService()
+
+    DEFAULT_DASHBOARD_WIDGET_IDS = [
+        "summary",
+        "performance",
+        "matchday_points",
+        "prize_summary",
+        "upcoming",
+        "memberships",
+    ]
 
     def ensure_profile(self, db: Session, auth_user: AuthUser) -> Profile:
         can_bootstrap_admin = settings.app_env == "development" and not self.repo.has_admin_account(db)
@@ -95,6 +106,7 @@ class ProfileService:
             modality=payload.modality,
             aval_profile_id=self._normalize_optional_text(payload.aval_profile_id),
             theme_preference=payload.theme_preference,
+            dashboard_widgets=self._serialize_dashboard_widget_ids(payload.dashboard_widget_ids),
             pick_reminder_email_enabled=payload.pick_reminder_email_enabled,
             pick_reminder_opening_enabled=payload.pick_reminder_opening_enabled,
             pick_reminder_hours_before=payload.pick_reminder_hours_before,
@@ -105,6 +117,12 @@ class ProfileService:
 
     def build_me_response(self, db: Session, profile: Profile, season_id: str | None = None) -> MeResponse:
         active_season = db.scalar(select(Season).where(Season.is_active.is_(True)).order_by(Season.created_at.desc()))
+        if active_season is None:
+            active_season = db.scalar(
+                select(Season)
+                .where(Season.visibility_status == SeasonVisibilityStatus.LIVE)
+                .order_by(Season.created_at.desc())
+            )
         if active_season is not None:
             did_freeze = self.eligibility_service.freeze_season_if_due(db, active_season)
             if did_freeze:
@@ -166,6 +184,7 @@ class ProfileService:
             modality=profile.modality,
             aval_profile_id=profile.aval_profile_id,
             theme_preference=profile.theme_preference,
+            dashboard_widget_ids=self._deserialize_dashboard_widget_ids(profile.dashboard_widgets),
             pick_reminder_email_enabled=profile.pick_reminder_email_enabled,
             pick_reminder_opening_enabled=profile.pick_reminder_opening_enabled,
             pick_reminder_hours_before=profile.pick_reminder_hours_before,
@@ -713,11 +732,43 @@ class ProfileService:
         cleaned = value.strip()
         return cleaned or None
 
+    @classmethod
+    def _deserialize_dashboard_widget_ids(cls, raw_value: str | None) -> list[str]:
+        if not raw_value:
+            return cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+        try:
+            parsed = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+        if not isinstance(parsed, list):
+            return cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+
+        allowed = set(cls.DEFAULT_DASHBOARD_WIDGET_IDS)
+        cleaned = [value for value in parsed if isinstance(value, str) and value in allowed]
+        return cleaned or cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+
+    @classmethod
+    def _serialize_dashboard_widget_ids(cls, widget_ids: list[str] | None) -> str | None:
+        if widget_ids is None:
+            return None
+        allowed = set(cls.DEFAULT_DASHBOARD_WIDGET_IDS)
+        cleaned = [value for value in widget_ids if value in allowed]
+        if not cleaned:
+            cleaned = cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+        return json.dumps(cleaned)
+
     @staticmethod
     def _resolve_season(db: Session, season_id: str | None) -> Season | None:
         if season_id:
             return db.get(Season, season_id)
-        return db.scalar(select(Season).where(Season.is_active.is_(True)).order_by(Season.created_at.desc()))
+        season = db.scalar(select(Season).where(Season.is_active.is_(True)).order_by(Season.created_at.desc()))
+        if season is not None:
+            return season
+        return db.scalar(
+            select(Season)
+            .where(Season.visibility_status == SeasonVisibilityStatus.LIVE)
+            .order_by(Season.created_at.desc())
+        )
 
     @staticmethod
     def _get_tournament_matchdays(matchdays: list[Matchday], season: Season) -> list[Matchday]:

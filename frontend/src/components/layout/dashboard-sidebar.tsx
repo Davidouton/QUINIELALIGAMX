@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
-import { DashboardSeasonSwitcher } from "@/components/layout/dashboard-season-switcher";
 import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { resolveSeasonForContext } from "@/lib/dashboard-season";
@@ -18,6 +17,8 @@ const baseLinks = [
   { href: "/dashboard/survivor", label: "Survivor", shortLabel: "Sur" },
   { href: "/dashboard/world-cup", label: "Mundial", shortLabel: "WC" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/enrollments", label: "Inscripciones", shortLabel: "Alta" },
+  { href: "/dashboard/past-seasons", label: "Past Seasons", shortLabel: "Past" },
   { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
   { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks Center" },
@@ -30,7 +31,7 @@ const baseLinks = [
 const adminLink = { href: "/dashboard/admin", label: "Admin" };
 
 const primaryMobileLinks = [
-  { href: "/dashboard/quiniela-plus", label: "Q+" },
+  { href: "/dashboard/enrollments", label: "Inscr" },
   { href: "/dashboard/leaderboard", label: "Ranking" },
   { href: "/dashboard", label: "Inicio" },
   { href: "/dashboard/survivor", label: "Surv" },
@@ -139,7 +140,6 @@ export function DashboardSidebar() {
 
           {isMobileMenuOpen ? (
             <div className="mt-4 max-h-[calc(100dvh-12rem)] space-y-3 overflow-y-auto pb-28 pr-1">
-              <DashboardSeasonSwitcher />
               {canViewAdmin ? (
                 <Link
                   href={buildHrefWithSeason(adminLink.href)}
@@ -205,10 +205,6 @@ export function DashboardSidebar() {
         <div className="flex h-full w-[280px] flex-col px-4 py-5">
           <div className="mb-5 flex items-center justify-between gap-3">
             <p className="text-xs uppercase tracking-[0.35em] text-steel">Panel</p>
-          </div>
-
-          <div className="mb-5">
-            <DashboardSeasonSwitcher />
           </div>
 
           {canViewAdmin ? (

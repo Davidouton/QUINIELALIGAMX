@@ -63,6 +63,7 @@ class ProfileRepository:
         modality: str,
         aval_profile_id: str | None,
         theme_preference: str,
+        dashboard_widgets: str | None,
         pick_reminder_email_enabled: bool,
         pick_reminder_opening_enabled: bool,
         pick_reminder_hours_before: int | None,
@@ -76,6 +77,8 @@ class ProfileRepository:
         profile.modality = modality
         profile.aval_profile_id = aval_profile_id
         profile.theme_preference = theme_preference
+        if dashboard_widgets is not None:
+            profile.dashboard_widgets = dashboard_widgets
         profile.pick_reminder_email_enabled = pick_reminder_email_enabled
         profile.pick_reminder_opening_enabled = pick_reminder_opening_enabled
         profile.pick_reminder_hours_before = pick_reminder_hours_before

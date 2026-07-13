@@ -32,6 +32,24 @@ function formatLivesLabel(remainingLives: number, maxLives: number) {
   return `${remainingLives}/${maxLives} vidas`;
 }
 
+function buildSeasonBoardFallback(season: Season): SurvivorBoard {
+  return {
+    ...initialBoard,
+    season: {
+      season_id: season.id,
+      season_name: season.name,
+      competition_id: season.competition_id,
+      competition_name: season.competition_name,
+      survivor_enabled: season.survivor_enabled,
+      survivor_name: season.survivor_name ?? "Survivor",
+      survivor_max_lives: season.survivor_max_lives,
+      registration_lock_at: season.survivor_registration_lock_at,
+      registration_open: !isNaN(Date.parse(season.survivor_registration_lock_at ?? "")) ? new Date(season.survivor_registration_lock_at!).getTime() > Date.now() : true,
+      total_entries: 0,
+    },
+  };
+}
+
 export function SurvivorPageContent() {
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
@@ -43,8 +61,7 @@ export function SurvivorPageContent() {
   useEffect(() => {
     async function load() {
       try {
-        const accessToken = await getBrowserAccessToken();
-        const seasons = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        const seasons = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
         const resolvedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         if (!resolvedSeason) {
           setSelectedSeason(null);
@@ -58,23 +75,18 @@ export function SurvivorPageContent() {
         }
         if (!resolvedSeason.survivor_enabled) {
           setBoard({
-            ...initialBoard,
+            ...buildSeasonBoardFallback(resolvedSeason),
             season: {
-              season_id: resolvedSeason.id,
-              season_name: resolvedSeason.name,
-              competition_id: resolvedSeason.competition_id,
-              competition_name: resolvedSeason.competition_name,
+              ...buildSeasonBoardFallback(resolvedSeason).season,
               survivor_enabled: false,
-              survivor_name: resolvedSeason.survivor_name ?? "Survivor",
-              survivor_max_lives: resolvedSeason.survivor_max_lives,
-              registration_lock_at: resolvedSeason.survivor_registration_lock_at,
               registration_open: false,
-              total_entries: 0,
             },
           });
           setError(null);
           return;
         }
+        setBoard(buildSeasonBoardFallback(resolvedSeason));
+        const accessToken = await getBrowserAccessToken();
         const boardResponse = await backendFetch<SurvivorBoard>(`/survivor/board?season_id=${resolvedSeason.id}`, accessToken);
         setBoard(boardResponse);
         setError(null);
@@ -140,12 +152,45 @@ export function SurvivorPageContent() {
     return <p className="text-sm text-ink/60">Cargando survivor...</p>;
   }
 
-  if (error && !selectedSeason) {
-    return <p className="text-sm text-coral">{error}</p>;
+  async function handleReload() {
+    setLoading(true);
+    setError(null);
+    try {
+      const seasons = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+      const resolvedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+      if (!resolvedSeason) {
+        setSelectedSeason(null);
+        setBoard(initialBoard);
+        setError("No hay temporadas disponibles");
+        return;
+      }
+      setSelectedSeason(resolvedSeason);
+      setBoard(buildSeasonBoardFallback(resolvedSeason));
+      if (!resolvedSeason.survivor_enabled) {
+        setError(null);
+        return;
+      }
+      const accessToken = await getBrowserAccessToken();
+      const boardResponse = await backendFetch<SurvivorBoard>(`/survivor/board?season_id=${resolvedSeason.id}`, accessToken);
+      setBoard(boardResponse);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo recargar survivor");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div className="space-y-6">
+      {error && !selectedSeason ? (
+        <section className="rounded-[18px] border border-coral/20 bg-coral/10 px-4 py-4">
+          <p className="text-sm text-coral">No se pudo cargar Survivor en este momento.</p>
+          <button type="button" onClick={() => void handleReload()} className="secondary-button mt-4">
+            Reintentar
+          </button>
+        </section>
+      ) : null}
+
       <section className="surface-card-strong overflow-hidden px-6 py-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -200,7 +245,14 @@ export function SurvivorPageContent() {
           </div>
         ) : null}
 
-        {error ? <p className="mt-4 text-sm text-coral">{error}</p> : null}
+        {error && selectedSeason ? (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <p className="text-sm text-coral">{error}</p>
+            <button type="button" onClick={() => void handleReload()} className="secondary-button">
+              Reintentar
+            </button>
+          </div>
+        ) : null}
       </section>
 
       {board.my_membership ? (
@@ -325,4 +377,3 @@ export function SurvivorPageContent() {
     </div>
   );
 }
-

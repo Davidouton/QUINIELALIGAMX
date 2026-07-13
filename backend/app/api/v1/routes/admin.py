@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -967,6 +968,7 @@ def build_season_out(row: Season, competition: Competition | None = None) -> Sea
         competition_name=competition.name if competition is not None else None,
         competition_sport_name=competition.sport_name if competition is not None else None,
         tournament_format=row.tournament_format,
+        visibility_status=row.visibility_status,
         is_active=row.is_active,
         survivor_enabled=row.survivor_enabled,
         survivor_name=row.survivor_name,
@@ -1162,13 +1164,42 @@ def get_selected_season(db: Session, season_id: str | None = None) -> Season | N
     return db.scalar(select(Season).where(Season.is_active.is_(True)).order_by(Season.created_at.desc()))
 
 
-def build_admin_user_out(db: Session, profile: Profile, season: Season | None) -> AdminUserOut:
-    favorite_team = db.get(Team, profile.favorite_team_id) if profile.favorite_team_id else None
-    aval_profile = db.get(Profile, profile.aval_profile_id) if profile.aval_profile_id else None
-    membership = (
-        season_membership_repo.get_for_profile_and_season(db, profile.id, season.id)
-        if season is not None
-        else None
+def build_admin_user_season_membership_out(
+    membership: SeasonMembership,
+    *,
+    season_name: str | None = None,
+) -> AdminUserSeasonMembershipOut:
+    return AdminUserSeasonMembershipOut(
+        season_id=membership.season_id,
+        season_name=season_name or membership.season_id,
+        is_active=membership.is_active,
+        is_paid=membership.is_paid,
+        eligible_for_scoring=membership.eligible_for_scoring,
+        eligible_locked_at=membership.eligible_locked_at,
+        activated_at=membership.activated_at,
+        notes=membership.notes,
+    )
+
+
+def build_admin_user_out_from_maps(
+    profile: Profile,
+    season: Season | None,
+    *,
+    favorite_team_by_id: dict[str, Team],
+    aval_profile_by_id: dict[str, Profile],
+    memberships_by_profile_id: dict[str, list[SeasonMembership]],
+    season_name_by_id: dict[str, str],
+) -> AdminUserOut:
+    favorite_team = favorite_team_by_id.get(profile.favorite_team_id) if profile.favorite_team_id else None
+    aval_profile = aval_profile_by_id.get(profile.aval_profile_id) if profile.aval_profile_id else None
+    all_memberships = memberships_by_profile_id.get(profile.id, [])
+    membership = next(
+        (
+            membership_row
+            for membership_row in all_memberships
+            if season is not None and membership_row.season_id == season.id
+        ),
+        None,
     )
     selected_season_membership = None
     if season is not None:
@@ -1182,6 +1213,13 @@ def build_admin_user_out(db: Session, profile: Profile, season: Season | None) -
             activated_at=membership.activated_at if membership is not None else None,
             notes=membership.notes if membership is not None else None,
         )
+    season_memberships = [
+        build_admin_user_season_membership_out(
+            membership_row,
+            season_name=season_name_by_id.get(membership_row.season_id),
+        )
+        for membership_row in all_memberships
+    ]
 
     return AdminUserOut(
         id=profile.id,
@@ -1200,7 +1238,74 @@ def build_admin_user_out(db: Session, profile: Profile, season: Season | None) -
         is_active=profile.is_active,
         created_at=profile.created_at,
         selected_season_membership=selected_season_membership,
+        season_memberships=season_memberships,
     )
+
+
+def build_admin_user_out(db: Session, profile: Profile, season: Season | None) -> AdminUserOut:
+    return list_admin_user_out_rows(db, [profile], season)[0]
+
+
+def list_admin_user_out_rows(
+    db: Session,
+    profiles: list[Profile],
+    season: Season | None,
+) -> list[AdminUserOut]:
+    if not profiles:
+        return []
+
+    profile_ids = [profile.id for profile in profiles]
+    favorite_team_ids = {profile.favorite_team_id for profile in profiles if profile.favorite_team_id}
+    aval_profile_ids = {profile.aval_profile_id for profile in profiles if profile.aval_profile_id}
+
+    favorite_team_by_id = (
+        {
+            row.id: row
+            for row in db.scalars(select(Team).where(Team.id.in_(favorite_team_ids))).all()
+        }
+        if favorite_team_ids
+        else {}
+    )
+    aval_profile_by_id = (
+        {
+            row.id: row
+            for row in db.scalars(select(Profile).where(Profile.id.in_(aval_profile_ids))).all()
+        }
+        if aval_profile_ids
+        else {}
+    )
+
+    memberships_by_profile_id: dict[str, list[SeasonMembership]] = defaultdict(list)
+    season_ids: set[str] = set()
+    memberships = db.scalars(
+        select(SeasonMembership)
+        .where(SeasonMembership.profile_id.in_(profile_ids))
+        .order_by(SeasonMembership.created_at.desc())
+    ).all()
+    for membership in memberships:
+        memberships_by_profile_id[membership.profile_id].append(membership)
+        season_ids.add(membership.season_id)
+
+    season_name_by_id = (
+        {
+            row.id: row.name
+            for row in db.scalars(select(Season).where(Season.id.in_(season_ids))).all()
+        }
+        if season_ids
+        else {}
+    )
+
+    return [
+        build_admin_user_out_from_maps(
+            profile,
+            season,
+            favorite_team_by_id=favorite_team_by_id,
+            aval_profile_by_id=aval_profile_by_id,
+            memberships_by_profile_id=memberships_by_profile_id,
+            season_name_by_id=season_name_by_id,
+        )
+        for profile in profiles
+    ]
 
 
 @router.get("/users", response_model=list[AdminUserOut])
@@ -1215,7 +1320,7 @@ def list_users(
         if did_freeze:
             db.commit()
             db.refresh(season)
-    return [build_admin_user_out(db, profile, season) for profile in profile_repo.list_all(db)]
+    return list_admin_user_out_rows(db, profile_repo.list_all(db), season)
 
 
 def _get_csv_value(row: dict[str, str | None], *keys: str) -> str | None:
@@ -1660,6 +1765,7 @@ def create_season(
             slug=normalize_slug(payload.slug),
             competition_id=competition.id if competition is not None else None,
             tournament_format=payload.tournament_format,
+            visibility_status=payload.visibility_status,
             is_active=payload.is_active,
             survivor_enabled=payload.survivor_enabled,
             survivor_name=normalize_optional_text(payload.survivor_name),
@@ -1693,6 +1799,7 @@ def update_season(
     season.slug = normalize_slug(payload.slug)
     season.competition_id = competition.id if competition is not None else None
     season.tournament_format = payload.tournament_format
+    season.visibility_status = payload.visibility_status
     season.is_active = payload.is_active
     season.survivor_enabled = payload.survivor_enabled
     season.survivor_name = normalize_optional_text(payload.survivor_name)

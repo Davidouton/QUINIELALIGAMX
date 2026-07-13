@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.entities import HistoricalChampion, Matchday, Profile, Season, StandingsMatchday, StandingsOverall, TrophyAsset
+from app.models.entities import HistoricalChampion, Matchday, Profile, Season, SeasonVisibilityStatus, StandingsMatchday, StandingsOverall, TrophyAsset
 from app.repositories.leaderboard_repository import LeaderboardRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.leaderboard import (
@@ -498,7 +498,15 @@ class LeaderboardService:
     def _resolve_season(self, db: Session, season_id: str | None) -> Season | None:
         if season_id:
             return db.get(Season, season_id)
-        return db.query(Season).filter(Season.is_active.is_(True)).first()
+        season = db.query(Season).filter(Season.is_active.is_(True)).first()
+        if season is not None:
+            return season
+        return (
+            db.query(Season)
+            .filter(Season.visibility_status == SeasonVisibilityStatus.LIVE)
+            .order_by(Season.created_at.desc())
+            .first()
+        )
 
     @staticmethod
     def _get_tournament_matchdays(matchdays: list[Matchday], season: Season) -> list[Matchday]:

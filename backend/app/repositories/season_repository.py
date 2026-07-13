@@ -1,12 +1,21 @@
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Season
+from app.models.entities import Season, SeasonVisibilityStatus
 
 
 class SeasonRepository:
     def list_all(self, db: Session) -> list[Season]:
-        stmt = select(Season).order_by(Season.is_active.desc(), Season.created_at.desc())
+        visibility_rank = case(
+            (Season.visibility_status == SeasonVisibilityStatus.LIVE, 0),
+            (Season.visibility_status == SeasonVisibilityStatus.CLOSED, 1),
+            else_=2,
+        )
+        stmt = select(Season).order_by(
+            visibility_rank.asc(),
+            Season.is_active.desc(),
+            Season.created_at.desc(),
+        )
         return list(db.scalars(stmt))
 
     def get_by_id(self, db: Session, season_id: str) -> Season | None:

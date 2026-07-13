@@ -6,6 +6,14 @@ from pydantic import BaseModel, Field
 from app.models.entities import RoleCode
 
 ThemePreferenceLiteral = Literal["standard", "auto", "night", "day_blue", "favorite_team"]
+DashboardWidgetId = Literal[
+    "summary",
+    "performance",
+    "matchday_points",
+    "prize_summary",
+    "upcoming",
+    "memberships",
+]
 
 
 class ProfileOut(BaseModel):
@@ -40,6 +48,7 @@ class MeResponse(ProfileOut):
     modality: Literal["pre_pago", "aval"] = "pre_pago"
     aval_profile_id: str | None = None
     theme_preference: ThemePreferenceLiteral = "standard"
+    dashboard_widget_ids: list[DashboardWidgetId] = Field(default_factory=list)
     pick_reminder_email_enabled: bool = False
     pick_reminder_opening_enabled: bool = False
     pick_reminder_hours_before: Literal[1, 3] | None = None
@@ -143,6 +152,7 @@ class MeUpdateRequest(BaseModel):
     modality: Literal["pre_pago", "aval"] = "pre_pago"
     aval_profile_id: str | None = None
     theme_preference: ThemePreferenceLiteral = "standard"
+    dashboard_widget_ids: list[DashboardWidgetId] | None = None
     pick_reminder_email_enabled: bool = False
     pick_reminder_opening_enabled: bool = False
     pick_reminder_hours_before: Literal[1, 3] | None = None

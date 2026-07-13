@@ -87,6 +87,7 @@ export async function trackAnalyticsEvent(payload: AnalyticsEventInput) {
 export function getDashboardScreenName(pathname: string) {
   const exactMap: Record<string, string> = {
     "/dashboard": "Dashboard",
+    "/dashboard/enrollments": "Inscripciones",
     "/dashboard/picks": "Picks",
     "/dashboard/leaderboard": "Ranking",
     "/dashboard/vip": "VIP",

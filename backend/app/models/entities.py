@@ -45,6 +45,12 @@ class TournamentFormat(str, Enum):
     WORLD_CUP = "world_cup"
 
 
+class SeasonVisibilityStatus(str, Enum):
+    LIVE = "live"
+    CLOSED = "closed"
+    ARCHIVED = "archived"
+
+
 class MatchStageType(str, Enum):
     REGULAR = "regular"
     GROUP = "group"
@@ -135,6 +141,7 @@ class Profile(Base):
         nullable=True,
     )
     theme_preference: Mapped[str] = mapped_column(String(32), default="standard", nullable=False)
+    dashboard_widgets: Mapped[str | None] = mapped_column(Text)
     pick_reminder_email_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     pick_reminder_opening_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     pick_reminder_hours_before: Mapped[int | None] = mapped_column(Integer)
@@ -186,6 +193,12 @@ class Season(Base):
     tournament_format: Mapped[TournamentFormat] = mapped_column(
         SqlEnum(TournamentFormat, native_enum=False, values_callable=enum_values),
         default=TournamentFormat.STANDARD,
+        nullable=False,
+        index=True,
+    )
+    visibility_status: Mapped[SeasonVisibilityStatus] = mapped_column(
+        SqlEnum(SeasonVisibilityStatus, native_enum=False, values_callable=enum_values),
+        default=SeasonVisibilityStatus.LIVE,
         nullable=False,
         index=True,
     )

@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
@@ -19,6 +19,7 @@ from app.models.entities import (
     MatchStageType,
     Matchday,
     Season,
+    SeasonVisibilityStatus,
     Team,
     TournamentFormat,
     WorldCupGroup,
@@ -374,16 +375,21 @@ class WorldCupService:
 
     def _resolve_season(self, db: Session, season_id: str | None) -> Season:
         query = select(Season).where(Season.tournament_format == TournamentFormat.WORLD_CUP)
+        visibility_rank = case(
+            (Season.visibility_status == SeasonVisibilityStatus.LIVE, 0),
+            (Season.visibility_status == SeasonVisibilityStatus.CLOSED, 1),
+            else_=2,
+        )
         if season_id:
             query = query.where(Season.id == season_id)
         else:
-            query = query.where(Season.is_active.is_(True))
-        season = db.scalar(query.order_by(Season.is_active.desc(), Season.created_at.desc()))
+            query = query.where(Season.visibility_status == SeasonVisibilityStatus.LIVE)
+        season = db.scalar(query.order_by(visibility_rank.asc(), Season.is_active.desc(), Season.created_at.desc()))
         if season is not None:
             return season
         if season_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada mundialista no encontrada")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No hay una temporada mundialista activa")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No hay una temporada mundialista en estado live")
 
     def list_news(self, category: str = "all") -> WorldCupNewsFeedOut:
         normalized_category = category if category in NEWS_FEED_QUERIES else "all"

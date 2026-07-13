@@ -8,11 +8,24 @@ import type { Matchday, Season } from "@/types/api";
 const DASHBOARD_SEASON_PARAM = "season";
 const DASHBOARD_COMPETITION_PARAM = "competition";
 
+export function isSeasonLive(season: Season) {
+  return season.visibility_status === "live";
+}
+
+export function isSeasonArchived(season: Season) {
+  return season.visibility_status === "archived";
+}
+
 export function filterSeasonsByCompetition(seasons: Season[], competitionId: string) {
-  if (!competitionId) {
-    return seasons;
-  }
-  return seasons.filter((season) => season.competition_id === competitionId);
+  return seasons.filter((season) => {
+    if (isSeasonArchived(season)) {
+      return false;
+    }
+    if (!competitionId) {
+      return true;
+    }
+    return season.competition_id === competitionId;
+  });
 }
 
 export function resolveSeasonForContext(
@@ -24,8 +37,18 @@ export function resolveSeasonForContext(
   if (explicitSeason && (!competitionId || explicitSeason.competition_id === competitionId)) {
     return explicitSeason;
   }
-  const visibleSeasons = filterSeasonsByCompetition(seasons, competitionId);
-  return visibleSeasons.find((season) => season.is_active) ?? visibleSeasons[0] ?? explicitSeason ?? seasons[0] ?? null;
+  const scopedSeasons = filterSeasonsByCompetition(seasons, competitionId);
+  const liveSeasons = scopedSeasons.filter(isSeasonLive);
+  const currentSeasons = scopedSeasons.filter((season) => !isSeasonArchived(season));
+  return (
+    liveSeasons.find((season) => season.is_active) ??
+    liveSeasons[0] ??
+    currentSeasons.find((season) => season.is_active) ??
+    currentSeasons[0] ??
+    explicitSeason ??
+    seasons[0] ??
+    null
+  );
 }
 
 export function filterMatchdaysBySeason(matchdays: Matchday[], seasonId: string | null | undefined) {

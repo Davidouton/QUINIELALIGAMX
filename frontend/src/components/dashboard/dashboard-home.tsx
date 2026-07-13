@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { AdvancedStatsPanel } from "@/components/dashboard/advanced-stats-panel";
 import { MatchdayPointsTable } from "@/components/dashboard/matchday-points-table";
 import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { PerformanceRaceChart } from "@/components/dashboard/performance-race-chart";
-import { Card } from "@/components/ui/card";
 import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { buildVipDetailPath } from "@/lib/api/vip";
@@ -18,6 +17,7 @@ import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
   AdvancedStats,
   AppBootstrap,
+  DashboardWidgetId,
   DashboardHomeBundle,
   DashboardSummary,
   LeaderboardEntry,
@@ -63,6 +63,57 @@ type DashboardState = {
 type DashboardTab = "general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios";
 type DashboardDefaultView = "regular" | `vip:${string}`;
 const DASHBOARD_DEFAULT_VIEW_STORAGE_KEY = "qm-dashboard-default-view";
+const DEFAULT_DASHBOARD_WIDGET_IDS: DashboardWidgetId[] = [
+  "summary",
+  "performance",
+  "matchday_points",
+  "prize_summary",
+  "upcoming",
+  "memberships",
+];
+const DASHBOARD_WIDGET_OPTIONS: Array<{
+  id: DashboardWidgetId;
+  label: string;
+  description: string;
+}> = [
+  { id: "summary", label: "Resumen", description: "KPIs principales del torneo o VIP activo." },
+  { id: "performance", label: "Performance", description: "Grafica de avance contra franja de premios." },
+  { id: "matchday_points", label: "Puntos por jornada", description: "Historial acumulado por jornada." },
+  { id: "prize_summary", label: "Premios", description: "Cobros, podios y mejor posicion conseguida." },
+  { id: "upcoming", label: "Proximos juegos", description: "Vista compacta de la siguiente jornada disponible." },
+  { id: "memberships", label: "Membresias", description: "Estado regular, survivor y acceso VIP." },
+];
+const DASHBOARD_WIDGET_PRESETS: Array<{
+  id: "standard" | "competition" | "memberships" | "express";
+  label: string;
+  description: string;
+  widgetIds: DashboardWidgetId[];
+}> = [
+  {
+    id: "standard",
+    label: "Estandar",
+    description: "El arranque balanceado para la mayoria: resumen, performance, premios y agenda.",
+    widgetIds: DEFAULT_DASHBOARD_WIDGET_IDS,
+  },
+  {
+    id: "competition",
+    label: "Competencia",
+    description: "Pensado para seguir resultados y puntos sin tanto ruido de acceso.",
+    widgetIds: ["summary", "performance", "matchday_points", "prize_summary"],
+  },
+  {
+    id: "memberships",
+    label: "Accesos",
+    description: "Deja al frente tus altas, Survivor y proximos movimientos de la cuenta.",
+    widgetIds: ["memberships", "summary", "upcoming", "prize_summary"],
+  },
+  {
+    id: "express",
+    label: "Express",
+    description: "Una vista corta para entrar rapido, leer el estado y salir a picks.",
+    widgetIds: ["summary", "upcoming", "memberships"],
+  },
+];
 
 const initialState: DashboardState = {
   me: null,
@@ -288,17 +339,31 @@ function buildDashboardHomePath(seasonId?: string | null, matchdayId?: string | 
   return query ? `/me/dashboard-home?${query}` : "/me/dashboard-home";
 }
 
+function areWidgetListsEqual(left: DashboardWidgetId[], right: DashboardWidgetId[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 export function DashboardHome() {
   const [state, setState] = useState<DashboardState>(initialState);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [dashboardConfigSaving, setDashboardConfigSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>("general");
   const [selectedVipBoardId, setSelectedVipBoardId] = useState("");
   const [isTabMenuOpen, setIsTabMenuOpen] = useState(false);
+  const [isWidgetEditorOpen, setIsWidgetEditorOpen] = useState(false);
+  const [dashboardWidgetDraft, setDashboardWidgetDraft] = useState<DashboardWidgetId[]>(DEFAULT_DASHBOARD_WIDGET_IDS);
   const [dashboardDefaultView, setDashboardDefaultView] = useState<DashboardDefaultView>(readStoredDashboardDefaultView);
   const [hasAppliedDashboardDefault, setHasAppliedDashboardDefault] = useState(false);
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
   const { seasonId: seasonIdParam, competitionId, setSeasonId, buildHrefWithSeason } = useDashboardSeasonParam();
+  const effectiveDashboardWidgetIds =
+    state.me?.dashboard_widget_ids?.length
+      ? state.me.dashboard_widget_ids
+      : DEFAULT_DASHBOARD_WIDGET_IDS;
+
+  useEffect(() => {
+    setDashboardWidgetDraft(effectiveDashboardWidgetIds);
+  }, [effectiveDashboardWidgetIds]);
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
     const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -553,7 +618,9 @@ export function DashboardHome() {
 
   useEffect(() => {
     async function loadUpcomingMatchdays() {
-      if (activeTab !== "proximos" || !state.selectedSeason) {
+      const shouldLoadForGeneralWidget =
+        activeTab === "general" && effectiveDashboardWidgetIds.includes("upcoming");
+      if ((!shouldLoadForGeneralWidget && activeTab !== "proximos") || !state.selectedSeason) {
         return;
       }
 
@@ -605,7 +672,7 @@ export function DashboardHome() {
     }
 
     void loadUpcomingMatchdays();
-  }, [activeTab, state.selectedMatchday?.number, state.selectedSeason, state.matchdays]);
+  }, [activeTab, effectiveDashboardWidgetIds, state.selectedMatchday?.number, state.selectedSeason, state.matchdays]);
 
   useEffect(() => {
     const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
@@ -686,67 +753,75 @@ export function DashboardHome() {
     setIsTabMenuOpen(false);
   }
 
-  async function handleJoinSeason() {
-    if (!state.selectedSeason) {
-      return;
-    }
-    setActionLoading("season");
-    try {
-      const accessToken = await getBrowserAccessToken();
-      const meResponse = await backendFetch<Me>(`/me/seasons/${state.selectedSeason.id}/join`, accessToken, {
-        method: "POST",
-      });
-      let survivorBoard = state.survivorBoard;
-      if (isSurvivorAvailableForSeason(state.selectedSeason)) {
-        try {
-          survivorBoard = await backendFetch<SurvivorBoard>(
-            `/survivor/board?season_id=${state.selectedSeason.id}`,
-            accessToken,
-          );
-        } catch {
-          survivorBoard = null;
-        }
+  function handleToggleDashboardWidget(widgetId: DashboardWidgetId) {
+    setDashboardWidgetDraft((current) => {
+      if (current.includes(widgetId)) {
+        const next = current.filter((value) => value !== widgetId);
+        return next.length > 0 ? next : [widgetId];
       }
-      setState((current) => ({
-        ...current,
-        me: meResponse,
-        survivorBoard,
-        error: null,
-      }));
-    } catch (error) {
-      setState((current) => ({
-        ...current,
-        error: error instanceof Error ? error.message : "No se pudo completar la inscripcion",
-      }));
-    } finally {
-      setActionLoading(null);
-    }
+      return [...current, widgetId];
+    });
   }
 
-  async function handleJoinSurvivor() {
-    if (!state.selectedSeason) {
+  function handleMoveDashboardWidget(widgetId: DashboardWidgetId, direction: -1 | 1) {
+    setDashboardWidgetDraft((current) => {
+      const currentIndex = current.indexOf(widgetId);
+      if (currentIndex < 0) {
+        return current;
+      }
+      const nextIndex = currentIndex + direction;
+      if (nextIndex < 0 || nextIndex >= current.length) {
+        return current;
+      }
+      const next = current.slice();
+      const [moved] = next.splice(currentIndex, 1);
+      next.splice(nextIndex, 0, moved);
+      return next;
+    });
+  }
+
+  function handleApplyDashboardPreset(widgetIds: DashboardWidgetId[]) {
+    setDashboardWidgetDraft(widgetIds);
+  }
+
+  async function handleSaveDashboardWidgets() {
+    if (!state.me) {
       return;
     }
-    setActionLoading("survivor");
+    setDashboardConfigSaving(true);
     try {
       const accessToken = await getBrowserAccessToken();
-      const survivorBoard = await backendFetch<SurvivorBoard>(
-        `/survivor/seasons/${state.selectedSeason.id}/join`,
-        accessToken,
-        { method: "POST" },
-      );
+      const saved = await backendFetch<Me>("/me", accessToken, {
+        method: "PUT",
+        body: JSON.stringify({
+          display_name: state.me.display_name,
+          email: state.me.email,
+          favorite_team_id: state.me.favorite_team_id,
+          contact_phone: state.me.contact_phone,
+          bank_name: state.me.bank_name,
+          deposit_account: state.me.deposit_account,
+          modality: state.me.modality,
+          aval_profile_id: state.me.aval_profile_id,
+          theme_preference: state.me.theme_preference,
+          dashboard_widget_ids: dashboardWidgetDraft,
+          pick_reminder_email_enabled: state.me.pick_reminder_email_enabled,
+          pick_reminder_opening_enabled: state.me.pick_reminder_opening_enabled,
+          pick_reminder_hours_before: state.me.pick_reminder_hours_before,
+        }),
+      });
       setState((current) => ({
         ...current,
-        survivorBoard,
+        me: saved,
         error: null,
       }));
+      setIsWidgetEditorOpen(false);
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : "No se pudo completar la inscripcion a survivor",
+        error: error instanceof Error ? error.message : "No se pudo guardar la configuracion del dashboard",
       }));
     } finally {
-      setActionLoading(null);
+      setDashboardConfigSaving(false);
     }
   }
 
@@ -789,6 +864,9 @@ export function DashboardHome() {
     state.selectedSeason && state.me
       ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
       : null;
+  const visibleDashboardWidgetIds = effectiveDashboardWidgetIds.filter((widgetId) =>
+    DASHBOARD_WIDGET_OPTIONS.some((option) => option.id === widgetId),
+  );
   const isLigaMxSeason = state.selectedSeason?.tournament_format === "standard";
   const hasActiveLigaMxMembership = Boolean(selectedSeasonMembership?.is_active);
   const isPrePagoPendingApproval = Boolean(
@@ -853,6 +931,13 @@ export function DashboardHome() {
     : `${activeCompletedMatchdays} jornadas calificadas`;
   const prizeRows = activeMatchdayPoints.filter((row) => row.rank_position !== null && row.rank_position <= 3);
   const totalWeeklyPrizeAmount = prizeRows.reduce((sum, row) => sum + row.weekly_prize_amount, 0);
+  const bestPrizeRank = prizeRows.length > 0 ? Math.min(...prizeRows.map((row) => row.rank_position ?? 99)) : null;
+  const nextUpcomingGroup = state.upcomingMatchdayGroups[0] ?? null;
+  const approvedVipCount = approvedVipCompetitions.length;
+  const survivorMembershipSummary = state.survivorBoard?.my_membership ?? null;
+  const activePresetId =
+    DASHBOARD_WIDGET_PRESETS.find((preset) => areWidgetListsEqual(preset.widgetIds, dashboardWidgetDraft))?.id ?? null;
+  const hasDashboardWidgetChanges = !areWidgetListsEqual(dashboardWidgetDraft, effectiveDashboardWidgetIds);
   const dashboardTabs: Array<{ id: DashboardTab; label: string }> = [
     { id: "general", label: "General" },
     { id: "jornada", label: "Jornada" },
@@ -873,6 +958,221 @@ export function DashboardHome() {
     return teamShortNameById.get(teamId) ?? fallbackName;
   }
 
+  function renderGeneralWidget(widgetId: DashboardWidgetId) {
+    if (widgetId === "summary") {
+      return (
+        <section key={widgetId}>
+          <div className="grid grid-cols-5 gap-1 md:grid-cols-2 md:gap-3 xl:grid-cols-5">
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">Pts</span>
+                <span className="hidden sm:inline">Puntos acumulados</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{activeTotalPoints}</p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">{activeCompactContextLabel}</span>
+                <span className="hidden sm:inline">{activeContextName}</span>
+              </p>
+            </div>
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">Lugar</span>
+                <span className="hidden sm:inline">{activeRankLabel}</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-coral sm:mt-2 sm:text-xl">
+                {activeRank ? `#${activeRank}` : "-"}
+              </p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">{activeCompletedMatchdays} jds</span>
+                <span className="hidden sm:inline">{activeRankHint}</span>
+              </p>
+            </div>
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">{isVipDashboardContext ? "Bolsa" : "Podios"}</span>
+                <span className="hidden sm:inline">{activeThirdMetricLabel}</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{activeThirdMetricValue}</p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">{isVipDashboardContext ? "pool" : "Top 3"}</span>
+                <span className="hidden sm:inline">{activeThirdMetricHint}</span>
+              </p>
+            </div>
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">Prom</span>
+                <span className="hidden sm:inline">Puntos promedio</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{activeAverage}</p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">por jd</span>
+                <span className="hidden sm:inline">{isVipDashboardContext ? "Por jornada VIP calificada" : "Por jornada publicada"}</span>
+              </p>
+            </div>
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">Proy</span>
+                <span className="hidden sm:inline">Cierre proyectado</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-emerald-300 sm:mt-2 sm:text-xl">
+                {activeProjectedTotal}
+              </p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">pts</span>
+                <span className="hidden sm:inline">
+                  {isVipDashboardContext
+                    ? `${selectedVipCompetition?.matchdays.length ?? 0} jornadas que cuentan`
+                    : "Puntos proyectados al cierre"}
+                </span>
+              </p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "performance") {
+      return (
+        <section key={widgetId}>
+          <PerformanceRaceChart race={activePerformanceRace} userLabel={state.me?.display_name ?? "Tu desempeno"} />
+        </section>
+      );
+    }
+
+    if (widgetId === "matchday_points") {
+      return (
+        <section key={widgetId}>
+          <MatchdayPointsTable rows={activeMatchdayPoints} />
+        </section>
+      );
+    }
+
+    if (widgetId === "prize_summary") {
+      return (
+        <section key={widgetId} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-steel">Premios</p>
+              <h2 className="mt-2 text-lg font-semibold text-ink">Resumen de premios</h2>
+            </div>
+            <Link href={buildHrefWithSeason("/dashboard/prizes")} className="app-pill px-4 text-xs">
+              Ver detalle
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Cobrado</p>
+              <p className="mt-2 text-xl font-semibold text-ink">{formatCurrency(totalWeeklyPrizeAmount)}</p>
+            </div>
+            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Mejor lugar</p>
+              <p className="mt-2 text-xl font-semibold text-emerald-300">{bestPrizeRank ? `#${bestPrizeRank}` : "-"}</p>
+            </div>
+            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Podios</p>
+              <p className="mt-2 text-xl font-semibold text-ink">{prizeRows.length}</p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (widgetId === "upcoming") {
+      return (
+        <section key={widgetId} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-steel">Agenda</p>
+              <h2 className="mt-2 text-lg font-semibold text-ink">Proximos juegos</h2>
+            </div>
+            <button type="button" onClick={() => setActiveTab("proximos")} className="app-pill px-4 text-xs">
+              Ver completos
+            </button>
+          </div>
+          {nextUpcomingGroup ? (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+                <p className="text-sm font-semibold text-ink">{nextUpcomingGroup.matchday.name}</p>
+                <p className="mt-1 text-xs text-steel">
+                  {formatMexicoCityDateTime(nextUpcomingGroup.matchday.starts_at)} a {formatMexicoCityDateTime(nextUpcomingGroup.matchday.ends_at)}
+                </p>
+              </div>
+              <div className="space-y-2">
+                {nextUpcomingGroup.matches.slice(0, 3).map((match) => (
+                  <div key={match.id} className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-3">
+                    <MatchTeamsInline
+                      homeName={getMatchTeamLabel(match.home_team_id, match.home_team_name)}
+                      homeCrestUrl={match.home_team_id ? (teamCrestById.get(match.home_team_id) ?? null) : null}
+                      awayName={getMatchTeamLabel(match.away_team_id, match.away_team_name)}
+                      awayCrestUrl={match.away_team_id ? (teamCrestById.get(match.away_team_id) ?? null) : null}
+                      useWorldCupBubbles={useWorldCupAbbreviation}
+                    />
+                    <p className="mt-2 text-[11px] text-steel">{formatMexicoCityDateTime(match.kickoff_at)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-steel">No encontramos una siguiente jornada lista para mostrar aqui.</p>
+          )}
+        </section>
+      );
+    }
+
+    if (widgetId === "memberships") {
+      return (
+        <section key={widgetId} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-steel">Membresias</p>
+              <h2 className="mt-2 text-lg font-semibold text-ink">Estado de acceso</h2>
+            </div>
+            <Link href={buildHrefWithSeason("/dashboard/enrollments")} className="app-pill px-4 text-xs">
+              Gestionar
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Liga MX</p>
+              <p className="mt-2 text-lg font-semibold text-ink">
+                {hasActiveLigaMxMembership ? "Activa" : isPrePagoPendingApproval ? "Pendiente" : "Disponible"}
+              </p>
+              <p className="mt-1 text-xs text-steel">
+                {hasActiveLigaMxMembership
+                  ? "Ya puntuando en la temporada."
+                  : isPrePagoPendingApproval
+                    ? "Esperando aprobacion admin."
+                    : "Todavia no completas tu alta regular."}
+              </p>
+            </div>
+            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Survivor</p>
+              <p className="mt-2 text-lg font-semibold text-ink">
+                {survivorMembershipSummary ? "Activo" : canJoinSurvivor ? "Disponible" : "No aplica"}
+              </p>
+              <p className="mt-1 text-xs text-steel">
+                {survivorMembershipSummary
+                  ? `${survivorMembershipSummary.remaining_lives}/${survivorMembershipSummary.max_lives} vidas restantes.`
+                  : canJoinSurvivor
+                    ? "Puedes darte de alta desde inscripciones."
+                    : "Visible solo para Liga MX."}
+              </p>
+            </div>
+            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-steel">VIP</p>
+              <p className="mt-2 text-lg font-semibold text-ink">{approvedVipCount}</p>
+              <p className="mt-1 text-xs text-steel">
+                {approvedVipCount > 0 ? "VIPs aprobadas para ti." : "Sin VIPs activas por ahora."}
+              </p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    return null;
+  }
+
   return (
     <div className="space-y-6 sm:space-y-8">
       <section className="relative px-1 py-2 sm:px-0 sm:py-1">
@@ -885,78 +1185,16 @@ export function DashboardHome() {
             </div>
             {shouldShowLigaMxActionPanel ? (
               <div className="mt-3 max-w-4xl rounded-2xl border border-coral/25 bg-coral/10 px-4 py-4 text-sm text-ink">
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-coral">Liga MX</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-coral">Inscripciones</p>
                     <p className="mt-2 text-sm text-sand/90">
-                      Desde aqui ya deberias poder darte de alta en la quiniela de Liga MX y en Survivor sin salir del dashboard.
+                      Completa tus altas de Liga MX, Survivor y VIP desde la pestaña de inscripciones antes de seguir con picks y scores.
                     </p>
                   </div>
-
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-[18px] border border-white/8 bg-night/20 px-4 py-4">
-                      <p className="text-sm font-semibold text-ink">Inscripcion a Liga MX</p>
-                      <p className="mt-2 text-xs text-steel">
-                        {hasActiveLigaMxMembership
-                          ? "Ya estas activo y puntuando en la liga."
-                          : isPrePagoPendingApproval
-                            ? "Tu alta ya fue solicitada. Falta autorizacion de admin para activarte en la liga."
-                            : state.me?.modality === "aval"
-                              ? "Tu modalidad aval entra automaticamente en cuanto te inscribes."
-                              : "Solicita tu alta para que admin te autorice si estas en pre-pago."}
-                      </p>
-                      <div className="mt-4">
-                        {hasActiveLigaMxMembership ? (
-                          <span className="app-pill-active px-4 text-sm text-ink">Activo</span>
-                        ) : isPrePagoPendingApproval ? (
-                          <span className="app-pill px-4 text-sm">Pendiente admin</span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void handleJoinSeason()}
-                            disabled={actionLoading === "season"}
-                            className="secondary-button disabled:opacity-60"
-                          >
-                            {actionLoading === "season" ? "Guardando..." : "Inscripcion a Liga MX"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="rounded-[18px] border border-white/8 bg-night/20 px-4 py-4">
-                      <p className="text-sm font-semibold text-ink">Inscripcion a Survivor</p>
-                      <p className="mt-2 text-xs text-steel">
-                        {canJoinSurvivor
-                          ? hasSurvivorMembership
-                            ? "Ya estas dentro de Survivor en esta temporada."
-                            : "Activa tu entrada a Survivor para capturar un equipo por jornada."
-                          : "Survivor todavia no esta habilitado para esta temporada."}
-                      </p>
-                      <div className="mt-4">
-                        {canJoinSurvivor ? (
-                          hasSurvivorMembership ? (
-                            <Link
-                              href={buildHrefWithSeason("/dashboard/survivor")}
-                              className="app-pill-active px-4 text-sm text-ink"
-                            >
-                              Ir a Survivor
-                            </Link>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => void handleJoinSurvivor()}
-                              disabled={actionLoading === "survivor"}
-                              className="secondary-button disabled:opacity-60"
-                            >
-                              {actionLoading === "survivor" ? "Inscribiendo..." : "Inscripcion a Survivor"}
-                            </button>
-                          )
-                        ) : (
-                          <span className="app-pill px-4 text-sm">Proximamente</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <Link href={buildHrefWithSeason("/dashboard/enrollments")} className="secondary-button text-center">
+                    Abrir inscripciones
+                  </Link>
                 </div>
               </div>
             ) : state.me && state.selectedSeason && !selectedSeasonMembership?.can_participate && !hasApprovedVipCompetition ? (
@@ -1345,75 +1583,146 @@ export function DashboardHome() {
         </section>
       ) : activeTab === "general" ? (
         <>
-          <div className="grid grid-cols-5 gap-1 md:grid-cols-2 md:gap-3 xl:grid-cols-5">
-            <div className={summaryTileClass}>
-              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                <span className="sm:hidden">Pts</span>
-                <span className="hidden sm:inline">Puntos acumulados</span>
-              </p>
-              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{activeTotalPoints}</p>
-              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">{activeCompactContextLabel}</span>
-                <span className="hidden sm:inline">{activeContextName}</span>
-              </p>
+          <section className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-steel">Dashboard configurable</p>
+                <p className="mt-2 text-sm text-steel">
+                  Empiezas con un layout estandar, pero aqui decides que widgets ver y en que orden dejarlos.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWidgetEditorOpen((current) => !current)}
+                className={isWidgetEditorOpen ? "app-pill-active px-4 text-sm" : "app-pill px-4 text-sm"}
+              >
+                {isWidgetEditorOpen ? "Cerrar personalizacion" : "Personalizar dashboard"}
+              </button>
             </div>
-            <div className={summaryTileClass}>
-              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                <span className="sm:hidden">Lugar</span>
-                <span className="hidden sm:inline">{activeRankLabel}</span>
-              </p>
-              <p className="mt-1 text-[12px] font-semibold leading-none text-coral sm:mt-2 sm:text-xl">
-                {activeRank ? `#${activeRank}` : "-"}
-              </p>
-              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">{activeCompletedMatchdays} jds</span>
-                <span className="hidden sm:inline">{activeRankHint}</span>
-              </p>
-            </div>
-            <div className={summaryTileClass}>
-              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                <span className="sm:hidden">{isVipDashboardContext ? "Bolsa" : "Podios"}</span>
-                <span className="hidden sm:inline">{activeThirdMetricLabel}</span>
-              </p>
-              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{activeThirdMetricValue}</p>
-              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">{isVipDashboardContext ? "pool" : "Top 3"}</span>
-                <span className="hidden sm:inline">{activeThirdMetricHint}</span>
-              </p>
-            </div>
-            <div className={summaryTileClass}>
-              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                <span className="sm:hidden">Prom</span>
-                <span className="hidden sm:inline">Puntos promedio</span>
-              </p>
-              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">{activeAverage}</p>
-              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">por jd</span>
-                <span className="hidden sm:inline">{isVipDashboardContext ? "Por jornada VIP calificada" : "Por jornada publicada"}</span>
-              </p>
-            </div>
-            <div className={summaryTileClass}>
-              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
-                <span className="sm:hidden">Proy</span>
-                <span className="hidden sm:inline">Cierre proyectado</span>
-              </p>
-              <p className="mt-1 text-[12px] font-semibold leading-none text-emerald-300 sm:mt-2 sm:text-xl">
-                {activeProjectedTotal}
-              </p>
-              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
-                <span className="sm:hidden">pts</span>
-                <span className="hidden sm:inline">
-                  {isVipDashboardContext
-                    ? `${selectedVipCompetition?.matchdays.length ?? 0} jornadas que cuentan`
-                    : "Puntos proyectados al cierre"}
-                </span>
-              </p>
-            </div>
+
+            {isWidgetEditorOpen ? (
+              <div className="mt-4 space-y-3">
+                <div className="grid gap-3 xl:grid-cols-4">
+                  {DASHBOARD_WIDGET_PRESETS.map((preset) => {
+                    const isActivePreset = activePresetId === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleApplyDashboardPreset(preset.widgetIds)}
+                        className={
+                          isActivePreset
+                            ? "rounded-[18px] border border-coral/40 bg-coral/10 p-4 text-left transition"
+                            : "rounded-[18px] border border-white/[0.06] bg-night/20 p-4 text-left transition hover:border-white/[0.12] hover:bg-white/[0.04]"
+                        }
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-ink">{preset.label}</p>
+                          <span className={isActivePreset ? "app-pill-active px-3 text-[10px]" : "app-pill px-3 text-[10px]"}>
+                            {isActivePreset ? "Activo" : "Aplicar"}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-steel">{preset.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Preview del layout</p>
+                      <p className="mt-1 text-sm text-ink">
+                        {dashboardWidgetDraft.length} widgets activos en el orden que se renderizaran.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyDashboardPreset(DEFAULT_DASHBOARD_WIDGET_IDS)}
+                      className="app-pill px-4 text-xs"
+                    >
+                      Reset estandar
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {dashboardWidgetDraft.map((widgetId) => {
+                      const widget = DASHBOARD_WIDGET_OPTIONS.find((option) => option.id === widgetId);
+                      return (
+                        <span key={widgetId} className="app-pill-active px-3 text-[11px]">
+                          {widget?.label ?? widgetId}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {DASHBOARD_WIDGET_OPTIONS.map((widget) => {
+                  const isVisible = dashboardWidgetDraft.includes(widget.id);
+                  const currentIndex = dashboardWidgetDraft.indexOf(widget.id);
+                  return (
+                    <div
+                      key={widget.id}
+                      className="flex flex-col gap-3 rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-ink">{widget.label}</p>
+                        <p className="mt-1 text-xs text-steel">{widget.description}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleDashboardWidget(widget.id)}
+                          className={isVisible ? "app-pill-active px-4 text-xs" : "app-pill px-4 text-xs"}
+                        >
+                          {isVisible ? "Visible" : "Oculto"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveDashboardWidget(widget.id, -1)}
+                          disabled={!isVisible || currentIndex <= 0}
+                          className="app-pill px-3 text-xs disabled:opacity-40"
+                        >
+                          Subir
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveDashboardWidget(widget.id, 1)}
+                          disabled={!isVisible || currentIndex < 0 || currentIndex >= dashboardWidgetDraft.length - 1}
+                          className="app-pill px-3 text-xs disabled:opacity-40"
+                        >
+                          Bajar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveDashboardWidgets()}
+                    disabled={dashboardConfigSaving || !hasDashboardWidgetChanges}
+                    className="secondary-button disabled:opacity-60"
+                  >
+                    {dashboardConfigSaving ? "Guardando..." : hasDashboardWidgetChanges ? "Guardar configuracion" : "Sin cambios"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDashboardWidgetDraft(effectiveDashboardWidgetIds);
+                      setIsWidgetEditorOpen(false);
+                    }}
+                    className="app-pill px-4 text-sm"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          <div className="space-y-6">
+            {visibleDashboardWidgetIds.map((widgetId) => renderGeneralWidget(widgetId))}
           </div>
-
-          <PerformanceRaceChart race={activePerformanceRace} userLabel={state.me?.display_name ?? "Tu desempeno"} />
-
-          <MatchdayPointsTable rows={activeMatchdayPoints} />
         </>
       ) : null}
     </div>
