@@ -162,6 +162,36 @@ export function SurvivorPageContent() {
     () => Boolean(board.my_membership?.alive && board.current_matchday && board.available_teams.length > 0),
     [board.available_teams.length, board.current_matchday, board.my_membership?.alive],
   );
+  const availableMatches = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        matchId: string;
+        kickoffAt: string;
+        options: typeof board.available_teams;
+      }
+    >();
+
+    for (const option of board.available_teams) {
+      const existing = grouped.get(option.match_id);
+      if (existing) {
+        existing.options.push(option);
+        continue;
+      }
+      grouped.set(option.match_id, {
+        matchId: option.match_id,
+        kickoffAt: option.kickoff_at,
+        options: [option],
+      });
+    }
+
+    return Array.from(grouped.values())
+      .map((entry) => ({
+        ...entry,
+        options: entry.options.slice().sort((left, right) => left.team_short_name.localeCompare(right.team_short_name, "es-MX")),
+      }))
+      .sort((left, right) => new Date(left.kickoffAt).getTime() - new Date(right.kickoffAt).getTime());
+  }, [board.available_teams]);
   const survivorJourneySlots = useMemo(() => {
     const maxKnownMatchday = Math.max(
       17,
@@ -380,68 +410,97 @@ export function SurvivorPageContent() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-steel">Equipos disponibles</p>
-                  <p className="mt-1 text-sm text-steel">Logo arriba, nombre abajo y al final la lista de partidos.</p>
+                  <p className="mt-1 text-sm text-steel">Selecciona un logo y abajo revisa la jornada actual.</p>
                 </div>
                 <div className="app-pill px-3 text-[10px]">
                   Jornada {board.current_matchday?.number ?? "-"}
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="flex flex-wrap gap-4">
                 {board.available_teams.map((option) => (
-                  <article
+                  <button
                     key={`${option.match_id}:${option.team_id}`}
-                    className={`rounded-[20px] border px-4 py-5 text-center ${
+                    type="button"
+                    onClick={() => void handlePick(option.team_id)}
+                    disabled={option.is_locked || Boolean(submitting)}
+                    className={`flex w-[96px] flex-col items-center gap-2 rounded-[18px] border px-3 py-3 text-center transition disabled:opacity-60 ${
                       option.is_current_pick
-                        ? "border-emerald-400/35 bg-emerald-500/8"
+                        ? "border-emerald-400/40 bg-emerald-500/10"
                         : option.is_locked
                           ? "border-white/[0.06] bg-white/[0.02] opacity-70"
                           : "border-white/[0.08] bg-white/[0.03]"
                     }`}
                   >
-                    <div className="flex flex-col items-center">
-                      {option.team_crest_url ? (
-                        <img
-                          src={option.team_crest_url}
-                          alt={option.team_name}
-                          className="h-16 w-16 rounded-full border border-white/10 bg-white object-cover"
-                        />
-                      ) : (
-                        <span className="inline-flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-ink">
-                          {option.team_short_name.slice(0, 3).toUpperCase()}
-                        </span>
-                      )}
-                      <p className="mt-3 text-sm font-semibold text-ink">{option.team_name}</p>
-                      <p className="mt-1 text-[11px] text-steel">{option.team_short_name}</p>
-                    </div>
-
-                    <div className="mt-4 space-y-2 rounded-[16px] border border-white/[0.08] bg-black/10 px-3 py-3 text-left">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-steel">Partido</p>
-                      <p className="text-sm font-medium text-ink">
-                        {option.team_short_name} vs {option.opponent_team_short_name}
-                      </p>
-                      <p className="text-[11px] text-steel">{formatMexicoCityDateTime(option.kickoff_at)}</p>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between gap-2">
-                      <span className={option.is_current_pick ? "app-pill-active px-3 text-[10px] text-ink" : "app-pill px-3 text-[10px]"}>
-                        {option.is_current_pick ? "Actual" : option.is_locked ? "Cerrado" : "Libre"}
+                    {option.team_crest_url ? (
+                      <img
+                        src={option.team_crest_url}
+                        alt={option.team_name}
+                        className="h-14 w-14 rounded-full border border-white/10 bg-white object-cover"
+                      />
+                    ) : (
+                      <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-ink">
+                        {option.team_short_name.slice(0, 3).toUpperCase()}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => void handlePick(option.team_id)}
-                        disabled={option.is_locked || Boolean(submitting)}
-                        className="secondary-button px-3 py-2 text-xs disabled:opacity-60"
-                      >
-                        {submitting === `pick:${option.team_id}`
-                          ? "Guardando..."
-                          : option.is_current_pick
-                            ? "Cambiar"
-                            : "Elegir"}
-                      </button>
+                    )}
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-ink">{option.team_short_name}</p>
+                      <p className="line-clamp-2 text-[11px] text-steel">{option.team_name}</p>
                     </div>
-                  </article>
+                    <span className={option.is_current_pick ? "app-pill-active px-2 text-[10px] text-ink" : "app-pill px-2 text-[10px]"}>
+                      {submitting === `pick:${option.team_id}` ? "..." : option.is_current_pick ? "Actual" : option.is_locked ? "Cerrado" : "Libre"}
+                    </span>
+                  </button>
                 ))}
+              </div>
+
+              <div className="rounded-[20px] border border-white/[0.08] bg-white/[0.03]">
+                <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-steel">Jornada</p>
+                    <p className="mt-1 text-sm font-semibold text-ink">{board.current_matchday?.name ?? "Semana actual"}</p>
+                  </div>
+                  <p className="text-[11px] text-steel">
+                    {board.current_matchday
+                      ? `${formatMexicoCityDateTime(board.current_matchday.starts_at)} a ${formatMexicoCityDateTime(board.current_matchday.ends_at)}`
+                      : ""}
+                  </p>
+                </div>
+
+                <div className="divide-y divide-white/[0.08]">
+                  {availableMatches.map((match) => (
+                    <div key={match.matchId} className="px-4 py-3">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-ink">
+                            {match.options.map((option) => option.team_short_name).join(" vs ")}
+                          </p>
+                          <p className="text-[11px] text-steel">{formatMexicoCityDateTime(match.kickoffAt)}</p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {match.options.map((option) => (
+                            <button
+                              key={option.team_id}
+                              type="button"
+                              onClick={() => void handlePick(option.team_id)}
+                              disabled={option.is_locked || Boolean(submitting)}
+                              className={`rounded-full border px-3 py-2 text-xs font-semibold transition disabled:opacity-60 ${
+                                option.is_current_pick
+                                  ? "border-emerald-400/40 bg-emerald-500/10 text-ink"
+                                  : "border-white/[0.08] bg-white/[0.03] text-ink"
+                              }`}
+                            >
+                              {submitting === `pick:${option.team_id}`
+                                ? "Guardando..."
+                                : option.team_short_name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           ) : null}
