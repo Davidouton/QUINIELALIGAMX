@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
-import { filterMatchdaysBySeason, isSeasonArchived, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, isSeasonLive, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { SurvivorPageContent } from "@/components/survivor/survivor-page-content";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AppBootstrap, GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
@@ -534,13 +534,10 @@ export function PickBoard() {
   const visibleSeasons = useMemo(
     () =>
       [...state.seasons]
-        .filter((season) => !isSeasonArchived(season))
+        .filter((season) => isSeasonLive(season))
         .sort((left, right) => {
           if (left.is_active !== right.is_active) {
             return left.is_active ? -1 : 1;
-          }
-          if (left.visibility_status !== right.visibility_status) {
-            return left.visibility_status === "live" ? -1 : 1;
           }
           if (left.tournament_format !== right.tournament_format) {
             return left.tournament_format === "standard" ? -1 : 1;

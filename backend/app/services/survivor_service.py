@@ -400,6 +400,7 @@ class SurvivorService:
         opponent_team = teams_by_id.get(opponent_team_id) if opponent_team_id else None
         result = results_by_match_id.get(pick.match_id)
         result_status = self._resolve_pick_result_status(pick, match, result)
+        is_locked = self._is_match_locked(match)
         return SurvivorPickOut(
             id=pick.id,
             matchday_id=pick.matchday_id,
@@ -414,6 +415,8 @@ class SurvivorService:
             opponent_team_short_name=opponent_team.short_name if opponent_team is not None else "PEN",
             opponent_team_crest_url=opponent_team.crest_url if opponent_team is not None else None,
             kickoff_at=match.kickoff_at,
+            is_locked=is_locked,
+            is_revealed=is_locked,
             result_status=result_status,
             consumed_life=result_status == "lost",
             created_at=pick.created_at,

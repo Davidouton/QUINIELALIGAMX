@@ -300,75 +300,123 @@ export function SurvivorPageContent() {
       </section>
 
       {board.my_membership ? (
-        <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="surface-card px-5 py-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-steel">Pick semanal</p>
-                <h2 className="mt-2 text-lg font-semibold text-ink">
-                  {board.current_matchday?.name ?? "Sin jornada activa"}
-                </h2>
-              </div>
+        <section className="surface-card px-5 py-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-steel">Pick semanal</p>
+              <h2 className="mt-2 text-lg font-semibold text-ink">
+                {board.current_matchday?.name ?? "Sin jornada activa"}
+              </h2>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-xs">
               {board.my_membership.current_pick ? (
-                <span className="app-pill-active px-4 text-sm text-ink">
+                <span className="app-pill-active px-3 text-[10px] text-ink">
                   Pick actual: {board.my_membership.current_pick.team_short_name}
                 </span>
               ) : null}
-            </div>
-
-            {!board.current_matchday ? (
-              <p className="mt-4 text-sm text-steel">Aun no hay jornada lista para capturar survivor.</p>
-            ) : null}
-
-            {board.current_matchday && !canSubmitPick ? (
-              <p className="mt-4 text-sm text-steel">
-                {board.my_membership.alive
-                  ? "No hay equipos disponibles para esta jornada o todos los partidos ya cerraron."
-                  : "Te quedaste sin vidas en esta temporada."}
-              </p>
-            ) : null}
-
-            {canSubmitPick ? (
-              <div className="mt-5 grid gap-3 md:grid-cols-2">
-                {board.available_teams.map((option) => (
-                  <button
-                    key={`${option.match_id}:${option.team_id}`}
-                    type="button"
-                    onClick={() => void handlePick(option.team_id)}
-                    disabled={option.is_locked || Boolean(submitting)}
-                    className={option.is_current_pick ? "surface-card-strong text-left disabled:opacity-60" : "surface-card text-left disabled:opacity-60"}
-                  >
-                    <p className="text-xs uppercase tracking-[0.2em] text-steel">
-                      {option.team_short_name} vs {option.opponent_team_short_name}
-                    </p>
-                    <p className="mt-2 text-lg font-semibold text-ink">{option.team_name}</p>
-                    <p className="mt-2 text-sm text-steel">{formatMexicoCityDateTime(option.kickoff_at)}</p>
-                    <p className="mt-3 text-xs text-steel">
-                      {option.is_current_pick
-                        ? "Tu pick actual"
-                        : option.is_locked
-                          ? "Cerrado"
-                          : submitting === `pick:${option.team_id}`
-                            ? "Guardando..."
-                            : "Elegir equipo"}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="surface-card px-5 py-5">
-            <p className="text-xs uppercase tracking-[0.22em] text-steel">Estado</p>
-            <div className="mt-4 space-y-3 text-sm text-steel">
-              <p>Vidas restantes: <span className="font-semibold text-ink">{board.my_membership.remaining_lives}</span></p>
-              <p>Vidas gastadas: <span className="font-semibold text-ink">{board.my_membership.lives_spent}</span></p>
-              <p>Equipos usados: <span className="font-semibold text-ink">{board.my_membership.used_team_names.join(", ") || "Ninguno"}</span></p>
+              <span className="app-pill px-3 text-[10px]">
+                Vidas: {board.my_membership.remaining_lives}/{board.my_membership.max_lives}
+              </span>
+              <span className="app-pill px-3 text-[10px]">
+                Gastadas: {board.my_membership.lives_spent}
+              </span>
+              <span className="app-pill px-3 text-[10px]">
+                Usados: {board.my_membership.used_team_names.length}
+              </span>
               {board.season.registration_lock_at ? (
-                <p>Cierre de inscripcion: <span className="font-semibold text-ink">{formatMexicoCityDateTime(board.season.registration_lock_at)}</span></p>
+                <span className="app-pill px-3 text-[10px]">
+                  Cierre: {formatMexicoCityDateTime(board.season.registration_lock_at)}
+                </span>
               ) : null}
             </div>
           </div>
+
+          {!board.current_matchday ? (
+            <p className="mt-4 text-sm text-steel">Aun no hay jornada lista para capturar survivor.</p>
+          ) : null}
+
+          {board.current_matchday && !canSubmitPick ? (
+            <p className="mt-4 text-sm text-steel">
+              {board.my_membership.alive
+                ? "No hay equipos disponibles para esta jornada o todos los partidos ya cerraron."
+                : "Te quedaste sin vidas en esta temporada."}
+            </p>
+          ) : null}
+
+          {canSubmitPick ? (
+            <div className="mt-4 no-scrollbar overflow-x-auto touch-pan-x">
+              <table className="min-w-[760px] table-fixed text-left text-[11px] text-steel">
+                <colgroup>
+                  <col className="w-[180px]" />
+                  <col className="w-[180px]" />
+                  <col className="w-[170px]" />
+                  <col className="w-[120px]" />
+                  <col className="w-[130px]" />
+                </colgroup>
+                <thead className="app-table-head">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Equipo</th>
+                    <th className="px-3 py-2 text-left">Rival</th>
+                    <th className="px-3 py-2 text-left">Hora</th>
+                    <th className="px-3 py-2 text-left">Estatus</th>
+                    <th className="px-3 py-2 text-left">Accion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {board.available_teams.map((option) => (
+                    <tr key={`${option.match_id}:${option.team_id}`} className="app-table-row border-b last:border-b-0">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-2">
+                          {option.team_crest_url ? (
+                            <img
+                              src={option.team_crest_url}
+                              alt={option.team_name}
+                              className="h-7 w-7 rounded-full border border-white/10 object-cover"
+                            />
+                          ) : (
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[9px] font-semibold text-ink">
+                              {option.team_short_name.slice(0, 3).toUpperCase()}
+                            </span>
+                          )}
+                          <div>
+                            <p className="font-semibold text-ink">{option.team_short_name}</p>
+                            <p className="text-[10px] text-steel">{option.team_name}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <p className="font-medium text-ink">{option.opponent_team_short_name}</p>
+                        <p className="text-[10px] text-steel">{option.opponent_team_name}</p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className="text-[10px] text-steel">{formatMexicoCityDateTime(option.kickoff_at)}</span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={option.is_current_pick ? "app-pill-active px-3 text-[10px] text-ink" : "app-pill px-3 text-[10px]"}>
+                          {option.is_current_pick ? "Actual" : option.is_locked ? "Cerrado" : "Disponible"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          onClick={() => void handlePick(option.team_id)}
+                          disabled={option.is_locked || Boolean(submitting)}
+                          className="secondary-button px-3 py-2 text-xs disabled:opacity-60"
+                        >
+                          {submitting === `pick:${option.team_id}`
+                            ? "Guardando..."
+                            : option.is_current_pick
+                              ? "Cambiar"
+                              : "Elegir"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -407,7 +455,7 @@ export function SurvivorPageContent() {
                       </div>
                     </td>
                     <td className="px-3 py-3">
-                      {entry.current_pick ? (
+                      {entry.current_pick && entry.current_pick.is_revealed ? (
                         <div className="flex items-center gap-2">
                           {entry.current_pick.team_crest_url ? (
                             <img
@@ -425,6 +473,8 @@ export function SurvivorPageContent() {
                             <p className="text-[10px] text-steel">{entry.current_pick.team_name}</p>
                           </div>
                         </div>
+                      ) : entry.current_pick ? (
+                        <span className="text-[10px] font-semibold uppercase text-steel/65">Oculto</span>
                       ) : (
                         <span className="text-[10px] font-semibold uppercase text-steel/65">
                           {entry.last_pick_team_name ?? "Sin pick"}
@@ -432,20 +482,24 @@ export function SurvivorPageContent() {
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      {entry.current_pick ? (
+                      {entry.current_pick && entry.current_pick.is_revealed ? (
                         <div>
                           <p className="font-medium text-ink">{entry.current_pick.opponent_team_short_name}</p>
                           <p className="text-[10px] text-steel">{entry.current_pick.opponent_team_name}</p>
                         </div>
                       ) : (
-                        <span className="text-[10px] font-semibold uppercase text-steel/65">Pendiente</span>
+                        <span className="text-[10px] font-semibold uppercase text-steel/65">
+                          {entry.current_pick ? "Oculto" : "Pendiente"}
+                        </span>
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      {entry.current_pick ? (
+                      {entry.current_pick && entry.current_pick.is_revealed ? (
                         <span className={getSurvivorResultPillClassName(entry.current_pick.result_status)}>
                           {getSurvivorResultLabel(entry.current_pick.result_status)}
                         </span>
+                      ) : entry.current_pick ? (
+                        <span className="app-pill px-3 text-[10px]">Oculto</span>
                       ) : (
                         <span className="app-pill px-3 text-[10px]">Sin pick</span>
                       )}
@@ -467,27 +521,57 @@ export function SurvivorPageContent() {
       </section>
 
       <section className="surface-card px-5 py-5">
-        <div>
-          <p className="text-xs uppercase tracking-[0.22em] text-steel">Historial</p>
-          <div className="mt-4 space-y-3">
-            {board.my_picks.length === 0 ? (
-              <p className="text-sm text-steel">Todavia no capturas picks en survivor.</p>
-            ) : (
-              board.my_picks.map((pick) => (
-                <div key={pick.id} className="rounded-[18px] border border-white/6 bg-white/[0.03] px-4 py-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-ink">{pick.team_name}</p>
-                      <p className="text-xs text-steel">{pick.matchday_name} · vs {pick.opponent_team_name}</p>
-                    </div>
-                    <span className="app-pill px-3 text-xs uppercase tracking-[0.18em]">
-                      {pick.result_status}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+        <p className="text-xs uppercase tracking-[0.22em] text-steel">Historial</p>
+        <div className="mt-4 no-scrollbar overflow-x-auto touch-pan-x">
+          {board.my_picks.length === 0 ? (
+            <p className="text-sm text-steel">Todavia no capturas picks en survivor.</p>
+          ) : (
+            <table className="min-w-[720px] table-fixed text-left text-[11px] text-steel">
+              <colgroup>
+                <col className="w-[160px]" />
+                <col className="w-[180px]" />
+                <col className="w-[170px]" />
+                <col className="w-[120px]" />
+                <col className="w-[90px]" />
+              </colgroup>
+              <thead className="app-table-head">
+                <tr>
+                  <th className="px-3 py-2 text-left">Jornada</th>
+                  <th className="px-3 py-2 text-left">Equipo</th>
+                  <th className="px-3 py-2 text-left">Rival</th>
+                  <th className="px-3 py-2 text-left">Resultado</th>
+                  <th className="px-3 py-2 text-left">Vida</th>
+                </tr>
+              </thead>
+              <tbody>
+                {board.my_picks.map((pick) => (
+                  <tr key={pick.id} className="app-table-row border-b last:border-b-0">
+                    <td className="px-3 py-3">
+                      <p className="font-medium text-ink">{pick.matchday_name}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <p className="font-semibold text-ink">{pick.team_short_name}</p>
+                      <p className="text-[10px] text-steel">{pick.team_name}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <p className="font-medium text-ink">{pick.opponent_team_short_name}</p>
+                      <p className="text-[10px] text-steel">{pick.opponent_team_name}</p>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={getSurvivorResultPillClassName(pick.result_status)}>
+                        {getSurvivorResultLabel(pick.result_status)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={pick.consumed_life ? "app-pill px-3 text-[10px] text-coral" : "app-pill px-3 text-[10px]"}>
+                        {pick.consumed_life ? "Gastada" : "OK"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </section>
     </div>

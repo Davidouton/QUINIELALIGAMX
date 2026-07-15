@@ -12,6 +12,8 @@ type CompetitionContext = {
   seasons: Season[];
 };
 
+const LAST_DASHBOARD_SEASON_STORAGE_KEY = "qm-last-dashboard-season";
+
 function buildContextId(season: Season) {
   return season.tournament_format === "world_cup" ? "world_cup" : "standard";
 }
@@ -50,6 +52,39 @@ function buildCompetitionContexts(seasons: Season[]) {
   return contexts;
 }
 
+function readStoredDashboardSeason() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const rawValue = window.localStorage.getItem(LAST_DASHBOARD_SEASON_STORAGE_KEY);
+    if (!rawValue) {
+      return null;
+    }
+    const parsed = JSON.parse(rawValue) as { seasonId?: string; competitionId?: string };
+    return {
+      seasonId: parsed.seasonId ?? "",
+      competitionId: parsed.competitionId ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredDashboardSeason(seasonId: string, competitionId: string) {
+  if (typeof window === "undefined" || !seasonId) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      LAST_DASHBOARD_SEASON_STORAGE_KEY,
+      JSON.stringify({ seasonId, competitionId }),
+    );
+  } catch {
+    // Ignore browser storage failures.
+  }
+}
+
 export function DashboardSeasonSwitcher() {
   const { competitionId, seasonId, setSeasonId } = useDashboardSeasonParam();
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -81,10 +116,32 @@ export function DashboardSeasonSwitcher() {
     : null;
 
   useEffect(() => {
+    if (seasonId || competitionId || seasons.length === 0) {
+      return;
+    }
+    const storedSeason = readStoredDashboardSeason();
+    if (!storedSeason?.seasonId) {
+      return;
+    }
+    const matchedSeason = seasons.find((season) => season.id === storedSeason.seasonId);
+    if (!matchedSeason) {
+      return;
+    }
+    setSeasonId(matchedSeason.id, matchedSeason.competition_id ?? storedSeason.competitionId ?? "");
+  }, [competitionId, seasonId, seasons, setSeasonId]);
+
+  useEffect(() => {
     if (!activeContext || !activeSeason) {
       return;
     }
+    if (!seasonId && !competitionId) {
+      const storedSeason = readStoredDashboardSeason();
+      if (storedSeason?.seasonId && storedSeason.seasonId !== activeSeason.id) {
+        return;
+      }
+    }
     const nextCompetitionId = activeSeason.competition_id ?? "";
+    writeStoredDashboardSeason(activeSeason.id, nextCompetitionId);
     if (activeSeason.id !== seasonId || nextCompetitionId !== competitionId) {
       setSeasonId(activeSeason.id, nextCompetitionId);
     }

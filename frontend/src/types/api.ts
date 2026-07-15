@@ -933,6 +933,8 @@ export interface SurvivorPick {
   opponent_team_short_name: string;
   opponent_team_crest_url: string | null;
   kickoff_at: string;
+  is_locked: boolean;
+  is_revealed: boolean;
   result_status: "pending" | "won" | "lost" | "draw";
   consumed_life: boolean;
   created_at: string;

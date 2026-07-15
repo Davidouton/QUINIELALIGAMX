@@ -73,6 +73,8 @@ class SurvivorPickOut(BaseModel):
     opponent_team_short_name: str
     opponent_team_crest_url: str | None = None
     kickoff_at: datetime
+    is_locked: bool = False
+    is_revealed: bool = False
     result_status: SurvivorPickResultLiteral = "pending"
     consumed_life: bool = False
     created_at: datetime
