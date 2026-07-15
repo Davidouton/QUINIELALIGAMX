@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { AdvancedStatsPanel } from "@/components/dashboard/advanced-stats-panel";
@@ -932,7 +932,6 @@ export function DashboardHome() {
   const summaryProjectedTotal = (state.summary?.projected_total_points ?? 0).toFixed(1);
   const dashboardSelectClass =
     "field-control text-xs";
-  const showsMatchdayControls = activeTab === "jornada" || activeTab === "probabilidades";
   const trophyRecords = state.personalTrophies.filter((row) => row.recognition_type === "trophy");
   const awardRecords = state.personalTrophies.filter((row) => row.recognition_type === "award");
   const teamCrestById = new Map(state.teams.map((team) => [team.id, team.crest_url]));
@@ -971,7 +970,7 @@ export function DashboardHome() {
       }
       return String(left.name ?? "").localeCompare(String(right.name ?? ""), "es-MX");
     });
-  const leagueOptions = useMemo<DashboardLeagueOption[]>(() => {
+  const computedLeagueOptions: DashboardLeagueOption[] = (() => {
     const grouped = new Map<string, DashboardLeagueOption>();
     selectableSeasons.forEach((season) => {
       const key = getDashboardLeagueKey(season);
@@ -987,13 +986,13 @@ export function DashboardHome() {
       });
     });
     return Array.from(grouped.values());
-  }, [selectableSeasons]);
+  })();
   const selectedLeagueValue =
-    leagueOptions.find((option) => option.seasons.some((season) => season.id === state.selectedSeason?.id))?.value ??
-    leagueOptions[0]?.value ??
+    computedLeagueOptions.find((option) => option.seasons.some((season) => season.id === state.selectedSeason?.id))?.value ??
+    computedLeagueOptions[0]?.value ??
     "";
   const selectableLeagueSeasons =
-    leagueOptions.find((option) => option.value === selectedLeagueValue)?.seasons ?? selectableSeasons;
+    computedLeagueOptions.find((option) => option.value === selectedLeagueValue)?.seasons ?? selectableSeasons;
   const selectedVipIdFromView = dashboardDefaultView.startsWith("vip:") ? dashboardDefaultView.slice(4) : "";
   const selectedVipCompetition =
     approvedVipCompetitions.find((vip) => vip.id === selectedVipIdFromView) ??
@@ -1056,15 +1055,11 @@ export function DashboardHome() {
     isSurvivorAvailableForSeason(state.selectedSeason) &&
     (state.selectedSeason?.tournament_format === "standard" || survivorMembershipSummary),
   );
-
-  useEffect(() => {
-    if (activeTab === "survivor" && !canShowSurvivorDashboardTab) {
-      setActiveTab("general");
-    }
-  }, [activeTab, canShowSurvivorDashboardTab]);
+  const resolvedActiveTab: DashboardTab =
+    activeTab === "survivor" && !canShowSurvivorDashboardTab ? "general" : activeTab;
 
   function handleLeagueChange(nextLeagueValue: string) {
-    const nextLeague = leagueOptions.find((option) => option.value === nextLeagueValue) ?? null;
+    const nextLeague = computedLeagueOptions.find((option) => option.value === nextLeagueValue) ?? null;
     const nextSeason =
       nextLeague?.seasons.find((season) => season.is_active) ??
       nextLeague?.seasons[0] ??
@@ -1074,7 +1069,7 @@ export function DashboardHome() {
     }
     setSeasonId(nextSeason.id, "");
   }
-  const dashboardTabs: Array<{ id: DashboardTab; label: string }> = [
+  const computedDashboardTabs: Array<{ id: DashboardTab; label: string }> = [
     { id: "general", label: "General" },
     { id: "jornada", label: "Jornada" },
     { id: "proximos", label: "Proximos juegos" },
@@ -1083,7 +1078,8 @@ export function DashboardHome() {
     { id: "advanced", label: "E. Avanzadas" },
     { id: "premios", label: "Premios" },
   ];
-  const activeTabLabel = dashboardTabs.find((tab) => tab.id === activeTab)?.label ?? "General";
+  const computedActiveTabLabel = computedDashboardTabs.find((tab) => tab.id === resolvedActiveTab)?.label ?? "General";
+  const showsMatchdayControls = resolvedActiveTab === "jornada" || resolvedActiveTab === "probabilidades";
   const summaryTileClass =
     "flex min-w-0 h-[78px] flex-col justify-between rounded-[16px] bg-transparent p-1.5 sm:h-auto sm:rounded-[30px] sm:p-5";
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
@@ -1355,7 +1351,7 @@ export function DashboardHome() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-4">
-            {leagueOptions.length > 1 ? (
+            {computedLeagueOptions.length > 1 ? (
               <label className="hidden min-w-[180px] space-y-1 text-xs sm:block">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
                   Liga
@@ -1365,7 +1361,7 @@ export function DashboardHome() {
                   onChange={(event) => handleLeagueChange(event.target.value)}
                   className={dashboardSelectClass}
                 >
-                  {leagueOptions.map((option) => (
+                  {computedLeagueOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -1434,9 +1430,9 @@ export function DashboardHome() {
           </div>
         </div>
 
-        {leagueOptions.length > 1 || selectableLeagueSeasons.length > 1 || dashboardDefaultOptions.length > 1 ? (
+        {computedLeagueOptions.length > 1 || selectableLeagueSeasons.length > 1 || dashboardDefaultOptions.length > 1 ? (
           <div className="mt-3 grid gap-3 sm:hidden">
-            {leagueOptions.length > 1 ? (
+            {computedLeagueOptions.length > 1 ? (
               <label className="space-y-1 text-xs">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
                   Liga
@@ -1446,7 +1442,7 @@ export function DashboardHome() {
                   onChange={(event) => handleLeagueChange(event.target.value)}
                   className={dashboardSelectClass}
                 >
-                  {leagueOptions.map((option) => (
+                  {computedLeagueOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -1505,7 +1501,7 @@ export function DashboardHome() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Menu dashboard</p>
-              <p className="mt-1 truncate text-sm font-semibold text-ink">{activeTabLabel}</p>
+              <p className="mt-1 truncate text-sm font-semibold text-ink">{computedActiveTabLabel}</p>
             </div>
             <button
               type="button"
@@ -1518,7 +1514,7 @@ export function DashboardHome() {
 
           {isTabMenuOpen ? (
             <div className="mt-3 grid grid-cols-2 gap-2">
-              {dashboardTabs.map((tab) => (
+              {computedDashboardTabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
@@ -1527,7 +1523,7 @@ export function DashboardHome() {
                     setIsTabMenuOpen(false);
                   }}
                   className={
-                    activeTab === tab.id
+                    resolvedActiveTab === tab.id
                       ? "app-pill-active h-10 px-3 text-center text-xs"
                       : "app-pill-ghost h-10 px-3 text-center text-xs"
                   }
@@ -1540,13 +1536,13 @@ export function DashboardHome() {
         </div>
 
         <div className="hidden flex-wrap gap-2 sm:flex">
-          {dashboardTabs.map((tab) => (
+          {computedDashboardTabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
               className={
-                activeTab === tab.id
+                resolvedActiveTab === tab.id
                   ? "app-pill-active px-4 text-sm"
                   : "app-pill-ghost px-4 text-sm"
               }
@@ -1607,7 +1603,7 @@ export function DashboardHome() {
         </div>
       </section>
 
-      {activeTab === "premios" ? (
+      {resolvedActiveTab === "premios" ? (
         <div className="space-y-6">
           <RecognitionShelf
             title="Trofeos de historia"
@@ -1630,16 +1626,16 @@ export function DashboardHome() {
         </div>
       ) : null}
 
-      {activeTab === "advanced" ? (
+      {resolvedActiveTab === "advanced" ? (
         <AdvancedStatsPanel stats={state.advancedStats} />
-      ) : activeTab === "jornada" ? (
+      ) : resolvedActiveTab === "jornada" ? (
         <PickResultsTable
           rows={state.pickResults}
           title={state.selectedMatchday ? state.selectedMatchday.name : "Jornada"}
           emptyMessage="No hay partidos cargados para la jornada seleccionada."
           useWorldCupBubbles={useWorldCupAbbreviation}
         />
-      ) : activeTab === "proximos" ? (
+      ) : resolvedActiveTab === "proximos" ? (
         <section className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
             <div>
@@ -1700,9 +1696,9 @@ export function DashboardHome() {
             ) : null}
           </div>
         </section>
-      ) : activeTab === "survivor" ? (
+      ) : resolvedActiveTab === "survivor" ? (
         <SurvivorPageContent />
-      ) : activeTab === "probabilidades" ? (
+      ) : resolvedActiveTab === "probabilidades" ? (
         <section className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
             <div>
@@ -1754,7 +1750,7 @@ export function DashboardHome() {
             <p className="text-sm text-steel">Todavia no hay probabilidades disponibles para la jornada seleccionada.</p>
           )}
         </section>
-      ) : activeTab === "premios" ? (
+      ) : resolvedActiveTab === "premios" ? (
         <section className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
             <div>
@@ -1820,7 +1816,7 @@ export function DashboardHome() {
             <p className="text-sm text-steel">Todavia no tienes jornadas premiadas en esta temporada.</p>
           )}
         </section>
-      ) : activeTab === "general" ? (
+      ) : resolvedActiveTab === "general" ? (
         <>
           <section className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
