@@ -11,6 +11,7 @@ import { SurvivorPageContent } from "@/components/survivor/survivor-page-content
 import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { buildVipDetailPath } from "@/lib/api/vip";
+import { getMatchdayDisplayLabel } from "@/lib/dashboard/matchday-label";
 import { filterMatchdaysBySeason, getLiveSeasons, isSeasonArchived, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { env } from "@/lib/env";
@@ -188,6 +189,60 @@ function getDashboardLeagueLabel(season: Season) {
     return "World Cup";
   }
   return "Liga";
+}
+
+function asArray<T>(value: T[] | null | undefined) {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizePerformanceRace(race: PerformanceRace | null | undefined) {
+  if (!race) {
+    return null;
+  }
+  return {
+    ...race,
+    points: asArray(race.points),
+  };
+}
+
+function normalizeVipCompetition(vip: VipCompetition): VipCompetition {
+  return {
+    ...vip,
+    matchdays: asArray(vip.matchdays),
+    approved_members: asArray(vip.approved_members),
+    leaderboard: asArray(vip.leaderboard),
+    matchday_points: asArray(vip.matchday_points),
+    performance_race: normalizePerformanceRace(vip.performance_race),
+    team_winner_teams: asArray(vip.team_winner_teams),
+    team_winner_entries: asArray(vip.team_winner_entries),
+    question_pool_questions: Array.isArray(vip.question_pool_questions)
+      ? vip.question_pool_questions.map((question) => ({
+          ...question,
+          options: asArray(question.options),
+        }))
+      : [],
+  };
+}
+
+function normalizeDashboardHomeBundle(bundle: DashboardHomeBundle): DashboardHomeBundle {
+  return {
+    ...bundle,
+    performance_race: normalizePerformanceRace(bundle.performance_race) ?? bundle.performance_race,
+    matches: asArray(bundle.matches),
+    pick_results: asArray(bundle.pick_results),
+    matchday_points: asArray(bundle.matchday_points),
+    personal_trophies: asArray(bundle.personal_trophies),
+    vip_competitions: asArray(bundle.vip_competitions).map(normalizeVipCompetition),
+    leaderboard: asArray(bundle.leaderboard),
+  };
+}
+
+function normalizeMe(me: Me): Me {
+  return {
+    ...me,
+    dashboard_widget_ids: asArray(me.dashboard_widget_ids),
+    season_memberships: asArray(me.season_memberships),
+  };
 }
 
 function pickPreferredMatchday(matchdays: Matchday[]) {
@@ -416,11 +471,11 @@ export function DashboardHome() {
       const selectedSeason =
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
         resolveLiveSeason(seasons, seasonIdParam);
-      const dashboardBundle = await backendFetch<DashboardHomeBundle>(
+      const dashboardBundle = normalizeDashboardHomeBundle(await backendFetch<DashboardHomeBundle>(
         buildDashboardHomePath(selectedSeason?.id ?? selectedMatchday.season_id, selectedMatchday.id),
         accessToken,
         { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
-      );
+      ));
 
       setState((current) => ({
         ...current,
@@ -490,13 +545,11 @@ export function DashboardHome() {
         const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken, {
           cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
         });
-        const {
-          me,
-          seasons,
-          matchdays,
-          active_matchdays: activeMatchdays,
-          teams,
-        } = bootstrap;
+        const me = normalizeMe(bootstrap.me);
+        const seasons = asArray(bootstrap.seasons);
+        const matchdays = asArray(bootstrap.matchdays);
+        const activeMatchdays = asArray(bootstrap.active_matchdays);
+        const teams = asArray(bootstrap.teams);
 
         const preferredSeason = resolveLiveSeason(seasons, seasonIdParam);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
@@ -528,11 +581,11 @@ export function DashboardHome() {
           error: null,
         }));
 
-        const dashboardBundle = await backendFetch<DashboardHomeBundle>(
+        const dashboardBundle = normalizeDashboardHomeBundle(await backendFetch<DashboardHomeBundle>(
           buildDashboardHomePath(selectedSeason?.id ?? null, selectedMatchday?.id ?? null),
           accessToken,
           { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
-        );
+        ));
         let survivorBoard: SurvivorBoard | null = null;
         if (accessToken && isSurvivorAvailableForSeason(selectedSeason)) {
           try {
@@ -618,7 +671,8 @@ export function DashboardHome() {
         const rows = await backendFetch<VipCompetition[]>(buildVipDetailPath(vipId), accessToken, {
           cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
         });
-        const detail = rows[0];
+        const detailRow = asArray(rows)[0];
+        const detail = detailRow ? normalizeVipCompetition(detailRow) : null;
         if (!detail || cancelled) {
           return;
         }
@@ -677,7 +731,7 @@ export function DashboardHome() {
         const groups = await Promise.all(
           targetMatchdays.map(async (matchday) => ({
             matchday,
-            matches: await backendFetch<Match[]>(`/matches?matchday_id=${matchday.id}`, accessToken),
+            matches: asArray(await backendFetch<Match[]>(`/matches?matchday_id=${matchday.id}`, accessToken)),
           })),
         );
 
@@ -914,7 +968,7 @@ export function DashboardHome() {
       if (left.tournament_format !== right.tournament_format) {
         return left.tournament_format === "standard" ? -1 : 1;
       }
-      return left.name.localeCompare(right.name, "es-MX");
+      return String(left.name ?? "").localeCompare(String(right.name ?? ""), "es-MX");
     });
   const leagueOptions = useMemo<DashboardLeagueOption[]>(() => {
     const grouped = new Map<string, DashboardLeagueOption>();
@@ -1730,9 +1784,7 @@ export function DashboardHome() {
                     <div>
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Jornada</p>
                       <p className="mt-1 text-[11px] font-medium text-ink md:mt-0">
-                      {row.matchday_name.trim().toLowerCase().startsWith("jornada")
-                        ? row.matchday_name
-                        : `Jornada ${row.matchday_number}`}
+                      {getMatchdayDisplayLabel(row.matchday_name, row.matchday_number)}
                       </p>
                     </div>
                     <div className="text-center">
