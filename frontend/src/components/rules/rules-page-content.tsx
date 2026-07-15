@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
-import { isSeasonArchived, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { getLiveSeasons, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { RulePage, Season } from "@/types/api";
 
@@ -22,16 +22,15 @@ export function RulesPageContent() {
         const seasonRows = await backendFetch<Season[]>("/seasons", accessToken, {
           cacheTtlMs: CATALOG_CACHE_TTL_MS,
         });
-        const resolvedSeason = resolveSeasonForContext(seasonRows, seasonIdParam, competitionId);
+        const resolvedSeason = resolveLiveSeason(seasonRows, seasonIdParam);
         const seasonQuery = resolvedSeason?.id ? `?season_id=${resolvedSeason.id}` : "";
         const data = await backendFetch<RulePage>(`/rules${seasonQuery}`, accessToken);
         setSeasons(seasonRows);
         setSelectedSeason(resolvedSeason);
         setRulePage(data);
         if (resolvedSeason) {
-          const nextCompetitionId = resolvedSeason.competition_id ?? competitionId;
-          if (resolvedSeason.id !== seasonIdParam || nextCompetitionId !== competitionId) {
-            setSeasonId(resolvedSeason.id, nextCompetitionId);
+          if (resolvedSeason.id !== seasonIdParam || competitionId) {
+            setSeasonId(resolvedSeason.id, "");
           }
         }
       } catch (caughtError) {
@@ -45,7 +44,7 @@ export function RulesPageContent() {
   }, [competitionId, seasonIdParam, setSeasonId]);
 
   const availableSeasons = useMemo(
-    () => seasons.filter((season) => !isSeasonArchived(season)),
+    () => getLiveSeasons(seasons),
     [seasons],
   );
 
@@ -77,7 +76,7 @@ export function RulesPageContent() {
                   }
                   setLoading(true);
                   setError(null);
-                  setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
+                  setSeasonId(nextSeason.id, "");
                 }}
                 className="field-control"
                 disabled={loading}

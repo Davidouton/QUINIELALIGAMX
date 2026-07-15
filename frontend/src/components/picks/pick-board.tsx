@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
-import { filterMatchdaysBySeason, isSeasonLive, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, getLiveSeasons, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { SurvivorPageContent } from "@/components/survivor/survivor-page-content";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AppBootstrap, GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
@@ -533,8 +533,7 @@ export function PickBoard() {
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
   const visibleSeasons = useMemo(
     () =>
-      [...state.seasons]
-        .filter((season) => isSeasonLive(season))
+      [...getLiveSeasons(state.seasons)]
         .sort((left, right) => {
           if (left.is_active !== right.is_active) {
             return left.is_active ? -1 : 1;
@@ -565,7 +564,7 @@ export function PickBoard() {
         const vipCompetitions = await backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, {
           cacheTtlMs: CATALOG_CACHE_TTL_MS,
         });
-        const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        const preferredSeason = resolveLiveSeason(seasons, seasonIdParam);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
         const activeMatchday =
           (preferredSeason
@@ -582,9 +581,8 @@ export function PickBoard() {
           null;
 
         if (selectedSeason) {
-          const nextCompetitionId = selectedSeason.competition_id ?? "";
-          if (selectedSeason.id !== seasonIdParam || competitionId !== nextCompetitionId) {
-            setSeasonId(selectedSeason.id, nextCompetitionId);
+          if (selectedSeason.id !== seasonIdParam || competitionId) {
+            setSeasonId(selectedSeason.id, "");
           }
         }
 
@@ -781,7 +779,7 @@ export function PickBoard() {
 
       const selectedSeason =
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
-        resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        resolveLiveSeason(seasons, seasonIdParam);
 
       const nextForms: FormsMap = {};
       matches.forEach((match) => {
@@ -839,7 +837,7 @@ export function PickBoard() {
 
   async function handleSeasonChange(seasonId: string) {
     const selectedSeason = state.seasons.find((season) => season.id === seasonId) ?? null;
-    setSeasonId(seasonId, selectedSeason?.competition_id ?? competitionId);
+    setSeasonId(seasonId, "");
     const seasonMatchdays = filterMatchdaysBySeason(state.matchdays, seasonId);
     const nextMatchday = pickPreferredMatchday(seasonMatchdays);
 

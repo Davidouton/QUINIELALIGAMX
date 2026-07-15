@@ -10,7 +10,7 @@ import { PerformanceRaceChart } from "@/components/dashboard/performance-race-ch
 import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { buildVipDetailPath } from "@/lib/api/vip";
-import { filterMatchdaysBySeason, isSeasonArchived, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, getLiveSeasons, isSeasonArchived, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -392,7 +392,7 @@ export function DashboardHome() {
 
       const selectedSeason =
         seasons.find((season) => season.id === selectedMatchday.season_id) ??
-        resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        resolveLiveSeason(seasons, seasonIdParam);
       const dashboardBundle = await backendFetch<DashboardHomeBundle>(
         buildDashboardHomePath(selectedSeason?.id ?? selectedMatchday.season_id, selectedMatchday.id),
         accessToken,
@@ -475,7 +475,7 @@ export function DashboardHome() {
           teams,
         } = bootstrap;
 
-        const preferredSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        const preferredSeason = resolveLiveSeason(seasons, seasonIdParam);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
         const selectedMatchday =
           (preferredSeason
@@ -489,9 +489,8 @@ export function DashboardHome() {
           null;
 
         if (selectedSeason) {
-          const nextCompetitionId = selectedSeason.competition_id ?? "";
-          if (selectedSeason.id !== seasonIdParam || competitionId !== nextCompetitionId) {
-            setSeasonId(selectedSeason.id, nextCompetitionId);
+          if (selectedSeason.id !== seasonIdParam || competitionId) {
+            setSeasonId(selectedSeason.id, "");
           }
         }
 
@@ -882,7 +881,7 @@ export function DashboardHome() {
   const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
   const hasApprovedVipCompetition = approvedVipCompetitions.length > 0;
   const canViewRegularDashboard = Boolean(selectedSeasonMembership?.can_participate);
-  const selectableSeasons = state.seasons.filter((season) => !isSeasonArchived(season));
+  const selectableSeasons = getLiveSeasons(state.seasons).filter((season) => !isSeasonArchived(season));
   const selectedVipIdFromView = dashboardDefaultView.startsWith("vip:") ? dashboardDefaultView.slice(4) : "";
   const selectedVipCompetition =
     approvedVipCompetitions.find((vip) => vip.id === selectedVipIdFromView) ??
@@ -1219,7 +1218,7 @@ export function DashboardHome() {
                     if (!nextSeason) {
                       return;
                     }
-                    setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
+                    setSeasonId(nextSeason.id, "");
                   }}
                   className={dashboardSelectClass}
                 >
@@ -1281,7 +1280,7 @@ export function DashboardHome() {
                     if (!nextSeason) {
                       return;
                     }
-                    setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
+                    setSeasonId(nextSeason.id, "");
                   }}
                   className={dashboardSelectClass}
                 >

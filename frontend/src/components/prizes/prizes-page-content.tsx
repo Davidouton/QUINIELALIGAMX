@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
-import { isSeasonArchived, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { getLiveSeasons, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { CheckoutSessionResponse, EffectivePricing, Me, PrizeSummary, Season } from "@/types/api";
 
@@ -51,7 +51,7 @@ export function PrizesPageContent() {
       try {
         const accessToken = await getBrowserAccessToken();
         const seasons = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
-        const resolvedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        const resolvedSeason = resolveLiveSeason(seasons, seasonIdParam);
         const seasonQuery = resolvedSeason?.id ? `?season_id=${resolvedSeason.id}` : "";
         const [meResponse, summaryResponse] = await Promise.all([
           backendFetch<Me>(`/me${seasonQuery}`, accessToken),
@@ -62,9 +62,8 @@ export function PrizesPageContent() {
         setMe(meResponse);
         setSummary(summaryResponse);
         if (resolvedSeason) {
-          const nextCompetitionId = resolvedSeason.competition_id ?? competitionId;
-          if (resolvedSeason.id !== seasonIdParam || nextCompetitionId !== competitionId) {
-            setSeasonId(resolvedSeason.id, nextCompetitionId);
+          if (resolvedSeason.id !== seasonIdParam || competitionId) {
+            setSeasonId(resolvedSeason.id, "");
           }
         }
         if (summaryResponse.season_id) {
@@ -147,7 +146,7 @@ export function PrizesPageContent() {
     [summary],
   );
   const availableSeasons = useMemo(
-    () => seasons.filter((season) => !isSeasonArchived(season)),
+    () => getLiveSeasons(seasons),
     [seasons],
   );
   const activeSeasonMembership =
@@ -184,7 +183,7 @@ export function PrizesPageContent() {
                   setLoading(true);
                   setError(null);
                   setPaymentError(null);
-                  setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
+                  setSeasonId(nextSeason.id, "");
                 }}
                 className="field-control"
                 disabled={loading}

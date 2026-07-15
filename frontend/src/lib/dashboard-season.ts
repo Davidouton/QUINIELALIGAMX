@@ -16,6 +16,10 @@ export function isSeasonArchived(season: Season) {
   return season.visibility_status === "archived";
 }
 
+export function getLiveSeasons(seasons: Season[]) {
+  return seasons.filter((season) => isSeasonLive(season));
+}
+
 export function filterSeasonsByCompetition(seasons: Season[], competitionId: string) {
   return seasons.filter((season) => {
     if (isSeasonArchived(season)) {
@@ -46,6 +50,27 @@ export function resolveSeasonForContext(
     currentSeasons.find((season) => season.is_active) ??
     currentSeasons[0] ??
     explicitSeason ??
+    seasons[0] ??
+    null
+  );
+}
+
+export function resolveLiveSeason(
+  seasons: Season[],
+  seasonId: string,
+) {
+  const liveSeasons = getLiveSeasons(seasons);
+  const explicitLiveSeason = seasonId ? liveSeasons.find((season) => season.id === seasonId) ?? null : null;
+  const explicitSeason = seasonId ? seasons.find((season) => season.id === seasonId) ?? null : null;
+  const currentSeasons = seasons.filter((season) => !isSeasonArchived(season));
+
+  return (
+    explicitLiveSeason ??
+    liveSeasons.find((season) => season.is_active) ??
+    liveSeasons[0] ??
+    explicitSeason ??
+    currentSeasons.find((season) => season.is_active) ??
+    currentSeasons[0] ??
     seasons[0] ??
     null
   );

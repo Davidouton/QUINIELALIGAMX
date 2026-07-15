@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { VIP_SUMMARY_PATH, buildVipDetailPath } from "@/lib/api/vip";
-import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, getLiveSeasons, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AppBootstrap, LeaderboardEntry, Matchday, Me, Season, VipCompetition } from "@/types/api";
 
@@ -22,18 +22,20 @@ type RankingBoardOption = {
 
 type LeaderboardState = {
   me: Me | null;
+  seasons: Season[];
   activeMatchday: Matchday | null;
   selectedSeason: Season | null;
-  overall: LeaderboardEntry[];
+  overallBySeasonId: Record<string, LeaderboardEntry[]>;
   vipCompetitions: VipCompetition[];
   error: string | null;
 };
 
 const initialState: LeaderboardState = {
   me: null,
+  seasons: [],
   activeMatchday: null,
   selectedSeason: null,
-  overall: [],
+  overallBySeasonId: {},
   vipCompetitions: [],
   error: null,
 };
@@ -42,7 +44,7 @@ const LEADERBOARD_VISIBILITY_REFRESH_STALE_MS = 60_000;
 
 export function LeaderboardPageContent() {
   const [state, setState] = useState<LeaderboardState>(initialState);
-  const [selectedBoardId, setSelectedBoardId] = useState("regular");
+  const [selectedBoardId, setSelectedBoardId] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingVipBoardId, setLoadingVipBoardId] = useState("");
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
@@ -68,19 +70,22 @@ export function LeaderboardPageContent() {
         active_matchdays: activeMatchdays,
         seasons,
       } = bootstrap;
-      const selectedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
-      const selectedSeasonMembership =
-        selectedSeason
-          ? me.season_memberships.find((membership) => membership.season_id === selectedSeason.id) ?? null
-          : null;
-      const canViewRegularBoard = Boolean(selectedSeasonMembership?.can_participate);
-      const overall = selectedSeason && canViewRegularBoard
-        ? await backendFetch<LeaderboardEntry[]>(
-            `/leaderboard/overall?season_id=${selectedSeason.id}`,
-            accessToken,
-            { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
-          )
-        : [];
+      const liveSeasons = getLiveSeasons(seasons);
+      const selectedSeason = resolveLiveSeason(seasons, seasonIdParam);
+      const overallEntries = await Promise.all(
+        liveSeasons.map(async (season) => {
+          try {
+            const rows = await backendFetch<LeaderboardEntry[]>(
+              `/leaderboard/overall?season_id=${season.id}`,
+              accessToken,
+              { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+            );
+            return [season.id, rows] as const;
+          } catch {
+            return [season.id, []] as const;
+          }
+        }),
+      );
       const activeMatchday =
         (selectedSeason
           ? activeMatchdays.find((matchday) => matchday.season_id === selectedSeason.id) ??
@@ -88,15 +93,16 @@ export function LeaderboardPageContent() {
             null
           : null);
 
-      if (selectedSeason && selectedSeason.id !== seasonIdParam) {
-        setSeasonId(selectedSeason.id, selectedSeason.competition_id ?? "");
+      if (selectedSeason && (selectedSeason.id !== seasonIdParam || competitionId)) {
+        setSeasonId(selectedSeason.id, "");
       }
 
       setState({
         me,
+        seasons,
         activeMatchday,
         selectedSeason,
-        overall,
+        overallBySeasonId: Object.fromEntries(overallEntries),
         vipCompetitions,
         error: null,
       });
@@ -185,35 +191,33 @@ export function LeaderboardPageContent() {
     () => state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved"),
     [state.vipCompetitions],
   );
-  const regularMembership = useMemo(
+  const liveSeasons = useMemo(
     () =>
-      state.selectedSeason
-        ? state.me?.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
-        : null,
-    [state.me, state.selectedSeason],
+      getLiveSeasons(state.seasons).slice().sort((left, right) => {
+        if (left.is_active !== right.is_active) {
+          return left.is_active ? -1 : 1;
+        }
+        if (left.tournament_format !== right.tournament_format) {
+          return left.tournament_format === "standard" ? -1 : 1;
+        }
+        return left.name.localeCompare(right.name, "es-MX");
+      }),
+    [state.seasons],
   );
-  const canViewRegularBoard = Boolean(state.selectedSeason && regularMembership?.can_participate);
   const boardOptions = useMemo<RankingBoardOption[]>(() => {
-    const options: RankingBoardOption[] = [];
-
-    if (canViewRegularBoard && state.selectedSeason) {
-      options.push({
-        value: "regular",
-        label: `Torneo regular · ${state.selectedSeason.name}`,
+    return [
+      ...liveSeasons.map((season) => ({
+        value: `season:${season.id}`,
+        label: `Torneo regular · ${season.name}`,
         helper: "Ranking general de la temporada",
-      });
-    }
-
-    options.push(
+      })),
       ...approvedVipCompetitions.map((vip) => ({
         value: `vip:${vip.id}`,
         label: vip.name,
         helper: `VIP · ${vip.season_name}`,
       })),
-    );
-
-    return options;
-  }, [approvedVipCompetitions, canViewRegularBoard, state.selectedSeason]);
+    ];
+  }, [approvedVipCompetitions, liveSeasons]);
   const selectedVipCompetition = useMemo(
     () =>
       selectedBoardId.startsWith("vip:")
@@ -221,15 +225,27 @@ export function LeaderboardPageContent() {
         : null,
     [approvedVipCompetitions, selectedBoardId],
   );
-  const activeEntries = useMemo<RankingEntry[]>(
-    () => (selectedVipCompetition ? selectedVipCompetition.leaderboard : state.overall),
-    [selectedVipCompetition, state.overall],
+  const selectedRegularSeason = useMemo(
+    () =>
+      selectedBoardId.startsWith("season:")
+        ? liveSeasons.find((season) => season.id === selectedBoardId.slice(7)) ?? null
+        : null,
+    [liveSeasons, selectedBoardId],
   );
-  const activeTitle = selectedVipCompetition ? selectedVipCompetition.name : "Torneo regular";
+  const activeEntries = useMemo<RankingEntry[]>(
+    () =>
+      selectedVipCompetition
+        ? selectedVipCompetition.leaderboard
+        : selectedRegularSeason
+          ? state.overallBySeasonId[selectedRegularSeason.id] ?? []
+          : [],
+    [selectedRegularSeason, selectedVipCompetition, state.overallBySeasonId],
+  );
+  const activeTitle = selectedVipCompetition ? selectedVipCompetition.name : selectedRegularSeason?.name ?? "Torneo regular";
   const activeSubtitle = selectedVipCompetition
     ? `Ranking VIP de ${selectedVipCompetition.season_name}`
-    : state.selectedSeason
-      ? `Tabla general de ${state.selectedSeason.name}`
+    : selectedRegularSeason
+      ? `Tabla general de ${selectedRegularSeason.name}`
       : "Tabla general del torneo";
   const activeSectionLabel = selectedVipCompetition ? "Tabla VIP" : "Tabla general";
   const activeParticipantsCount = selectedVipCompetition ? selectedVipCompetition.approved_members_count : activeEntries.length;
@@ -245,9 +261,24 @@ export function LeaderboardPageContent() {
 
     const currentStillExists = boardOptions.some((option) => option.value === selectedBoardId);
     if (!currentStillExists) {
-      setSelectedBoardId(boardOptions[0].value);
+      const selectedSeasonBoardId = state.selectedSeason ? `season:${state.selectedSeason.id}` : "";
+      const fallbackBoardId =
+        selectedSeasonBoardId && boardOptions.some((option) => option.value === selectedSeasonBoardId)
+          ? selectedSeasonBoardId
+          : boardOptions[0].value;
+      setSelectedBoardId(fallbackBoardId);
     }
-  }, [boardOptions, selectedBoardId]);
+  }, [boardOptions, selectedBoardId, state.selectedSeason]);
+
+  useEffect(() => {
+    if (!state.selectedSeason || selectedBoardId.startsWith("vip:")) {
+      return;
+    }
+    const selectedSeasonBoardId = `season:${state.selectedSeason.id}`;
+    if (selectedBoardId !== selectedSeasonBoardId && boardOptions.some((option) => option.value === selectedSeasonBoardId)) {
+      setSelectedBoardId(selectedSeasonBoardId);
+    }
+  }, [boardOptions, selectedBoardId, state.selectedSeason]);
 
   useEffect(() => {
     function refreshWhenVisible() {
@@ -300,7 +331,23 @@ export function LeaderboardPageContent() {
               <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-steel">Torneo</span>
               <select
                 value={selectedBoardId}
-                onChange={(event) => setSelectedBoardId(event.target.value)}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setSelectedBoardId(nextValue);
+                  if (nextValue.startsWith("season:")) {
+                    const nextSeasonId = nextValue.slice(7);
+                    if (nextSeasonId) {
+                      setSeasonId(nextSeasonId, "");
+                    }
+                    return;
+                  }
+                  if (nextValue.startsWith("vip:")) {
+                    const nextVip = approvedVipCompetitions.find((vip) => vip.id === nextValue.slice(4)) ?? null;
+                    if (nextVip?.season_id) {
+                      setSeasonId(nextVip.season_id, "");
+                    }
+                  }
+                }}
                 className="field-control h-10 rounded-[8px] border-white/[0.08] bg-transparent px-3 text-sm"
               >
                 {boardOptions.map((option) => (
