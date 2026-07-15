@@ -78,28 +78,15 @@ function getSurvivorLifeStatePillClassName(alive: boolean, remainingLives: numbe
 
 function getSurvivorResultSurfaceClassName(resultStatus: "pending" | "won" | "lost" | "draw") {
   if (resultStatus === "won") {
-    return "border-emerald-400/45 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(74,222,128,0.18),0_0_28px_rgba(34,197,94,0.12)]";
+    return "border-emerald-400/35 bg-emerald-500/8";
   }
   if (resultStatus === "lost") {
-    return "border-coral/40 bg-coral/10 shadow-[0_0_0_1px_rgba(251,113,133,0.16),0_0_28px_rgba(244,63,94,0.12)]";
+    return "border-coral/35 bg-coral/8";
   }
   if (resultStatus === "draw") {
-    return "border-gold/40 bg-gold/10 shadow-[0_0_0_1px_rgba(250,204,21,0.14),0_0_28px_rgba(245,158,11,0.10)]";
+    return "border-gold/35 bg-gold/8";
   }
   return "border-white/[0.08] bg-white/[0.03]";
-}
-
-function getAvailableTeamCardClassName(option: {
-  is_current_pick: boolean;
-  is_locked: boolean;
-}) {
-  if (option.is_current_pick) {
-    return "border-emerald-400/45 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(74,222,128,0.18),0_0_28px_rgba(34,197,94,0.12)]";
-  }
-  if (option.is_locked) {
-    return "border-white/[0.06] bg-white/[0.02] opacity-70";
-  }
-  return "border-cyan-300/20 bg-[linear-gradient(135deg,rgba(18,29,49,0.96),rgba(12,21,37,0.90))] shadow-[0_0_0_1px_rgba(125,211,252,0.08),0_18px_40px_rgba(6,182,212,0.08)] transition hover:-translate-y-0.5 hover:border-cyan-300/35 hover:shadow-[0_0_0_1px_rgba(125,211,252,0.14),0_22px_44px_rgba(6,182,212,0.12)]";
 }
 
 function buildSeasonBoardFallback(season: Season): SurvivorBoard {
@@ -393,65 +380,53 @@ export function SurvivorPageContent() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-steel">Equipos disponibles</p>
-                  <p className="mt-1 text-sm text-steel">Selecciona tu equipo de la semana desde este grid.</p>
+                  <p className="mt-1 text-sm text-steel">Logo arriba, nombre abajo y al final la lista de partidos.</p>
                 </div>
                 <div className="app-pill px-3 text-[10px]">
                   Jornada {board.current_matchday?.number ?? "-"}
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {board.available_teams.map((option) => (
                   <article
                     key={`${option.match_id}:${option.team_id}`}
-                    className={`rounded-[22px] border p-4 ${getAvailableTeamCardClassName(option)}`}
+                    className={`rounded-[20px] border px-4 py-5 text-center ${
+                      option.is_current_pick
+                        ? "border-emerald-400/35 bg-emerald-500/8"
+                        : option.is_locked
+                          ? "border-white/[0.06] bg-white/[0.02] opacity-70"
+                          : "border-white/[0.08] bg-white/[0.03]"
+                    }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        {option.team_crest_url ? (
-                          <img
-                            src={option.team_crest_url}
-                            alt={option.team_name}
-                            className="h-11 w-11 rounded-full border border-white/10 bg-white object-cover"
-                          />
-                        ) : (
-                          <span className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[11px] font-semibold text-ink">
-                            {option.team_short_name.slice(0, 3).toUpperCase()}
-                          </span>
-                        )}
-                        <div>
-                          <p className="text-base font-semibold text-ink">{option.team_short_name}</p>
-                          <p className="text-xs text-steel">{option.team_name}</p>
-                        </div>
-                      </div>
+                    <div className="flex flex-col items-center">
+                      {option.team_crest_url ? (
+                        <img
+                          src={option.team_crest_url}
+                          alt={option.team_name}
+                          className="h-16 w-16 rounded-full border border-white/10 bg-white object-cover"
+                        />
+                      ) : (
+                        <span className="inline-flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-ink">
+                          {option.team_short_name.slice(0, 3).toUpperCase()}
+                        </span>
+                      )}
+                      <p className="mt-3 text-sm font-semibold text-ink">{option.team_name}</p>
+                      <p className="mt-1 text-[11px] text-steel">{option.team_short_name}</p>
+                    </div>
+
+                    <div className="mt-4 space-y-2 rounded-[16px] border border-white/[0.08] bg-black/10 px-3 py-3 text-left">
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-steel">Partido</p>
+                      <p className="text-sm font-medium text-ink">
+                        {option.team_short_name} vs {option.opponent_team_short_name}
+                      </p>
+                      <p className="text-[11px] text-steel">{formatMexicoCityDateTime(option.kickoff_at)}</p>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between gap-2">
                       <span className={option.is_current_pick ? "app-pill-active px-3 text-[10px] text-ink" : "app-pill px-3 text-[10px]"}>
                         {option.is_current_pick ? "Actual" : option.is_locked ? "Cerrado" : "Libre"}
                       </span>
-                    </div>
-
-                    <div className="mt-4 rounded-[18px] border border-white/[0.08] bg-black/10 px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.2em] text-steel">Enfrenta a</p>
-                      <div className="mt-2 flex items-center gap-3">
-                        {option.opponent_team_crest_url ? (
-                          <img
-                            src={option.opponent_team_crest_url}
-                            alt={option.opponent_team_name}
-                            className="h-9 w-9 rounded-full border border-white/10 bg-white object-cover"
-                          />
-                        ) : (
-                          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[10px] font-semibold text-ink">
-                            {option.opponent_team_short_name.slice(0, 3).toUpperCase()}
-                          </span>
-                        )}
-                        <div>
-                          <p className="font-medium text-ink">{option.opponent_team_short_name}</p>
-                          <p className="text-[10px] text-steel">{option.opponent_team_name}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between gap-3">
-                      <span className="text-[11px] text-steel">{formatMexicoCityDateTime(option.kickoff_at)}</span>
                       <button
                         type="button"
                         onClick={() => void handlePick(option.team_id)}
@@ -478,8 +453,8 @@ export function SurvivorPageContent() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-steel">Ruta survivor</p>
-              <h2 className="mt-2 text-lg font-semibold text-ink">Tu barra de jornadas</h2>
-              <p className="mt-1 text-sm text-steel">De la J1 a la J17 vas viendo qué equipo elegiste y cómo cerró.</p>
+              <h2 className="mt-2 text-lg font-semibold text-ink">Tus jornadas</h2>
+              <p className="mt-1 text-sm text-steel">Una lista simple por jornada con el equipo usado y su resultado.</p>
             </div>
             {board.current_matchday ? (
               <div className="rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-right">
@@ -494,62 +469,66 @@ export function SurvivorPageContent() {
             ) : null}
           </div>
 
-          <div className="mt-5 no-scrollbar overflow-x-auto pb-2 touch-pan-x">
-            <div className="flex min-w-max items-stretch gap-3">
-              {survivorJourneySlots.map((slot, index) => (
-                <div key={slot.matchdayNumber} className="flex items-center gap-3">
-                  <article
-                    className={`w-[148px] rounded-[20px] border px-4 py-4 ${
-                      slot.pick ? getSurvivorResultSurfaceClassName(slot.pick.result_status) : "border-white/[0.08] bg-white/[0.02]"
-                    } ${slot.isCurrent ? "ring-1 ring-coral/40" : ""}`}
-                  >
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-steel">
-                      J{slot.matchdayNumber}
-                    </p>
-                    {slot.pick ? (
-                      <>
-                        <div className="mt-3 flex items-center gap-2">
-                          {slot.pick.team_crest_url ? (
-                            <img
-                              src={slot.pick.team_crest_url}
-                              alt={slot.pick.team_name}
-                              className="h-10 w-10 rounded-full border border-white/10 bg-white object-cover"
-                            />
-                          ) : (
-                            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[10px] font-semibold text-ink">
-                              {slot.pick.team_short_name.slice(0, 3).toUpperCase()}
-                            </span>
-                          )}
-                          <div>
-                            <p className="font-semibold text-ink">{slot.pick.team_short_name}</p>
-                            <p className="text-[10px] text-steel">{slot.pick.opponent_team_short_name}</p>
-                          </div>
-                        </div>
-                        <div className="mt-4 flex items-center justify-between gap-2">
-                          <span className={getSurvivorResultPillClassName(slot.pick.result_status)}>
-                            {getSurvivorResultLabel(slot.pick.result_status)}
-                          </span>
-                          <span className={slot.pick.consumed_life ? "app-pill px-3 text-[10px] text-coral" : "app-pill px-3 text-[10px]"}>
-                            {slot.pick.consumed_life ? "Vida -" : "OK"}
-                          </span>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="mt-5 space-y-2">
-                        <p className="text-sm font-medium text-ink/70">{slot.isCurrent ? "Semana actual" : "Disponible"}</p>
-                        <p className="text-[11px] text-steel">
-                          {slot.isCurrent ? "Aqui se pinta el pick de esta jornada." : "Sin equipo usado todavia."}
+          <div className="mt-5 space-y-3">
+            {survivorJourneySlots.map((slot) => (
+              <article
+                key={slot.matchdayNumber}
+                className={`rounded-[18px] border px-4 py-4 ${
+                  slot.pick ? getSurvivorResultSurfaceClassName(slot.pick.result_status) : "border-white/[0.08] bg-white/[0.02]"
+                } ${slot.isCurrent ? "ring-1 ring-coral/40" : ""}`}
+              >
+                <div className="grid gap-3 md:grid-cols-[84px_minmax(0,1fr)_auto] md:items-center">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Jornada</p>
+                    <p className="mt-1 text-lg font-semibold text-ink">J{slot.matchdayNumber}</p>
+                  </div>
+
+                  {slot.pick ? (
+                    <div className="flex items-center gap-3">
+                      {slot.pick.team_crest_url ? (
+                        <img
+                          src={slot.pick.team_crest_url}
+                          alt={slot.pick.team_name}
+                          className="h-12 w-12 rounded-full border border-white/10 bg-white object-cover"
+                        />
+                      ) : (
+                        <span className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[11px] font-semibold text-ink">
+                          {slot.pick.team_short_name.slice(0, 3).toUpperCase()}
+                        </span>
+                      )}
+                      <div>
+                        <p className="font-semibold text-ink">{slot.pick.team_name}</p>
+                        <p className="text-sm text-steel">
+                          {slot.pick.team_short_name} vs {slot.pick.opponent_team_short_name}
                         </p>
                       </div>
-                    )}
-                  </article>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="font-medium text-ink/70">{slot.isCurrent ? "Semana actual" : "Sin pick"}</p>
+                      <p className="text-sm text-steel">
+                        {slot.isCurrent ? "Aun no capturas equipo para esta jornada." : "Todavia no hay equipo registrado aqui."}
+                      </p>
+                    </div>
+                  )}
 
-                  {index < survivorJourneySlots.length - 1 ? (
-                    <div className="h-[2px] w-8 rounded-full bg-gradient-to-r from-coral/35 via-white/20 to-cyan-300/35" />
-                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                    {slot.pick ? (
+                      <>
+                        <span className={getSurvivorResultPillClassName(slot.pick.result_status)}>
+                          {getSurvivorResultLabel(slot.pick.result_status)}
+                        </span>
+                        <span className={slot.pick.consumed_life ? "app-pill px-3 text-[10px] text-coral" : "app-pill px-3 text-[10px]"}>
+                          {slot.pick.consumed_life ? "Vida -" : "OK"}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="app-pill px-3 text-[10px]">{slot.isCurrent ? "Activa" : "Pendiente"}</span>
+                    )}
+                  </div>
                 </div>
-              ))}
-            </div>
+              </article>
+            ))}
           </div>
         </section>
       ) : null}
