@@ -10,7 +10,7 @@ import { PerformanceRaceChart } from "@/components/dashboard/performance-race-ch
 import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { buildVipDetailPath } from "@/lib/api/vip";
-import { filterMatchdaysBySeason, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, isSeasonArchived, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -882,6 +882,7 @@ export function DashboardHome() {
   const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
   const hasApprovedVipCompetition = approvedVipCompetitions.length > 0;
   const canViewRegularDashboard = Boolean(selectedSeasonMembership?.can_participate);
+  const selectableSeasons = state.seasons.filter((season) => !isSeasonArchived(season));
   const selectedVipIdFromView = dashboardDefaultView.startsWith("vip:") ? dashboardDefaultView.slice(4) : "";
   const selectedVipCompetition =
     approvedVipCompetitions.find((vip) => vip.id === selectedVipIdFromView) ??
@@ -1206,6 +1207,31 @@ export function DashboardHome() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+            {selectableSeasons.length > 1 ? (
+              <label className="hidden min-w-[220px] space-y-1 text-xs sm:block">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
+                  Temporada
+                </span>
+                <select
+                  value={state.selectedSeason?.id ?? ""}
+                  onChange={(event) => {
+                    const nextSeason = selectableSeasons.find((season) => season.id === event.target.value) ?? null;
+                    if (!nextSeason) {
+                      return;
+                    }
+                    setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
+                  }}
+                  className={dashboardSelectClass}
+                >
+                  {selectableSeasons.map((season) => (
+                    <option key={season.id} value={season.id}>
+                      {season.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
             {dashboardDefaultOptions.length > 1 ? (
               <label className="hidden min-w-[180px] space-y-1 text-xs sm:block">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
@@ -1241,23 +1267,51 @@ export function DashboardHome() {
           </div>
         </div>
 
-        {dashboardDefaultOptions.length > 1 ? (
-          <label className="mt-3 block space-y-1 text-xs sm:hidden">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
-              Vista dashboard
-            </span>
-            <select
-              value={dashboardDefaultValue}
-              onChange={(event) => handleDashboardDefaultViewChange(event.target.value)}
-              className={dashboardSelectClass}
-            >
-              {dashboardDefaultOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+        {selectableSeasons.length > 1 || dashboardDefaultOptions.length > 1 ? (
+          <div className="mt-3 grid gap-3 sm:hidden">
+            {selectableSeasons.length > 1 ? (
+              <label className="space-y-1 text-xs">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
+                  Temporada
+                </span>
+                <select
+                  value={state.selectedSeason?.id ?? ""}
+                  onChange={(event) => {
+                    const nextSeason = selectableSeasons.find((season) => season.id === event.target.value) ?? null;
+                    if (!nextSeason) {
+                      return;
+                    }
+                    setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
+                  }}
+                  className={dashboardSelectClass}
+                >
+                  {selectableSeasons.map((season) => (
+                    <option key={season.id} value={season.id}>
+                      {season.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {dashboardDefaultOptions.length > 1 ? (
+              <label className="space-y-1 text-xs">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
+                  Vista dashboard
+                </span>
+                <select
+                  value={dashboardDefaultValue}
+                  onChange={(event) => handleDashboardDefaultViewChange(event.target.value)}
+                  className={dashboardSelectClass}
+                >
+                  {dashboardDefaultOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
         ) : null}
       </section>
 
