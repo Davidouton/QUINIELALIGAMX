@@ -105,7 +105,8 @@ export function SurvivorPageContent() {
   useEffect(() => {
     async function load() {
       try {
-        const seasons = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        const seasonsResponse = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
         const resolvedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
         if (!resolvedSeason) {
           setSelectedSeason(null);
@@ -200,7 +201,8 @@ export function SurvivorPageContent() {
     setLoading(true);
     setError(null);
     try {
-      const seasons = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+      const seasonsResponse = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+      const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
       const resolvedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
       if (!resolvedSeason) {
         setSelectedSeason(null);

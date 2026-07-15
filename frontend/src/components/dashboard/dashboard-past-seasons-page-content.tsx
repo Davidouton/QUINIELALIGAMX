@@ -63,9 +63,10 @@ export function DashboardPastSeasonsPageContent() {
         setLoading(true);
         setError(null);
         const accessToken = await getBrowserAccessToken().catch(() => undefined);
-        const seasons = await backendFetch<Season[]>("/seasons", undefined, {
+        const seasonsResponse = await backendFetch<Season[]>("/seasons", undefined, {
           cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
         });
+        const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
         const me = accessToken
           ? await backendFetch<Me>("/me", accessToken, {
               cacheTtlMs: MATCHDAY_CACHE_TTL_MS,

@@ -93,7 +93,7 @@ export function DashboardSeasonSwitcher() {
     async function load() {
       try {
         const rows = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
-        setSeasons(rows);
+        setSeasons(Array.isArray(rows) ? rows : []);
       } catch {
         setSeasons([]);
       }

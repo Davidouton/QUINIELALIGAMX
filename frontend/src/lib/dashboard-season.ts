@@ -8,6 +8,14 @@ import type { Matchday, Season } from "@/types/api";
 const DASHBOARD_SEASON_PARAM = "season";
 const DASHBOARD_COMPETITION_PARAM = "competition";
 
+function asSeasonArray(seasons: Season[] | null | undefined) {
+  return Array.isArray(seasons) ? seasons : [];
+}
+
+function asMatchdayArray(matchdays: Matchday[] | null | undefined) {
+  return Array.isArray(matchdays) ? matchdays : [];
+}
+
 export function isSeasonLive(season: Season) {
   return season.visibility_status === "live";
 }
@@ -17,11 +25,11 @@ export function isSeasonArchived(season: Season) {
 }
 
 export function getLiveSeasons(seasons: Season[]) {
-  return seasons.filter((season) => isSeasonLive(season));
+  return asSeasonArray(seasons).filter((season) => isSeasonLive(season));
 }
 
 export function filterSeasonsByCompetition(seasons: Season[], competitionId: string) {
-  return seasons.filter((season) => {
+  return asSeasonArray(seasons).filter((season) => {
     if (isSeasonArchived(season)) {
       return false;
     }
@@ -37,11 +45,12 @@ export function resolveSeasonForContext(
   seasonId: string,
   competitionId: string,
 ) {
-  const explicitSeason = seasonId ? seasons.find((season) => season.id === seasonId) ?? null : null;
+  const safeSeasons = asSeasonArray(seasons);
+  const explicitSeason = seasonId ? safeSeasons.find((season) => season.id === seasonId) ?? null : null;
   if (explicitSeason && (!competitionId || explicitSeason.competition_id === competitionId)) {
     return explicitSeason;
   }
-  const scopedSeasons = filterSeasonsByCompetition(seasons, competitionId);
+  const scopedSeasons = filterSeasonsByCompetition(safeSeasons, competitionId);
   const liveSeasons = scopedSeasons.filter(isSeasonLive);
   const currentSeasons = scopedSeasons.filter((season) => !isSeasonArchived(season));
   return (
@@ -50,7 +59,7 @@ export function resolveSeasonForContext(
     currentSeasons.find((season) => season.is_active) ??
     currentSeasons[0] ??
     explicitSeason ??
-    seasons[0] ??
+    safeSeasons[0] ??
     null
   );
 }
@@ -59,10 +68,11 @@ export function resolveLiveSeason(
   seasons: Season[],
   seasonId: string,
 ) {
-  const liveSeasons = getLiveSeasons(seasons);
+  const safeSeasons = asSeasonArray(seasons);
+  const liveSeasons = getLiveSeasons(safeSeasons);
   const explicitLiveSeason = seasonId ? liveSeasons.find((season) => season.id === seasonId) ?? null : null;
-  const explicitSeason = seasonId ? seasons.find((season) => season.id === seasonId) ?? null : null;
-  const currentSeasons = seasons.filter((season) => !isSeasonArchived(season));
+  const explicitSeason = seasonId ? safeSeasons.find((season) => season.id === seasonId) ?? null : null;
+  const currentSeasons = safeSeasons.filter((season) => !isSeasonArchived(season));
 
   return (
     explicitLiveSeason ??
@@ -71,7 +81,7 @@ export function resolveLiveSeason(
     explicitSeason ??
     currentSeasons.find((season) => season.is_active) ??
     currentSeasons[0] ??
-    seasons[0] ??
+    safeSeasons[0] ??
     null
   );
 }
@@ -80,7 +90,7 @@ export function filterMatchdaysBySeason(matchdays: Matchday[], seasonId: string 
   if (!seasonId) {
     return [];
   }
-  return matchdays.filter((matchday) => matchday.season_id === seasonId);
+  return asMatchdayArray(matchdays).filter((matchday) => matchday.season_id === seasonId);
 }
 
 export function useDashboardSeasonParam() {
