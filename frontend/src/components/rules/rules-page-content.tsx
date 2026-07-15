@@ -1,20 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { backendFetch } from "@/lib/api/backend";
-import type { RulePage } from "@/types/api";
+import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
+import { isSeasonArchived, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { getBrowserAccessToken } from "@/lib/supabase/session";
+import type { RulePage, Season } from "@/types/api";
 
 export function RulesPageContent() {
+  const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
   const [rulePage, setRulePage] = useState<RulePage | null>(null);
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
-        const data = await backendFetch<RulePage>("/rules");
+        const accessToken = await getBrowserAccessToken().catch(() => undefined);
+        const seasonRows = await backendFetch<Season[]>("/seasons", accessToken, {
+          cacheTtlMs: CATALOG_CACHE_TTL_MS,
+        });
+        const resolvedSeason = resolveSeasonForContext(seasonRows, seasonIdParam, competitionId);
+        const seasonQuery = resolvedSeason?.id ? `?season_id=${resolvedSeason.id}` : "";
+        const data = await backendFetch<RulePage>(`/rules${seasonQuery}`, accessToken);
+        setSeasons(seasonRows);
+        setSelectedSeason(resolvedSeason);
         setRulePage(data);
+        if (resolvedSeason) {
+          const nextCompetitionId = resolvedSeason.competition_id ?? competitionId;
+          if (resolvedSeason.id !== seasonIdParam || nextCompetitionId !== competitionId) {
+            setSeasonId(resolvedSeason.id, nextCompetitionId);
+          }
+        }
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el reglamento");
       } finally {
@@ -23,7 +42,12 @@ export function RulesPageContent() {
     }
 
     void load();
-  }, []);
+  }, [competitionId, seasonIdParam, setSeasonId]);
+
+  const availableSeasons = useMemo(
+    () => seasons.filter((season) => !isSeasonArchived(season)),
+    [seasons],
+  );
 
   if (loading) {
     return <p className="text-sm text-steel">Cargando reglamento...</p>;
@@ -36,14 +60,44 @@ export function RulesPageContent() {
   return (
     <div className="space-y-6">
       <section>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold text-ink">{rulePage?.title || "Reglamento"}</h1>
-          {rulePage?.version_label && rulePage.version_label !== "Beta 1.3" ? (
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-ink">{rulePage?.title || "Reglamento"}</h1>
+            <p className="mt-1 text-sm text-steel">{rulePage?.season_name ?? selectedSeason?.name ?? "Reglamento general"}</p>
+          </div>
+          {availableSeasons.length > 1 ? (
+            <label className="w-full max-w-[360px] space-y-2 text-left text-sm">
+              <span className="text-steel">Temporada</span>
+              <select
+                value={selectedSeason?.id ?? ""}
+                onChange={(event) => {
+                  const nextSeason = availableSeasons.find((season) => season.id === event.target.value) ?? null;
+                  if (!nextSeason) {
+                    return;
+                  }
+                  setLoading(true);
+                  setError(null);
+                  setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
+                }}
+                className="field-control"
+                disabled={loading}
+              >
+                {availableSeasons.map((season) => (
+                  <option key={season.id} value={season.id}>
+                    {season.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+        {rulePage?.version_label ? (
+          <div className="mt-3">
             <span className="app-pill h-9 px-3 text-[10px] uppercase tracking-[0.2em] text-steel">
               {rulePage.version_label}
             </span>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="px-1 py-1 sm:px-3">

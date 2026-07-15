@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { RulePage } from "@/types/api";
+import type { RulePage, Season } from "@/types/api";
 
 type FormState = {
   title: string;
@@ -20,14 +20,17 @@ const initialForm: FormState = {
 
 export function AdminRulesPanel() {
   const [form, setForm] = useState<FormState>(initialForm);
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function loadRulePage() {
+  async function loadRulePage(seasonId?: string) {
     const accessToken = await getBrowserAccessToken();
-    const data = await backendFetch<RulePage>("/admin/rules", accessToken);
+    const suffix = seasonId ? `?season_id=${seasonId}` : "";
+    const data = await backendFetch<RulePage>(`/admin/rules${suffix}`, accessToken);
     setForm({
       title: data.title,
       version_label: data.version_label ?? "",
@@ -35,10 +38,19 @@ export function AdminRulesPanel() {
     });
   }
 
+  async function loadPanel(nextSeasonId?: string) {
+    const accessToken = await getBrowserAccessToken();
+    const seasonRows = await backendFetch<Season[]>("/seasons", accessToken);
+    const targetSeasonId = nextSeasonId ?? seasonRows.find((season) => season.is_active)?.id ?? seasonRows[0]?.id ?? "";
+    setSeasons(seasonRows);
+    setSelectedSeasonId(targetSeasonId);
+    await loadRulePage(targetSeasonId);
+  }
+
   useEffect(() => {
     async function load() {
       try {
-        await loadRulePage();
+        await loadPanel();
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el reglamento");
       } finally {
@@ -51,13 +63,17 @@ export function AdminRulesPanel() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!selectedSeasonId) {
+      setError("Selecciona una temporada para editar su reglamento.");
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
 
     try {
       const accessToken = await getBrowserAccessToken();
-      await backendFetch<RulePage>("/admin/rules", accessToken, {
+      await backendFetch<RulePage>(`/admin/rules?season_id=${encodeURIComponent(selectedSeasonId)}`, accessToken, {
         method: "PUT",
         body: JSON.stringify({
           title: form.title,
@@ -65,8 +81,9 @@ export function AdminRulesPanel() {
           content_markdown: form.content_markdown,
         }),
       });
-      await loadRulePage();
-      setMessage("Reglamento actualizado.");
+      await loadRulePage(selectedSeasonId);
+      const selectedSeason = seasons.find((season) => season.id === selectedSeasonId);
+      setMessage(`Reglamento actualizado para ${selectedSeason?.name ?? "la temporada"}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el reglamento");
     } finally {
@@ -80,14 +97,33 @@ export function AdminRulesPanel() {
         <div>
           <h2 className="text-xl font-semibold text-ink">Editor de reglamento</h2>
           <p className="mt-1 max-w-2xl text-sm text-steel">
-            Aqui puedes pegar y actualizar el reglamento vivo que vera todo el torneo.
+            Aqui puedes pegar y actualizar reglamentos distintos por torneo.
           </p>
         </div>
 
         {loading ? <p className="mt-5 text-sm text-steel">Cargando reglamento...</p> : null}
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+          <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)_220px]">
+            <select
+              value={selectedSeasonId}
+              onChange={(event) => {
+                const nextSeasonId = event.target.value;
+                setSelectedSeasonId(nextSeasonId);
+                setLoading(true);
+                setError(null);
+                setMessage(null);
+                void loadRulePage(nextSeasonId).finally(() => setLoading(false));
+              }}
+              className="field-control"
+              disabled={loading || seasons.length === 0}
+            >
+              {seasons.map((season) => (
+                <option key={season.id} value={season.id}>
+                  {season.name}
+                </option>
+              ))}
+            </select>
             <input
               value={form.title}
               onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}

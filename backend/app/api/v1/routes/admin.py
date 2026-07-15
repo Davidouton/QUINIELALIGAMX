@@ -111,6 +111,7 @@ from app.schemas.vip import (
     AdminVipTeamWinnerTeamStatusRequest,
     AdminVipUpsertRequest,
 )
+from app.api.v1.routes.rules import build_rule_page_out, get_or_create_rule_page
 from app.services.match_service import MatchService
 from app.services.pick_service import PickService
 from app.services.result_service import ResultService
@@ -2289,20 +2290,22 @@ def delete_trophy_asset(
 
 @router.get("/rules", response_model=RulePageOut)
 def get_admin_rules_page(
+    season_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> RulePageOut:
-    row = get_or_create_main_rule_page(db)
-    return RulePageOut.model_validate(row, from_attributes=True)
+    row = get_or_create_rule_page(db, season_id)
+    return build_rule_page_out(db, row)
 
 
 @router.put("/rules", response_model=RulePageOut)
 def update_admin_rules_page(
     payload: RulePageUpdateRequest,
+    season_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> RulePageOut:
-    row = get_or_create_main_rule_page(db)
+    row = get_or_create_rule_page(db, season_id)
     row.title = payload.title.strip()
     row.content_markdown = payload.content_markdown.strip()
     row.version_label = payload.version_label.strip() if payload.version_label and payload.version_label.strip() else None
@@ -2310,7 +2313,7 @@ def update_admin_rules_page(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return RulePageOut.model_validate(row, from_attributes=True)
+    return build_rule_page_out(db, row)
 
 
 @router.post("/matchdays", response_model=MatchdayOut, status_code=201)

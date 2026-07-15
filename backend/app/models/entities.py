@@ -1208,6 +1208,12 @@ class RulePage(Base):
 
     id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
     slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    season_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("seasons.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(String(160), nullable=False, default="Reglamento")
     content_markdown: Mapped[str] = mapped_column(Text, nullable=False, default="")
     version_label: Mapped[str | None] = mapped_column(String(60))

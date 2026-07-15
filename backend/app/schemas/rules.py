@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 class RulePageOut(BaseModel):
     id: str
     slug: str
+    season_id: str | None = None
+    season_name: str | None = None
     title: str
     content_markdown: str
     version_label: str | None = None

@@ -1186,6 +1186,8 @@ export interface PersonalTrophyRecord {
 export interface RulePage {
   id: string;
   slug: string;
+  season_id: string | null;
+  season_name: string | null;
   title: string;
   content_markdown: string;
   version_label: string | null;

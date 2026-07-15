@@ -1345,6 +1345,7 @@ def run_startup_migrations() -> None:
                     CREATE TABLE IF NOT EXISTS rules_pages (
                       id UUID PRIMARY KEY,
                       slug VARCHAR(80) NOT NULL UNIQUE,
+                      season_id UUID REFERENCES seasons(id) ON DELETE CASCADE,
                       title VARCHAR(160) NOT NULL DEFAULT 'Reglamento',
                       content_markdown TEXT NOT NULL DEFAULT '',
                       version_label VARCHAR(60),
@@ -1361,15 +1362,31 @@ def run_startup_migrations() -> None:
                     "ON rules_pages(slug)"
                 )
             )
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_pages_season_unique "
+                    "ON rules_pages(season_id) WHERE season_id IS NOT NULL"
+                )
+            )
         else:
             rules_column_names = {column["name"] for column in inspector.get_columns("rules_pages")}
             missing_rules_columns = {
+                "season_id": (
+                    "ALTER TABLE rules_pages "
+                    "ADD COLUMN season_id UUID REFERENCES seasons(id) ON DELETE CASCADE"
+                ),
                 "version_label": "ALTER TABLE rules_pages ADD COLUMN version_label VARCHAR(60)",
                 "updated_by_profile_id": "ALTER TABLE rules_pages ADD COLUMN updated_by_profile_id UUID",
             }
             for column_name, statement in missing_rules_columns.items():
                 if column_name not in rules_column_names:
                     connection.execute(text(statement))
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_pages_season_unique "
+                    "ON rules_pages(season_id) WHERE season_id IS NOT NULL"
+                )
+            )
 
         connection.execute(
             text(
