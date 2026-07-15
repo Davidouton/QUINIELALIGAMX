@@ -12,6 +12,7 @@ type SeasonFormState = {
   competition_id: string;
   tournament_format: TournamentFormat;
   visibility_status: SeasonVisibilityStatus;
+  live_dashboard_enabled: boolean;
   is_active: boolean;
   survivor_enabled: boolean;
   survivor_name: string;
@@ -25,6 +26,7 @@ const initialSeasonForm: SeasonFormState = {
   competition_id: "",
   tournament_format: "standard",
   visibility_status: "live",
+  live_dashboard_enabled: false,
   is_active: false,
   survivor_enabled: false,
   survivor_name: "",
@@ -118,6 +120,7 @@ export function AdminSeasonsPanel() {
           competition_id: season.competition_id,
           tournament_format: season.tournament_format,
           visibility_status: season.visibility_status,
+          live_dashboard_enabled: season.live_dashboard_enabled,
           is_active: true,
           survivor_enabled: season.survivor_enabled,
           survivor_name: season.survivor_name,
@@ -216,6 +219,16 @@ export function AdminSeasonsPanel() {
           <label className="flex items-center gap-3 text-sm text-ink">
             <input
               type="checkbox"
+              checked={seasonForm.live_dashboard_enabled}
+              onChange={(event) =>
+                setSeasonForm((current) => ({ ...current, live_dashboard_enabled: event.target.checked }))
+              }
+            />
+            Mostrar en tab Live
+          </label>
+          <label className="flex items-center gap-3 text-sm text-ink">
+            <input
+              type="checkbox"
               checked={seasonForm.is_active}
               onChange={(event) =>
                 setSeasonForm((current) => ({ ...current, is_active: event.target.checked }))
@@ -300,11 +313,12 @@ export function AdminSeasonsPanel() {
               <col className="w-[180px]" />
               <col className="w-[200px]" />
               <col className="w-[110px]" />
-              <col className="w-[130px]" />
-              <col className="w-[130px]" />
-              <col className="w-[110px]" />
-              <col className="w-[110px]" />
-              <col className="w-[190px]" />
+            <col className="w-[130px]" />
+            <col className="w-[130px]" />
+            <col className="w-[110px]" />
+            <col className="w-[110px]" />
+            <col className="w-[110px]" />
+            <col className="w-[190px]" />
             </colgroup>
             <thead className="app-table-head">
               <tr>
@@ -314,6 +328,7 @@ export function AdminSeasonsPanel() {
                 <th className="px-3 py-3">Formato</th>
                 <th className="px-3 py-3">Survivor</th>
                 <th className="px-3 py-3">Visibilidad</th>
+                <th className="px-3 py-3">Tab Live</th>
                 <th className="px-3 py-3">Default</th>
                 <th className="px-3 py-3">Acciones</th>
               </tr>
@@ -339,6 +354,7 @@ export function AdminSeasonsPanel() {
                         ? "Closed"
                         : "Archived"}
                   </td>
+                  <td className="px-3 py-3 text-steel">{season.live_dashboard_enabled ? "Si" : "No"}</td>
                   <td className="px-3 py-3 text-steel">{season.is_active ? "Si" : "No"}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2 whitespace-nowrap">
@@ -352,6 +368,7 @@ export function AdminSeasonsPanel() {
                             competition_id: season.competition_id ?? "",
                             tournament_format: season.tournament_format,
                             visibility_status: season.visibility_status,
+                            live_dashboard_enabled: season.live_dashboard_enabled,
                             is_active: season.is_active,
                             survivor_enabled: season.survivor_enabled,
                             survivor_name: season.survivor_name ?? "",

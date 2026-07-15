@@ -318,6 +318,7 @@ class SeasonCreateRequest(BaseModel):
     competition_id: str | None = None
     tournament_format: TournamentFormat = TournamentFormat.STANDARD
     visibility_status: SeasonVisibilityStatus = SeasonVisibilityStatus.LIVE
+    live_dashboard_enabled: bool = False
     is_active: bool = False
     survivor_enabled: bool = False
     survivor_name: str | None = Field(default=None, max_length=160)

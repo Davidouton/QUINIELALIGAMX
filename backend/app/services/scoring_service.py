@@ -278,6 +278,233 @@ class ScoringService:
             "weekly_awards": weekly_awards,
         }
 
+    def recalculate_matchday(self, db: Session, matchday_id: str) -> dict[str, int]:
+        matchday = db.get(Matchday, matchday_id)
+        if matchday is None:
+            return {
+                "evaluated_picks": 0,
+                "weekly_leaders": 0,
+                "weekly_awards": 0,
+            }
+
+        season = db.get(Season, matchday.season_id)
+        if season is None:
+            return {
+                "evaluated_picks": 0,
+                "weekly_leaders": 0,
+                "weekly_awards": 0,
+            }
+
+        self.eligibility_service.freeze_season_if_due(db, season)
+        rules = self._load_rules(db)
+        competition = db.get(Competition, season.competition_id) if season.competition_id is not None else None
+        is_nfl_match = self._is_nfl_competition(competition)
+
+        eligible_profile_ids = [
+            membership.profile_id
+            for membership in self.membership_repo.list_for_season(db, season.id)
+            if self.eligibility_service.counts_for_scoring(db, season, membership)
+        ]
+        eligible_profile_id_set = set(eligible_profile_ids)
+
+        db.execute(delete(PickPoint).where(PickPoint.matchday_id == matchday_id))
+
+        rows = db.execute(
+            select(UserPick, MatchResult, Match)
+            .join(Match, Match.id == UserPick.match_id)
+            .join(MatchResult, MatchResult.match_id == Match.id)
+            .where(
+                Match.matchday_id == matchday_id,
+                MatchResult.is_official.is_(True),
+            )
+        ).all()
+
+        matchday_agg: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"total_points": 0, "correct_results": 0, "exact_scores": 0}
+        )
+        evaluated_picks = 0
+
+        for pick, result, match in rows:
+            if pick.profile_id not in eligible_profile_id_set:
+                continue
+
+            evaluated_picks += 1
+            result_points, exact_points, advancing_points, spread_points = self._calculate_pick_points(
+                pick=pick,
+                result=result,
+                match=match,
+                season=season,
+                is_nfl_match=is_nfl_match,
+                rules=rules,
+            )
+            total_points = result_points + exact_points + advancing_points + spread_points
+
+            db.add(
+                PickPoint(
+                    pick_id=pick.id,
+                    profile_id=pick.profile_id,
+                    match_id=match.id,
+                    matchday_id=match.matchday_id,
+                    result_points=result_points,
+                    exact_score_points=exact_points,
+                    advancing_team_points=advancing_points,
+                    spread_points=spread_points,
+                    total_points=total_points,
+                )
+            )
+
+            bucket = matchday_agg[pick.profile_id]
+            bucket["total_points"] += total_points
+            bucket["correct_results"] += 1 if result_points else 0
+            bucket["exact_scores"] += 1 if exact_points else 0
+
+        weekly_leaders, weekly_awards = self._rebuild_matchday_standings(
+            db,
+            season=season,
+            matchday=matchday,
+            eligible_profile_ids=eligible_profile_ids,
+            matchday_agg=matchday_agg,
+            has_official_results=bool(rows),
+        )
+        self._rebuild_overall_standings_for_season(
+            db,
+            season=season,
+            eligible_profile_ids=eligible_profile_ids,
+        )
+
+        db.commit()
+        return {
+            "evaluated_picks": evaluated_picks,
+            "weekly_leaders": weekly_leaders,
+            "weekly_awards": weekly_awards,
+        }
+
+    def recalculate_season(self, db: Session, season_id: str) -> dict[str, int]:
+        season = db.get(Season, season_id)
+        if season is None:
+            return {
+                "evaluated_picks": 0,
+                "weekly_leaders": 0,
+                "weekly_awards": 0,
+            }
+
+        matchdays = list(
+            db.scalars(
+                select(Matchday)
+                .where(Matchday.season_id == season.id)
+                .order_by(Matchday.number.asc())
+            )
+        )
+        matchday_ids = [matchday.id for matchday in matchdays]
+        if not matchday_ids:
+            db.execute(delete(StandingsOverall).where(StandingsOverall.season_id == season.id))
+            db.commit()
+            return {
+                "evaluated_picks": 0,
+                "weekly_leaders": 0,
+                "weekly_awards": 0,
+            }
+
+        self.eligibility_service.freeze_season_if_due(db, season)
+        rules = self._load_rules(db)
+        competition = db.get(Competition, season.competition_id) if season.competition_id is not None else None
+        is_nfl_match = self._is_nfl_competition(competition)
+        eligible_profile_ids = [
+            membership.profile_id
+            for membership in self.membership_repo.list_for_season(db, season.id)
+            if self.eligibility_service.counts_for_scoring(db, season, membership)
+        ]
+        eligible_profile_id_set = set(eligible_profile_ids)
+
+        db.execute(delete(PickPoint).where(PickPoint.matchday_id.in_(matchday_ids)))
+        db.execute(delete(StandingsMatchday).where(StandingsMatchday.matchday_id.in_(matchday_ids)))
+        db.execute(delete(WeeklyLeader).where(WeeklyLeader.matchday_id.in_(matchday_ids)))
+        db.execute(
+            delete(ProfileTrophyAward).where(
+                ProfileTrophyAward.source_type == "weekly_matchday",
+                ProfileTrophyAward.matchday_id.in_(matchday_ids),
+            )
+        )
+        db.execute(delete(StandingsOverall).where(StandingsOverall.season_id == season.id))
+
+        rows = db.execute(
+            select(UserPick, MatchResult, Match)
+            .join(Match, Match.id == UserPick.match_id)
+            .join(MatchResult, MatchResult.match_id == Match.id)
+            .where(
+                Match.matchday_id.in_(matchday_ids),
+                MatchResult.is_official.is_(True),
+            )
+        ).all()
+
+        matchday_agg_by_matchday: dict[str, dict[str, dict[str, int]]] = defaultdict(
+            lambda: defaultdict(lambda: {"total_points": 0, "correct_results": 0, "exact_scores": 0})
+        )
+        official_matchday_ids: set[str] = set()
+        evaluated_picks = 0
+
+        for pick, result, match in rows:
+            official_matchday_ids.add(match.matchday_id)
+            if pick.profile_id not in eligible_profile_id_set:
+                continue
+
+            evaluated_picks += 1
+            result_points, exact_points, advancing_points, spread_points = self._calculate_pick_points(
+                pick=pick,
+                result=result,
+                match=match,
+                season=season,
+                is_nfl_match=is_nfl_match,
+                rules=rules,
+            )
+            total_points = result_points + exact_points + advancing_points + spread_points
+
+            db.add(
+                PickPoint(
+                    pick_id=pick.id,
+                    profile_id=pick.profile_id,
+                    match_id=match.id,
+                    matchday_id=match.matchday_id,
+                    result_points=result_points,
+                    exact_score_points=exact_points,
+                    advancing_team_points=advancing_points,
+                    spread_points=spread_points,
+                    total_points=total_points,
+                )
+            )
+
+            bucket = matchday_agg_by_matchday[match.matchday_id][pick.profile_id]
+            bucket["total_points"] += total_points
+            bucket["correct_results"] += 1 if result_points else 0
+            bucket["exact_scores"] += 1 if exact_points else 0
+
+        weekly_leaders = 0
+        weekly_awards = 0
+        for matchday in matchdays:
+            matchday_agg = matchday_agg_by_matchday.get(matchday.id, {})
+            matchday_weekly_leaders, matchday_weekly_awards = self._rebuild_matchday_standings(
+                db,
+                season=season,
+                matchday=matchday,
+                eligible_profile_ids=eligible_profile_ids,
+                matchday_agg=matchday_agg,
+                has_official_results=matchday.id in official_matchday_ids,
+            )
+            weekly_leaders += matchday_weekly_leaders
+            weekly_awards += matchday_weekly_awards
+
+        self._rebuild_overall_standings_for_season(
+            db,
+            season=season,
+            eligible_profile_ids=eligible_profile_ids,
+        )
+        db.commit()
+        return {
+            "evaluated_picks": evaluated_picks,
+            "weekly_leaders": weekly_leaders,
+            "weekly_awards": weekly_awards,
+        }
+
     @staticmethod
     def calculate_prize_shares(
         ranked_rows: list[tuple[str, int]],
@@ -338,6 +565,206 @@ class ScoringService:
             "advancing_team": stored_rules.get("advancing_team", 1),
             "spread_correct": stored_rules.get("spread_correct", 3),
         }
+
+    def _calculate_pick_points(
+        self,
+        *,
+        pick: UserPick,
+        result: MatchResult,
+        match: Match,
+        season: Season,
+        is_nfl_match: bool,
+        rules: dict[str, int],
+    ) -> tuple[int, int, int, int]:
+        winner = self._resolve_winner(result.home_score, result.away_score)
+        result_points = rules["result_correct"] if pick.selection == winner else 0
+        exact_points = 0
+        if not is_nfl_match:
+            exact_points = (
+                rules["exact_score"]
+                if pick.predicted_home_score == result.home_score
+                and pick.predicted_away_score == result.away_score
+                else 0
+            )
+        advancing_points = (
+            rules["advancing_team"]
+            if season.tournament_format == TournamentFormat.WORLD_CUP
+            and match.stage_type.value not in {"regular", "group"}
+            and pick.advancing_team_id is not None
+            and pick.advancing_team_id == result.advancing_team_id
+            else 0
+        )
+        spread_points = 0
+        if is_nfl_match:
+            spread_points = self._calculate_spread_points(
+                result.home_score,
+                result.away_score,
+                pick.spread_selection,
+                pick.spread_line_value,
+                rules["spread_correct"],
+            )
+        return result_points, exact_points, advancing_points, spread_points
+
+    def _rebuild_matchday_standings(
+        self,
+        db: Session,
+        *,
+        season: Season,
+        matchday: Matchday,
+        eligible_profile_ids: list[str],
+        matchday_agg: dict[str, dict[str, int]],
+        has_official_results: bool,
+    ) -> tuple[int, int]:
+        db.execute(delete(StandingsMatchday).where(StandingsMatchday.matchday_id == matchday.id))
+        db.execute(delete(WeeklyLeader).where(WeeklyLeader.matchday_id == matchday.id))
+        db.execute(
+            delete(ProfileTrophyAward).where(
+                ProfileTrophyAward.source_type == "weekly_matchday",
+                ProfileTrophyAward.matchday_id == matchday.id,
+            )
+        )
+
+        if not has_official_results:
+            return 0, 0
+
+        empty_bucket = {"total_points": 0, "correct_results": 0, "exact_scores": 0}
+        for profile_id in eligible_profile_ids:
+            matchday_agg.setdefault(profile_id, empty_bucket.copy())
+
+        rows_for_matchday = list(matchday_agg.items())
+        rows_for_matchday.sort(
+            key=lambda item: (-item[1]["total_points"], -item[1]["exact_scores"], item[0])
+        )
+        ranked_rows = self._apply_competition_ranks(rows_for_matchday)
+
+        trophy_assets = list(
+            db.scalars(
+                select(TrophyAsset).where(
+                    TrophyAsset.matchday_number == matchday.number,
+                    TrophyAsset.award_place_label.is_not(None),
+                )
+            )
+        )
+        season_specific_trophy_asset_map: dict[tuple[str, int, str], TrophyAsset] = {}
+        generic_trophy_asset_map: dict[tuple[int, str], TrophyAsset] = {}
+        for trophy_asset in trophy_assets:
+            if trophy_asset.season_id:
+                season_specific_trophy_asset_map[
+                    (trophy_asset.season_id, trophy_asset.matchday_number, trophy_asset.award_place_label)
+                ] = trophy_asset
+            else:
+                generic_trophy_asset_map[(trophy_asset.matchday_number, trophy_asset.award_place_label)] = trophy_asset
+
+        weekly_leaders = 0
+        weekly_awards = 0
+        weekly_leader_recorded = False
+        for profile_id, values, position in ranked_rows:
+            db.add(
+                StandingsMatchday(
+                    matchday_id=matchday.id,
+                    profile_id=profile_id,
+                    total_points=values["total_points"],
+                    correct_results=values["correct_results"],
+                    exact_scores=values["exact_scores"],
+                    rank_position=position,
+                )
+            )
+            if position == 1 and not weekly_leader_recorded:
+                db.add(
+                    WeeklyLeader(
+                        matchday_id=matchday.id,
+                        profile_id=profile_id,
+                        total_points=values["total_points"],
+                    )
+                )
+                weekly_leader_recorded = True
+                weekly_leaders += 1
+
+            place_label = self._rank_to_place_label(position)
+            if place_label is None:
+                continue
+            badge_asset = season_specific_trophy_asset_map.get((matchday.season_id, matchday.number, place_label))
+            if badge_asset is None:
+                badge_asset = generic_trophy_asset_map.get((matchday.number, place_label))
+            if badge_asset is None:
+                continue
+            db.add(
+                ProfileTrophyAward(
+                    profile_id=profile_id,
+                    trophy_asset_id=badge_asset.id,
+                    season_id=matchday.season_id,
+                    matchday_id=matchday.id,
+                    tournament_name=season.name,
+                    place_label=place_label,
+                    total_points=values["total_points"],
+                    source_type="weekly_matchday",
+                )
+            )
+            weekly_awards += 1
+
+        return weekly_leaders, weekly_awards
+
+    def _rebuild_overall_standings_for_season(
+        self,
+        db: Session,
+        *,
+        season: Season,
+        eligible_profile_ids: list[str],
+    ) -> None:
+        db.execute(delete(StandingsOverall).where(StandingsOverall.season_id == season.id))
+
+        has_official_results = bool(
+            db.execute(
+                select(MatchResult.id)
+                .join(Match, Match.id == MatchResult.match_id)
+                .join(Matchday, Matchday.id == Match.matchday_id)
+                .where(
+                    Matchday.season_id == season.id,
+                    MatchResult.is_official.is_(True),
+                )
+                .limit(1)
+            ).first()
+        )
+        if not has_official_results:
+            return
+
+        empty_bucket = {"total_points": 0, "correct_results": 0, "exact_scores": 0}
+        season_agg: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"total_points": 0, "correct_results": 0, "exact_scores": 0}
+        )
+        point_rows = db.scalars(
+            select(PickPoint)
+            .join(Matchday, Matchday.id == PickPoint.matchday_id)
+            .where(Matchday.season_id == season.id)
+        ).all()
+        eligible_profile_id_set = set(eligible_profile_ids)
+        for row in point_rows:
+            if row.profile_id not in eligible_profile_id_set:
+                continue
+            bucket = season_agg[row.profile_id]
+            bucket["total_points"] += row.total_points
+            bucket["correct_results"] += 1 if row.result_points else 0
+            bucket["exact_scores"] += 1 if row.exact_score_points else 0
+
+        for profile_id in eligible_profile_ids:
+            season_agg.setdefault(profile_id, empty_bucket.copy())
+
+        rows_for_season = list(season_agg.items())
+        rows_for_season.sort(
+            key=lambda item: (-item[1]["total_points"], -item[1]["exact_scores"], item[0])
+        )
+        ranked_rows = self._apply_competition_ranks(rows_for_season)
+        for profile_id, values, position in ranked_rows:
+            db.add(
+                StandingsOverall(
+                    season_id=season.id,
+                    profile_id=profile_id,
+                    total_points=values["total_points"],
+                    correct_results=values["correct_results"],
+                    exact_scores=values["exact_scores"],
+                    rank_position=position,
+                )
+            )
 
     def _is_nfl_competition(self, competition: Competition | None) -> bool:
         if competition is None:

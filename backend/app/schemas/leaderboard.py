@@ -1,4 +1,8 @@
-from pydantic import BaseModel
+from datetime import datetime
+
+from pydantic import BaseModel, field_serializer
+
+from app.core.datetime import ensure_utc
 
 
 class LeaderboardEntry(BaseModel):
@@ -71,3 +75,59 @@ class HallOfFameResponse(BaseModel):
     points: list[HallOfFameEntry] = []
     weekly_wins: list[HallOfFameEntry] = []
     exact_scores: list[HallOfFameEntry] = []
+
+
+class LiveLeaderboardEntry(BaseModel):
+    profile_id: str
+    display_name: str
+    role_code: str
+    total_points: int
+    correct_results: int
+    exact_scores: int
+    rank_position: int
+    official_rank_position: int | None = None
+    official_total_points: int = 0
+    live_matchday_points: int = 0
+    points_delta: int = 0
+    rank_delta: int = 0
+
+
+class LiveMatchScoreOut(BaseModel):
+    match_id: str
+    matchday_id: str
+    matchday_name: str
+    kickoff_at: datetime
+    match_status: str
+    home_team_name: str
+    home_team_crest_url: str | None = None
+    away_team_name: str
+    away_team_crest_url: str | None = None
+    home_score: int | None = None
+    away_score: int | None = None
+    is_official: bool = False
+    updated_at: datetime | None = None
+
+    @field_serializer("kickoff_at", "updated_at")
+    def serialize_datetimes(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return ensure_utc(value).isoformat().replace("+00:00", "Z")
+
+
+class LiveLeaderboardResponse(BaseModel):
+    enabled: bool = False
+    season_id: str | None = None
+    season_name: str | None = None
+    matchday_id: str | None = None
+    matchday_name: str | None = None
+    is_official: bool = False
+    refresh_interval_seconds: int = 20
+    updated_at: datetime | None = None
+    leaderboard: list[LiveLeaderboardEntry] = []
+    matches: list[LiveMatchScoreOut] = []
+
+    @field_serializer("updated_at")
+    def serialize_updated_at(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return ensure_utc(value).isoformat().replace("+00:00", "Z")

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_profile
 from app.core.database import get_db
 from app.models.entities import Profile
-from app.schemas.leaderboard import HallOfFameResponse, LeaderboardEntry, MyMatchdayPointsEntry, PerformanceRaceResponse
+from app.schemas.leaderboard import HallOfFameResponse, LeaderboardEntry, LiveLeaderboardResponse, MyMatchdayPointsEntry, PerformanceRaceResponse
 from app.services.leaderboard_service import LeaderboardService
 
 router = APIRouter()
@@ -33,6 +33,15 @@ def get_matchday_leaderboard(
     db: Session = Depends(get_db),
 ) -> list[LeaderboardEntry]:
     return service.list_matchday(db, matchday_id)
+
+
+@router.get("/leaderboard/live", response_model=LiveLeaderboardResponse)
+def get_live_leaderboard(
+    season_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _: Profile = Depends(get_current_profile),
+) -> LiveLeaderboardResponse:
+    return service.get_live_leaderboard(db, season_id=season_id)
 
 
 @router.get("/leaderboard/my-matchdays", response_model=list[MyMatchdayPointsEntry])

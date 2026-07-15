@@ -15,6 +15,7 @@ class SeasonOut(BaseModel):
     competition_sport_name: str | None = None
     tournament_format: TournamentFormat = TournamentFormat.STANDARD
     visibility_status: SeasonVisibilityStatus = SeasonVisibilityStatus.LIVE
+    live_dashboard_enabled: bool = False
     is_active: bool
     survivor_enabled: bool = False
     survivor_name: str | None = None

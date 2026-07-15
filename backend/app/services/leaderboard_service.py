@@ -1,12 +1,19 @@
+from collections import defaultdict
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.entities import HistoricalChampion, Matchday, Profile, Season, SeasonVisibilityStatus, StandingsMatchday, StandingsOverall, TrophyAsset
+from app.core.datetime import ensure_utc
+from app.models.entities import Competition, HistoricalChampion, Match, MatchResult, Matchday, PickSelection, Profile, Season, SeasonVisibilityStatus, StandingsMatchday, StandingsOverall, Team, TournamentFormat, UserPick, TrophyAsset
 from app.repositories.leaderboard_repository import LeaderboardRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.leaderboard import (
     HallOfFameEntry,
     HallOfFameResponse,
+    LiveLeaderboardEntry,
+    LiveLeaderboardResponse,
+    LiveMatchScoreOut,
     HallOfFameTournamentPodium,
     LeaderboardEntry,
     MyMatchdayPointsEntry,
@@ -416,6 +423,172 @@ class LeaderboardService:
             exact_scores=exact_scores,
         )
 
+    def get_live_leaderboard(self, db: Session, season_id: str | None = None) -> LiveLeaderboardResponse:
+        season = self._resolve_season(db, season_id)
+        if season is None:
+            return LiveLeaderboardResponse()
+
+        matchdays = list(
+            db.scalars(
+                select(Matchday)
+                .where(Matchday.season_id == season.id)
+                .order_by(Matchday.number.asc())
+            )
+        )
+        live_matchday = self._resolve_live_matchday(matchdays)
+        official_entries = self.list_overall(db, season_id=season.id)
+        official_by_profile_id = {entry.profile_id: entry for entry in official_entries}
+
+        memberships = self.membership_repo.list_for_season(db, season.id)
+        eligible_profile_ids = {
+            membership.profile_id
+            for membership in memberships
+            if self.eligibility_service.counts_for_scoring(db, season, membership)
+        }
+        if not eligible_profile_ids:
+            return LiveLeaderboardResponse(
+                enabled=season.live_dashboard_enabled,
+                season_id=season.id,
+                season_name=season.name,
+                matchday_id=live_matchday.id if live_matchday is not None else None,
+                matchday_name=live_matchday.name if live_matchday is not None else None,
+                leaderboard=[],
+                matches=[],
+            )
+
+        profiles = {
+            profile.id: profile
+            for profile in db.scalars(select(Profile).where(Profile.id.in_(eligible_profile_ids)))
+        }
+        teams = {
+            team.id: team
+            for team in db.scalars(select(Team).where(Team.id.in_(self._load_season_team_ids(db, season.id))))
+        }
+        competition = db.get(Competition, season.competition_id) if season.competition_id is not None else None
+        rules = ScoringService()._load_rules(db)
+        is_nfl_competition = self._is_nfl_competition(competition)
+
+        totals_by_profile: dict[str, dict[str, int]] = {
+            profile_id: {"total_points": 0, "correct_results": 0, "exact_scores": 0, "live_matchday_points": 0}
+            for profile_id in eligible_profile_ids
+            if profile_id in profiles
+        }
+        updated_at: datetime | None = None
+
+        rows = db.execute(
+            select(UserPick, Match, MatchResult)
+            .join(Match, Match.id == UserPick.match_id)
+            .join(Matchday, Matchday.id == Match.matchday_id)
+            .join(MatchResult, MatchResult.match_id == Match.id)
+            .where(
+                Matchday.season_id == season.id,
+                MatchResult.home_score.is_not(None),
+                MatchResult.away_score.is_not(None),
+            )
+            .order_by(Match.kickoff_at.asc())
+        ).all()
+
+        for pick, match, result in rows:
+            if pick.profile_id not in totals_by_profile:
+                continue
+
+            score = self._score_pick(
+                pick=pick,
+                match=match,
+                result=result,
+                season=season,
+                is_nfl_competition=is_nfl_competition,
+                rules=rules,
+            )
+            bucket = totals_by_profile[pick.profile_id]
+            bucket["total_points"] += score["total_points"]
+            bucket["correct_results"] += score["correct_results"]
+            bucket["exact_scores"] += score["exact_scores"]
+            if live_matchday is not None and match.matchday_id == live_matchday.id:
+                bucket["live_matchday_points"] += score["total_points"]
+
+            result_updated_at = result.updated_at or result.last_synced_at or result.source_updated_at
+            if result_updated_at is not None and (updated_at is None or result_updated_at > updated_at):
+                updated_at = result_updated_at
+
+        sorted_rows = sorted(
+            [
+                (profile_id, values, profiles[profile_id])
+                for profile_id, values in totals_by_profile.items()
+                if profile_id in profiles
+            ],
+            key=lambda item: (-item[1]["total_points"], -item[1]["exact_scores"], item[2].display_name.lower()),
+        )
+        leaderboard: list[LiveLeaderboardEntry] = []
+        previous_points: int | None = None
+        previous_rank = 0
+        for index, (profile_id, values, profile) in enumerate(sorted_rows, start=1):
+            if previous_points is None or values["total_points"] != previous_points:
+                previous_rank = index
+                previous_points = values["total_points"]
+            official_entry = official_by_profile_id.get(profile_id)
+            official_rank = official_entry.rank_position if official_entry is not None else None
+            leaderboard.append(
+                LiveLeaderboardEntry(
+                    profile_id=profile_id,
+                    display_name=profile.display_name,
+                    role_code=profile.role_code.value,
+                    total_points=values["total_points"],
+                    correct_results=values["correct_results"],
+                    exact_scores=values["exact_scores"],
+                    rank_position=previous_rank,
+                    official_rank_position=official_rank,
+                    official_total_points=official_entry.total_points if official_entry is not None else 0,
+                    live_matchday_points=values["live_matchday_points"],
+                    points_delta=values["total_points"] - (official_entry.total_points if official_entry is not None else 0),
+                    rank_delta=(official_rank - previous_rank) if official_rank is not None else 0,
+                )
+            )
+
+        matches: list[LiveMatchScoreOut] = []
+        if live_matchday is not None:
+            live_match_rows = db.execute(
+                select(Match, MatchResult)
+                .outerjoin(MatchResult, MatchResult.match_id == Match.id)
+                .where(Match.matchday_id == live_matchday.id)
+                .order_by(Match.kickoff_at.asc())
+            ).all()
+            for match, result in live_match_rows:
+                home_team = teams.get(match.home_team_id)
+                away_team = teams.get(match.away_team_id)
+                result_updated_at = result.updated_at if result is not None else None
+                if result_updated_at is not None and (updated_at is None or result_updated_at > updated_at):
+                    updated_at = result_updated_at
+                matches.append(
+                    LiveMatchScoreOut(
+                        match_id=match.id,
+                        matchday_id=match.matchday_id,
+                        matchday_name=live_matchday.name,
+                        kickoff_at=match.kickoff_at,
+                        match_status=match.status.value,
+                        home_team_name=home_team.name if home_team is not None else match.home_placeholder or "Local",
+                        home_team_crest_url=home_team.crest_url if home_team is not None else None,
+                        away_team_name=away_team.name if away_team is not None else match.away_placeholder or "Visitante",
+                        away_team_crest_url=away_team.crest_url if away_team is not None else None,
+                        home_score=result.home_score if result is not None else None,
+                        away_score=result.away_score if result is not None else None,
+                        is_official=bool(result.is_official) if result is not None else False,
+                        updated_at=result_updated_at,
+                    )
+                )
+
+        return LiveLeaderboardResponse(
+            enabled=season.live_dashboard_enabled,
+            season_id=season.id,
+            season_name=season.name,
+            matchday_id=live_matchday.id if live_matchday is not None else None,
+            matchday_name=live_matchday.name if live_matchday is not None else None,
+            is_official=False,
+            updated_at=updated_at,
+            leaderboard=leaderboard,
+            matches=matches,
+        )
+
     def _overall_entries(self, rows: list[tuple[StandingsOverall, Profile]]) -> list[LeaderboardEntry]:
         sorted_rows = sorted(
             rows,
@@ -494,6 +667,94 @@ class LeaderboardService:
             cumulative_points=cumulative_points,
             weekly_prize_amount=weekly_prize_amount,
         )
+
+    def _resolve_live_matchday(self, matchdays: list[Matchday]) -> Matchday | None:
+        if not matchdays:
+            return None
+        active = next((matchday for matchday in matchdays if matchday.status.value == "active"), None)
+        if active is not None:
+            return active
+        now = datetime.now(UTC)
+        started_matchdays = [matchday for matchday in matchdays if ensure_utc(matchday.starts_at) <= now]
+        if started_matchdays:
+            return started_matchdays[-1]
+        return matchdays[0]
+
+    def _load_season_team_ids(self, db: Session, season_id: str) -> set[str]:
+        team_ids: set[str] = set()
+        match_rows = db.execute(
+            select(Match.home_team_id, Match.away_team_id)
+            .join(Matchday, Matchday.id == Match.matchday_id)
+            .where(Matchday.season_id == season_id)
+        ).all()
+        for home_team_id, away_team_id in match_rows:
+            if home_team_id is not None:
+                team_ids.add(home_team_id)
+            if away_team_id is not None:
+                team_ids.add(away_team_id)
+        return team_ids
+
+    def _score_pick(
+        self,
+        *,
+        pick: UserPick,
+        match: Match,
+        result: MatchResult,
+        season: Season,
+        is_nfl_competition: bool,
+        rules: dict[str, int],
+    ) -> dict[str, int]:
+        winner = self._resolve_winner(result.home_score, result.away_score)
+        result_points = rules["result_correct"] if pick.selection == winner else 0
+        exact_points = 0
+        if not is_nfl_competition:
+            exact_points = (
+                rules["exact_score"]
+                if pick.predicted_home_score == result.home_score and pick.predicted_away_score == result.away_score
+                else 0
+            )
+        advancing_points = (
+            rules["advancing_team"]
+            if season.tournament_format == TournamentFormat.WORLD_CUP
+            and match.stage_type.value not in {"regular", "group"}
+            and pick.advancing_team_id is not None
+            and pick.advancing_team_id == result.advancing_team_id
+            else 0
+        )
+        spread_points = 0
+        if is_nfl_competition:
+            spread_points = ScoringService()._calculate_spread_points(
+                result.home_score,
+                result.away_score,
+                pick.spread_selection,
+                pick.spread_line_value,
+                rules["spread_correct"],
+            )
+        return {
+            "total_points": result_points + exact_points + advancing_points + spread_points,
+            "correct_results": 1 if result_points else 0,
+            "exact_scores": 1 if exact_points else 0,
+        }
+
+    def _is_nfl_competition(self, competition: Competition | None) -> bool:
+        if competition is None:
+            return False
+        haystack = " ".join(
+            [
+                competition.slug or "",
+                competition.name or "",
+                competition.sport_name or "",
+            ]
+        ).lower()
+        return "nfl" in haystack or "football" in haystack
+
+    @staticmethod
+    def _resolve_winner(home_score: int, away_score: int) -> PickSelection:
+        if home_score > away_score:
+            return PickSelection.HOME
+        if away_score > home_score:
+            return PickSelection.AWAY
+        return PickSelection.DRAW
 
     def _resolve_season(self, db: Session, season_id: str | None) -> Season | None:
         if season_id:

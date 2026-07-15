@@ -1121,6 +1121,50 @@ export interface DashboardHomeBundle {
   pick_results: PickResultRow[];
 }
 
+export interface LiveLeaderboardEntry {
+  profile_id: string;
+  display_name: string;
+  role_code: string;
+  total_points: number;
+  correct_results: number;
+  exact_scores: number;
+  rank_position: number;
+  official_rank_position: number | null;
+  official_total_points: number;
+  live_matchday_points: number;
+  points_delta: number;
+  rank_delta: number;
+}
+
+export interface LiveMatchScore {
+  match_id: string;
+  matchday_id: string;
+  matchday_name: string;
+  kickoff_at: string;
+  match_status: string;
+  home_team_name: string;
+  home_team_crest_url: string | null;
+  away_team_name: string;
+  away_team_crest_url: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  is_official: boolean;
+  updated_at: string | null;
+}
+
+export interface LiveLeaderboardResponse {
+  enabled: boolean;
+  season_id: string | null;
+  season_name: string | null;
+  matchday_id: string | null;
+  matchday_name: string | null;
+  is_official: boolean;
+  refresh_interval_seconds: number;
+  updated_at: string | null;
+  leaderboard: LiveLeaderboardEntry[];
+  matches: LiveMatchScore[];
+}
+
 export interface HallOfFameEntry {
   profile_id: string;
   display_name: string;
@@ -1216,6 +1260,7 @@ export interface Season {
   competition_sport_name: string | null;
   tournament_format: TournamentFormat;
   visibility_status: SeasonVisibilityStatus;
+  live_dashboard_enabled: boolean;
   is_active: boolean;
   survivor_enabled: boolean;
   survivor_name: string | null;

@@ -202,6 +202,7 @@ class Season(Base):
         nullable=False,
         index=True,
     )
+    live_dashboard_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     survivor_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     survivor_name: Mapped[str | None] = mapped_column(String(160))

@@ -116,6 +116,9 @@ def run_startup_migrations() -> None:
                 "visibility_status": (
                     "ALTER TABLE seasons ADD COLUMN visibility_status VARCHAR(24) NOT NULL DEFAULT 'live'"
                 ),
+                "live_dashboard_enabled": (
+                    "ALTER TABLE seasons ADD COLUMN live_dashboard_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
                 "survivor_enabled": (
                     "ALTER TABLE seasons ADD COLUMN survivor_enabled BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
@@ -165,6 +168,9 @@ def run_startup_migrations() -> None:
             )
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS idx_seasons_visibility_status ON seasons(visibility_status)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_seasons_live_dashboard_enabled ON seasons(live_dashboard_enabled)")
             )
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_seasons_competition_id ON seasons(competition_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_seasons_survivor_enabled ON seasons(survivor_enabled)"))

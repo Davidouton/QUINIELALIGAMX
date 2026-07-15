@@ -201,7 +201,7 @@ def run_vip_recalculate_for_matchday_background(matchday_id: str) -> None:
 def run_scoring_and_vip_recalculate_for_matchday_background(matchday_id: str) -> None:
     db = SessionLocal()
     try:
-        ScoringService().recalculate(db)
+        ScoringService().recalculate_matchday(db, matchday_id)
         recalculate_vips_for_matchday(db, matchday_id)
     finally:
         db.close()
@@ -970,6 +970,7 @@ def build_season_out(row: Season, competition: Competition | None = None) -> Sea
         competition_sport_name=competition.sport_name if competition is not None else None,
         tournament_format=row.tournament_format,
         visibility_status=row.visibility_status,
+        live_dashboard_enabled=row.live_dashboard_enabled,
         is_active=row.is_active,
         survivor_enabled=row.survivor_enabled,
         survivor_name=row.survivor_name,
@@ -1877,13 +1878,33 @@ def update_admin_settings(
     season.second_place_pct = Decimal(str(payload.second_place_pct))
     season.third_place_pct = Decimal(str(payload.third_place_pct))
 
+    stored_rule_values = {
+        rule.rule_key: rule.points
+        for rule in db.scalars(
+            select(ScoringRule).where(
+                ScoringRule.rule_key.in_(["result_correct", "exact_score", "advancing_team"]),
+                ScoringRule.is_active.is_(True),
+            )
+        )
+    }
+    scoring_rules_changed = any(
+        [
+            stored_rule_values.get("result_correct", DEFAULT_RESULT_CORRECT_POINTS) != payload.result_correct_points,
+            stored_rule_values.get("exact_score", DEFAULT_EXACT_SCORE_POINTS) != payload.exact_score_points,
+            stored_rule_values.get("advancing_team", 1) != payload.advancing_team_points,
+        ]
+    )
+
     if set_active:
         set_active_season(db, season)
     season_repo.save(db, season)
     upsert_scoring_rule(db, "result_correct", payload.result_correct_points)
     upsert_scoring_rule(db, "exact_score", payload.exact_score_points)
     upsert_scoring_rule(db, "advancing_team", payload.advancing_team_points)
-    recalculate_summary = ScoringService().recalculate(db)
+    if scoring_rules_changed:
+        recalculate_summary = ScoringService().recalculate(db)
+    else:
+        recalculate_summary = ScoringService().recalculate_season(db, season.id)
     return get_admin_settings_payload(
         db,
         season_id=season.id,
@@ -1909,6 +1930,7 @@ def create_season(
             competition_id=competition.id if competition is not None else None,
             tournament_format=payload.tournament_format,
             visibility_status=payload.visibility_status,
+            live_dashboard_enabled=payload.live_dashboard_enabled,
             is_active=payload.is_active,
             survivor_enabled=payload.survivor_enabled,
             survivor_name=normalize_optional_text(payload.survivor_name),
@@ -1943,6 +1965,7 @@ def update_season(
     season.competition_id = competition.id if competition is not None else None
     season.tournament_format = payload.tournament_format
     season.visibility_status = payload.visibility_status
+    season.live_dashboard_enabled = payload.live_dashboard_enabled
     season.is_active = payload.is_active
     season.survivor_enabled = payload.survivor_enabled
     season.survivor_name = normalize_optional_text(payload.survivor_name)
