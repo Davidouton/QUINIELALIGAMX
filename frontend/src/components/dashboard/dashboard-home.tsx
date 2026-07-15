@@ -955,10 +955,12 @@ export function DashboardHome() {
   const dashboardDefaultValue = dashboardDefaultOptions.some((option) => option.value === dashboardDefaultView)
     ? dashboardDefaultView
     : dashboardDefaultOptions[0]?.value ?? "regular";
+  const selectedVipLeaderboard = selectedVipCompetition?.leaderboard ?? [];
   const myVipEntry =
-    selectedVipCompetition?.leaderboard.find((entry) => entry.profile_id === state.me?.id) ?? null;
+    selectedVipLeaderboard.find((entry) => entry.profile_id === state.me?.id) ?? null;
   const vipMatchdayPoints = selectedVipCompetition?.matchday_points ?? [];
   const vipPerformanceRace = selectedVipCompetition?.performance_race ?? null;
+  const vipMatchdaysCount = selectedVipCompetition?.matchdays?.length ?? 0;
   const vipCompletedMatchdays = vipPerformanceRace?.completed_matchdays ?? vipMatchdayPoints.length;
   const vipAverage =
     vipCompletedMatchdays > 0 ? ((myVipEntry?.total_points ?? 0) / vipCompletedMatchdays).toFixed(1) : "0.0";
@@ -1101,7 +1103,7 @@ export function DashboardHome() {
                 <span className="sm:hidden">pts</span>
                 <span className="hidden sm:inline">
                   {isVipDashboardContext
-                    ? `${selectedVipCompetition?.matchdays.length ?? 0} jornadas que cuentan`
+                    ? `${vipMatchdaysCount} jornadas que cuentan`
                     : "Puntos proyectados al cierre"}
                 </span>
               </p>
