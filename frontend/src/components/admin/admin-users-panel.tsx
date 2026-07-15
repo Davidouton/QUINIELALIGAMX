@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { getThemePreferenceLabel } from "@/lib/theme/app-theme";
 import type { AdminUser, Me, Season } from "@/types/api";
@@ -110,6 +111,24 @@ function normalizeBillingModality(modality: string | null | undefined) {
 
 function normalizeBillingAvalProfileId(modality: string, avalProfileId: string | null | undefined) {
   return modality === "aval" ? (avalProfileId ?? "").trim() : "";
+}
+
+function getDownloadFilename(contentDisposition: string | null, fallback: string) {
+  const match = contentDisposition?.match(/filename="?([^";]+)"?/i);
+  return match?.[1] ?? fallback;
+}
+
+function getDownloadErrorMessage(errorText: string) {
+  if (!errorText) return "No se pudo descargar el archivo.";
+  try {
+    const parsed = JSON.parse(errorText) as { detail?: unknown };
+    if (typeof parsed.detail === "string") {
+      return parsed.detail;
+    }
+  } catch {
+    // Keep raw backend text when it is not JSON.
+  }
+  return errorText;
 }
 
 export function AdminUsersPanel() {
@@ -523,6 +542,31 @@ export function AdminUsersPanel() {
     }
   }
 
+  async function handleDeleteUser(user: AdminUser) {
+    const confirmed = window.confirm(
+      `Vas a borrar a ${user.display_name}. Esta accion elimina su acceso y sus membresias ligadas. Deseas continuar?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setSavingKey(`delete:${user.id}`);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch<void>(`/admin/users/${user.id}`, accessToken, {
+        method: "DELETE",
+      });
+      await loadUsers(selectedSeasonId, accessToken);
+      setMessage(`${user.display_name}: usuario borrado.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo borrar el usuario");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
   async function handleBulkImport() {
     if (!selectedSeasonId) {
       setError("Selecciona un torneo primero.");
@@ -558,6 +602,52 @@ export function AdminUsersPanel() {
       );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo importar el CSV");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function handleDownloadMembershipExport() {
+    if (!selectedSeasonId) {
+      setError("Selecciona un torneo primero.");
+      return;
+    }
+
+    setSavingKey("export-users");
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const response = await fetch(
+        `${env.apiBaseUrl}/admin/users/export?season_id=${encodeURIComponent(selectedSeasonId)}`,
+        {
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+          cache: "no-store",
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(getDownloadErrorMessage(await response.text()));
+      }
+
+      const blob = await response.blob();
+      const fallbackSeasonName =
+        selectedSeason?.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "torneo";
+      const filename = getDownloadFilename(
+        response.headers.get("content-disposition"),
+        `membresias-${fallbackSeasonName}.csv`,
+      );
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      setMessage(`Se descargo el archivo de membresias de ${selectedSeason?.name ?? "la temporada"}.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo descargar el archivo");
     } finally {
       setSavingKey(null);
     }
@@ -620,6 +710,14 @@ export function AdminUsersPanel() {
             <span className="text-xs text-steel">
               {dirtyBillingCount} cambio{dirtyBillingCount === 1 ? "" : "s"} de cobro pendiente{dirtyBillingCount === 1 ? "" : "s"}
             </span>
+            <button
+              type="button"
+              onClick={() => void handleDownloadMembershipExport()}
+              disabled={savingKey === "export-users" || !selectedSeasonId || loading}
+              className={actionNeutralClass}
+            >
+              {savingKey === "export-users" ? "Bajando..." : "Descargar Excel"}
+            </button>
             <button
               type="button"
               onClick={() => void handleSaveBillingBatch()}
@@ -1061,6 +1159,15 @@ export function AdminUsersPanel() {
                             title="Guardar modalidad de cobro"
                           >
                             {savingKey === `billing:${user.id}` ? "..." : "Guardar cobro"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteUser(user)}
+                            disabled={savingKey === `delete:${user.id}` || me?.id === user.id}
+                            className={actionDangerClass}
+                            title={me?.id === user.id ? "No te puedes borrar a ti mismo" : "Borrar usuario"}
+                          >
+                            {savingKey === `delete:${user.id}` ? "..." : "Borrar"}
                           </button>
                         </div>
                       </td>

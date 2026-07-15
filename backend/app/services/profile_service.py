@@ -227,8 +227,7 @@ class ProfileService:
 
             membership_changed = False
             if not membership.is_active:
-                membership.is_active = True
-                membership_changed = True
+                continue
             if membership.activated_at is None:
                 membership.activated_at = now
                 membership_changed = True

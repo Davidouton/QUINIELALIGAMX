@@ -97,3 +97,11 @@ class SupabaseAdminService:
                 json=payload,
             )
         self._raise_for_error(response)
+
+    def delete_user(self, *, auth_user_id: str) -> None:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.delete(
+                self._auth_url(f"/admin/users/{auth_user_id}"),
+                headers=self._headers(),
+            )
+        self._raise_for_error(response)

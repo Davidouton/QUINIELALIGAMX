@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from pydantic import ValidationError
 from sqlalchemy import delete, func, inspect, select, text
 from sqlalchemy.orm import Session
@@ -1024,6 +1024,8 @@ def set_active_season(db: Session, season_to_activate: Season) -> None:
 
 def set_active_matchday(db: Session, matchday_to_activate: Matchday) -> None:
     for matchday in matchday_repo.list_matchdays(db):
+        if matchday.season_id != matchday_to_activate.season_id:
+            continue
         if matchday.id == matchday_to_activate.id:
             matchday.status = MatchdayStatus.ACTIVE
         elif matchday.status == MatchdayStatus.ACTIVE:
@@ -1313,6 +1315,15 @@ def list_admin_user_out_rows(
     ]
 
 
+def _slugify_export_part(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "temporada"
+
+
+def _format_csv_bool(value: bool | None, true_label: str, false_label: str) -> str:
+    return true_label if value else false_label
+
+
 @router.get("/users", response_model=list[AdminUserOut])
 def list_users(
     season_id: str | None = None,
@@ -1326,6 +1337,83 @@ def list_users(
             db.commit()
             db.refresh(season)
     return list_admin_user_out_rows(db, profile_repo.list_all(db), season)
+
+
+@router.get("/users/export")
+def export_users(
+    season_id: str | None = None,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> Response:
+    season = get_selected_season(db, season_id)
+    if season is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+
+    did_freeze = season_eligibility_service.freeze_season_if_due(db, season)
+    if did_freeze:
+        db.commit()
+        db.refresh(season)
+
+    users = list_admin_user_out_rows(db, profile_repo.list_all(db), season)
+    csv_buffer = io.StringIO()
+    writer = csv.writer(csv_buffer)
+    writer.writerow(
+        [
+            "temporada",
+            "usuario_id",
+            "usuario",
+            "correo",
+            "rol",
+            "app",
+            "alta_torneo",
+            "pagado",
+            "puntua",
+            "modalidad",
+            "aval",
+            "equipo_favorito",
+            "telefono",
+            "banco",
+            "cuenta_deposito",
+            "activado_en",
+            "bloqueo_puntaje_en",
+            "notas",
+        ]
+    )
+    for user in users:
+        membership = user.selected_season_membership
+        writer.writerow(
+            [
+                season.name,
+                user.id,
+                user.display_name,
+                user.email or "",
+                user.role_code,
+                _format_csv_bool(user.is_active, "Activa", "Bloqueada"),
+                _format_csv_bool(membership.is_active if membership is not None else False, "Alta", "Fuera"),
+                _format_csv_bool(membership.is_paid if membership is not None else False, "Pagado", "Pendiente"),
+                _format_csv_bool(
+                    membership.eligible_for_scoring if membership is not None else False,
+                    "Cuenta",
+                    "No",
+                ),
+                user.modality or "pre_pago",
+                user.aval_display_name or "",
+                user.favorite_team_name or "",
+                user.contact_phone or "",
+                user.bank_name or "",
+                user.deposit_account or "",
+                membership.activated_at.isoformat() if membership and membership.activated_at else "",
+                membership.eligible_locked_at.isoformat() if membership and membership.eligible_locked_at else "",
+                membership.notes if membership and membership.notes else "",
+            ]
+        )
+
+    filename = f"membresias-{_slugify_export_part(season.name)}.csv"
+    return Response(
+        content="\ufeff" + csv_buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 def _get_csv_value(row: dict[str, str | None], *keys: str) -> str | None:
@@ -1625,6 +1713,51 @@ def update_user_password(
 
     season = get_selected_season(db)
     return build_admin_user_out(db, profile, season)
+
+
+@router.delete("/users/{profile_id}")
+def delete_user(
+    profile_id: str,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> dict[str, bool]:
+    profile = profile_repo.get_by_id(db, profile_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if profile.id == current_profile.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No te puedes borrar a ti mismo desde este panel",
+        )
+
+    if current_profile.role_code != RoleCode.MASTER_ADMIN and profile.role_code == RoleCode.MASTER_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un super admin puede borrar esta cuenta",
+        )
+
+    if profile.role_code in {RoleCode.ADMIN, RoleCode.MASTER_ADMIN}:
+        admin_count = db.scalar(
+            select(func.count())
+            .select_from(Profile)
+            .where(Profile.role_code.in_([RoleCode.ADMIN, RoleCode.MASTER_ADMIN]))
+        ) or 0
+        if int(admin_count) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No puedes borrar al ultimo admin de la app",
+            )
+
+    if profile.auth_user_id:
+        try:
+            supabase_admin_service.delete_user(auth_user_id=profile.auth_user_id)
+        except SupabaseAdminError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db.delete(profile)
+    db.commit()
+    return {"ok": True}
 
 
 @router.put("/users/{profile_id}/season-membership", response_model=AdminUserOut)
