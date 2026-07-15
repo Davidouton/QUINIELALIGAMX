@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { AdvancedStatsPanel } from "@/components/dashboard/advanced-stats-panel";
+import { DashboardRuntimeBoundary } from "@/components/dashboard/dashboard-runtime-boundary";
 import { MatchdayPointsTable } from "@/components/dashboard/matchday-points-table";
 import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { PerformanceRaceChart } from "@/components/dashboard/performance-race-chart";
@@ -1097,7 +1098,8 @@ export function DashboardHome() {
   function renderGeneralWidget(widgetId: DashboardWidgetId) {
     if (widgetId === "summary") {
       return (
-        <section key={widgetId}>
+        <DashboardRuntimeBoundary key={widgetId} title="Resumen">
+        <section>
           <div className="grid grid-cols-5 gap-1 md:grid-cols-2 md:gap-3 xl:grid-cols-5">
             <div className={summaryTileClass}>
               <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
@@ -1164,28 +1166,34 @@ export function DashboardHome() {
             </div>
           </div>
         </section>
+        </DashboardRuntimeBoundary>
       );
     }
 
     if (widgetId === "performance") {
       return (
-        <section key={widgetId}>
+        <DashboardRuntimeBoundary key={widgetId} title="Performance">
+        <section>
           <PerformanceRaceChart race={activePerformanceRace} userLabel={state.me?.display_name ?? "Tu desempeno"} />
         </section>
+        </DashboardRuntimeBoundary>
       );
     }
 
     if (widgetId === "matchday_points") {
       return (
-        <section key={widgetId}>
+        <DashboardRuntimeBoundary key={widgetId} title="Puntos por jornada">
+        <section>
           <MatchdayPointsTable rows={activeMatchdayPoints} />
         </section>
+        </DashboardRuntimeBoundary>
       );
     }
 
     if (widgetId === "prize_summary") {
       return (
-        <section key={widgetId} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+        <DashboardRuntimeBoundary key={widgetId} title="Premios">
+        <section className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-steel">Premios</p>
@@ -1210,12 +1218,14 @@ export function DashboardHome() {
             </div>
           </div>
         </section>
+        </DashboardRuntimeBoundary>
       );
     }
 
     if (widgetId === "upcoming") {
       return (
-        <section key={widgetId} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+        <DashboardRuntimeBoundary key={widgetId} title="Proximos juegos">
+        <section className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-steel">Agenda</p>
@@ -1252,12 +1262,14 @@ export function DashboardHome() {
             <p className="mt-4 text-sm text-steel">No encontramos una siguiente jornada lista para mostrar aqui.</p>
           )}
         </section>
+        </DashboardRuntimeBoundary>
       );
     }
 
     if (widgetId === "memberships") {
       return (
-        <section key={widgetId} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+        <DashboardRuntimeBoundary key={widgetId} title="Membresias">
+        <section className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-steel">Membresias</p>
@@ -1303,6 +1315,7 @@ export function DashboardHome() {
             </div>
           </div>
         </section>
+        </DashboardRuntimeBoundary>
       );
     }
 
