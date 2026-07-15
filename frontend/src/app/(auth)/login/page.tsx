@@ -82,15 +82,15 @@ export default function LoginPage() {
                 <span className="text-sm font-semibold text-night">WC</span>
               )}
             </div>
-            <div className="flex h-20 min-w-[5.5rem] items-center justify-center rounded-[24px] border border-white/12 bg-white/[0.04] px-4 shadow-[0_16px_40px_rgba(0,0,0,0.18)]">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white p-1 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
               {env.ligaMxLogoUrl ? (
                 <img
                   src={env.ligaMxLogoUrl}
                   alt="Liga MX"
-                  className="h-12 w-auto object-contain"
+                  className="h-full w-full object-contain"
                 />
               ) : (
-                <span className="text-base font-semibold tracking-[0.08em] text-ink">Liga MX</span>
+                <span className="text-[10px] font-semibold tracking-[0.08em] text-night">LMX</span>
               )}
             </div>
           </div>

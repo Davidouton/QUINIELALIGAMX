@@ -7,6 +7,7 @@ import { AdvancedStatsPanel } from "@/components/dashboard/advanced-stats-panel"
 import { MatchdayPointsTable } from "@/components/dashboard/matchday-points-table";
 import { PickResultsTable } from "@/components/dashboard/pick-results-table";
 import { PerformanceRaceChart } from "@/components/dashboard/performance-race-chart";
+import { SurvivorPageContent } from "@/components/survivor/survivor-page-content";
 import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { buildVipDetailPath } from "@/lib/api/vip";
@@ -60,7 +61,7 @@ type DashboardState = {
   error: string | null;
 };
 
-type DashboardTab = "general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios";
+type DashboardTab = "general" | "jornada" | "proximos" | "survivor" | "probabilidades" | "advanced" | "premios";
 type DashboardDefaultView = "regular" | `vip:${string}`;
 type DashboardLeagueOption = {
   value: string;
@@ -994,6 +995,16 @@ export function DashboardHome() {
   const activePresetId =
     DASHBOARD_WIDGET_PRESETS.find((preset) => areWidgetListsEqual(preset.widgetIds, dashboardWidgetDraft))?.id ?? null;
   const hasDashboardWidgetChanges = !areWidgetListsEqual(dashboardWidgetDraft, effectiveDashboardWidgetIds);
+  const canShowSurvivorDashboardTab = Boolean(
+    isSurvivorAvailableForSeason(state.selectedSeason) &&
+    (state.selectedSeason?.tournament_format === "standard" || survivorMembershipSummary),
+  );
+
+  useEffect(() => {
+    if (activeTab === "survivor" && !canShowSurvivorDashboardTab) {
+      setActiveTab("general");
+    }
+  }, [activeTab, canShowSurvivorDashboardTab]);
 
   function handleLeagueChange(nextLeagueValue: string) {
     const nextLeague = leagueOptions.find((option) => option.value === nextLeagueValue) ?? null;
@@ -1010,6 +1021,7 @@ export function DashboardHome() {
     { id: "general", label: "General" },
     { id: "jornada", label: "Jornada" },
     { id: "proximos", label: "Proximos juegos" },
+    ...(canShowSurvivorDashboardTab ? [{ id: "survivor" as DashboardTab, label: "Survivor" }] : []),
     { id: "probabilidades", label: "Probabilidades" },
     { id: "advanced", label: "E. Avanzadas" },
     { id: "premios", label: "Premios" },
@@ -1619,6 +1631,8 @@ export function DashboardHome() {
             ) : null}
           </div>
         </section>
+      ) : activeTab === "survivor" ? (
+        <SurvivorPageContent />
       ) : activeTab === "probabilidades" ? (
         <section className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
