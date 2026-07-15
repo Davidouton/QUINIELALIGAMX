@@ -14,6 +14,7 @@ import type { Season } from "@/types/api";
 
 const baseLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
+  { href: "/dashboard/live", label: "Live", shortLabel: "Live" },
   { href: "/dashboard/survivor", label: "Survivor", shortLabel: "Sur" },
   { href: "/dashboard/world-cup", label: "Mundial", shortLabel: "WC" },
   { href: "/dashboard", label: "Dashboard" },

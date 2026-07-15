@@ -31,6 +31,16 @@ function formatSignedNumber(value: number) {
   return String(value);
 }
 
+function formatMovementLabel(value: number) {
+  if (value > 0) {
+    return `↑ ${value}`;
+  }
+  if (value < 0) {
+    return `↓ ${Math.abs(value)}`;
+  }
+  return "→ 0";
+}
+
 function renderScore(homeScore: number | null, awayScore: number | null) {
   if (homeScore === null || awayScore === null) {
     return "-";
@@ -112,6 +122,12 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
     () => state.matches.some((match) => match.home_score !== null && match.away_score !== null),
     [state.matches],
   );
+  const movementIndex = useMemo(() => {
+    const up = state.leaderboard.filter((entry) => entry.rank_delta > 0).length;
+    const down = state.leaderboard.filter((entry) => entry.rank_delta < 0).length;
+    const same = state.leaderboard.length - up - down;
+    return { up, down, same };
+  }, [state.leaderboard]);
 
   if (!season) {
     return <p className="text-sm text-steel">Selecciona un torneo para ver la quiniela al momento.</p>;
@@ -139,13 +155,61 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
 
   return (
     <section className="space-y-5">
+      <div className="rounded-[24px] border border-white/10 bg-white/[0.02] p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.28em] text-steel">Marcadores del dia</p>
+            <p className="mt-1 text-sm text-steel">
+              {state.matchday_name ? `Actualizando juegos de ${state.matchday_name}.` : "Marcadores del corte actual."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-steel">
+            <span className="app-pill px-3 text-[10px]">Suben {movementIndex.up}</span>
+            <span className="app-pill px-3 text-[10px]">Bajan {movementIndex.down}</span>
+            <span className="app-pill px-3 text-[10px]">Igual {movementIndex.same}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-w-max gap-3">
+            {state.matches.map((match) => (
+              <article
+                key={match.match_id}
+                className="min-w-[240px] rounded-[18px] border border-white/8 bg-white/[0.03] px-4 py-3"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-steel">
+                    {formatMexicoCityDateTime(match.kickoff_at)}
+                  </p>
+                  <span
+                    className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                      match.is_official ? "border-emerald-400/30 text-emerald-300" : "border-white/10 text-[#ff7b9a]"
+                    }`}
+                  >
+                    {match.is_official ? "Oficial" : "Live"}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                  <p className="text-sm font-semibold text-ink">{match.home_team_name}</p>
+                  <p className="text-base font-semibold text-ink">{renderScore(match.home_score, match.away_score)}</p>
+                  <p className="text-right text-sm font-semibold text-ink">{match.away_team_name}</p>
+                </div>
+              </article>
+            ))}
+            {state.matches.length === 0 ? (
+              <p className="text-sm text-steel">Aun no hay partidos disponibles para esta vista live.</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-[24px] border border-[#ff5f8740] bg-[#ff5f8710] p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-[#ff7b9a]">Live</p>
             <h2 className="mt-2 text-lg font-semibold text-ink">Quiniela al momento</h2>
             <p className="mt-2 text-sm text-steel">
-              Ranking provisional de {state.matchday_name ?? season.name}. No mueve la tabla oficial.
+              Ranking provisional de {state.matchday_name ?? season.name}. Admin mueve marcadores desde resultados y aqui ves el impacto al momento.
             </p>
           </div>
           <div className="space-y-1 text-sm text-steel lg:text-right">
@@ -183,7 +247,7 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
                   <th className="px-3 py-3">Pts</th>
                   <th className="px-3 py-3">+ Jornada</th>
                   <th className="px-3 py-3">Oficial</th>
-                  <th className="px-3 py-3">Mov</th>
+                  <th className="px-3 py-3">Indice</th>
                   <th className="px-3 py-3">Exactos</th>
                 </tr>
               </thead>
@@ -199,8 +263,19 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
                     <td className="px-3 py-3 text-steel">
                       {entry.official_rank_position ? `#${entry.official_rank_position}` : "-"}
                     </td>
-                    <td className={`px-3 py-3 font-semibold ${entry.rank_delta > 0 ? "text-emerald-300" : entry.rank_delta < 0 ? "text-coral" : "text-steel"}`}>
-                      {entry.rank_delta === 0 ? "-" : formatSignedNumber(entry.rank_delta)}
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-steel">
+                          {entry.official_rank_position ? `#${entry.official_rank_position} -> #${entry.rank_position}` : `#${entry.rank_position}`}
+                        </span>
+                        <span
+                          className={`font-semibold ${
+                            entry.rank_delta > 0 ? "text-emerald-300" : entry.rank_delta < 0 ? "text-coral" : "text-steel"
+                          }`}
+                        >
+                          {formatMovementLabel(entry.rank_delta)}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-3 py-3 text-steel">{entry.exact_scores}</td>
                   </tr>
