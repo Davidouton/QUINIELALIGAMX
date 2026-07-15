@@ -62,6 +62,11 @@ type DashboardState = {
 
 type DashboardTab = "general" | "jornada" | "proximos" | "probabilidades" | "advanced" | "premios";
 type DashboardDefaultView = "regular" | `vip:${string}`;
+type DashboardLeagueOption = {
+  value: string;
+  label: string;
+  seasons: Season[];
+};
 const DASHBOARD_DEFAULT_VIEW_STORAGE_KEY = "qm-dashboard-default-view";
 const DEFAULT_DASHBOARD_WIDGET_IDS: DashboardWidgetId[] = [
   "summary",
@@ -165,6 +170,23 @@ function formatCompactSeasonName(value: string | null | undefined) {
   const season = match[1];
   const year = match[2].slice(-2);
   return `${season.slice(0, 3)} ${year}`;
+}
+
+function getDashboardLeagueKey(season: Season) {
+  return season.competition_id ?? season.competition_name ?? season.competition_sport_name ?? season.tournament_format;
+}
+
+function getDashboardLeagueLabel(season: Season) {
+  if (season.competition_name?.trim()) {
+    return season.competition_name.trim();
+  }
+  if (season.competition_sport_name?.trim()) {
+    return season.competition_sport_name.trim();
+  }
+  if (season.tournament_format === "world_cup") {
+    return "World Cup";
+  }
+  return "Liga";
 }
 
 function pickPreferredMatchday(matchdays: Matchday[]) {
@@ -881,7 +903,41 @@ export function DashboardHome() {
   const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
   const hasApprovedVipCompetition = approvedVipCompetitions.length > 0;
   const canViewRegularDashboard = Boolean(selectedSeasonMembership?.can_participate);
-  const selectableSeasons = getLiveSeasons(state.seasons).filter((season) => !isSeasonArchived(season));
+  const selectableSeasons = getLiveSeasons(state.seasons)
+    .filter((season) => !isSeasonArchived(season))
+    .slice()
+    .sort((left, right) => {
+      if (left.is_active !== right.is_active) {
+        return left.is_active ? -1 : 1;
+      }
+      if (left.tournament_format !== right.tournament_format) {
+        return left.tournament_format === "standard" ? -1 : 1;
+      }
+      return left.name.localeCompare(right.name, "es-MX");
+    });
+  const leagueOptions = useMemo<DashboardLeagueOption[]>(() => {
+    const grouped = new Map<string, DashboardLeagueOption>();
+    selectableSeasons.forEach((season) => {
+      const key = getDashboardLeagueKey(season);
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.seasons.push(season);
+        return;
+      }
+      grouped.set(key, {
+        value: key,
+        label: getDashboardLeagueLabel(season),
+        seasons: [season],
+      });
+    });
+    return Array.from(grouped.values());
+  }, [selectableSeasons]);
+  const selectedLeagueValue =
+    leagueOptions.find((option) => option.seasons.some((season) => season.id === state.selectedSeason?.id))?.value ??
+    leagueOptions[0]?.value ??
+    "";
+  const selectableLeagueSeasons =
+    leagueOptions.find((option) => option.value === selectedLeagueValue)?.seasons ?? selectableSeasons;
   const selectedVipIdFromView = dashboardDefaultView.startsWith("vip:") ? dashboardDefaultView.slice(4) : "";
   const selectedVipCompetition =
     approvedVipCompetitions.find((vip) => vip.id === selectedVipIdFromView) ??
@@ -938,6 +994,18 @@ export function DashboardHome() {
   const activePresetId =
     DASHBOARD_WIDGET_PRESETS.find((preset) => areWidgetListsEqual(preset.widgetIds, dashboardWidgetDraft))?.id ?? null;
   const hasDashboardWidgetChanges = !areWidgetListsEqual(dashboardWidgetDraft, effectiveDashboardWidgetIds);
+
+  function handleLeagueChange(nextLeagueValue: string) {
+    const nextLeague = leagueOptions.find((option) => option.value === nextLeagueValue) ?? null;
+    const nextSeason =
+      nextLeague?.seasons.find((season) => season.is_active) ??
+      nextLeague?.seasons[0] ??
+      null;
+    if (!nextSeason) {
+      return;
+    }
+    setSeasonId(nextSeason.id, "");
+  }
   const dashboardTabs: Array<{ id: DashboardTab; label: string }> = [
     { id: "general", label: "General" },
     { id: "jornada", label: "Jornada" },
@@ -1206,15 +1274,34 @@ export function DashboardHome() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-4">
-            {selectableSeasons.length > 1 ? (
+            {leagueOptions.length > 1 ? (
+              <label className="hidden min-w-[180px] space-y-1 text-xs sm:block">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
+                  Liga
+                </span>
+                <select
+                  value={selectedLeagueValue}
+                  onChange={(event) => handleLeagueChange(event.target.value)}
+                  className={dashboardSelectClass}
+                >
+                  {leagueOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            {selectableLeagueSeasons.length > 1 ? (
               <label className="hidden min-w-[220px] space-y-1 text-xs sm:block">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
-                  Temporada
+                  Torneo
                 </span>
                 <select
                   value={state.selectedSeason?.id ?? ""}
                   onChange={(event) => {
-                    const nextSeason = selectableSeasons.find((season) => season.id === event.target.value) ?? null;
+                    const nextSeason = selectableLeagueSeasons.find((season) => season.id === event.target.value) ?? null;
                     if (!nextSeason) {
                       return;
                     }
@@ -1222,7 +1309,7 @@ export function DashboardHome() {
                   }}
                   className={dashboardSelectClass}
                 >
-                  {selectableSeasons.map((season) => (
+                  {selectableLeagueSeasons.map((season) => (
                     <option key={season.id} value={season.id}>
                       {season.name}
                     </option>
@@ -1266,17 +1353,35 @@ export function DashboardHome() {
           </div>
         </div>
 
-        {selectableSeasons.length > 1 || dashboardDefaultOptions.length > 1 ? (
+        {leagueOptions.length > 1 || selectableLeagueSeasons.length > 1 || dashboardDefaultOptions.length > 1 ? (
           <div className="mt-3 grid gap-3 sm:hidden">
-            {selectableSeasons.length > 1 ? (
+            {leagueOptions.length > 1 ? (
               <label className="space-y-1 text-xs">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
-                  Temporada
+                  Liga
+                </span>
+                <select
+                  value={selectedLeagueValue}
+                  onChange={(event) => handleLeagueChange(event.target.value)}
+                  className={dashboardSelectClass}
+                >
+                  {leagueOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {selectableLeagueSeasons.length > 1 ? (
+              <label className="space-y-1 text-xs">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
+                  Torneo
                 </span>
                 <select
                   value={state.selectedSeason?.id ?? ""}
                   onChange={(event) => {
-                    const nextSeason = selectableSeasons.find((season) => season.id === event.target.value) ?? null;
+                    const nextSeason = selectableLeagueSeasons.find((season) => season.id === event.target.value) ?? null;
                     if (!nextSeason) {
                       return;
                     }
@@ -1284,7 +1389,7 @@ export function DashboardHome() {
                   }}
                   className={dashboardSelectClass}
                 >
-                  {selectableSeasons.map((season) => (
+                  {selectableLeagueSeasons.map((season) => (
                     <option key={season.id} value={season.id}>
                       {season.name}
                     </option>
