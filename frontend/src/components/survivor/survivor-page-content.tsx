@@ -89,6 +89,30 @@ function getSurvivorResultSurfaceClassName(resultStatus: "pending" | "won" | "lo
   return "border-white/[0.08] bg-white/[0.03]";
 }
 
+function renderTeamLogo(
+  teamName: string,
+  teamShortName: string,
+  teamCrestUrl: string | null,
+  sizeClassName = "h-14 w-14",
+) {
+  if (teamCrestUrl) {
+    return (
+      <img
+        src={teamCrestUrl}
+        alt={teamName}
+        className={`${sizeClassName} rounded-full border border-white/10 bg-white object-cover`}
+      />
+    );
+  }
+  return (
+    <span
+      className={`inline-flex ${sizeClassName} items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-ink`}
+    >
+      {teamShortName.slice(0, 3).toUpperCase()}
+    </span>
+  );
+}
+
 function buildSeasonBoardFallback(season: Season): SurvivorBoard {
   return {
     ...initialBoard,
@@ -410,45 +434,43 @@ export function SurvivorPageContent() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-steel">Equipos disponibles</p>
-                  <p className="mt-1 text-sm text-steel">Selecciona un logo y abajo revisa la jornada actual.</p>
+                  <p className="mt-1 text-sm text-steel">Selecciona tu equipo desde la parrilla de logos.</p>
                 </div>
                 <div className="app-pill px-3 text-[10px]">
                   Jornada {board.current_matchday?.number ?? "-"}
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-4">
+              <div className="grid grid-cols-4 gap-x-4 gap-y-5 md:grid-cols-6 xl:grid-cols-9">
                 {board.available_teams.map((option) => (
                   <button
                     key={`${option.match_id}:${option.team_id}`}
                     type="button"
                     onClick={() => void handlePick(option.team_id)}
                     disabled={option.is_locked || Boolean(submitting)}
-                    className={`flex w-[96px] flex-col items-center gap-2 rounded-[18px] border px-3 py-3 text-center transition disabled:opacity-60 ${
+                    title={option.team_name}
+                    aria-label={option.team_name}
+                    className={`flex flex-col items-center justify-center gap-2 rounded-[999px] bg-transparent p-0 text-center transition disabled:opacity-60 ${
                       option.is_current_pick
-                        ? "border-emerald-400/40 bg-emerald-500/10"
+                        ? "scale-[1.03]"
                         : option.is_locked
-                          ? "border-white/[0.06] bg-white/[0.02] opacity-70"
-                          : "border-white/[0.08] bg-white/[0.03]"
+                          ? "opacity-55"
+                          : "hover:scale-[1.03]"
                     }`}
                   >
-                    {option.team_crest_url ? (
-                      <img
-                        src={option.team_crest_url}
-                        alt={option.team_name}
-                        className="h-14 w-14 rounded-full border border-white/10 bg-white object-cover"
-                      />
-                    ) : (
-                      <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-ink">
-                        {option.team_short_name.slice(0, 3).toUpperCase()}
-                      </span>
-                    )}
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold text-ink">{option.team_short_name}</p>
-                      <p className="line-clamp-2 text-[11px] text-steel">{option.team_name}</p>
-                    </div>
-                    <span className={option.is_current_pick ? "app-pill-active px-2 text-[10px] text-ink" : "app-pill px-2 text-[10px]"}>
-                      {submitting === `pick:${option.team_id}` ? "..." : option.is_current_pick ? "Actual" : option.is_locked ? "Cerrado" : "Libre"}
+                    <span
+                      className={`inline-flex rounded-full p-[4px] ${
+                        option.is_current_pick
+                          ? "ring-2 ring-emerald-400/55 ring-offset-2 ring-offset-transparent"
+                          : option.is_locked
+                            ? "ring-1 ring-white/8"
+                            : "ring-1 ring-transparent"
+                      }`}
+                    >
+                      {renderTeamLogo(option.team_name, option.team_short_name, option.team_crest_url, "h-14 w-14")}
+                    </span>
+                    <span className="text-[11px] font-semibold text-steel">
+                      {submitting === `pick:${option.team_id}` ? "..." : option.team_short_name}
                     </span>
                   </button>
                 ))}
@@ -485,15 +507,15 @@ export function SurvivorPageContent() {
                               type="button"
                               onClick={() => void handlePick(option.team_id)}
                               disabled={option.is_locked || Boolean(submitting)}
-                              className={`rounded-full border px-3 py-2 text-xs font-semibold transition disabled:opacity-60 ${
+                              title={option.team_name}
+                              aria-label={option.team_name}
+                              className={`rounded-full p-[4px] transition disabled:opacity-60 ${
                                 option.is_current_pick
-                                  ? "border-emerald-400/40 bg-emerald-500/10 text-ink"
-                                  : "border-white/[0.08] bg-white/[0.03] text-ink"
+                                  ? "ring-2 ring-emerald-400/55 ring-offset-2 ring-offset-transparent"
+                                  : "ring-1 ring-white/10"
                               }`}
                             >
-                              {submitting === `pick:${option.team_id}`
-                                ? "Guardando..."
-                                : option.team_short_name}
+                              {renderTeamLogo(option.team_name, option.team_short_name, option.team_crest_url, "h-10 w-10")}
                             </button>
                           ))}
                         </div>
