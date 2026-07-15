@@ -976,6 +976,7 @@ export interface SurvivorLeaderboardEntry {
   total_picks: number;
   alive: boolean;
   last_pick_team_name: string | null;
+  current_pick: SurvivorPick | null;
 }
 
 export interface SurvivorSeasonSummary {

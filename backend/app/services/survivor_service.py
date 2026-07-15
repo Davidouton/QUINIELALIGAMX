@@ -304,6 +304,7 @@ class SurvivorService:
                     if pick_views_by_profile.get(membership.profile_id)
                     else None
                 ),
+                current_pick=membership_out.current_pick,
             )
             for membership, membership_out in sorted(
                 leaderboard_rows,

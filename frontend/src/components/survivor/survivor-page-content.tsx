@@ -28,8 +28,52 @@ const initialBoard: SurvivorBoard = {
   leaderboard: [],
 };
 
+function isSurvivorAvailableForSeason(season: Season | null) {
+  return season?.tournament_format === "standard" || Boolean(season?.survivor_enabled);
+}
+
 function formatLivesLabel(remainingLives: number, maxLives: number) {
   return `${remainingLives}/${maxLives} vidas`;
+}
+
+function getSurvivorResultLabel(resultStatus: "pending" | "won" | "lost" | "draw") {
+  if (resultStatus === "won") {
+    return "Ganado";
+  }
+  if (resultStatus === "lost") {
+    return "Perdido";
+  }
+  if (resultStatus === "draw") {
+    return "Empate";
+  }
+  return "Pendiente";
+}
+
+function getSurvivorResultPillClassName(resultStatus: "pending" | "won" | "lost" | "draw") {
+  if (resultStatus === "won") {
+    return "app-pill-active px-3 text-[10px] text-ink";
+  }
+  if (resultStatus === "lost") {
+    return "app-pill px-3 text-[10px] text-coral";
+  }
+  if (resultStatus === "draw") {
+    return "app-pill px-3 text-[10px] text-gold";
+  }
+  return "app-pill px-3 text-[10px]";
+}
+
+function getSurvivorLifeStateLabel(alive: boolean, remainingLives: number) {
+  if (!alive || remainingLives <= 0) {
+    return "Eliminado";
+  }
+  return "Vivo";
+}
+
+function getSurvivorLifeStatePillClassName(alive: boolean, remainingLives: number) {
+  if (!alive || remainingLives <= 0) {
+    return "app-pill px-3 text-[10px] text-coral";
+  }
+  return "app-pill-active px-3 text-[10px] text-ink";
 }
 
 function buildSeasonBoardFallback(season: Season): SurvivorBoard {
@@ -40,7 +84,7 @@ function buildSeasonBoardFallback(season: Season): SurvivorBoard {
       season_name: season.name,
       competition_id: season.competition_id,
       competition_name: season.competition_name,
-      survivor_enabled: season.survivor_enabled,
+      survivor_enabled: isSurvivorAvailableForSeason(season),
       survivor_name: season.survivor_name ?? "Survivor",
       survivor_max_lives: season.survivor_max_lives,
       registration_lock_at: season.survivor_registration_lock_at,
@@ -73,7 +117,7 @@ export function SurvivorPageContent() {
         if (resolvedSeason.id !== seasonIdParam || (resolvedSeason.competition_id ?? "") !== competitionId) {
           setSeasonId(resolvedSeason.id, resolvedSeason.competition_id ?? "");
         }
-        if (!resolvedSeason.survivor_enabled) {
+        if (!isSurvivorAvailableForSeason(resolvedSeason)) {
           setBoard({
             ...buildSeasonBoardFallback(resolvedSeason),
             season: {
@@ -166,7 +210,7 @@ export function SurvivorPageContent() {
       }
       setSelectedSeason(resolvedSeason);
       setBoard(buildSeasonBoardFallback(resolvedSeason));
-      if (!resolvedSeason.survivor_enabled) {
+      if (!isSurvivorAvailableForSeason(resolvedSeason)) {
         setError(null);
         return;
       }
@@ -223,11 +267,11 @@ export function SurvivorPageContent() {
           </div>
         </div>
 
-        {!selectedSeason?.survivor_enabled ? (
+        {!isSurvivorAvailableForSeason(selectedSeason) ? (
           <p className="mt-5 text-sm text-steel">Survivor todavia no esta habilitado en esta temporada.</p>
         ) : null}
 
-        {selectedSeason?.survivor_enabled && !board.my_membership ? (
+        {isSurvivorAvailableForSeason(selectedSeason) && !board.my_membership ? (
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
               type="button"
@@ -328,8 +372,102 @@ export function SurvivorPageContent() {
         </section>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <div className="surface-card px-5 py-5">
+      <section className="surface-card px-5 py-5">
+        <p className="text-xs uppercase tracking-[0.22em] text-steel">Tablero survivor</p>
+        <div className="mt-4 no-scrollbar overflow-x-auto touch-pan-x">
+          {board.leaderboard.length === 0 ? (
+            <p className="text-sm text-steel">Aun no hay participantes inscritos.</p>
+          ) : (
+            <table className="min-w-[860px] table-fixed text-left text-[11px] text-steel">
+              <colgroup>
+                <col className="w-[220px]" />
+                <col className="w-[170px]" />
+                <col className="w-[150px]" />
+                <col className="w-[140px]" />
+                <col className="w-[90px]" />
+                <col className="w-[120px]" />
+              </colgroup>
+              <thead className="app-table-head">
+                <tr>
+                  <th className="px-3 py-2 text-left">Participante</th>
+                  <th className="px-3 py-2 text-left">Equipo</th>
+                  <th className="px-3 py-2 text-left">Rival</th>
+                  <th className="px-3 py-2 text-left">Resultado</th>
+                  <th className="px-3 py-2 text-left">Vidas</th>
+                  <th className="px-3 py-2 text-left">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {board.leaderboard.map((entry, index) => (
+                  <tr key={entry.profile_id} className="app-table-row border-b last:border-b-0">
+                    <td className="px-3 py-3">
+                      <div className="space-y-1">
+                        <p className="font-semibold text-ink">{index + 1}. {entry.display_name}</p>
+                        <p className="text-[10px] text-steel">{entry.total_picks} picks capturados</p>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      {entry.current_pick ? (
+                        <div className="flex items-center gap-2">
+                          {entry.current_pick.team_crest_url ? (
+                            <img
+                              src={entry.current_pick.team_crest_url}
+                              alt={entry.current_pick.team_name}
+                              className="h-7 w-7 rounded-full border border-white/10 object-cover"
+                            />
+                          ) : (
+                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[9px] font-semibold text-ink">
+                              {entry.current_pick.team_short_name.slice(0, 3).toUpperCase()}
+                            </span>
+                          )}
+                          <div>
+                            <p className="font-semibold text-ink">{entry.current_pick.team_short_name}</p>
+                            <p className="text-[10px] text-steel">{entry.current_pick.team_name}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-semibold uppercase text-steel/65">
+                          {entry.last_pick_team_name ?? "Sin pick"}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      {entry.current_pick ? (
+                        <div>
+                          <p className="font-medium text-ink">{entry.current_pick.opponent_team_short_name}</p>
+                          <p className="text-[10px] text-steel">{entry.current_pick.opponent_team_name}</p>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-semibold uppercase text-steel/65">Pendiente</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      {entry.current_pick ? (
+                        <span className={getSurvivorResultPillClassName(entry.current_pick.result_status)}>
+                          {getSurvivorResultLabel(entry.current_pick.result_status)}
+                        </span>
+                      ) : (
+                        <span className="app-pill px-3 text-[10px]">Sin pick</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="font-semibold text-ink">{entry.remaining_lives}</span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={getSurvivorLifeStatePillClassName(entry.alive, entry.remaining_lives)}>
+                        {getSurvivorLifeStateLabel(entry.alive, entry.remaining_lives)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      <section className="surface-card px-5 py-5">
+        <div>
           <p className="text-xs uppercase tracking-[0.22em] text-steel">Historial</p>
           <div className="mt-4 space-y-3">
             {board.my_picks.length === 0 ? (
@@ -345,28 +483,6 @@ export function SurvivorPageContent() {
                     <span className="app-pill px-3 text-xs uppercase tracking-[0.18em]">
                       {pick.result_status}
                     </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="surface-card px-5 py-5">
-          <p className="text-xs uppercase tracking-[0.22em] text-steel">Leaderboard</p>
-          <div className="mt-4 space-y-3">
-            {board.leaderboard.length === 0 ? (
-              <p className="text-sm text-steel">Aun no hay participantes inscritos.</p>
-            ) : (
-              board.leaderboard.map((entry, index) => (
-                <div key={entry.profile_id} className="flex items-center justify-between gap-3 rounded-[18px] border border-white/6 bg-white/[0.03] px-4 py-4">
-                  <div>
-                    <p className="text-sm font-semibold text-ink">{index + 1}. {entry.display_name}</p>
-                    <p className="text-xs text-steel">{entry.last_pick_team_name ?? "Sin pick capturado"}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-ink">{entry.remaining_lives} vidas</p>
-                    <p className="text-xs text-steel">{entry.total_picks} picks</p>
                   </div>
                 </div>
               ))

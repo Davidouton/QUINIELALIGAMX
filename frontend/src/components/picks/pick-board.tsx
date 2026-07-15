@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
-import { filterMatchdaysBySeason, filterSeasonsByCompetition, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { filterMatchdaysBySeason, filterSeasonsByCompetition, isSeasonArchived, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { SurvivorPageContent } from "@/components/survivor/survivor-page-content";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AppBootstrap, GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
@@ -531,7 +531,26 @@ export function PickBoard() {
     return teamById[teamId]?.short_name ?? fallbackName;
   }
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
-  const visibleSeasons = filterSeasonsByCompetition(state.seasons, competitionId);
+  const visibleSeasons = useMemo(() => {
+    const scopedSeasons = filterSeasonsByCompetition(state.seasons, competitionId);
+    const explicitSeason = seasonIdParam
+      ? state.seasons.find((season) => season.id === seasonIdParam) ?? null
+      : state.selectedSeason;
+
+    if (explicitSeason?.tournament_format === "world_cup") {
+      return state.seasons.filter(
+        (season) => season.tournament_format === "world_cup" && !isSeasonArchived(season),
+      );
+    }
+
+    if (explicitSeason?.tournament_format === "standard") {
+      return state.seasons.filter(
+        (season) => season.tournament_format === "standard" && !isSeasonArchived(season),
+      );
+    }
+
+    return scopedSeasons;
+  }, [competitionId, seasonIdParam, state.seasons, state.selectedSeason]);
 
   useEffect(() => {
     async function loadBoard() {

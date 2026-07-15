@@ -110,6 +110,7 @@ class SurvivorLeaderboardEntryOut(BaseModel):
     total_picks: int = 0
     alive: bool = False
     last_pick_team_name: str | None = None
+    current_pick: SurvivorPickOut | None = None
 
 
 class SurvivorBoardOut(BaseModel):
@@ -125,4 +126,3 @@ class SurvivorPickUpsertRequest(BaseModel):
     season_id: str
     matchday_id: str
     team_id: str
-
