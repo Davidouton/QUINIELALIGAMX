@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
-import { resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { isSeasonArchived, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { CheckoutSessionResponse, EffectivePricing, Me, PrizeSummary, Season } from "@/types/api";
 
@@ -36,6 +36,7 @@ const initialState: PrizeSummary = {
 
 export function PrizesPageContent() {
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
+  const [seasons, setSeasons] = useState<Season[]>([]);
   const [me, setMe] = useState<Me | null>(null);
   const [summary, setSummary] = useState<PrizeSummary>(initialState);
   const [pricing, setPricing] = useState<EffectivePricing | null>(null);
@@ -56,6 +57,7 @@ export function PrizesPageContent() {
           backendFetch<Me>(`/me${seasonQuery}`, accessToken),
           backendFetch<PrizeSummary>(`/me/prize-summary${seasonQuery}`, accessToken),
         ]);
+        setSeasons(seasons);
         setSelectedSeason(resolvedSeason);
         setMe(meResponse);
         setSummary(summaryResponse);
@@ -144,6 +146,10 @@ export function PrizesPageContent() {
     ],
     [summary],
   );
+  const availableSeasons = useMemo(
+    () => seasons.filter((season) => !isSeasonArchived(season)),
+    [seasons],
+  );
   const activeSeasonMembership =
     summary.season_id && me
       ? me.season_memberships.find((membership) => membership.season_id === summary.season_id) ?? null
@@ -160,8 +166,38 @@ export function PrizesPageContent() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold text-ink">Premios</h1>
-        <p className="mt-1 text-sm text-steel">{summary.season_name ?? selectedSeason?.name ?? "Sin torneo activo"}</p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-ink">Premios</h1>
+            <p className="mt-1 text-sm text-steel">{summary.season_name ?? selectedSeason?.name ?? "Sin torneo activo"}</p>
+          </div>
+          {availableSeasons.length > 0 ? (
+            <label className="w-full max-w-[360px] space-y-2 text-left text-sm">
+              <span className="text-steel">Temporada</span>
+              <select
+                value={selectedSeason?.id ?? ""}
+                onChange={(event) => {
+                  const nextSeason = availableSeasons.find((season) => season.id === event.target.value) ?? null;
+                  if (!nextSeason) {
+                    return;
+                  }
+                  setLoading(true);
+                  setError(null);
+                  setPaymentError(null);
+                  setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
+                }}
+                className="field-control"
+                disabled={loading}
+              >
+                {availableSeasons.map((season) => (
+                  <option key={season.id} value={season.id}>
+                    {season.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
         {summary.season_id ? (
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {activeSeasonMembership?.is_paid ? (
