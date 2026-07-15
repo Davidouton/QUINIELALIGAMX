@@ -7,7 +7,7 @@ import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/tra
 import { VIP_SUMMARY_PATH, buildVipDetailPath } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, getLiveSeasons, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AppBootstrap, LeaderboardEntry, Matchday, Me, Season, VipCompetition } from "@/types/api";
+import type { AppBootstrap, LeaderboardEntry, Matchday, Me, PrizeSummary, Season, VipCompetition } from "@/types/api";
 
 type RankingEntry = Pick<
   LeaderboardEntry,
@@ -26,6 +26,7 @@ type LeaderboardState = {
   activeMatchday: Matchday | null;
   selectedSeason: Season | null;
   overallBySeasonId: Record<string, LeaderboardEntry[]>;
+  participantCountBySeasonId: Record<string, number>;
   vipCompetitions: VipCompetition[];
   error: string | null;
 };
@@ -36,6 +37,7 @@ const initialState: LeaderboardState = {
   activeMatchday: null,
   selectedSeason: null,
   overallBySeasonId: {},
+  participantCountBySeasonId: {},
   vipCompetitions: [],
   error: null,
 };
@@ -72,17 +74,32 @@ export function LeaderboardPageContent() {
       } = bootstrap;
       const liveSeasons = getLiveSeasons(seasons);
       const selectedSeason = resolveLiveSeason(seasons, seasonIdParam);
-      const overallEntries = await Promise.all(
+      const seasonBoardBundles = await Promise.all(
         liveSeasons.map(async (season) => {
           try {
-            const rows = await backendFetch<LeaderboardEntry[]>(
-              `/leaderboard/overall?season_id=${season.id}`,
-              accessToken,
-              { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
-            );
-            return [season.id, rows] as const;
+            const [rows, prizeSummary] = await Promise.all([
+              backendFetch<LeaderboardEntry[]>(
+                `/leaderboard/overall?season_id=${season.id}`,
+                accessToken,
+                { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+              ),
+              backendFetch<PrizeSummary>(
+                `/me/prize-summary?season_id=${season.id}`,
+                accessToken,
+                { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+              ),
+            ]);
+            return {
+              seasonId: season.id,
+              rows,
+              participantCount: prizeSummary.confirmed_participants,
+            };
           } catch {
-            return [season.id, []] as const;
+            return {
+              seasonId: season.id,
+              rows: [],
+              participantCount: 0,
+            };
           }
         }),
       );
@@ -102,7 +119,12 @@ export function LeaderboardPageContent() {
         seasons,
         activeMatchday,
         selectedSeason,
-        overallBySeasonId: Object.fromEntries(overallEntries),
+        overallBySeasonId: Object.fromEntries(
+          seasonBoardBundles.map((bundle) => [bundle.seasonId, bundle.rows]),
+        ),
+        participantCountBySeasonId: Object.fromEntries(
+          seasonBoardBundles.map((bundle) => [bundle.seasonId, bundle.participantCount]),
+        ),
         vipCompetitions,
         error: null,
       });
@@ -248,8 +270,15 @@ export function LeaderboardPageContent() {
       ? `Tabla general de ${selectedRegularSeason.name}`
       : "Tabla general del torneo";
   const activeSectionLabel = selectedVipCompetition ? "Tabla VIP" : "Tabla general";
-  const activeParticipantsCount = selectedVipCompetition ? selectedVipCompetition.approved_members_count : activeEntries.length;
+  const activeParticipantsCount = selectedVipCompetition
+    ? selectedVipCompetition.approved_members_count
+    : selectedRegularSeason
+      ? state.participantCountBySeasonId[selectedRegularSeason.id] ?? activeEntries.length
+      : activeEntries.length;
   const isLoadingActiveVipBoard = Boolean(selectedVipCompetition && loadingVipBoardId === selectedVipCompetition.id);
+  const hasSeasonParticipantsWithoutStandings = Boolean(
+    selectedRegularSeason && activeEntries.length === 0 && activeParticipantsCount > 0,
+  );
 
   useEffect(() => {
     if (boardOptions.length === 0) {
@@ -447,7 +476,11 @@ export function LeaderboardPageContent() {
           </table>
 
           {activeEntries.length === 0 ? (
-            <p className="py-6 text-sm text-steel">Aun no hay posiciones calculadas.</p>
+            <p className="py-6 text-sm text-steel">
+              {hasSeasonParticipantsWithoutStandings
+                ? "Ya hay inscritos en este torneo, pero aun no hay resultados oficiales ni puntos calculados."
+                : "Aun no hay posiciones calculadas."}
+            </p>
           ) : null}
         </div>
       </section>
