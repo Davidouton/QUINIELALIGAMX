@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     database_pool_pre_ping: bool = True
     admin_script_timeout_seconds: int = 180
     allowed_origins: str = "http://localhost:3000"
+    allowed_origin_regex: str = r"^https://.*\.vercel\.app$"
     frontend_site_url: str = "http://localhost:3000"
     supabase_url: str = "https://your-project.supabase.co"
     supabase_anon_key: str = "replace-me"
