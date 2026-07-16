@@ -205,15 +205,12 @@ export function SurvivorPageContent() {
     return Array.from(grouped.values())
       .map((entry) => ({
         ...entry,
-        options: entry.options.slice().sort((left, right) => left.team_short_name.localeCompare(right.team_short_name, "es-MX")),
+        options: entry.options.slice(),
       }))
       .sort((left, right) => new Date(left.kickoffAt).getTime() - new Date(right.kickoffAt).getTime());
   }, [board.available_teams]);
   const availableLogoTeams = useMemo(
-    () =>
-      board.available_teams
-        .slice()
-        .sort((left, right) => left.team_short_name.localeCompare(right.team_short_name, "es-MX")),
+    () => board.available_teams.slice(),
     [board.available_teams],
   );
   const survivorJourneySlots = useMemo(() => {

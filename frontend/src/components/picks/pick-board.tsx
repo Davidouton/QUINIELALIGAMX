@@ -6,7 +6,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
-import { filterMatchdaysBySeason, getLiveSeasons, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import {
+  filterMatchdaysBySeason,
+  getLiveSeasons,
+  isSurvivorAvailableForSeason,
+  resolveLiveSeason,
+  resolveSurvivorSeason,
+  useDashboardSeasonParam,
+} from "@/lib/dashboard-season";
 import { SurvivorPageContent } from "@/components/survivor/survivor-page-content";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AppBootstrap, GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
@@ -1120,7 +1127,8 @@ export function PickBoard() {
   }
 
   const seasonTag = getSeasonTag(state.selectedSeason);
-  const canShowSurvivorTab = state.selectedSeason?.tournament_format === "standard";
+  const survivorSeason = resolveSurvivorSeason(state.seasons, seasonIdParam, competitionId);
+  const canShowSurvivorTab = Boolean(survivorSeason && isSurvivorAvailableForSeason(survivorSeason));
   const picksHeader =
     activeTab === "survivor"
       ? `Picks Center · Survivor`

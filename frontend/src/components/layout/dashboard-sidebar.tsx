@@ -87,16 +87,9 @@ export function DashboardSidebar() {
     () => resolveSeasonForContext(seasons, seasonId, competitionId),
     [competitionId, seasonId, seasons],
   );
-  const isWorldCupContext = activeSeason?.tournament_format === "world_cup";
-  const visiblePrimaryLinks = useMemo(
-    () => primaryLinks.filter((link) => !isWorldCupContext || link.href !== "/dashboard/survivor"),
-    [isWorldCupContext],
-  );
+  const visiblePrimaryLinks = primaryLinks;
   const visibleCompetitionHubLinks = competitionHubLinks;
-  const visibleMobilePrimaryLinks = useMemo(
-    () => primaryMobileLinks.filter((link) => !isWorldCupContext || link.href !== "/dashboard/survivor"),
-    [isWorldCupContext],
-  );
+  const visibleMobilePrimaryLinks = primaryMobileLinks;
   const links = canViewAdmin
     ? [adminLink, ...visiblePrimaryLinks, ...visibleCompetitionHubLinks]
     : [...visiblePrimaryLinks, ...visibleCompetitionHubLinks];
