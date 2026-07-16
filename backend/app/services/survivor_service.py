@@ -47,9 +47,11 @@ class SurvivorService:
         membership_out = self._build_membership_out(
             membership=membership,
             season=season,
+            matchdays=board_bundle["matchdays"],
             picks=my_picks,
             pick_views=board_bundle["pick_views_by_profile"].get(profile.id, []),
             current_matchday_id=board_bundle["current_matchday"].id if board_bundle["current_matchday"] is not None else None,
+            matches_by_matchday=board_bundle["matches_by_matchday"],
         )
         available_teams = self._build_available_teams(
             season=season,
@@ -137,9 +139,11 @@ class SurvivorService:
         membership_out = self._build_membership_out(
             membership=membership,
             season=season,
+            matchdays=board_bundle["matchdays"],
             picks=board_bundle["picks_by_profile"].get(profile.id, []),
             pick_views=board_bundle["pick_views_by_profile"].get(profile.id, []),
             current_matchday_id=current_matchday.id,
+            matches_by_matchday=board_bundle["matches_by_matchday"],
         )
         if membership_out is None or not membership_out.alive:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ya no tienes vidas disponibles")
@@ -163,15 +167,15 @@ class SurvivorService:
             ),
             None,
         )
+        if self._is_matchday_locked(current_matchday, matches):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La jornada de survivor ya cerro",
+            )
         if selected_match is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="El equipo seleccionado no juega en la jornada actual",
-            )
-        if self._is_match_locked(selected_match):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El partido seleccionado ya cerro para survivor",
             )
 
         pick = db.scalar(
@@ -265,6 +269,7 @@ class SurvivorService:
                 self._build_pick_out(
                     pick,
                     matchdays_by_id=matchdays_by_id,
+                    matches_by_matchday=matches_by_matchday,
                     matches_by_id=matches_by_id,
                     teams_by_id=teams_by_id,
                     results_by_match_id=results_by_match_id,
@@ -275,9 +280,11 @@ class SurvivorService:
             membership_out = self._build_membership_out(
                 membership=membership,
                 season=season,
+                matchdays=matchdays,
                 picks=membership_picks,
                 pick_views=pick_views,
                 current_matchday_id=current_matchday.id if current_matchday is not None else None,
+                matches_by_matchday=matches_by_matchday,
             )
             if membership_out is not None:
                 leaderboard_rows.append((membership, membership_out))
@@ -356,13 +363,21 @@ class SurvivorService:
         *,
         membership: SurvivorMembership | None,
         season: Season,
+        matchdays: list[Matchday],
         picks: list[SurvivorPick],
         pick_views: list[SurvivorPickOut],
         current_matchday_id: str | None,
+        matches_by_matchday: dict[str, list[Match]],
     ) -> SurvivorMembershipOut | None:
         if membership is None:
             return None
-        lives_spent = sum(1 for pick_view in pick_views if pick_view.result_status == "lost")
+        missed_matchday_ids = self._get_missed_matchday_ids(
+            membership=membership,
+            picks=picks,
+            matchdays=matchdays,
+            matches_by_matchday=matches_by_matchday,
+        )
+        lives_spent = sum(1 for pick_view in pick_views if pick_view.result_status == "lost") + len(missed_matchday_ids)
         max_lives = max(1, season.survivor_max_lives)
         remaining_lives = max(max_lives - lives_spent, 0)
         used_team_ids = [pick.team_id for pick in picks]
@@ -389,6 +404,7 @@ class SurvivorService:
         pick: SurvivorPick,
         *,
         matchdays_by_id: dict[str, Matchday],
+        matches_by_matchday: dict[str, list[Match]],
         matches_by_id: dict[str, Match],
         teams_by_id: dict[str, Team],
         results_by_match_id: dict[str, MatchResult],
@@ -400,7 +416,7 @@ class SurvivorService:
         opponent_team = teams_by_id.get(opponent_team_id) if opponent_team_id else None
         result = results_by_match_id.get(pick.match_id)
         result_status = self._resolve_pick_result_status(pick, match, result)
-        is_locked = self._is_match_locked(match)
+        is_locked = self._is_matchday_locked(matchday, matches_by_matchday.get(pick.matchday_id, []))
         return SurvivorPickOut(
             id=pick.id,
             matchday_id=pick.matchday_id,
@@ -435,11 +451,14 @@ class SurvivorService:
     ) -> list[SurvivorAvailableTeamOut]:
         if current_matchday is None or membership is None or not membership.alive:
             return []
+        current_matchday_matches = matches_by_matchday.get(current_matchday.id, [])
+        if self._is_matchday_locked(current_matchday, current_matchday_matches):
+            return []
         used_team_ids = set(membership.used_team_ids)
         if current_pick is not None:
             used_team_ids.discard(current_pick.team_id)
         rows: list[SurvivorAvailableTeamOut] = []
-        for match in matches_by_matchday.get(current_matchday.id, []):
+        for match in current_matchday_matches:
             for selected_team_id, opponent_team_id in (
                 (match.home_team_id, match.away_team_id),
                 (match.away_team_id, match.home_team_id),
@@ -465,7 +484,7 @@ class SurvivorService:
                         opponent_team_crest_url=opponent_team.crest_url,
                         match_id=match.id,
                         kickoff_at=match.kickoff_at,
-                        is_locked=self._is_match_locked(match),
+                        is_locked=False,
                         already_used=False,
                         is_current_pick=current_pick.team_id == selected_team_id if current_pick is not None else False,
                     )
@@ -479,6 +498,24 @@ class SurvivorService:
     ) -> Matchday | None:
         if not matchdays:
             return None
+        open_matchdays = [
+            matchday
+            for matchday in matchdays
+            if matchday.status in {MatchdayStatus.DRAFT, MatchdayStatus.ACTIVE, MatchdayStatus.CLOSED}
+            and not self._is_matchday_locked(matchday, matches_by_matchday.get(matchday.id, []))
+        ]
+        active_open_matchday = next((row for row in open_matchdays if row.status == MatchdayStatus.ACTIVE), None)
+        if active_open_matchday is not None:
+            return active_open_matchday
+        if open_matchdays:
+            return min(
+                open_matchdays,
+                key=lambda row: (
+                    self._get_matchday_lock_at(row, matches_by_matchday.get(row.id, [])) or ensure_utc(row.starts_at),
+                    row.number,
+                ),
+            )
+
         active_matchday = next((row for row in matchdays if row.status == MatchdayStatus.ACTIVE), None)
         if active_matchday is not None:
             return active_matchday
@@ -541,3 +578,38 @@ class SurvivorService:
         if winner_team_id == pick.team_id:
             return "won"
         return "lost"
+
+    def _get_missed_matchday_ids(
+        self,
+        *,
+        membership: SurvivorMembership,
+        picks: list[SurvivorPick],
+        matchdays: list[Matchday],
+        matches_by_matchday: dict[str, list[Match]],
+    ) -> list[str]:
+        picked_matchday_ids = {pick.matchday_id for pick in picks}
+        joined_at = ensure_utc(membership.joined_at) if membership.joined_at is not None else None
+        now = datetime.now(UTC)
+        missed_matchday_ids: list[str] = []
+        for matchday in matchdays:
+            lock_at = self._get_matchday_lock_at(matchday, matches_by_matchday.get(matchday.id, []))
+            if lock_at is None or now < lock_at:
+                continue
+            if joined_at is not None and joined_at >= lock_at:
+                continue
+            if matchday.id in picked_matchday_ids:
+                continue
+            missed_matchday_ids.append(matchday.id)
+        return missed_matchday_ids
+
+    @staticmethod
+    def _get_matchday_lock_at(matchday: Matchday, matches: list[Match]) -> datetime | None:
+        if matches:
+            return min(ensure_utc(match.picks_lock_at) for match in matches)
+        return ensure_utc(matchday.starts_at)
+
+    def _is_matchday_locked(self, matchday: Matchday, matches: list[Match]) -> bool:
+        lock_at = self._get_matchday_lock_at(matchday, matches)
+        if lock_at is None:
+            return False
+        return datetime.now(UTC) >= lock_at

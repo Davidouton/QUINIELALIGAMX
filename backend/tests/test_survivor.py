@@ -189,6 +189,148 @@ def test_survivor_board_counts_lost_lives_and_sorts_leaderboard(client) -> None:
     assert payload["leaderboard"][1]["profile_id"] == PROFILE_USER_ID
 
 
+def test_survivor_board_counts_no_pick_as_spent_life(client) -> None:
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        matchday = db.get(Matchday, MATCHDAY_ID)
+        match_one = db.get(Match, MATCH_ONE_ID)
+        match_two = db.get(Match, MATCH_TWO_ID)
+        assert season is not None
+        assert matchday is not None
+        assert match_one is not None
+        assert match_two is not None
+        season.survivor_enabled = True
+        season.survivor_max_lives = 2
+        matchday.status = MatchdayStatus.ACTIVE
+        match_one.kickoff_at = datetime.now(UTC) - timedelta(minutes=15)
+        match_one.picks_lock_at = datetime.now(UTC) - timedelta(minutes=30)
+        match_two.kickoff_at = datetime.now(UTC) + timedelta(hours=2)
+        match_two.picks_lock_at = datetime.now(UTC) + timedelta(hours=1)
+        db.add(
+            SurvivorMembership(
+                season_id=SEASON_ID,
+                profile_id=PROFILE_USER_ID,
+                is_active=True,
+                joined_at=datetime.now(UTC) - timedelta(days=1),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/v1/survivor/board?season_id={SEASON_ID}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["my_membership"]["remaining_lives"] == 1
+    assert payload["my_membership"]["lives_spent"] == 1
+    assert payload["my_membership"]["alive"] is True
+
+
+def test_survivor_board_moves_to_next_open_matchday_after_first_game_lock(client) -> None:
+    next_matchday_id = "30000000-0000-0000-0000-000000000098"
+    next_match_id = "50000000-0000-0000-0000-000000000098"
+
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        matchday = db.get(Matchday, MATCHDAY_ID)
+        match_one = db.get(Match, MATCH_ONE_ID)
+        match_two = db.get(Match, MATCH_TWO_ID)
+        assert season is not None
+        assert matchday is not None
+        assert match_one is not None
+        assert match_two is not None
+        season.survivor_enabled = True
+        season.survivor_max_lives = 2
+        matchday.status = MatchdayStatus.ACTIVE
+        match_one.kickoff_at = datetime.now(UTC) - timedelta(minutes=20)
+        match_one.picks_lock_at = datetime.now(UTC) - timedelta(minutes=35)
+        match_two.kickoff_at = datetime.now(UTC) + timedelta(hours=3)
+        match_two.picks_lock_at = datetime.now(UTC) + timedelta(hours=2)
+        db.add(
+            Matchday(
+                id=next_matchday_id,
+                season_id=SEASON_ID,
+                number=4,
+                name="Jornada 4",
+                status=MatchdayStatus.DRAFT,
+                starts_at=datetime.now(UTC) + timedelta(days=6),
+                ends_at=datetime.now(UTC) + timedelta(days=7),
+            )
+        )
+        db.add(
+            Match(
+                id=next_match_id,
+                matchday_id=next_matchday_id,
+                home_team_id=TEAM_A_ID,
+                away_team_id=TEAM_C_ID,
+                kickoff_at=datetime.now(UTC) + timedelta(days=6, hours=2),
+                picks_lock_at=datetime.now(UTC) + timedelta(days=6, hours=1),
+                status=MatchStatus.SCHEDULED,
+            )
+        )
+        db.add(
+            SurvivorMembership(
+                season_id=SEASON_ID,
+                profile_id=PROFILE_USER_ID,
+                is_active=True,
+                joined_at=datetime.now(UTC) - timedelta(days=1),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/v1/survivor/board?season_id={SEASON_ID}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["current_matchday"]["id"] == next_matchday_id
+    assert payload["available_teams"]
+
+
+def test_survivor_rejects_pick_after_first_matchday_lock(client) -> None:
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        matchday = db.get(Matchday, MATCHDAY_ID)
+        match_one = db.get(Match, MATCH_ONE_ID)
+        match_two = db.get(Match, MATCH_TWO_ID)
+        assert season is not None
+        assert matchday is not None
+        assert match_one is not None
+        assert match_two is not None
+        season.survivor_enabled = True
+        season.survivor_max_lives = 2
+        matchday.status = MatchdayStatus.ACTIVE
+        match_one.kickoff_at = datetime.now(UTC) - timedelta(minutes=20)
+        match_one.picks_lock_at = datetime.now(UTC) - timedelta(minutes=35)
+        match_two.kickoff_at = datetime.now(UTC) + timedelta(hours=3)
+        match_two.picks_lock_at = datetime.now(UTC) + timedelta(hours=2)
+        db.add(
+            SurvivorMembership(
+                season_id=SEASON_ID,
+                profile_id=PROFILE_USER_ID,
+                is_active=True,
+                joined_at=datetime.now(UTC) - timedelta(days=1),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.put(
+        "/api/v1/survivor/picks",
+        json={
+            "season_id": SEASON_ID,
+            "matchday_id": MATCHDAY_ID,
+            "team_id": TEAM_C_ID,
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "La jornada de survivor ya cerro"
+
+
 def test_survivor_join_rejects_when_admin_closed_registration(client) -> None:
     db = SessionLocal()
     try:
