@@ -213,6 +213,9 @@ def run_startup_migrations() -> None:
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_matches_stage_type ON matches(stage_type)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_matches_group_label ON matches(group_label)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_matches_bracket_slot ON matches(bracket_slot)"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_matches_matchday_kickoff ON matches(matchday_id, kickoff_at)")
+            )
 
         if "odds" in table_names:
             odds_column_names = {column["name"] for column in inspector.get_columns("odds")}
@@ -270,6 +273,12 @@ def run_startup_migrations() -> None:
                     connection.execute(text(statement))
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS idx_user_picks_advancing_team ON user_picks(advancing_team_id)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_user_picks_profile_match ON user_picks(profile_id, match_id)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_user_picks_match_profile ON user_picks(match_id, profile_id)")
             )
 
         if "pick_points" in table_names:
@@ -418,6 +427,12 @@ def run_startup_migrations() -> None:
                     "ON season_memberships(season_id, profile_id)"
                 )
             )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_season_memberships_profile_season "
+                    "ON season_memberships(profile_id, season_id)"
+                )
+            )
         else:
             membership_column_names = {column["name"] for column in inspector.get_columns("season_memberships")}
             missing_membership_columns = {
@@ -430,6 +445,34 @@ def run_startup_migrations() -> None:
             for column_name, statement in missing_membership_columns.items():
                 if column_name not in membership_column_names:
                     connection.execute(text(statement))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_season_memberships_profile_season "
+                    "ON season_memberships(profile_id, season_id)"
+                )
+            )
+
+        if "vip_memberships" in table_names:
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_memberships_profile_status "
+                    "ON vip_memberships(profile_id, status)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_memberships_vip_status "
+                    "ON vip_memberships(vip_competition_id, status)"
+                )
+            )
+
+        if "vip_competition_matchdays" in table_names:
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_competition_matchdays_matchday_vip "
+                    "ON vip_competition_matchdays(matchday_id, vip_competition_id)"
+                )
+            )
 
         if "survivor_memberships" not in table_names:
             connection.execute(
