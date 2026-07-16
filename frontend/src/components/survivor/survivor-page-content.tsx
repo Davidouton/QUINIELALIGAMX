@@ -132,7 +132,7 @@ function buildSeasonBoardFallback(season: Season): SurvivorBoard {
 }
 
 export function SurvivorPageContent() {
-  const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
+  const { seasonId: seasonIdParam, competitionId } = useDashboardSeasonParam();
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [board, setBoard] = useState<SurvivorBoard>(initialBoard);
   const [loading, setLoading] = useState(true);
@@ -152,9 +152,6 @@ export function SurvivorPageContent() {
           return;
         }
         setSelectedSeason(resolvedSeason);
-        if (resolvedSeason.id !== seasonIdParam || (resolvedSeason.competition_id ?? "") !== competitionId) {
-          setSeasonId(resolvedSeason.id, resolvedSeason.competition_id ?? "");
-        }
         if (!isSurvivorAvailableForSeason(resolvedSeason)) {
           setBoard({
             ...buildSeasonBoardFallback(resolvedSeason),
@@ -180,7 +177,7 @@ export function SurvivorPageContent() {
     }
 
     void load();
-  }, [competitionId, seasonIdParam, setSeasonId]);
+  }, [competitionId, seasonIdParam]);
 
   const canSubmitPick = useMemo(
     () => Boolean(board.my_membership?.alive && board.current_matchday && board.available_teams.length > 0),
@@ -216,6 +213,13 @@ export function SurvivorPageContent() {
       }))
       .sort((left, right) => new Date(left.kickoffAt).getTime() - new Date(right.kickoffAt).getTime());
   }, [board.available_teams]);
+  const availableLogoTeams = useMemo(
+    () =>
+      board.available_teams
+        .slice()
+        .sort((left, right) => left.team_short_name.localeCompare(right.team_short_name, "es-MX")),
+    [board.available_teams],
+  );
   const survivorJourneySlots = useMemo(() => {
     const maxKnownMatchday = Math.max(
       17,
@@ -442,7 +446,7 @@ export function SurvivorPageContent() {
               </div>
 
               <div className="grid grid-cols-4 gap-x-4 gap-y-5 md:grid-cols-6 xl:grid-cols-9">
-                {board.available_teams.map((option) => (
+                {availableLogoTeams.map((option) => (
                   <button
                     key={`${option.match_id}:${option.team_id}`}
                     type="button"
@@ -451,11 +455,7 @@ export function SurvivorPageContent() {
                     title={option.team_name}
                     aria-label={option.team_name}
                     className={`flex flex-col items-center justify-center gap-2 rounded-[999px] bg-transparent p-0 text-center transition disabled:opacity-60 ${
-                      option.is_current_pick
-                        ? "scale-[1.03]"
-                        : option.is_locked
-                          ? "opacity-55"
-                          : "hover:scale-[1.03]"
+                      option.is_locked ? "opacity-55" : ""
                     }`}
                   >
                     <span
@@ -470,7 +470,7 @@ export function SurvivorPageContent() {
                       {renderTeamLogo(option.team_name, option.team_short_name, option.team_crest_url, "h-14 w-14")}
                     </span>
                     <span className="text-[11px] font-semibold text-steel">
-                      {submitting === `pick:${option.team_id}` ? "..." : option.team_short_name}
+                      {option.team_short_name}
                     </span>
                   </button>
                 ))}
