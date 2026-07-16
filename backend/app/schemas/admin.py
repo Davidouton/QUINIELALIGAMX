@@ -320,9 +320,11 @@ class SeasonCreateRequest(BaseModel):
     visibility_status: SeasonVisibilityStatus = SeasonVisibilityStatus.LIVE
     live_dashboard_enabled: bool = False
     is_active: bool = False
+    registration_closed: bool = False
     survivor_enabled: bool = False
     survivor_name: str | None = Field(default=None, max_length=160)
     survivor_max_lives: int = Field(default=1, ge=1, le=10)
+    survivor_registration_closed: bool = False
     survivor_registration_lock_at: datetime | None = None
 
 

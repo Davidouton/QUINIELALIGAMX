@@ -1262,9 +1262,11 @@ export interface Season {
   visibility_status: SeasonVisibilityStatus;
   live_dashboard_enabled: boolean;
   is_active: boolean;
+  registration_closed: boolean;
   survivor_enabled: boolean;
   survivor_name: string | null;
   survivor_max_lives: number;
+  survivor_registration_closed: boolean;
   survivor_registration_lock_at: string | null;
   start_matchday_id: string | null;
   end_matchday_id: string | null;

@@ -31,6 +31,7 @@ type MembershipRow = {
   id: string;
   name: string;
   availability: "Abierto" | "Cerrado";
+  availabilityPillClassName: string;
   enrollmentStatus: string;
   enrollmentPillClassName: string;
   detail: string;
@@ -157,6 +158,22 @@ function getSeasonDisplayName(season: Season) {
     return season.competition_name ?? "Mundial";
   }
   return season.competition_name ?? "Liga MX";
+}
+
+function getAvailabilityPillClassName({
+  isOpen,
+  closedByAdmin,
+}: {
+  isOpen: boolean;
+  closedByAdmin: boolean;
+}) {
+  if (isOpen) {
+    return "app-pill px-3 text-[10px] text-mint";
+  }
+  if (closedByAdmin) {
+    return "app-pill px-3 text-[10px] text-coral";
+  }
+  return "app-pill px-3 text-[10px] text-steel";
 }
 
 export function DashboardEnrollmentsPageContent() {
@@ -290,6 +307,8 @@ export function DashboardEnrollmentsPageContent() {
       const hasActiveMembership = Boolean(membership?.is_active);
       const isPendingApproval = Boolean(membership && !membership.is_active && state.me?.modality === "pre_pago");
       const windowClosed = isClosedAt(season.participants_lock_at);
+      const registrationClosedByAdmin = season.registration_closed;
+      const seasonClosed = registrationClosedByAdmin || windowClosed;
       const isLigaMxRegular = season.tournament_format === "standard";
       const seasonTitle = isLigaMxRegular ? "Liga MX" : getSeasonDisplayName(season);
       const membershipStatus = seasonStatusCopy({
@@ -300,7 +319,11 @@ export function DashboardEnrollmentsPageContent() {
       rows.push({
         id: `season-${season.id}`,
         name: seasonTitle,
-        availability: windowClosed ? "Cerrado" : "Abierto",
+        availability: seasonClosed ? "Cerrado" : "Abierto",
+        availabilityPillClassName: getAvailabilityPillClassName({
+          isOpen: !seasonClosed,
+          closedByAdmin: registrationClosedByAdmin,
+        }),
         enrollmentStatus: hasActiveMembership
           ? "Activo"
           : isPendingApproval
@@ -309,10 +332,14 @@ export function DashboardEnrollmentsPageContent() {
         enrollmentPillClassName: membershipStatus.pillClassName,
         detail: hasActiveMembership
           ? "Tu membresia ya esta activa y puedes entrar al dashboard, picks, scores y ranking."
+          : registrationClosedByAdmin
+            ? "El registro de esta liga fue cerrado por administracion."
           : isAvalMode
             ? "Con modalidad aval tu alta entra en automatico en cuanto la activas."
             : "Con pre-pago tu alta se registra y queda pendiente de autorizacion admin.",
-        meta: season.name,
+        meta: registrationClosedByAdmin
+          ? `${season.name} · Registro cerrado manualmente`
+          : season.name,
         action: hasActiveMembership ? (
           <Link href={buildHrefWithSeason("/dashboard", season.id, season.competition_id ?? "")} className="secondary-button">
             Ir al dashboard
@@ -321,11 +348,13 @@ export function DashboardEnrollmentsPageContent() {
           <button
             type="button"
             onClick={() => void handleJoinSeason(season)}
-            disabled={actionLoading === `season:${season.id}` || windowClosed}
+            disabled={actionLoading === `season:${season.id}` || seasonClosed}
             className="secondary-button disabled:opacity-60"
           >
             {actionLoading === `season:${season.id}`
               ? "Procesando..."
+              : registrationClosedByAdmin
+                ? `${seasonTitle} cerrada`
               : isAvalMode
                 ? `Inscribirme a ${seasonTitle}`
                 : `Solicitar alta ${seasonTitle}`}
@@ -334,7 +363,8 @@ export function DashboardEnrollmentsPageContent() {
       });
     });
 
-    if (canShowSurvivorCard) {
+  if (canShowSurvivorCard) {
+      const survivorClosedByAdmin = Boolean(regularEnrollmentSeason?.survivor_registration_closed);
       const survivorEnrollmentStatus = survivorMembership
         ? "Activo"
         : isPrePagoPendingApproval
@@ -346,6 +376,10 @@ export function DashboardEnrollmentsPageContent() {
         id: "survivor-liga-mx",
         name: "Survivor Liga MX",
         availability: survivorWindowClosed ? "Cerrado" : "Abierto",
+        availabilityPillClassName: getAvailabilityPillClassName({
+          isOpen: !survivorWindowClosed,
+          closedByAdmin: survivorClosedByAdmin,
+        }),
         enrollmentStatus: survivorEnrollmentStatus,
         enrollmentPillClassName: survivorMembership
           ? "app-pill-active px-3 text-[10px] text-ink"
@@ -356,14 +390,20 @@ export function DashboardEnrollmentsPageContent() {
             : "app-pill px-3 text-[10px] text-gold",
         detail: survivorMembership
           ? `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
+          : survivorClosedByAdmin
+            ? "El registro de survivor fue cerrado por administracion."
           : isPrePagoPendingApproval
             ? "Tu acceso a survivor queda pendiente hasta que admin active tu alta de Liga MX."
           : hasActiveLigaMxMembership
             ? "Ya puedes activar tu alta en survivor para esta temporada regular."
             : "Primero necesitas tener activa tu membresia de Liga MX para habilitar survivor.",
-        meta: state.survivorBoard?.season.registration_lock_at
-            ? `Cierre ${formatMexicoDateTime(state.survivorBoard.season.registration_lock_at) ?? "Por definir"}`
-            : null,
+        meta: survivorClosedByAdmin
+          ? "Registro cerrado manualmente"
+          : state.survivorBoard?.season.registration_lock_at
+              ? `Cierre ${formatMexicoDateTime(state.survivorBoard.season.registration_lock_at) ?? "Por definir"}`
+              : regularEnrollmentSeason?.survivor_registration_lock_at
+                ? `Cierre ${formatMexicoDateTime(regularEnrollmentSeason.survivor_registration_lock_at) ?? "Por definir"}`
+                : null,
         action: survivorMembership ? (
           <Link href={buildHrefWithSeason("/dashboard/survivor")} className="secondary-button">
             Abrir Survivor
@@ -375,7 +415,11 @@ export function DashboardEnrollmentsPageContent() {
             disabled={actionLoading === "survivor" || !hasActiveLigaMxMembership || survivorWindowClosed}
             className="secondary-button disabled:opacity-60"
           >
-            {actionLoading === "survivor" ? "Procesando..." : "Inscribirme a Survivor"}
+            {actionLoading === "survivor"
+              ? "Procesando..."
+              : survivorClosedByAdmin
+                ? "Survivor cerrada"
+                : "Inscribirme a Survivor"}
           </button>
         ),
       });
@@ -387,6 +431,10 @@ export function DashboardEnrollmentsPageContent() {
         id: `vip-${vip.id}`,
         name: vip.name,
         availability: vip.join_locked ? "Cerrado" : "Abierto",
+        availabilityPillClassName: getAvailabilityPillClassName({
+          isOpen: !vip.join_locked,
+          closedByAdmin: false,
+        }),
         enrollmentStatus: vip.my_membership
           ? status.label
           : vip.join_locked
@@ -635,10 +683,7 @@ export function DashboardEnrollmentsPageContent() {
                       {row.meta ? <p className="mt-1 text-xs text-steel">{row.meta}</p> : null}
                     </div>
                     <span
-                      className={cn(
-                        "text-xs font-semibold uppercase tracking-[0.14em]",
-                        row.availability === "Abierto" ? "text-mint" : "text-steel",
-                      )}
+                      className={row.availabilityPillClassName}
                     >
                       {row.availability}
                     </span>
@@ -668,7 +713,7 @@ export function DashboardEnrollmentsPageContent() {
                     ) : null}
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
-                    <span className="app-pill px-3 text-[10px]">{expandedMembership.availability}</span>
+                    <span className={expandedMembership.availabilityPillClassName}>{expandedMembership.availability}</span>
                     <span className={expandedMembership.enrollmentPillClassName}>{expandedMembership.enrollmentStatus}</span>
                   </div>
                 </div>

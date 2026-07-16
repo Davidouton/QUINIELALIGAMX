@@ -1,5 +1,5 @@
 from app.core.database import SessionLocal
-from app.models.entities import Profile, SeasonMembership
+from app.models.entities import Profile, Season, SeasonMembership
 
 from conftest import PROFILE_USER_ID, SEASON_ID
 
@@ -79,3 +79,19 @@ def test_get_me_auto_activates_existing_aval_membership(client) -> None:
     assert payload["selected_season_membership"]["is_active"] is True
     assert payload["selected_season_membership"]["can_participate"] is True
     assert payload["can_participate_selected_season"] is True
+
+
+def test_join_season_rejects_when_admin_closed_registration(client) -> None:
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        assert season is not None
+        season.registration_closed = True
+        db.add(season)
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.post(f"/api/v1/me/seasons/{SEASON_ID}/join")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "El registro de esta liga fue cerrado por administracion"

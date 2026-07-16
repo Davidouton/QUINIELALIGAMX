@@ -507,6 +507,8 @@ class SurvivorService:
         return season.tournament_format == "standard" or bool(season.survivor_enabled)
 
     def _registration_open(self, db: Session, season: Season) -> bool:
+        if season.survivor_registration_closed:
+            return False
         lock_at = self._get_registration_lock(season)
         if lock_at is None:
             lock_at = self.season_eligibility_service.get_effective_lock_at(db, season)

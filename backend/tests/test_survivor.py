@@ -187,3 +187,20 @@ def test_survivor_board_counts_lost_lives_and_sorts_leaderboard(client) -> None:
     assert payload["my_membership"]["lives_spent"] == 1
     assert payload["leaderboard"][0]["profile_id"] == PROFILE_LEADER_ID
     assert payload["leaderboard"][1]["profile_id"] == PROFILE_USER_ID
+
+
+def test_survivor_join_rejects_when_admin_closed_registration(client) -> None:
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        assert season is not None
+        season.survivor_enabled = True
+        season.survivor_registration_closed = True
+        db.add(season)
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.post(f"/api/v1/survivor/seasons/{SEASON_ID}/join")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "La ventana de inscripcion para survivor ya cerro"

@@ -99,6 +99,11 @@ def join_season(
     season = db.get(Season, season_id)
     if season is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada no encontrada")
+    if season.registration_closed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El registro de esta liga fue cerrado por administracion",
+        )
     lock_at = season_eligibility_service.get_effective_lock_at(db, season)
     if lock_at is not None and datetime.now(UTC) >= lock_at:
         raise HTTPException(

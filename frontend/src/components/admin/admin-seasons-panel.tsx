@@ -14,9 +14,11 @@ type SeasonFormState = {
   visibility_status: SeasonVisibilityStatus;
   live_dashboard_enabled: boolean;
   is_active: boolean;
+  registration_closed: boolean;
   survivor_enabled: boolean;
   survivor_name: string;
   survivor_max_lives: string;
+  survivor_registration_closed: boolean;
   survivor_registration_lock_at: string;
 };
 
@@ -28,9 +30,11 @@ const initialSeasonForm: SeasonFormState = {
   visibility_status: "live",
   live_dashboard_enabled: false,
   is_active: false,
+  registration_closed: false,
   survivor_enabled: false,
   survivor_name: "",
   survivor_max_lives: "1",
+  survivor_registration_closed: false,
   survivor_registration_lock_at: "",
 };
 
@@ -106,7 +110,7 @@ export function AdminSeasonsPanel() {
   }
 
   async function handleSetActiveSeason(season: Season) {
-    setSaving(`season:${season.id}`);
+    setSaving(`activate:${season.id}`);
     setError(null);
     setMessage(null);
 
@@ -122,9 +126,11 @@ export function AdminSeasonsPanel() {
           visibility_status: season.visibility_status,
           live_dashboard_enabled: season.live_dashboard_enabled,
           is_active: true,
+          registration_closed: season.registration_closed,
           survivor_enabled: season.survivor_enabled,
           survivor_name: season.survivor_name,
           survivor_max_lives: season.survivor_max_lives,
+          survivor_registration_closed: season.survivor_registration_closed,
           survivor_registration_lock_at: season.survivor_registration_lock_at,
         }),
       });
@@ -132,6 +138,50 @@ export function AdminSeasonsPanel() {
       setMessage(`Temporada default: ${season.name}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo activar la temporada");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleToggleRegistration(season: Season, target: "season" | "survivor") {
+    const savingKey = `${target}:${season.id}`;
+    setSaving(savingKey);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/admin/seasons/${season.id}`, accessToken, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: season.name,
+          slug: season.slug,
+          competition_id: season.competition_id,
+          tournament_format: season.tournament_format,
+          visibility_status: season.visibility_status,
+          live_dashboard_enabled: season.live_dashboard_enabled,
+          is_active: season.is_active,
+          registration_closed: target === "season" ? !season.registration_closed : season.registration_closed,
+          survivor_enabled: season.survivor_enabled,
+          survivor_name: season.survivor_name,
+          survivor_max_lives: season.survivor_max_lives,
+          survivor_registration_closed:
+            target === "survivor" ? !season.survivor_registration_closed : season.survivor_registration_closed,
+          survivor_registration_lock_at: season.survivor_registration_lock_at,
+        }),
+      });
+      await loadSeasons();
+      setMessage(
+        target === "season"
+          ? season.registration_closed
+            ? `Registro de liga abierto: ${season.name}.`
+            : `Registro de liga cerrado: ${season.name}.`
+          : season.survivor_registration_closed
+            ? `Registro de survivor abierto: ${season.name}.`
+            : `Registro de survivor cerrado: ${season.name}.`,
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar el bloqueo de registro");
     } finally {
       setSaving(null);
     }
@@ -236,6 +286,16 @@ export function AdminSeasonsPanel() {
             />
             Usar como temporada default del admin
           </label>
+          <label className="flex items-center gap-3 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={seasonForm.registration_closed}
+              onChange={(event) =>
+                setSeasonForm((current) => ({ ...current, registration_closed: event.target.checked }))
+              }
+            />
+            Cerrar registro de la liga
+          </label>
           <div className="rounded-[18px] border border-white/6 bg-white/[0.03] p-4">
             <label className="flex items-center gap-3 text-sm text-ink">
               <input
@@ -266,6 +326,17 @@ export function AdminSeasonsPanel() {
                 className="field-control"
                 disabled={!seasonForm.survivor_enabled}
               />
+              <label className="flex items-center gap-3 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={seasonForm.survivor_registration_closed}
+                  onChange={(event) =>
+                    setSeasonForm((current) => ({ ...current, survivor_registration_closed: event.target.checked }))
+                  }
+                  disabled={!seasonForm.survivor_enabled}
+                />
+                Cerrar registro de survivor
+              </label>
               <input
                 type="datetime-local"
                 value={seasonForm.survivor_registration_lock_at}
@@ -308,17 +379,17 @@ export function AdminSeasonsPanel() {
           </select>
         </div>
         <div className="no-scrollbar overflow-x-auto touch-pan-x">
-          <table className="min-w-[860px] table-fixed text-left text-sm text-ink">
+          <table className="min-w-[1180px] table-fixed text-left text-sm text-ink">
             <colgroup>
               <col className="w-[180px]" />
               <col className="w-[200px]" />
               <col className="w-[110px]" />
-            <col className="w-[130px]" />
-            <col className="w-[130px]" />
-            <col className="w-[110px]" />
-            <col className="w-[110px]" />
-            <col className="w-[110px]" />
-            <col className="w-[190px]" />
+              <col className="w-[130px]" />
+              <col className="w-[150px]" />
+              <col className="w-[170px]" />
+              <col className="w-[110px]" />
+              <col className="w-[110px]" />
+              <col className="w-[290px]" />
             </colgroup>
             <thead className="app-table-head">
               <tr>
@@ -327,6 +398,7 @@ export function AdminSeasonsPanel() {
                 <th className="px-3 py-3">Slug</th>
                 <th className="px-3 py-3">Formato</th>
                 <th className="px-3 py-3">Survivor</th>
+                <th className="px-3 py-3">Registro</th>
                 <th className="px-3 py-3">Visibilidad</th>
                 <th className="px-3 py-3">Tab Live</th>
                 <th className="px-3 py-3">Default</th>
@@ -346,6 +418,18 @@ export function AdminSeasonsPanel() {
                   </td>
                   <td className="px-3 py-3 text-steel">
                     {season.survivor_enabled ? `${season.survivor_name ?? "Survivor"} · ${season.survivor_max_lives} vidas` : "Off"}
+                  </td>
+                  <td className="px-3 py-3 text-steel">
+                    <div className="flex flex-col gap-1">
+                      <span>{season.registration_closed ? "Liga cerrada" : "Liga abierta"}</span>
+                      <span>
+                        {season.survivor_enabled
+                          ? season.survivor_registration_closed
+                            ? "Survivor cerrado"
+                            : "Survivor abierto"
+                          : "Survivor off"}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-3 py-3 text-steel">
                     {season.visibility_status === "live"
@@ -370,9 +454,11 @@ export function AdminSeasonsPanel() {
                             visibility_status: season.visibility_status,
                             live_dashboard_enabled: season.live_dashboard_enabled,
                             is_active: season.is_active,
+                            registration_closed: season.registration_closed,
                             survivor_enabled: season.survivor_enabled,
                             survivor_name: season.survivor_name ?? "",
                             survivor_max_lives: String(season.survivor_max_lives ?? 1),
+                            survivor_registration_closed: season.survivor_registration_closed,
                             survivor_registration_lock_at: season.survivor_registration_lock_at
                               ? season.survivor_registration_lock_at.slice(0, 16)
                               : "",
@@ -386,10 +472,36 @@ export function AdminSeasonsPanel() {
                         <button
                           type="button"
                           onClick={() => void handleSetActiveSeason(season)}
-                          disabled={saving === `season:${season.id}`}
-                          className="app-pill h-9 min-w-[76px] px-3 text-[11px]"
+          disabled={saving === `activate:${season.id}`}
+          className="app-pill h-9 min-w-[76px] px-3 text-[11px]"
+        >
+          {saving === `activate:${season.id}` ? "..." : "Act"}
+        </button>
+      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleRegistration(season, "season")}
+                        disabled={Boolean(saving)}
+                        className="app-pill h-9 min-w-[104px] px-3 text-[11px]"
+      >
+        {saving === `season:${season.id}`
+                          ? "..."
+                          : season.registration_closed
+                            ? "Abrir liga"
+                            : "Cerrar liga"}
+                      </button>
+                      {season.survivor_enabled ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleRegistration(season, "survivor")}
+                          disabled={Boolean(saving)}
+                          className="app-pill h-9 min-w-[120px] px-3 text-[11px]"
                         >
-                          {saving === `season:${season.id}` ? "..." : "Act"}
+                          {saving === `survivor:${season.id}`
+                            ? "..."
+                            : season.survivor_registration_closed
+                              ? "Abrir survivor"
+                              : "Cerrar survivor"}
                         </button>
                       ) : null}
                     </div>

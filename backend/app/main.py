@@ -119,12 +119,18 @@ def run_startup_migrations() -> None:
                 "live_dashboard_enabled": (
                     "ALTER TABLE seasons ADD COLUMN live_dashboard_enabled BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
+                "registration_closed": (
+                    "ALTER TABLE seasons ADD COLUMN registration_closed BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
                 "survivor_enabled": (
                     "ALTER TABLE seasons ADD COLUMN survivor_enabled BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
                 "survivor_name": "ALTER TABLE seasons ADD COLUMN survivor_name VARCHAR(160)",
                 "survivor_max_lives": (
                     "ALTER TABLE seasons ADD COLUMN survivor_max_lives INTEGER NOT NULL DEFAULT 1"
+                ),
+                "survivor_registration_closed": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_registration_closed BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
                 "survivor_registration_lock_at": (
                     "ALTER TABLE seasons ADD COLUMN survivor_registration_lock_at TIMESTAMP WITH TIME ZONE"
@@ -172,8 +178,17 @@ def run_startup_migrations() -> None:
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS idx_seasons_live_dashboard_enabled ON seasons(live_dashboard_enabled)")
             )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_seasons_registration_closed ON seasons(registration_closed)")
+            )
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_seasons_competition_id ON seasons(competition_id)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_seasons_survivor_enabled ON seasons(survivor_enabled)"))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_seasons_survivor_registration_closed "
+                    "ON seasons(survivor_registration_closed)"
+                )
+            )
 
         if "matches" in table_names:
             match_columns = {column["name"]: column for column in inspector.get_columns("matches")}

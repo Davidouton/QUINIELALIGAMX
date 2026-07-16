@@ -972,9 +972,11 @@ def build_season_out(row: Season, competition: Competition | None = None) -> Sea
         visibility_status=row.visibility_status,
         live_dashboard_enabled=row.live_dashboard_enabled,
         is_active=row.is_active,
+        registration_closed=row.registration_closed,
         survivor_enabled=row.survivor_enabled,
         survivor_name=row.survivor_name,
         survivor_max_lives=row.survivor_max_lives,
+        survivor_registration_closed=row.survivor_registration_closed,
         survivor_registration_lock_at=row.survivor_registration_lock_at,
         start_matchday_id=row.start_matchday_id,
         end_matchday_id=row.end_matchday_id,
@@ -1932,9 +1934,11 @@ def create_season(
             visibility_status=payload.visibility_status,
             live_dashboard_enabled=payload.live_dashboard_enabled,
             is_active=payload.is_active,
+            registration_closed=payload.registration_closed,
             survivor_enabled=payload.survivor_enabled,
             survivor_name=normalize_optional_text(payload.survivor_name),
             survivor_max_lives=payload.survivor_max_lives,
+            survivor_registration_closed=payload.survivor_registration_closed,
             survivor_registration_lock_at=payload.survivor_registration_lock_at,
         ),
     )
@@ -1967,9 +1971,11 @@ def update_season(
     season.visibility_status = payload.visibility_status
     season.live_dashboard_enabled = payload.live_dashboard_enabled
     season.is_active = payload.is_active
+    season.registration_closed = payload.registration_closed
     season.survivor_enabled = payload.survivor_enabled
     season.survivor_name = normalize_optional_text(payload.survivor_name)
     season.survivor_max_lives = payload.survivor_max_lives
+    season.survivor_registration_closed = payload.survivor_registration_closed
     season.survivor_registration_lock_at = payload.survivor_registration_lock_at
     season_repo.save(db, season)
     if payload.is_active:
