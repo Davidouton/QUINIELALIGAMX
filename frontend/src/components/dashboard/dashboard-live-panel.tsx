@@ -48,6 +48,23 @@ function renderScore(homeScore: number | null, awayScore: number | null) {
   return `${homeScore} - ${awayScore}`;
 }
 
+function TeamLiveBadge({ crestUrl, teamName }: { crestUrl: string | null; teamName: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      {crestUrl ? (
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.05]">
+          <img src={crestUrl} alt={teamName} className="h-full w-full object-cover" />
+        </div>
+      ) : (
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[10px] font-semibold uppercase text-steel">
+          {teamName.slice(0, 3)}
+        </div>
+      )}
+      <p className="truncate text-sm font-semibold text-ink">{teamName}</p>
+    </div>
+  );
+}
+
 export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
   const [state, setState] = useState<LiveLeaderboardResponse>(initialState);
   const [loading, setLoading] = useState(true);
@@ -118,17 +135,6 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
     };
   }, [season?.id, season?.live_dashboard_enabled, state.refresh_interval_seconds]);
 
-  const hasScoredMatches = useMemo(
-    () => state.matches.some((match) => match.home_score !== null && match.away_score !== null),
-    [state.matches],
-  );
-  const movementIndex = useMemo(() => {
-    const up = state.leaderboard.filter((entry) => entry.rank_delta > 0).length;
-    const down = state.leaderboard.filter((entry) => entry.rank_delta < 0).length;
-    const same = state.leaderboard.length - up - down;
-    return { up, down, same };
-  }, [state.leaderboard]);
-
   if (!season) {
     return <p className="text-sm text-steel">Selecciona un torneo para ver la quiniela al momento.</p>;
   }
@@ -156,17 +162,12 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
   return (
     <section className="space-y-5">
       <div className="rounded-[24px] border border-white/10 bg-white/[0.02] p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-2">
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-steel">Marcadores del dia</p>
             <p className="mt-1 text-sm text-steel">
               {state.matchday_name ? `Actualizando juegos de ${state.matchday_name}.` : "Marcadores del corte actual."}
             </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-steel">
-            <span className="app-pill px-3 text-[10px]">Suben {movementIndex.up}</span>
-            <span className="app-pill px-3 text-[10px]">Bajan {movementIndex.down}</span>
-            <span className="app-pill px-3 text-[10px]">Igual {movementIndex.same}</span>
           </div>
         </div>
 
@@ -190,9 +191,11 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                  <p className="text-sm font-semibold text-ink">{match.home_team_name}</p>
+                  <TeamLiveBadge crestUrl={match.home_team_crest_url} teamName={match.home_team_name} />
                   <p className="text-base font-semibold text-ink">{renderScore(match.home_score, match.away_score)}</p>
-                  <p className="text-right text-sm font-semibold text-ink">{match.away_team_name}</p>
+                  <div className="flex justify-end">
+                    <TeamLiveBadge crestUrl={match.away_team_crest_url} teamName={match.away_team_name} />
+                  </div>
                 </div>
               </article>
             ))}
@@ -204,121 +207,86 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
       </div>
 
       <div className="rounded-[24px] border border-[#ff5f8740] bg-[#ff5f8710] p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-[#ff7b9a]">Live</p>
             <h2 className="mt-2 text-lg font-semibold text-ink">Quiniela al momento</h2>
             <p className="mt-2 text-sm text-steel">
-              Ranking provisional de {state.matchday_name ?? season.name}. Admin mueve marcadores desde resultados y aqui ves el impacto al momento.
+              Ranking provisional de {state.matchday_name ?? season.name}.
             </p>
           </div>
-          <div className="space-y-1 text-sm text-steel lg:text-right">
-            <p>Refresh: cada {state.refresh_interval_seconds}s</p>
-            <p>Ultima lectura: {state.updated_at ? formatMexicoCityDateTime(state.updated_at) : "Esperando marcador"}</p>
-          </div>
+          {state.updated_at ? (
+            <p className="text-xs text-steel">Ultima lectura: {formatMexicoCityDateTime(state.updated_at)}</p>
+          ) : null}
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,0.9fr)]">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-steel">Ranking provisional</p>
-              <p className="mt-1 text-sm text-steel">Posiciones moviendose sobre el torneo base.</p>
-            </div>
-            {error ? <p className="text-xs text-coral">{error}</p> : null}
-          </div>
-
-          <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <table className="min-w-[760px] w-full table-fixed text-left text-[11px] text-ink sm:text-sm">
-              <colgroup>
-                <col className="w-[72px]" />
-                <col className="w-[34%]" />
-                <col className="w-[110px]" />
-                <col className="w-[110px]" />
-                <col className="w-[110px]" />
-                <col className="w-[110px]" />
-                <col className="w-[110px]" />
-              </colgroup>
-              <thead className="app-table-head">
-                <tr>
-                  <th className="px-3 py-3">Live</th>
-                  <th className="px-3 py-3">Jugador</th>
-                  <th className="px-3 py-3">Pts</th>
-                  <th className="px-3 py-3">+ Jornada</th>
-                  <th className="px-3 py-3">Oficial</th>
-                  <th className="px-3 py-3">Indice</th>
-                  <th className="px-3 py-3">Exactos</th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.leaderboard.map((entry) => (
-                  <tr key={entry.profile_id} className="app-table-row border-b last:border-b-0">
-                    <td className="px-3 py-3 font-semibold text-ink">#{entry.rank_position}</td>
-                    <td className="px-3 py-3">
-                      <p className="font-semibold text-ink">{entry.display_name}</p>
-                    </td>
-                    <td className="px-3 py-3 font-semibold text-ink">{entry.total_points}</td>
-                    <td className="px-3 py-3 text-steel">{formatSignedNumber(entry.live_matchday_points)}</td>
-                    <td className="px-3 py-3 text-steel">
-                      {entry.official_rank_position ? `#${entry.official_rank_position}` : "-"}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-steel">
-                          {entry.official_rank_position ? `#${entry.official_rank_position} -> #${entry.rank_position}` : `#${entry.rank_position}`}
-                        </span>
-                        <span
-                          className={`font-semibold ${
-                            entry.rank_delta > 0 ? "text-emerald-300" : entry.rank_delta < 0 ? "text-coral" : "text-steel"
-                          }`}
-                        >
-                          {formatMovementLabel(entry.rank_delta)}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-steel">{entry.exact_scores}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {state.leaderboard.length === 0 ? (
-            <p className="text-sm text-steel">Todavia no hay picks evaluables para mover el ranking live.</p>
-          ) : null}
-        </div>
-
-        <div className="space-y-3">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-steel">Marcadores</p>
-            <p className="mt-1 text-sm text-steel">
-              {state.matchday_name ? `Partidos de ${state.matchday_name}` : "Partidos del corte actual"}.
-            </p>
+            <p className="text-xs uppercase tracking-[0.28em] text-steel">Ranking provisional</p>
+            <p className="mt-1 text-sm text-steel">Cada jugador muestra su subida o bajada al momento.</p>
           </div>
-
-          <div className="space-y-3">
-            {state.matches.map((match) => (
-              <article key={match.match_id} className="rounded-[22px] border border-white/8 bg-white/[0.02] p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs uppercase tracking-[0.18em] text-steel">{formatMexicoCityDateTime(match.kickoff_at)}</p>
-                  <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${match.is_official ? "border-emerald-400/30 text-emerald-300" : "border-white/10 text-[#ff7b9a]"}`}>
-                    {match.is_official ? "Oficial" : "Live"}
-                  </span>
-                </div>
-                <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                  <p className="text-sm font-semibold text-ink">{match.home_team_name}</p>
-                  <p className="text-lg font-semibold text-ink">{renderScore(match.home_score, match.away_score)}</p>
-                  <p className="text-right text-sm font-semibold text-ink">{match.away_team_name}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-
-          {!hasScoredMatches ? (
-            <p className="text-sm text-steel">Aun no entran marcadores para esta jornada.</p>
-          ) : null}
+          {error ? <p className="text-xs text-coral">{error}</p> : null}
         </div>
+
+        <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <table className="min-w-[760px] w-full table-fixed text-left text-[11px] text-ink sm:text-sm">
+            <colgroup>
+              <col className="w-[96px]" />
+              <col className="w-[30%]" />
+              <col className="w-[120px]" />
+              <col className="w-[120px]" />
+              <col className="w-[120px]" />
+              <col className="w-[140px]" />
+              <col className="w-[110px]" />
+            </colgroup>
+            <thead className="app-table-head">
+              <tr>
+                <th className="px-3 py-3">Live</th>
+                <th className="px-3 py-3">Jugador</th>
+                <th className="px-3 py-3">Movimiento</th>
+                <th className="px-3 py-3">Pts</th>
+                <th className="px-3 py-3">+ Jornada</th>
+                <th className="px-3 py-3">Oficial</th>
+                <th className="px-3 py-3">Exactos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.leaderboard.map((entry) => (
+                <tr key={entry.profile_id} className="app-table-row border-b last:border-b-0">
+                  <td className="px-3 py-3 font-semibold text-ink">#{entry.rank_position}</td>
+                  <td className="px-3 py-3">
+                    <p className="font-semibold text-ink">{entry.display_name}</p>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span
+                      className={`inline-flex min-w-[76px] items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                        entry.rank_delta > 0
+                          ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
+                          : entry.rank_delta < 0
+                            ? "border-[#ff5f8740] bg-[#ff5f8710] text-coral"
+                            : "border-white/10 bg-white/[0.03] text-steel"
+                      }`}
+                    >
+                      {formatMovementLabel(entry.rank_delta)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 font-semibold text-ink">{entry.total_points}</td>
+                  <td className="px-3 py-3 text-steel">{formatSignedNumber(entry.live_matchday_points)}</td>
+                  <td className="px-3 py-3 text-steel">
+                    {entry.official_rank_position ? `#${entry.official_rank_position}` : "-"}
+                  </td>
+                  <td className="px-3 py-3 text-steel">{entry.exact_scores}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {state.leaderboard.length === 0 ? (
+          <p className="text-sm text-steel">Todavia no hay picks evaluables para mover el ranking live.</p>
+        ) : null}
       </div>
     </section>
   );
