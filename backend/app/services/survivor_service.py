@@ -459,9 +459,9 @@ class SurvivorService:
             used_team_ids.discard(current_pick.team_id)
         rows: list[SurvivorAvailableTeamOut] = []
         for match in current_matchday_matches:
-            for selected_team_id, opponent_team_id in (
-                (match.home_team_id, match.away_team_id),
-                (match.away_team_id, match.home_team_id),
+            for selected_team_id, opponent_team_id, is_home_team in (
+                (match.home_team_id, match.away_team_id, True),
+                (match.away_team_id, match.home_team_id, False),
             ):
                 if selected_team_id is None or opponent_team_id is None:
                     continue
@@ -478,6 +478,7 @@ class SurvivorService:
                         team_name=selected_team.name,
                         team_short_name=selected_team.short_name,
                         team_crest_url=selected_team.crest_url,
+                        is_home_team=is_home_team,
                         opponent_team_id=opponent_team_id,
                         opponent_team_name=opponent_team.name,
                         opponent_team_short_name=opponent_team.short_name,
@@ -489,7 +490,7 @@ class SurvivorService:
                         is_current_pick=current_pick.team_id == selected_team_id if current_pick is not None else False,
                     )
                 )
-        return sorted(rows, key=lambda row: (row.is_locked, row.kickoff_at, row.team_name))
+        return rows
 
     def _resolve_current_matchday(
         self,

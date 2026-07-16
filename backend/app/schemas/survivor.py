@@ -44,6 +44,7 @@ class SurvivorAvailableTeamOut(BaseModel):
     team_name: str
     team_short_name: str
     team_crest_url: str | None = None
+    is_home_team: bool = False
     opponent_team_id: str | None = None
     opponent_team_name: str
     opponent_team_short_name: str

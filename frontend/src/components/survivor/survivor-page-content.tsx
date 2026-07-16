@@ -186,6 +186,8 @@ export function SurvivorPageContent() {
         matchId: string;
         kickoffAt: string;
         options: typeof board.available_teams;
+        homeOption: (typeof board.available_teams)[number] | null;
+        awayOption: (typeof board.available_teams)[number] | null;
       }
     >();
 
@@ -193,12 +195,19 @@ export function SurvivorPageContent() {
       const existing = grouped.get(option.match_id);
       if (existing) {
         existing.options.push(option);
+        if (option.is_home_team) {
+          existing.homeOption = option;
+        } else {
+          existing.awayOption = option;
+        }
         continue;
       }
       grouped.set(option.match_id, {
         matchId: option.match_id,
         kickoffAt: option.kickoff_at,
         options: [option],
+        homeOption: option.is_home_team ? option : null,
+        awayOption: option.is_home_team ? null : option,
       });
     }
 
@@ -486,10 +495,54 @@ export function SurvivorPageContent() {
                   {availableMatches.map((match) => (
                     <div key={match.matchId} className="px-4 py-3">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex items-center gap-3">
+                          {(() => {
+                            const fixtureHome =
+                              match.homeOption
+                                ? {
+                                    name: match.homeOption.team_name,
+                                    shortName: match.homeOption.team_short_name,
+                                    crestUrl: match.homeOption.team_crest_url,
+                                  }
+                                : match.awayOption
+                                  ? {
+                                      name: match.awayOption.opponent_team_name,
+                                      shortName: match.awayOption.opponent_team_short_name,
+                                      crestUrl: match.awayOption.opponent_team_crest_url,
+                                    }
+                                  : null;
+                            const fixtureAway =
+                              match.awayOption
+                                ? {
+                                    name: match.awayOption.team_name,
+                                    shortName: match.awayOption.team_short_name,
+                                    crestUrl: match.awayOption.team_crest_url,
+                                  }
+                                : match.homeOption
+                                  ? {
+                                      name: match.homeOption.opponent_team_name,
+                                      shortName: match.homeOption.opponent_team_short_name,
+                                      crestUrl: match.homeOption.opponent_team_crest_url,
+                                    }
+                                  : null;
+
+                            return (
+                              <>
+                                {fixtureHome ? renderTeamLogo(fixtureHome.name, fixtureHome.shortName, fixtureHome.crestUrl, "h-10 w-10") : null}
+                                <div>
+                                  <p className="text-sm font-medium text-ink">
+                                    {fixtureHome?.shortName ?? "LOC"} vs {fixtureAway?.shortName ?? "VIS"}
+                                  </p>
+                                  <p className="text-[11px] text-steel">
+                                    {fixtureHome?.name ?? "Local"} vs {fixtureAway?.name ?? "Visitante"}
+                                  </p>
+                                </div>
+                                {fixtureAway ? renderTeamLogo(fixtureAway.name, fixtureAway.shortName, fixtureAway.crestUrl, "h-10 w-10") : null}
+                              </>
+                            );
+                          })()}
+                        </div>
                         <div>
-                          <p className="text-sm font-medium text-ink">
-                            {match.options.map((option) => option.team_short_name).join(" vs ")}
-                          </p>
                           <p className="text-[11px] text-steel">{formatMexicoCityDateTime(match.kickoffAt)}</p>
                         </div>
 

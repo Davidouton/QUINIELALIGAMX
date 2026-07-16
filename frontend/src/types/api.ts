@@ -959,6 +959,7 @@ export interface SurvivorAvailableTeam {
   team_name: string;
   team_short_name: string;
   team_crest_url: string | null;
+  is_home_team: boolean;
   opponent_team_id: string | null;
   opponent_team_name: string;
   opponent_team_short_name: string;
