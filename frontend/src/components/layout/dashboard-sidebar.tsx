@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
@@ -60,6 +59,30 @@ function renderLinkLabel(label: string) {
 
 function isCompetitionHubRoute(pathname: string) {
   return competitionHubLinks.some((link) => link.href === pathname);
+}
+
+type DashboardNavLinkProps = {
+  href: string;
+  label: string;
+  title?: string;
+  className: string;
+  onClick?: () => void;
+};
+
+function DashboardNavLink({ href, label, title, className, onClick }: DashboardNavLinkProps) {
+  return (
+    <a
+      href={href}
+      aria-label={label}
+      title={title ?? label}
+      className={className}
+      onClick={(_event) => {
+        onClick?.();
+      }}
+    >
+      {renderLinkLabel(label)}
+    </a>
+  );
 }
 
 export function DashboardSidebar() {
@@ -128,16 +151,14 @@ export function DashboardSidebar() {
                 {isMobileMenuOpen ? "Cerrar" : "Menu"}
               </button>
               {canViewAdmin ? (
-                <Link
+                <DashboardNavLink
                   href={buildHrefWithSeason(adminLink.href)}
-                  prefetch={false}
+                  label={adminLink.label}
                   className={cn(
                     "app-pill px-3 text-center",
                     pathname.startsWith(adminLink.href) && "app-pill-active text-ink",
                   )}
-                >
-                  Admin
-                </Link>
+                />
               ) : null}
               <button
                 type="button"
@@ -152,50 +173,44 @@ export function DashboardSidebar() {
           {isMobileMenuOpen ? (
             <div className="mt-4 max-h-[calc(100dvh-12rem)] space-y-3 overflow-y-auto pb-28 pr-1">
               {canViewAdmin ? (
-                <Link
+                <DashboardNavLink
                   href={buildHrefWithSeason(adminLink.href)}
-                  prefetch={false}
+                  label={adminLink.label}
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={cn(
                     "app-pill-active flex h-11 items-center justify-center px-3 text-center",
                     pathname.startsWith(adminLink.href) && "text-ink",
                   )}
-                >
-                  Admin
-                </Link>
+                />
               ) : null}
               <div className="grid grid-cols-2 gap-2">
                 {visiblePrimaryLinks.map((link) => (
-                  <Link
+                  <DashboardNavLink
                     key={link.href}
                     href={buildHrefWithSeason(link.href)}
-                    prefetch={false}
+                    label={link.label}
                     onClick={() => setIsMobileMenuOpen(false)}
                     className={cn(
                       "app-pill-ghost h-10 px-3 text-center",
                       pathname === link.href && "app-pill-active text-ink",
                     )}
-                  >
-                    {renderLinkLabel(link.label)}
-                  </Link>
+                  />
                 ))}
               </div>
               <div className="pt-2">
                 <p className="mb-2 px-1 text-[11px] uppercase tracking-[0.28em] text-steel">Hub de Competencia</p>
                 <div className="grid grid-cols-2 gap-2">
                   {visibleCompetitionHubLinks.map((link) => (
-                    <Link
+                    <DashboardNavLink
                       key={link.href}
                       href={buildHrefWithSeason(link.href)}
-                      prefetch={false}
+                      label={link.label}
                       onClick={() => setIsMobileMenuOpen(false)}
                       className={cn(
                         "app-pill-ghost h-10 px-3 text-center",
                         pathname === link.href && "app-pill-active text-ink",
                       )}
-                    >
-                      {renderLinkLabel(link.label)}
-                    </Link>
+                    />
                   ))}
                 </div>
               </div>
@@ -206,10 +221,10 @@ export function DashboardSidebar() {
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-night/95 px-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-3 backdrop-blur-xl">
           <div className={cn("grid gap-1.5", canViewAdmin ? "grid-cols-8" : "grid-cols-7")}>
             {mobilePrimaryLinksResolved.map((link) => (
-              <Link
+              <DashboardNavLink
                 key={link.href}
                 href={buildHrefWithSeason(link.href)}
-                prefetch={false}
+                label={link.label}
                 className={cn(
                   "app-pill-ghost h-10 px-1 text-center text-[10px]",
                   ((link.href === mobileHubLink.href && isCompetitionHubRoute(pathname)) ||
@@ -217,9 +232,7 @@ export function DashboardSidebar() {
                     (link.href === adminLink.href && pathname.startsWith(adminLink.href))) &&
                     "app-pill-active text-ink",
                 )}
-              >
-                {link.label}
-              </Link>
+              />
             ))}
           </div>
           <div className="mt-3 flex items-center justify-center gap-2 text-[10px] font-medium tracking-[0.16em] text-steel">
@@ -240,37 +253,29 @@ export function DashboardSidebar() {
           </div>
 
           {canViewAdmin ? (
-            <Link
+            <DashboardNavLink
               href={buildHrefWithSeason(adminLink.href)}
-              prefetch={false}
-              aria-label={adminLink.label}
-              title={adminLink.label}
+              label={adminLink.label}
               className={cn(
                 "mb-3 block rounded-[12px] border border-mint/20 bg-mint/10 py-3 text-sm font-semibold text-mint transition hover:border-mint/40 hover:bg-mint/15",
                 "px-4 text-left",
                 pathname.startsWith(adminLink.href) && "border-mint/50 bg-mint/15 text-ink",
               )}
-            >
-              Admin
-            </Link>
+            />
           ) : null}
 
           <div className="space-y-3">
             {visiblePrimaryLinks.map((link) => (
-              <Link
+              <DashboardNavLink
                 key={link.href}
                 href={buildHrefWithSeason(link.href)}
-                prefetch={false}
-                aria-label={link.label}
-                title={link.label}
+                label={link.label}
                 className={cn(
                   "block rounded-[12px] border border-white/[0.04] bg-transparent py-3 text-sm transition hover:border-white/[0.08] hover:bg-white/[0.04]",
                   "px-4 text-left",
                   pathname === link.href && "border-white/[0.06] bg-white/[0.05]",
                 )}
-              >
-                {renderLinkLabel(link.label)}
-              </Link>
+              />
             ))}
           </div>
 
@@ -278,20 +283,16 @@ export function DashboardSidebar() {
             <p className="mb-3 px-1 text-[11px] uppercase tracking-[0.32em] text-steel">Hub de Competencia</p>
             <div className="space-y-3">
               {visibleCompetitionHubLinks.map((link) => (
-                <Link
+                <DashboardNavLink
                   key={link.href}
                   href={buildHrefWithSeason(link.href)}
-                  prefetch={false}
-                  aria-label={link.label}
-                  title={link.label}
+                  label={link.label}
                   className={cn(
                     "block rounded-[12px] border border-white/[0.04] bg-transparent py-3 text-sm transition hover:border-white/[0.08] hover:bg-white/[0.04]",
                     "px-4 text-left",
                     pathname === link.href && "border-white/[0.06] bg-white/[0.05]",
                   )}
-                >
-                  {renderLinkLabel(link.label)}
-                </Link>
+                />
               ))}
             </div>
           </div>
