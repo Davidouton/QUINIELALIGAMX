@@ -551,9 +551,14 @@ export function PickBoard() {
       const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
       try {
         const accessToken = await getBrowserAccessToken();
-        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken, {
-          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
-        });
+        const [bootstrap, vipCompetitions] = await Promise.all([
+          backendFetch<AppBootstrap>("/bootstrap", accessToken, {
+            cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+          }),
+          backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, {
+            cacheTtlMs: CATALOG_CACHE_TTL_MS,
+          }),
+        ]);
         const {
           me,
           active_matchdays: activeMatchdays,
@@ -561,9 +566,6 @@ export function PickBoard() {
           matchdays,
           teams: teamRows,
         } = bootstrap;
-        const vipCompetitions = await backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, {
-          cacheTtlMs: CATALOG_CACHE_TTL_MS,
-        });
         const preferredSeason = resolveLiveSeason(seasons, seasonIdParam);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
         const activeMatchday =
