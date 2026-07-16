@@ -81,6 +81,10 @@ function getScoringStateLabel(canScore?: boolean | null) {
   return canScore ? "Cuenta" : "No";
 }
 
+function getSurvivorStateLabel(isActive?: boolean | null) {
+  return isActive ? "Alta" : "Fuera";
+}
+
 function getRoleLabel(roleCode: string) {
   if (roleCode === "master_admin") {
     return "Super Admin";
@@ -296,6 +300,44 @@ export function AdminUsersPanel() {
       );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar el pago");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function handleToggleSurvivorMembership(user: AdminUser) {
+    const survivorMembership = user.selected_survivor_membership;
+    if (!selectedSeasonId) {
+      setError("Selecciona un torneo primero.");
+      return;
+    }
+    if (!selectedSeasonSupportsSurvivor) {
+      setError("La temporada seleccionada no tiene Survivor habilitado.");
+      return;
+    }
+
+    const nextIsActive = !(survivorMembership?.is_active ?? false);
+
+    setSavingKey(`survivor:${user.id}`);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch<AdminUser>(`/admin/users/${user.id}/survivor-membership`, accessToken, {
+        method: "PUT",
+        body: JSON.stringify({
+          season_id: selectedSeasonId,
+          is_active: nextIsActive,
+        }),
+      });
+      await loadUsers(selectedSeasonId, accessToken);
+      setMessage(
+        `${user.display_name}: ${
+          nextIsActive ? "dado de alta en survivor" : "removido de survivor"
+        }.`,
+      );
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar Survivor");
     } finally {
       setSavingKey(null);
     }
@@ -654,6 +696,10 @@ export function AdminUsersPanel() {
   }
 
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) ?? null;
+  const selectedSeasonSupportsSurvivor = Boolean(
+    selectedSeason &&
+      (selectedSeason.tournament_format === "standard" || selectedSeason.survivor_enabled),
+  );
   const activeCount = users.filter((user) => user.selected_season_membership?.is_active).length;
   const paidCount = users.filter((user) => user.selected_season_membership?.is_paid).length;
   const appAccessCount = users.filter((user) => user.is_active).length;
@@ -677,6 +723,7 @@ export function AdminUsersPanel() {
       getRoleLabel(user.role_code),
       membership?.is_active ? "activo" : "sin alta",
       membership?.is_paid ? "pagado" : "pendiente",
+      user.selected_survivor_membership?.is_active ? "survivor activo" : "survivor fuera",
       user.is_active ? "app activa" : "app bloqueada",
       ...user.season_memberships.map((item) => `${item.season_name} ${item.is_active ? "activo" : "inactivo"}`),
     ]
@@ -956,18 +1003,21 @@ export function AdminUsersPanel() {
               </label>
             </div>
             <div className="px-2 pb-2 text-[10px] text-steel/80">
-              La temporada del selector define el alta, pago y puntaje que ves y editas en la tabla.
+              La temporada del selector define el alta, pago, Survivor y puntaje que ves y editas en la tabla.
+              {!selectedSeasonSupportsSurvivor ? " Survivor esta deshabilitado para este torneo." : ""}
             </div>
-            <table className="min-w-[1240px] table-fixed text-center text-[11px] text-steel">
+            <table className="min-w-[1360px] table-fixed text-center text-[11px] text-steel">
               <colgroup>
                 <col className="w-[220px]" />
                 <col className="w-[92px]" />
                 <col className="w-[78px]" />
                 <col className="w-[78px]" />
+                <col className="w-[88px]" />
                 <col className="w-[84px]" />
                 <col className="w-[88px]" />
                 <col className="w-[150px]" />
                 <col className="w-[190px]" />
+                <col className="w-[150px]" />
                 <col className="w-[360px]" />
               </colgroup>
               <thead className="text-[10px] uppercase tracking-[0.18em] text-steel/85">
@@ -978,6 +1028,7 @@ export function AdminUsersPanel() {
                   <th className="px-1 py-2 font-medium">Rol</th>
                   <th className="px-1 py-2 font-medium">App</th>
                   <th className="px-1 py-2 font-medium">Torneo</th>
+                  <th className="px-1 py-2 font-medium">Survivor</th>
                   <th className="px-1 py-2 font-medium">Pago</th>
                   <th className="px-1 py-2 font-medium">Puntua</th>
                   <th className="px-1 py-2 font-medium">Modalidad</th>
@@ -989,6 +1040,7 @@ export function AdminUsersPanel() {
               <tbody>
                 {filteredUsers.map((user) => {
                   const membership = user.selected_season_membership;
+                  const survivorMembership = user.selected_survivor_membership;
                   const canManageRole =
                     me?.role_code === "master_admin" ||
                     (me?.role_code === "admin" && user.role_code !== "master_admin");
@@ -996,6 +1048,7 @@ export function AdminUsersPanel() {
                   const accessActionClass = user.is_active ? actionDangerClass : actionPositiveClass;
                   const paymentActionClass = membership?.is_paid ? actionDangerClass : actionPositiveClass;
                   const membershipActionClass = membership?.is_active ? actionDangerClass : actionPositiveClass;
+                  const survivorActionClass = survivorMembership?.is_active ? actionDangerClass : actionPositiveClass;
                   const billingDraft = billingDrafts[user.id] ?? {
                     modality: user.modality ?? "pre_pago",
                     aval_profile_id: user.aval_profile_id ?? "",
@@ -1026,6 +1079,15 @@ export function AdminUsersPanel() {
                       <td className="px-1 py-2 align-top">
                         <span className={`inline-flex px-2 py-1 text-[10px] font-semibold uppercase ${getTrafficTextClass(Boolean(membership?.is_active))}`}>
                           {getMembershipStateLabel(membership?.is_active)}
+                        </span>
+                      </td>
+                      <td className="px-1 py-2 align-top">
+                        <span
+                          className={`inline-flex px-2 py-1 text-[10px] font-semibold uppercase ${getTrafficTextClass(
+                            Boolean(survivorMembership?.is_active),
+                          )}`}
+                        >
+                          {getSurvivorStateLabel(survivorMembership?.is_active)}
                         </span>
                       </td>
                       <td className="px-1 py-2 align-top">
@@ -1153,6 +1215,29 @@ export function AdminUsersPanel() {
                           </button>
                           <button
                             type="button"
+                            onClick={() => void handleToggleSurvivorMembership(user)}
+                            disabled={
+                              savingKey === `survivor:${user.id}` ||
+                              !selectedSeasonId ||
+                              !selectedSeasonSupportsSurvivor
+                            }
+                            className={survivorActionClass}
+                            title={
+                              selectedSeasonSupportsSurvivor
+                                ? survivorMembership?.is_active
+                                  ? "Quitar del survivor"
+                                  : "Dar de alta en survivor"
+                                : "Survivor no esta disponible en este torneo"
+                            }
+                          >
+                            {savingKey === `survivor:${user.id}`
+                              ? "..."
+                              : survivorMembership?.is_active
+                                ? "Quitar surv."
+                                : "Alta surv."}
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => void handleSaveBilling(user)}
                             disabled={savingKey === `billing:${user.id}`}
                             className={actionNeutralClass}
@@ -1176,7 +1261,7 @@ export function AdminUsersPanel() {
                 })}
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-sm text-steel">
+                    <td colSpan={11} className="px-4 py-8 text-sm text-steel">
                       No hubo coincidencias para ese filtro.
                     </td>
                   </tr>

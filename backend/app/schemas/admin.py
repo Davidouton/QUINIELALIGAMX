@@ -71,6 +71,11 @@ class UserSeasonMembershipUpdateRequest(BaseModel):
     notes: str | None = None
 
 
+class UserSurvivorMembershipUpdateRequest(BaseModel):
+    season_id: str
+    is_active: bool = False
+
+
 class SyncResponse(BaseModel):
     provider_name: str
     resource_type: str
@@ -232,6 +237,13 @@ class AdminUserSeasonMembershipOut(BaseModel):
     notes: str | None = None
 
 
+class AdminUserSurvivorMembershipOut(BaseModel):
+    season_id: str
+    season_name: str
+    is_active: bool
+    joined_at: datetime | None = None
+
+
 class AdminUserOut(BaseModel):
     id: str
     auth_user_id: str
@@ -249,6 +261,7 @@ class AdminUserOut(BaseModel):
     is_active: bool
     created_at: datetime
     selected_season_membership: AdminUserSeasonMembershipOut | None = None
+    selected_survivor_membership: AdminUserSurvivorMembershipOut | None = None
     season_memberships: list[AdminUserSeasonMembershipOut] = []
 
 

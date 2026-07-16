@@ -33,7 +33,9 @@ from app.models.entities import (
     Season,
     SeasonMembership,
     StandingsMatchday,
+    SurvivorMembership,
     Team,
+    TournamentFormat,
     TrophyAsset,
     VipCompetitionMatchday,
     VipMembershipStatus,
@@ -64,6 +66,7 @@ from app.schemas.admin import (
     AdminUserOut,
     AdminUserPasswordUpdateRequest,
     AdminUserSeasonMembershipOut,
+    AdminUserSurvivorMembershipOut,
     CompetitionCreateRequest,
     CompetitionUpdateRequest,
     HistoricalChampionCreateRequest,
@@ -90,6 +93,7 @@ from app.schemas.admin import (
     TrophyAssetUpdateRequest,
     UserAccessUpdateRequest,
     UserSeasonMembershipUpdateRequest,
+    UserSurvivorMembershipUpdateRequest,
 )
 from app.schemas.competition import CompetitionOut
 from app.schemas.match import MatchOut
@@ -1192,6 +1196,23 @@ def build_admin_user_season_membership_out(
     )
 
 
+def build_admin_user_survivor_membership_out(
+    membership: SurvivorMembership,
+    *,
+    season_name: str | None = None,
+) -> AdminUserSurvivorMembershipOut:
+    return AdminUserSurvivorMembershipOut(
+        season_id=membership.season_id,
+        season_name=season_name or membership.season_id,
+        is_active=membership.is_active,
+        joined_at=membership.joined_at,
+    )
+
+
+def is_survivor_available_for_season(season: Season) -> bool:
+    return season.tournament_format == TournamentFormat.STANDARD or bool(season.survivor_enabled)
+
+
 def build_admin_user_out_from_maps(
     profile: Profile,
     season: Season | None,
@@ -1199,16 +1220,26 @@ def build_admin_user_out_from_maps(
     favorite_team_by_id: dict[str, Team],
     aval_profile_by_id: dict[str, Profile],
     memberships_by_profile_id: dict[str, list[SeasonMembership]],
+    survivor_memberships_by_profile_id: dict[str, list[SurvivorMembership]],
     season_name_by_id: dict[str, str],
 ) -> AdminUserOut:
     favorite_team = favorite_team_by_id.get(profile.favorite_team_id) if profile.favorite_team_id else None
     aval_profile = aval_profile_by_id.get(profile.aval_profile_id) if profile.aval_profile_id else None
     all_memberships = memberships_by_profile_id.get(profile.id, [])
+    all_survivor_memberships = survivor_memberships_by_profile_id.get(profile.id, [])
     membership = next(
         (
             membership_row
             for membership_row in all_memberships
             if season is not None and membership_row.season_id == season.id
+        ),
+        None,
+    )
+    survivor_membership = next(
+        (
+            survivor_membership_row
+            for survivor_membership_row in all_survivor_memberships
+            if season is not None and survivor_membership_row.season_id == season.id
         ),
         None,
     )
@@ -1223,6 +1254,14 @@ def build_admin_user_out_from_maps(
             eligible_locked_at=membership.eligible_locked_at if membership is not None else None,
             activated_at=membership.activated_at if membership is not None else None,
             notes=membership.notes if membership is not None else None,
+        )
+    selected_survivor_membership = None
+    if season is not None and is_survivor_available_for_season(season):
+        selected_survivor_membership = AdminUserSurvivorMembershipOut(
+            season_id=season.id,
+            season_name=season.name,
+            is_active=bool(survivor_membership and survivor_membership.is_active),
+            joined_at=survivor_membership.joined_at if survivor_membership is not None else None,
         )
     season_memberships = [
         build_admin_user_season_membership_out(
@@ -1249,6 +1288,7 @@ def build_admin_user_out_from_maps(
         is_active=profile.is_active,
         created_at=profile.created_at,
         selected_season_membership=selected_season_membership,
+        selected_survivor_membership=selected_survivor_membership,
         season_memberships=season_memberships,
     )
 
@@ -1287,6 +1327,7 @@ def list_admin_user_out_rows(
     )
 
     memberships_by_profile_id: dict[str, list[SeasonMembership]] = defaultdict(list)
+    survivor_memberships_by_profile_id: dict[str, list[SurvivorMembership]] = defaultdict(list)
     season_ids: set[str] = set()
     memberships = db.scalars(
         select(SeasonMembership)
@@ -1295,6 +1336,15 @@ def list_admin_user_out_rows(
     ).all()
     for membership in memberships:
         memberships_by_profile_id[membership.profile_id].append(membership)
+        season_ids.add(membership.season_id)
+
+    survivor_memberships = db.scalars(
+        select(SurvivorMembership)
+        .where(SurvivorMembership.profile_id.in_(profile_ids))
+        .order_by(SurvivorMembership.created_at.desc())
+    ).all()
+    for membership in survivor_memberships:
+        survivor_memberships_by_profile_id[membership.profile_id].append(membership)
         season_ids.add(membership.season_id)
 
     season_name_by_id = (
@@ -1313,6 +1363,7 @@ def list_admin_user_out_rows(
             favorite_team_by_id=favorite_team_by_id,
             aval_profile_by_id=aval_profile_by_id,
             memberships_by_profile_id=memberships_by_profile_id,
+            survivor_memberships_by_profile_id=survivor_memberships_by_profile_id,
             season_name_by_id=season_name_by_id,
         )
         for profile in profiles
@@ -1807,6 +1858,47 @@ def upsert_user_season_membership(
     season_membership_repo.save(db, membership)
     db.commit()
     background_tasks.add_task(run_scoring_recalculate_background)
+    return build_admin_user_out(db, profile, season)
+
+
+@router.put("/users/{profile_id}/survivor-membership", response_model=AdminUserOut)
+def upsert_user_survivor_membership(
+    profile_id: str,
+    payload: UserSurvivorMembershipUpdateRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminUserOut:
+    profile = profile_repo.get_by_id(db, profile_id)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    season = season_repo.get_by_id(db, payload.season_id)
+    if season is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+    if not is_survivor_available_for_season(season):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Survivor no esta disponible para este torneo",
+        )
+
+    membership = db.scalar(
+        select(SurvivorMembership).where(
+            SurvivorMembership.season_id == season.id,
+            SurvivorMembership.profile_id == profile.id,
+        )
+    )
+    if membership is None:
+        membership = SurvivorMembership(
+            season_id=season.id,
+            profile_id=profile.id,
+        )
+
+    membership.is_active = payload.is_active
+    if payload.is_active and membership.joined_at is None:
+        membership.joined_at = datetime.now(UTC)
+
+    db.add(membership)
+    db.commit()
     return build_admin_user_out(db, profile, season)
 
 

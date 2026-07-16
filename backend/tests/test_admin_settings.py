@@ -26,6 +26,7 @@ from app.models.entities import (
     ScoringRule,
     Season,
     SeasonMembership,
+    SurvivorMembership,
 )
 
 
@@ -165,6 +166,31 @@ def test_admin_users_list_includes_selected_season_membership(admin_client: Test
     assert current_user["theme_preference"] == "favorite_team"
 
 
+def test_admin_users_list_includes_selected_survivor_membership(admin_client: TestClient) -> None:
+    db = SessionLocal()
+    try:
+        db.add(
+            SurvivorMembership(
+                season_id=SEASON_ID,
+                profile_id=PROFILE_USER_ID,
+                is_active=True,
+                joined_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = admin_client.get("/api/v1/admin/users", headers={"Authorization": "Bearer test-token"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    current_user = next(user for user in payload if user["id"] == PROFILE_USER_ID)
+    assert current_user["selected_survivor_membership"]["season_id"] == SEASON_ID
+    assert current_user["selected_survivor_membership"]["is_active"] is True
+    assert current_user["selected_survivor_membership"]["joined_at"] is not None
+
+
 def test_admin_can_update_user_season_membership(admin_client: TestClient) -> None:
     response = admin_client.put(
         f"/api/v1/admin/users/{PROFILE_USER_ID}/season-membership",
@@ -191,6 +217,31 @@ def test_admin_can_update_user_season_membership(admin_client: TestClient) -> No
 
     assert membership.is_active is False
     assert membership.is_paid is True
+
+
+def test_admin_can_update_user_survivor_membership(admin_client: TestClient) -> None:
+    response = admin_client.put(
+        f"/api/v1/admin/users/{PROFILE_USER_ID}/survivor-membership",
+        json={
+            "season_id": SEASON_ID,
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_survivor_membership"]["is_active"] is True
+    assert payload["selected_survivor_membership"]["joined_at"] is not None
+
+    db = SessionLocal()
+    try:
+        membership = db.query(SurvivorMembership).filter_by(profile_id=PROFILE_USER_ID, season_id=SEASON_ID).one()
+    finally:
+        db.close()
+
+    assert membership.is_active is True
+    assert membership.joined_at is not None
 
 
 def test_admin_can_create_invited_user_with_season_membership(

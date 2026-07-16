@@ -1402,6 +1402,13 @@ export interface AdminUserSeasonMembership {
   notes: string | null;
 }
 
+export interface AdminUserSurvivorMembership {
+  season_id: string;
+  season_name: string;
+  is_active: boolean;
+  joined_at: string | null;
+}
+
 export interface AdminUser {
   id: string;
   auth_user_id: string;
@@ -1419,6 +1426,7 @@ export interface AdminUser {
   is_active: boolean;
   created_at: string;
   selected_season_membership: AdminUserSeasonMembership | null;
+  selected_survivor_membership: AdminUserSurvivorMembership | null;
   season_memberships: AdminUserSeasonMembership[];
 }
 
