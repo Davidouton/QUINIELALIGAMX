@@ -13,7 +13,15 @@ import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { buildVipDetailPath } from "@/lib/api/vip";
 import { getMatchdayDisplayLabel } from "@/lib/dashboard/matchday-label";
-import { filterMatchdaysBySeason, getLiveSeasons, isSeasonArchived, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import {
+  filterMatchdaysBySeason,
+  getLiveSeasons,
+  isSeasonArchived,
+  isSurvivorAvailableForSeason,
+  resolveLiveSeason,
+  resolveSurvivorSeason,
+  useDashboardSeasonParam,
+} from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -384,10 +392,6 @@ function isWorldCupSeason(season: Season | null) {
   return season?.tournament_format === "world_cup";
 }
 
-function isSurvivorAvailableForSeason(season: Season | null) {
-  return season?.tournament_format === "standard" || Boolean(season?.survivor_enabled);
-}
-
 function readStoredDashboardDefaultView(): DashboardDefaultView {
   if (typeof window === "undefined") {
     return "regular";
@@ -587,11 +591,12 @@ export function DashboardHome() {
           accessToken,
           { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
         ));
+        const survivorSeason = resolveSurvivorSeason(seasons, seasonIdParam, competitionId);
         let survivorBoard: SurvivorBoard | null = null;
-        if (accessToken && isSurvivorAvailableForSeason(selectedSeason)) {
+        if (accessToken && survivorSeason && isSurvivorAvailableForSeason(survivorSeason)) {
           try {
             survivorBoard = await backendFetch<SurvivorBoard>(
-              `/survivor/board?season_id=${selectedSeason.id}`,
+              `/survivor/board?season_id=${survivorSeason.id}`,
               accessToken,
             );
           } catch {
@@ -948,7 +953,8 @@ export function DashboardHome() {
   const isPrePagoPendingApproval = Boolean(
     selectedSeasonMembership && !selectedSeasonMembership.is_active && state.me?.modality === "pre_pago",
   );
-  const canJoinSurvivor = Boolean(isLigaMxSeason && isSurvivorAvailableForSeason(state.selectedSeason));
+  const survivorSeason = resolveSurvivorSeason(state.seasons, seasonIdParam, competitionId);
+  const canJoinSurvivor = Boolean(survivorSeason && isSurvivorAvailableForSeason(survivorSeason));
   const hasSurvivorMembership = Boolean(state.survivorBoard?.my_membership);
   const shouldShowLigaMxActionPanel = Boolean(
     state.me &&
@@ -1052,8 +1058,7 @@ export function DashboardHome() {
     DASHBOARD_WIDGET_PRESETS.find((preset) => areWidgetListsEqual(preset.widgetIds, dashboardWidgetDraft))?.id ?? null;
   const hasDashboardWidgetChanges = !areWidgetListsEqual(dashboardWidgetDraft, effectiveDashboardWidgetIds);
   const canShowSurvivorDashboardTab = Boolean(
-    isSurvivorAvailableForSeason(state.selectedSeason) &&
-    (state.selectedSeason?.tournament_format === "standard" || survivorMembershipSummary),
+    survivorSeason && isSurvivorAvailableForSeason(survivorSeason),
   );
   const resolvedActiveTab: DashboardTab =
     activeTab === "survivor" && !canShowSurvivorDashboardTab
@@ -1300,7 +1305,7 @@ export function DashboardHome() {
                 {survivorMembershipSummary
                   ? `${survivorMembershipSummary.remaining_lives}/${survivorMembershipSummary.max_lives} vidas restantes.`
                   : canJoinSurvivor
-                    ? "Puedes darte de alta desde inscripciones."
+                    ? "Puedes darte de alta desde inscripciones con el mismo calendario y resultados oficiales."
                     : "Visible solo para Liga MX."}
               </p>
             </div>
@@ -1336,7 +1341,7 @@ export function DashboardHome() {
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-coral">Inscripciones</p>
                     <p className="mt-2 text-sm text-sand/90">
-                      Completa tus altas de Liga MX, Survivor y VIP desde la pestaña de inscripciones antes de seguir con picks y scores.
+                      Gestiona tus altas de Liga MX, Survivor y VIP desde la pestaña de inscripciones antes de seguir con picks y scores.
                     </p>
                   </div>
                   <Link href={buildHrefWithSeason("/dashboard/enrollments")} className="secondary-button text-center">

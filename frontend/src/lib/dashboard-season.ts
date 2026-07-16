@@ -86,6 +86,44 @@ export function resolveLiveSeason(
   );
 }
 
+export function isSurvivorAvailableForSeason(season: Season | null | undefined) {
+  return season?.tournament_format === "standard" || Boolean(season?.survivor_enabled);
+}
+
+export function resolveSurvivorSeason(
+  seasons: Season[],
+  seasonId: string,
+  competitionId: string,
+) {
+  const safeSeasons = asSeasonArray(seasons);
+  const explicitSeason = seasonId ? safeSeasons.find((season) => season.id === seasonId) ?? null : null;
+  if (explicitSeason && isSurvivorAvailableForSeason(explicitSeason) && (!competitionId || explicitSeason.competition_id === competitionId)) {
+    return explicitSeason;
+  }
+
+  const pickPreferredSeason = (rows: Season[]) => {
+    const liveRows = rows.filter(isSeasonLive);
+    const currentRows = rows.filter((season) => !isSeasonArchived(season));
+    return (
+      liveRows.find((season) => season.is_active) ??
+      liveRows[0] ??
+      currentRows.find((season) => season.is_active) ??
+      currentRows[0] ??
+      rows[0] ??
+      null
+    );
+  };
+
+  const scopedSurvivorSeasons = filterSeasonsByCompetition(safeSeasons, competitionId).filter((season) =>
+    isSurvivorAvailableForSeason(season),
+  );
+  const globalSurvivorSeasons = safeSeasons.filter((season) =>
+    !isSeasonArchived(season) && isSurvivorAvailableForSeason(season),
+  );
+
+  return pickPreferredSeason(scopedSurvivorSeasons) ?? pickPreferredSeason(globalSurvivorSeasons) ?? explicitSeason ?? null;
+}
+
 export function filterMatchdaysBySeason(matchdays: Matchday[], seasonId: string | null | undefined) {
   if (!seasonId) {
     return [];

@@ -365,13 +365,7 @@ export function DashboardEnrollmentsPageContent() {
 
   if (canShowSurvivorCard) {
       const survivorClosedByAdmin = Boolean(regularEnrollmentSeason?.survivor_registration_closed);
-      const survivorEnrollmentStatus = survivorMembership
-        ? "Activo"
-        : isPrePagoPendingApproval
-          ? "Pendiente"
-          : hasActiveLigaMxMembership
-            ? "No inscrito"
-            : "Bloqueado";
+      const survivorEnrollmentStatus = survivorMembership ? "Activo" : "No inscrito";
       rows.push({
         id: "survivor-liga-mx",
         name: "Survivor Liga MX",
@@ -383,20 +377,12 @@ export function DashboardEnrollmentsPageContent() {
         enrollmentStatus: survivorEnrollmentStatus,
         enrollmentPillClassName: survivorMembership
           ? "app-pill-active px-3 text-[10px] text-ink"
-          : isPrePagoPendingApproval
-            ? "app-pill px-3 text-[10px] text-gold"
-          : hasActiveLigaMxMembership
-            ? "app-pill px-3 text-[10px]"
-            : "app-pill px-3 text-[10px] text-gold",
+          : "app-pill px-3 text-[10px]",
         detail: survivorMembership
           ? `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
           : survivorClosedByAdmin
             ? "El registro de survivor fue cerrado por administracion."
-          : isPrePagoPendingApproval
-            ? "Tu acceso a survivor queda pendiente hasta que admin active tu alta de Liga MX."
-          : hasActiveLigaMxMembership
-            ? "Ya puedes activar tu alta en survivor para esta temporada regular."
-            : "Primero necesitas tener activa tu membresia de Liga MX para habilitar survivor.",
+            : "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
         meta: survivorClosedByAdmin
           ? "Registro cerrado manualmente"
           : state.survivorBoard?.season.registration_lock_at
@@ -408,11 +394,11 @@ export function DashboardEnrollmentsPageContent() {
           <Link href={buildHrefWithSeason("/dashboard/survivor")} className="secondary-button">
             Abrir Survivor
           </Link>
-        ) : isPrePagoPendingApproval ? null : (
+        ) : (
           <button
             type="button"
             onClick={() => void handleJoinSurvivor()}
-            disabled={actionLoading === "survivor" || !hasActiveLigaMxMembership || survivorWindowClosed}
+            disabled={actionLoading === "survivor" || survivorWindowClosed}
             className="secondary-button disabled:opacity-60"
           >
             {actionLoading === "survivor"

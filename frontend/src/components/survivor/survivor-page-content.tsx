@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
-import { resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { isSurvivorAvailableForSeason, resolveSurvivorSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { Season, SurvivorBoard } from "@/types/api";
@@ -27,10 +27,6 @@ const initialBoard: SurvivorBoard = {
   available_teams: [],
   leaderboard: [],
 };
-
-function isSurvivorAvailableForSeason(season: Season | null) {
-  return season?.tournament_format === "standard" || Boolean(season?.survivor_enabled);
-}
 
 function formatLivesLabel(remainingLives: number, maxLives: number) {
   return `${remainingLives}/${maxLives} vidas`;
@@ -144,7 +140,7 @@ export function SurvivorPageContent() {
       try {
         const seasonsResponse = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
         const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
-        const resolvedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+        const resolvedSeason = resolveSurvivorSeason(seasons, seasonIdParam, competitionId);
         if (!resolvedSeason) {
           setSelectedSeason(null);
           setBoard(initialBoard);
@@ -290,7 +286,7 @@ export function SurvivorPageContent() {
     try {
       const seasonsResponse = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
       const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
-      const resolvedSeason = resolveSeasonForContext(seasons, seasonIdParam, competitionId);
+      const resolvedSeason = resolveSurvivorSeason(seasons, seasonIdParam, competitionId);
       if (!resolvedSeason) {
         setSelectedSeason(null);
         setBoard(initialBoard);
