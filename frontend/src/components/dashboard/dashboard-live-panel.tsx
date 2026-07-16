@@ -206,21 +206,6 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
         </div>
       </div>
 
-      <div className="rounded-[24px] border border-[#ff5f8740] bg-[#ff5f8710] p-5">
-        <div className="flex flex-col gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-[#ff7b9a]">Live</p>
-            <h2 className="mt-2 text-lg font-semibold text-ink">Quiniela al momento</h2>
-            <p className="mt-2 text-sm text-steel">
-              Ranking provisional de {state.matchday_name ?? season.name}.
-            </p>
-          </div>
-          {state.updated_at ? (
-            <p className="text-xs text-steel">Ultima lectura: {formatMexicoCityDateTime(state.updated_at)}</p>
-          ) : null}
-        </div>
-      </div>
-
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>

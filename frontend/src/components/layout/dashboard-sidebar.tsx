@@ -12,31 +12,34 @@ import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { cn } from "@/lib/utils";
 import type { Season } from "@/types/api";
 
-const baseLinks = [
+const primaryLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
   { href: "/dashboard/live", label: "Live", shortLabel: "Live" },
   { href: "/dashboard/survivor", label: "Survivor", shortLabel: "Sur" },
   { href: "/dashboard/world-cup", label: "Mundial", shortLabel: "WC" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/dashboard/enrollments", label: "Inscripciones", shortLabel: "Alta" },
-  { href: "/dashboard/past-seasons", label: "Past Seasons", shortLabel: "Past" },
-  { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
   { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks Center" },
   { href: "/dashboard/leaderboard", label: "Ranking" },
-  { href: "/dashboard/hall-of-fame", label: "Salon de la Fama" },
-  { href: "/dashboard/rules", label: "Reglamento" },
   { href: "/dashboard/settings", label: "Settings" },
 ];
 
+const competitionHubLinks = [
+  { href: "/dashboard/enrollments", label: "Inscripciones", shortLabel: "Alta" },
+  { href: "/dashboard/past-seasons", label: "Past Seasons", shortLabel: "Past" },
+  { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
+  { href: "/dashboard/hall-of-fame", label: "Salon de la Fama" },
+  { href: "/dashboard/rules", label: "Reglamento" },
+];
+
 const adminLink = { href: "/dashboard/admin", label: "Admin" };
+const mobileHubLink = { href: "/dashboard/enrollments", label: "Hub" };
 
 const primaryMobileLinks = [
-  { href: "/dashboard/enrollments", label: "Inscr" },
   { href: "/dashboard/leaderboard", label: "Ranking" },
   { href: "/dashboard", label: "Inicio" },
   { href: "/dashboard/survivor", label: "Surv" },
-  { href: "/dashboard/prizes", label: "Premios" },
+  mobileHubLink,
   { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks" },
 ];
@@ -53,6 +56,10 @@ function renderLinkLabel(label: string) {
       Quiniela <span className="font-bold text-ink">+</span>
     </>
   );
+}
+
+function isCompetitionHubRoute(pathname: string) {
+  return competitionHubLinks.some((link) => link.href === pathname);
 }
 
 export function DashboardSidebar() {
@@ -81,15 +88,18 @@ export function DashboardSidebar() {
     [competitionId, seasonId, seasons],
   );
   const isWorldCupContext = activeSeason?.tournament_format === "world_cup";
-  const visibleBaseLinks = useMemo(
-    () => baseLinks.filter((link) => !isWorldCupContext || link.href !== "/dashboard/survivor"),
+  const visiblePrimaryLinks = useMemo(
+    () => primaryLinks.filter((link) => !isWorldCupContext || link.href !== "/dashboard/survivor"),
     [isWorldCupContext],
   );
+  const visibleCompetitionHubLinks = competitionHubLinks;
   const visibleMobilePrimaryLinks = useMemo(
     () => primaryMobileLinks.filter((link) => !isWorldCupContext || link.href !== "/dashboard/survivor"),
     [isWorldCupContext],
   );
-  const links = canViewAdmin ? [adminLink, ...visibleBaseLinks] : visibleBaseLinks;
+  const links = canViewAdmin
+    ? [adminLink, ...visiblePrimaryLinks, ...visibleCompetitionHubLinks]
+    : [...visiblePrimaryLinks, ...visibleCompetitionHubLinks];
   const mobilePrimaryLinksResolved = canViewAdmin ? [adminLink, ...visibleMobilePrimaryLinks] : visibleMobilePrimaryLinks;
   const currentLink = links.find((link) => pathname === link.href) ?? links[0];
 
@@ -155,7 +165,7 @@ export function DashboardSidebar() {
                 </Link>
               ) : null}
               <div className="grid grid-cols-2 gap-2">
-                {visibleBaseLinks.map((link) => (
+                {visiblePrimaryLinks.map((link) => (
                   <Link
                     key={link.href}
                     href={buildHrefWithSeason(link.href)}
@@ -170,6 +180,25 @@ export function DashboardSidebar() {
                   </Link>
                 ))}
               </div>
+              <div className="pt-2">
+                <p className="mb-2 px-1 text-[11px] uppercase tracking-[0.28em] text-steel">Hub de Competencia</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {visibleCompetitionHubLinks.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={buildHrefWithSeason(link.href)}
+                      prefetch={false}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={cn(
+                        "app-pill-ghost h-10 px-3 text-center",
+                        pathname === link.href && "app-pill-active text-ink",
+                      )}
+                    >
+                      {renderLinkLabel(link.label)}
+                    </Link>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
@@ -183,7 +212,9 @@ export function DashboardSidebar() {
                 prefetch={false}
                 className={cn(
                   "app-pill-ghost h-10 px-1 text-center text-[10px]",
-                  (pathname === link.href || (link.href === adminLink.href && pathname.startsWith(adminLink.href))) &&
+                  ((link.href === mobileHubLink.href && isCompetitionHubRoute(pathname)) ||
+                    pathname === link.href ||
+                    (link.href === adminLink.href && pathname.startsWith(adminLink.href))) &&
                     "app-pill-active text-ink",
                 )}
               >
@@ -225,7 +256,7 @@ export function DashboardSidebar() {
           ) : null}
 
           <div className="space-y-3">
-            {visibleBaseLinks.map((link) => (
+            {visiblePrimaryLinks.map((link) => (
               <Link
                 key={link.href}
                 href={buildHrefWithSeason(link.href)}
@@ -241,6 +272,28 @@ export function DashboardSidebar() {
                 {renderLinkLabel(link.label)}
               </Link>
             ))}
+          </div>
+
+          <div className="mt-6">
+            <p className="mb-3 px-1 text-[11px] uppercase tracking-[0.32em] text-steel">Hub de Competencia</p>
+            <div className="space-y-3">
+              {visibleCompetitionHubLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={buildHrefWithSeason(link.href)}
+                  prefetch={false}
+                  aria-label={link.label}
+                  title={link.label}
+                  className={cn(
+                    "block rounded-[12px] border border-white/[0.04] bg-transparent py-3 text-sm transition hover:border-white/[0.08] hover:bg-white/[0.04]",
+                    "px-4 text-left",
+                    pathname === link.href && "border-white/[0.06] bg-white/[0.05]",
+                  )}
+                >
+                  {renderLinkLabel(link.label)}
+                </Link>
+              ))}
+            </div>
           </div>
 
           <div className="mt-6 pt-2">
