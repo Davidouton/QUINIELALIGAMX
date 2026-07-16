@@ -9,6 +9,7 @@ import type { LiveLeaderboardResponse, Season } from "@/types/api";
 
 type DashboardLivePanelProps = {
   season: Season | null;
+  vipId?: string | null;
 };
 
 const initialState: LiveLeaderboardResponse = {
@@ -65,7 +66,7 @@ function TeamLiveBadge({ crestUrl, teamName }: { crestUrl: string | null; teamNa
   );
 }
 
-export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
+export function DashboardLivePanel({ season, vipId = null }: DashboardLivePanelProps) {
   const [state, setState] = useState<LiveLeaderboardResponse>(initialState);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +77,7 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
     setError(null);
     setLoading(true);
     setRefreshTick(0);
-  }, [season?.id]);
+  }, [season?.id, vipId]);
 
   useEffect(() => {
     if (!season?.id) {
@@ -94,8 +95,12 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
           setError(null);
         }
         const accessToken = await getBrowserAccessToken();
+        const params = new URLSearchParams({ season_id: seasonId });
+        if (vipId) {
+          params.set("vip_id", vipId);
+        }
         const response = await backendFetch<LiveLeaderboardResponse>(
-          `/leaderboard/live?season_id=${seasonId}`,
+          `/leaderboard/live?${params.toString()}`,
           accessToken,
           {
             cacheTtlMs: 0,
@@ -120,7 +125,7 @@ export function DashboardLivePanel({ season }: DashboardLivePanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [refreshTick, season?.id]);
+  }, [refreshTick, season?.id, vipId]);
 
   useEffect(() => {
     if (!season?.id || !season.live_dashboard_enabled) {

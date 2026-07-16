@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.datetime import ensure_utc
-from app.models.entities import Competition, HistoricalChampion, Match, MatchResult, Matchday, PickSelection, Profile, Season, SeasonVisibilityStatus, StandingsMatchday, StandingsOverall, Team, TournamentFormat, UserPick, TrophyAsset
+from app.models.entities import Competition, HistoricalChampion, Match, MatchResult, Matchday, PickSelection, Profile, Season, SeasonVisibilityStatus, StandingsMatchday, StandingsOverall, Team, TournamentFormat, UserPick, TrophyAsset, VipCompetition, VipCompetitionKind, VipCompetitionMatchday, VipMembership, VipMembershipStatus, VipStanding
 from app.repositories.leaderboard_repository import LeaderboardRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.leaderboard import (
@@ -423,7 +423,10 @@ class LeaderboardService:
             exact_scores=exact_scores,
         )
 
-    def get_live_leaderboard(self, db: Session, season_id: str | None = None) -> LiveLeaderboardResponse:
+    def get_live_leaderboard(self, db: Session, season_id: str | None = None, vip_id: str | None = None) -> LiveLeaderboardResponse:
+        if vip_id:
+            return self._get_live_vip_leaderboard(db, vip_id)
+
         season = self._resolve_season(db, season_id)
         if season is None:
             return LiveLeaderboardResponse()
@@ -581,6 +584,189 @@ class LeaderboardService:
             enabled=season.live_dashboard_enabled,
             season_id=season.id,
             season_name=season.name,
+            matchday_id=live_matchday.id if live_matchday is not None else None,
+            matchday_name=live_matchday.name if live_matchday is not None else None,
+            is_official=False,
+            updated_at=updated_at,
+            leaderboard=leaderboard,
+            matches=matches,
+        )
+
+    def _get_live_vip_leaderboard(self, db: Session, vip_id: str) -> LiveLeaderboardResponse:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None or vip.competition_kind != VipCompetitionKind.MATCHDAY:
+            return LiveLeaderboardResponse()
+
+        season = db.get(Season, vip.season_id)
+        if season is None:
+            return LiveLeaderboardResponse()
+
+        matchdays = list(
+            db.scalars(
+                select(Matchday)
+                .join(VipCompetitionMatchday, VipCompetitionMatchday.matchday_id == Matchday.id)
+                .where(VipCompetitionMatchday.vip_competition_id == vip.id)
+                .order_by(Matchday.number.asc())
+            )
+        )
+        live_matchday = self._resolve_live_matchday(matchdays)
+        matchday_ids = [matchday.id for matchday in matchdays]
+
+        memberships = list(
+            db.scalars(
+                select(VipMembership).where(
+                    VipMembership.vip_competition_id == vip.id,
+                    VipMembership.status == VipMembershipStatus.APPROVED,
+                )
+            )
+        )
+        eligible_profile_ids = {membership.profile_id for membership in memberships}
+        if not eligible_profile_ids:
+            return LiveLeaderboardResponse(
+                enabled=vip.is_active,
+                season_id=season.id,
+                season_name=vip.name,
+                matchday_id=live_matchday.id if live_matchday is not None else None,
+                matchday_name=live_matchday.name if live_matchday is not None else None,
+                leaderboard=[],
+                matches=[],
+            )
+
+        official_rows = list(
+            db.scalars(
+                select(VipStanding).where(
+                    VipStanding.vip_competition_id == vip.id,
+                    VipStanding.profile_id.in_(eligible_profile_ids),
+                )
+            )
+        )
+        official_by_profile_id = {row.profile_id: row for row in official_rows}
+        profiles = {
+            profile.id: profile
+            for profile in db.scalars(select(Profile).where(Profile.id.in_(eligible_profile_ids)))
+        }
+        teams = {
+            team.id: team
+            for team in db.scalars(select(Team).where(Team.id.in_(self._load_season_team_ids(db, season.id))))
+        }
+        competition = db.get(Competition, season.competition_id) if season.competition_id is not None else None
+        rules = ScoringService()._load_rules(db)
+        is_nfl_competition = self._is_nfl_competition(competition)
+
+        totals_by_profile: dict[str, dict[str, int]] = {
+            profile_id: {"total_points": 0, "correct_results": 0, "exact_scores": 0, "live_matchday_points": 0}
+            for profile_id in eligible_profile_ids
+            if profile_id in profiles
+        }
+        updated_at: datetime | None = None
+
+        rows = db.execute(
+            select(UserPick, Match, MatchResult)
+            .join(Match, Match.id == UserPick.match_id)
+            .join(MatchResult, MatchResult.match_id == Match.id)
+            .where(
+                Match.matchday_id.in_(matchday_ids),
+                UserPick.profile_id.in_(eligible_profile_ids),
+                MatchResult.home_score.is_not(None),
+                MatchResult.away_score.is_not(None),
+            )
+            .order_by(Match.kickoff_at.asc())
+        ).all()
+
+        for pick, match, result in rows:
+            if pick.profile_id not in totals_by_profile:
+                continue
+
+            score = self._score_pick(
+                pick=pick,
+                match=match,
+                result=result,
+                season=season,
+                is_nfl_competition=is_nfl_competition,
+                rules=rules,
+            )
+            bucket = totals_by_profile[pick.profile_id]
+            bucket["total_points"] += score["total_points"]
+            bucket["correct_results"] += score["correct_results"]
+            bucket["exact_scores"] += score["exact_scores"]
+            if live_matchday is not None and match.matchday_id == live_matchday.id:
+                bucket["live_matchday_points"] += score["total_points"]
+
+            result_updated_at = result.updated_at or result.last_synced_at or result.source_updated_at
+            if result_updated_at is not None and (updated_at is None or result_updated_at > updated_at):
+                updated_at = result_updated_at
+
+        sorted_rows = sorted(
+            [
+                (profile_id, values, profiles[profile_id])
+                for profile_id, values in totals_by_profile.items()
+                if profile_id in profiles
+            ],
+            key=lambda item: (-item[1]["total_points"], -item[1]["exact_scores"], item[2].display_name.lower()),
+        )
+        leaderboard: list[LiveLeaderboardEntry] = []
+        previous_points: int | None = None
+        previous_rank = 0
+        for index, (profile_id, values, profile) in enumerate(sorted_rows, start=1):
+            if previous_points is None or values["total_points"] != previous_points:
+                previous_rank = index
+                previous_points = values["total_points"]
+            official_entry = official_by_profile_id.get(profile_id)
+            official_rank = official_entry.rank_position if official_entry is not None else None
+            official_total = official_entry.total_points if official_entry is not None else 0
+            leaderboard.append(
+                LiveLeaderboardEntry(
+                    profile_id=profile_id,
+                    display_name=profile.display_name,
+                    role_code=profile.role_code.value,
+                    total_points=values["total_points"],
+                    correct_results=values["correct_results"],
+                    exact_scores=values["exact_scores"],
+                    rank_position=previous_rank,
+                    official_rank_position=official_rank,
+                    official_total_points=official_total,
+                    live_matchday_points=values["live_matchday_points"],
+                    points_delta=values["total_points"] - official_total,
+                    rank_delta=(official_rank - previous_rank) if official_rank is not None else 0,
+                )
+            )
+
+        matches: list[LiveMatchScoreOut] = []
+        if live_matchday is not None:
+            live_match_rows = db.execute(
+                select(Match, MatchResult)
+                .outerjoin(MatchResult, MatchResult.match_id == Match.id)
+                .where(Match.matchday_id == live_matchday.id)
+                .order_by(Match.kickoff_at.asc())
+            ).all()
+            for match, result in live_match_rows:
+                home_team = teams.get(match.home_team_id)
+                away_team = teams.get(match.away_team_id)
+                result_updated_at = result.updated_at if result is not None else None
+                if result_updated_at is not None and (updated_at is None or result_updated_at > updated_at):
+                    updated_at = result_updated_at
+                matches.append(
+                    LiveMatchScoreOut(
+                        match_id=match.id,
+                        matchday_id=match.matchday_id,
+                        matchday_name=live_matchday.name,
+                        kickoff_at=match.kickoff_at,
+                        match_status=match.status.value,
+                        home_team_name=home_team.name if home_team is not None else match.home_placeholder or "Local",
+                        home_team_crest_url=home_team.crest_url if home_team is not None else None,
+                        away_team_name=away_team.name if away_team is not None else match.away_placeholder or "Visitante",
+                        away_team_crest_url=away_team.crest_url if away_team is not None else None,
+                        home_score=result.home_score if result is not None else None,
+                        away_score=result.away_score if result is not None else None,
+                        is_official=bool(result.is_official) if result is not None else False,
+                        updated_at=result_updated_at,
+                    )
+                )
+
+        return LiveLeaderboardResponse(
+            enabled=vip.is_active,
+            season_id=season.id,
+            season_name=vip.name,
             matchday_id=live_matchday.id if live_matchday is not None else None,
             matchday_name=live_matchday.name if live_matchday is not None else None,
             is_official=False,

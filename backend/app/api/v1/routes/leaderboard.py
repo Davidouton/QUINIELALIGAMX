@@ -38,10 +38,11 @@ def get_matchday_leaderboard(
 @router.get("/leaderboard/live", response_model=LiveLeaderboardResponse)
 def get_live_leaderboard(
     season_id: str | None = Query(default=None),
+    vip_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: Profile = Depends(get_current_profile),
 ) -> LiveLeaderboardResponse:
-    return service.get_live_leaderboard(db, season_id=season_id)
+    return service.get_live_leaderboard(db, season_id=season_id, vip_id=vip_id)
 
 
 @router.get("/leaderboard/my-matchdays", response_model=list[MyMatchdayPointsEntry])
