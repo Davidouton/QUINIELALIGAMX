@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.datetime import ensure_utc
-from app.models.entities import Competition, HistoricalChampion, Match, MatchResult, Matchday, PickSelection, Profile, Season, SeasonVisibilityStatus, StandingsMatchday, StandingsOverall, Team, TournamentFormat, UserPick, TrophyAsset, VipCompetition, VipCompetitionKind, VipCompetitionMatchday, VipMembership, VipMembershipStatus, VipStanding
+from app.models.entities import Competition, HistoricalChampion, Match, MatchResult, Matchday, PickPoint, PickSelection, Profile, Season, SeasonVisibilityStatus, StandingsMatchday, StandingsOverall, Team, TournamentFormat, UserPick, TrophyAsset, VipCompetition, VipCompetitionKind, VipCompetitionMatchday, VipMembership, VipMembershipStatus, VipStanding
 from app.repositories.leaderboard_repository import LeaderboardRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.leaderboard import (
@@ -33,7 +33,7 @@ class LeaderboardService:
     def list_overall(self, db: Session, season_id: str | None = None) -> list[LeaderboardEntry]:
         season = self._resolve_season(db, season_id)
         rows = self.repo.list_overall(db, season.id if season is not None else None)
-        if season is not None and not rows and self._season_needs_overall_rebuild(db, season):
+        if season is not None and self._season_needs_overall_rebuild(db, season, rows):
             ScoringService().recalculate_season(db, season.id)
             rows = self.repo.list_overall(db, season.id)
         season_cache: dict[str, Season | None] = {}
@@ -51,14 +51,19 @@ class LeaderboardService:
         ]
         return self._overall_entries(eligible_rows)
 
-    def _season_needs_overall_rebuild(self, db: Session, season: Season) -> bool:
+    def _season_needs_overall_rebuild(
+        self,
+        db: Session,
+        season: Season,
+        rows: list[tuple[StandingsOverall, Profile]],
+    ) -> bool:
         has_eligible_participants = any(
             self.eligibility_service.counts_for_scoring(db, season, membership)
             for membership in self.membership_repo.list_for_season(db, season.id)
         )
         if not has_eligible_participants:
             return False
-        return bool(
+        has_official_results = bool(
             db.execute(
                 select(MatchResult.id)
                 .join(Match, Match.id == MatchResult.match_id)
@@ -66,6 +71,26 @@ class LeaderboardService:
                 .where(
                     Matchday.season_id == season.id,
                     MatchResult.is_official.is_(True),
+                )
+                .limit(1)
+            ).first()
+        )
+        if not has_official_results:
+            return False
+        if not rows:
+            return True
+        if any(
+            standing.total_points or standing.correct_results or standing.exact_scores
+            for standing, _profile in rows
+        ):
+            return False
+        return bool(
+            db.execute(
+                select(PickPoint.id)
+                .join(Matchday, Matchday.id == PickPoint.matchday_id)
+                .where(
+                    Matchday.season_id == season.id,
+                    PickPoint.total_points > 0,
                 )
                 .limit(1)
             ).first()

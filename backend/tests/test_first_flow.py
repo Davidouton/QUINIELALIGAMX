@@ -170,6 +170,48 @@ def test_overall_leaderboard_self_heals_when_cache_is_missing(client):
     assert rows[0]["total_points"] > 0
 
 
+def test_overall_leaderboard_self_heals_when_cache_contains_only_zeroes(client):
+    create_pick = client.post(
+        "/api/v1/picks",
+        json={
+            "match_id": MATCH_ONE_ID,
+            "selection": "home",
+            "predicted_home_score": 2,
+            "predicted_away_score": 1,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_pick.status_code == 201
+
+    db = SessionLocal()
+    try:
+        db.add(MatchResult(match_id=MATCH_ONE_ID, home_score=2, away_score=1, is_official=True))
+        db.commit()
+    finally:
+        db.close()
+
+    first_response = client.get(f"/api/v1/leaderboard/overall?season_id={SEASON_ID}")
+    assert first_response.status_code == 200
+    assert first_response.json()[0]["total_points"] > 0
+
+    db = SessionLocal()
+    try:
+        for standing in db.query(StandingsOverall).filter(StandingsOverall.season_id == SEASON_ID):
+            standing.total_points = 0
+            standing.correct_results = 0
+            standing.exact_scores = 0
+            standing.rank_position = 1
+        db.commit()
+    finally:
+        db.close()
+
+    repaired_response = client.get(f"/api/v1/leaderboard/overall?season_id={SEASON_ID}")
+    assert repaired_response.status_code == 200
+    repaired_rows = repaired_response.json()
+    assert repaired_rows[0]["profile_id"] == PROFILE_USER_ID
+    assert repaired_rows[0]["total_points"] > 0
+
+
 def test_registered_users_returns_other_profiles(client):
     response = client.get("/api/v1/me/registered-users", headers={"Authorization": "Bearer test-token"})
 
