@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+import csv
+import io
 import random
 
 from fastapi import HTTPException, status
@@ -758,6 +760,74 @@ class VipService:
         db.commit()
         db.refresh(question)
         return question
+
+    def import_question_pool_csv(self, db: Session, vip_id: str, csv_text: str) -> int:
+        vip = self._get_question_pool_vip(db, vip_id)
+        self._ensure_question_pool_tables(db)
+        reader = csv.DictReader(io.StringIO(csv_text.lstrip("\ufeff")))
+        expected_headers = {"pregunta", "puntos", "orden", "activa", "opcion_1", "opcion_2"}
+        headers = {str(header).strip().lower() for header in (reader.fieldnames or []) if header}
+        missing_headers = sorted(expected_headers - headers)
+        if missing_headers:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Faltan columnas en el CSV: {', '.join(missing_headers)}",
+            )
+
+        parsed_rows: list[AdminVipQuestionPoolQuestionUpsertRequest] = []
+        row_errors: list[str] = []
+        for line_number, raw_row in enumerate(reader, start=2):
+            row = {str(key).strip().lower(): (value or "").strip() for key, value in raw_row.items() if key}
+            if not any(row.values()):
+                continue
+            options = [row.get(f"opcion_{index}", "") for index in range(1, 6)]
+            options = [option for option in options if option]
+            active_value = row.get("activa", "si").lower()
+            is_active = active_value in {"1", "si", "sí", "true", "verdadero", "yes"}
+            if active_value not in {"1", "0", "si", "sí", "no", "true", "false", "verdadero", "falso", "yes"}:
+                row_errors.append(f"Fila {line_number}: activa debe ser si/no")
+                continue
+            try:
+                payload = AdminVipQuestionPoolQuestionUpsertRequest(
+                    prompt=row.get("pregunta", ""),
+                    points=int(row.get("puntos") or "1"),
+                    sort_order=int(row.get("orden") or str(len(parsed_rows) + 1)),
+                    is_active=is_active,
+                    options=options,
+                )
+                parsed_rows.append(payload)
+            except (TypeError, ValueError) as error:
+                row_errors.append(f"Fila {line_number}: {error}")
+
+        if not parsed_rows and not row_errors:
+            row_errors.append("El CSV no contiene preguntas")
+        if row_errors:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(row_errors))
+
+        try:
+            for payload in parsed_rows:
+                question = VipQuestionPoolQuestion(
+                    vip_competition_id=vip.id,
+                    prompt=payload.prompt.strip(),
+                    points=payload.points,
+                    sort_order=payload.sort_order,
+                    is_active=payload.is_active,
+                )
+                db.add(question)
+                db.flush()
+                for index, option_text in enumerate(payload.options, start=1):
+                    db.add(
+                        VipQuestionPoolOption(
+                            question_id=question.id,
+                            option_text=option_text,
+                            sort_order=index,
+                        )
+                    )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        return len(parsed_rows)
 
     def update_question_pool_question(
         self,

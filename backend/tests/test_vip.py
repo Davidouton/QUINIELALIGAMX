@@ -698,6 +698,47 @@ def test_admin_can_run_question_pool_vip_and_score_answers(admin_client: TestCli
     assert leaderboard[0]["rank_position"] == 1
 
 
+def test_admin_can_import_question_pool_questions_from_csv(admin_client: TestClient) -> None:
+    create_response = admin_client.post(
+        "/api/v1/admin/vip",
+        json={
+            "competition_kind": "question_pool",
+            "season_id": SEASON_ID,
+            "name": "VIP CSV",
+            "entry_fee_amount": 100,
+            "admin_commission_pct": 0,
+            "first_place_pct": 100,
+            "second_place_pct": 0,
+            "third_place_pct": 0,
+            "matchday_ids": [],
+            "questions_lock_at": (datetime.now(UTC) + timedelta(hours=2)).isoformat(),
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_response.status_code == 201
+    vip_id = create_response.json()["id"]
+
+    import_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/questions/import-csv",
+        json={
+            "csv_text": (
+                "pregunta,puntos,orden,activa,opcion_1,opcion_2,opcion_3,opcion_4,opcion_5\n"
+                '"Quien gana?",5,1,si,Mexico,Brasil,Francia,,\n'
+                '"Habra penales?",2,2,no,Si,No,,,'
+            )
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert import_response.status_code == 200
+    questions = import_response.json()["question_pool_questions"]
+    assert len(questions) == 2
+    assert questions[0]["prompt"] == "Quien gana?"
+    assert questions[0]["points"] == 5
+    assert not any(option["is_correct"] for option in questions[0]["options"])
+    assert questions[1]["is_active"] is False
+
+
 def test_admin_can_delete_vip(admin_client: TestClient) -> None:
     create_response = admin_client.post(
         "/api/v1/admin/vip",

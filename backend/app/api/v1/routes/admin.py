@@ -105,6 +105,7 @@ from app.schemas.team import TeamOut
 from app.schemas.survivor import AdminSurvivorPickOverrideRequest, AdminSurvivorPickRowOut
 from app.schemas.vip import (
     AdminVipQuestionPoolBulkCorrectOptionRequest,
+    AdminVipQuestionPoolCsvImportRequest,
     AdminVipCompetitionOut,
     AdminVipMembershipAddRequest,
     AdminVipMembershipDecisionRequest,
@@ -2862,6 +2863,18 @@ def create_admin_vip_question_pool_question(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
     vip_service.create_question_pool_question(db, vip_id=vip_id, payload=payload)
+    vip_service.recalculate_vip_standings(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
+@router.post("/vip/{vip_id}/questions/import-csv", response_model=AdminVipCompetitionOut)
+def import_admin_vip_question_pool_csv(
+    vip_id: str,
+    payload: AdminVipQuestionPoolCsvImportRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.import_question_pool_csv(db, vip_id=vip_id, csv_text=payload.csv_text)
     vip_service.recalculate_vip_standings(db, vip_id)
     return admin_vip_row(db, vip_id, include_leaderboard=True)
 

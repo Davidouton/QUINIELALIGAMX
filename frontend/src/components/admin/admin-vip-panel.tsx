@@ -192,6 +192,7 @@ export function AdminVipPanel() {
   const [saving, setSaving] = useState(false);
   const [savingTeamWinner, setSavingTeamWinner] = useState(false);
   const [savingQuestion, setSavingQuestion] = useState(false);
+  const [importingQuestions, setImportingQuestions] = useState(false);
   const [deletingVip, setDeletingVip] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [recalculatingVip, setRecalculatingVip] = useState(false);
@@ -855,6 +856,46 @@ export function AdminVipPanel() {
     }
   }
 
+  function handleDownloadQuestionCsvTemplate() {
+    const csv = [
+      "pregunta,puntos,orden,activa,opcion_1,opcion_2,opcion_3,opcion_4,opcion_5",
+      '"¿Quién ganará el partido?",10,1,si,"Equipo A","Empate","Equipo B",,',
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "plantilla-preguntas-vip.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportQuestionCsv(file: File | null) {
+    if (!selectedVip || !file) {
+      return;
+    }
+    setImportingQuestions(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const csvText = await file.text();
+      const updatedVip = normalizeVipCompetition(await backendFetch<AdminVipCompetition>(
+        `/admin/vip/${selectedVip.id}/questions/import-csv`,
+        accessToken,
+        { method: "POST", body: JSON.stringify({ csv_text: csvText }) },
+      ));
+      replaceVipAndRefreshDetail(updatedVip, accessToken);
+      syncQuestionDraft(updatedVip);
+      setSelectedQuestionId(updatedVip.question_pool_questions[0]?.id ?? "");
+      setMessage(`${updatedVip.question_pool_questions.length - selectedVip.question_pool_questions.length} preguntas importadas.`);
+    } catch (caughtError) {
+      const errorMessage = getCaughtMessage(caughtError, "No se pudo importar el CSV");
+      setError(`Preguntas VIP: ${errorMessage}`);
+    } finally {
+      setImportingQuestions(false);
+    }
+  }
+
   async function handleDeleteQuestionPoolQuestion(questionId: string) {
     if (!selectedVip) {
       return;
@@ -1322,6 +1363,38 @@ export function AdminVipPanel() {
                 </p>
               ) : (
                 <>
+                  <div className="flex flex-col gap-3 rounded-[10px] border border-white/[0.06] p-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-ink">Importar preguntas desde CSV</p>
+                      <p className="mt-1 text-xs text-steel">
+                        De 2 a 5 opciones por fila. La respuesta correcta se marca después del partido.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleDownloadQuestionCsvTemplate}
+                        className="app-pill h-9 px-4 text-sm"
+                      >
+                        Descargar plantilla
+                      </button>
+                      <label className={`app-pill flex h-9 cursor-pointer items-center px-4 text-sm ${importingQuestions ? "pointer-events-none opacity-50" : ""}`}>
+                        {importingQuestions ? "Importando..." : "Subir CSV"}
+                        <input
+                          type="file"
+                          accept=".csv,text/csv"
+                          className="sr-only"
+                          disabled={importingQuestions}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            event.target.value = "";
+                            void handleImportQuestionCsv(file);
+                          }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
                   <div className="grid gap-4 rounded-[10px] border border-white/[0.06] p-4 xl:grid-cols-[minmax(0,1.5fr)_160px_120px]">
                     <label className="grid gap-1 xl:col-span-3">
                       <span className={flatLabelClass}>Pregunta</span>

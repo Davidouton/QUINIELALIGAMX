@@ -232,6 +232,10 @@ class AdminVipQuestionPoolQuestionUpsertRequest(BaseModel):
         return self
 
 
+class AdminVipQuestionPoolCsvImportRequest(BaseModel):
+    csv_text: str = Field(min_length=1, max_length=500_000)
+
+
 class AdminVipQuestionPoolCorrectOptionRequest(BaseModel):
     option_id: str | None = None
 
