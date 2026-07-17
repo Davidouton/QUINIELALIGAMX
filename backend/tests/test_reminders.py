@@ -3,7 +3,7 @@ from datetime import timedelta
 from sqlalchemy import select
 
 from conftest import MATCHDAY_ID, PROFILE_USER_ID, SessionLocal
-from app.models.entities import Match, PickReminderEmailEvent, PickReminderKind, Profile
+from app.models.entities import Match, Matchday, MatchdayStatus, PickReminderEmailEvent, PickReminderKind, Profile, StandingsMatchday
 from app.services.reminder_service import ReminderService
 
 
@@ -21,8 +21,11 @@ def test_update_me_supports_pick_reminder_preferences(client):
             "aval_profile_id": None,
             "theme_preference": "standard",
             "pick_reminder_email_enabled": True,
-            "pick_reminder_opening_enabled": True,
-            "pick_reminder_hours_before": 3,
+            "pick_reminder_opening_enabled": False,
+            "pick_reminder_hours_before": 1,
+            "matchday_start_notification_enabled": True,
+            "match_result_notification_enabled": True,
+            "matchday_summary_notification_enabled": True,
         },
         headers={"Authorization": "Bearer test-token"},
     )
@@ -30,44 +33,19 @@ def test_update_me_supports_pick_reminder_preferences(client):
     assert response.status_code == 200
     payload = response.json()
     assert payload["pick_reminder_email_enabled"] is True
-    assert payload["pick_reminder_opening_enabled"] is True
-    assert payload["pick_reminder_hours_before"] == 3
+    assert payload["pick_reminder_hours_before"] == 1
+    assert payload["matchday_start_notification_enabled"] is True
+    assert payload["match_result_notification_enabled"] is True
+    assert payload["matchday_summary_notification_enabled"] is True
 
 
-def test_collect_due_email_reminders_includes_opening_and_pre_game():
+def test_collect_due_push_reminders_includes_pre_game():
     service = ReminderService()
     db = SessionLocal()
     try:
         profile = db.get(Profile, PROFILE_USER_ID)
         assert profile is not None
         profile.pick_reminder_email_enabled = True
-        profile.pick_reminder_opening_enabled = True
-        profile.pick_reminder_hours_before = 3
-        db.add(profile)
-        db.commit()
-
-        first_match = db.scalar(
-            select(Match).where(Match.matchday_id == MATCHDAY_ID).order_by(Match.picks_lock_at.asc())
-        )
-        assert first_match is not None
-        now_utc = first_match.picks_lock_at - timedelta(hours=3) + timedelta(minutes=5)
-        reminders = service.collect_due_email_reminders(db, now_utc=now_utc, window_minutes=70)
-        reminder_kinds = {reminder.reminder_kind for reminder in reminders}
-
-        assert reminder_kinds == {PickReminderKind.OPENING, PickReminderKind.PRE_GAME}
-        assert all(reminder.profile_id == PROFILE_USER_ID for reminder in reminders)
-    finally:
-        db.close()
-
-
-def test_collect_due_push_reminders_does_not_require_email_opt_in():
-    service = ReminderService()
-    db = SessionLocal()
-    try:
-        profile = db.get(Profile, PROFILE_USER_ID)
-        assert profile is not None
-        profile.pick_reminder_email_enabled = False
-        profile.pick_reminder_opening_enabled = True
         profile.pick_reminder_hours_before = 3
         db.add(profile)
         db.commit()
@@ -78,39 +56,104 @@ def test_collect_due_push_reminders_does_not_require_email_opt_in():
         assert first_match is not None
         now_utc = first_match.picks_lock_at - timedelta(hours=3) + timedelta(minutes=5)
         reminders = service.collect_due_push_reminders(db, now_utc=now_utc, window_minutes=70)
+        reminder_kinds = {reminder.reminder_kind for reminder in reminders}
 
-        assert {reminder.reminder_kind for reminder in reminders} == {
-            PickReminderKind.OPENING,
-            PickReminderKind.PRE_GAME,
-        }
+        assert reminder_kinds == {PickReminderKind.PRE_GAME}
         assert all(reminder.profile_id == PROFILE_USER_ID for reminder in reminders)
     finally:
         db.close()
 
 
-def test_collect_due_email_reminders_skips_already_sent_opening():
+def test_collect_due_push_reminders_includes_matchday_start():
     service = ReminderService()
     db = SessionLocal()
     try:
         profile = db.get(Profile, PROFILE_USER_ID)
         assert profile is not None
         profile.pick_reminder_email_enabled = True
-        profile.pick_reminder_opening_enabled = True
+        profile.matchday_start_notification_enabled = True
+        db.add(profile)
+        db.commit()
+
+        first_match = db.scalar(
+            select(Match).where(Match.matchday_id == MATCHDAY_ID).order_by(Match.kickoff_at.asc())
+        )
+        assert first_match is not None
+        now_utc = first_match.kickoff_at - timedelta(hours=1) + timedelta(minutes=5)
+        reminders = service.collect_due_push_reminders(db, now_utc=now_utc, window_minutes=70)
+
+        assert {reminder.reminder_kind for reminder in reminders} == {PickReminderKind.MATCHDAY_START}
+    finally:
+        db.close()
+
+
+def test_collect_due_push_reminders_skips_already_sent_matchday_start():
+    service = ReminderService()
+    db = SessionLocal()
+    try:
+        profile = db.get(Profile, PROFILE_USER_ID)
+        assert profile is not None
+        profile.pick_reminder_email_enabled = True
+        profile.matchday_start_notification_enabled = True
         db.add(profile)
         db.commit()
 
         db.add(
             PickReminderEmailEvent(
-                dedupe_key=f"opening:{MATCHDAY_ID}:{PROFILE_USER_ID}",
+                dedupe_key=f"matchday-start:{MATCHDAY_ID}:{PROFILE_USER_ID}",
                 profile_id=PROFILE_USER_ID,
                 matchday_id=MATCHDAY_ID,
-                reminder_kind=PickReminderKind.OPENING,
+                reminder_kind=PickReminderKind.MATCHDAY_START,
                 recipient_email=profile.email or "user@example.com",
             )
         )
         db.commit()
 
-        reminders = service.collect_due_email_reminders(db)
-        assert all(reminder.reminder_kind != PickReminderKind.OPENING for reminder in reminders)
+        first_match = db.scalar(
+            select(Match).where(Match.matchday_id == MATCHDAY_ID).order_by(Match.kickoff_at.asc())
+        )
+        assert first_match is not None
+        now_utc = first_match.kickoff_at - timedelta(hours=1) + timedelta(minutes=5)
+        reminders = service.collect_due_push_reminders(db, now_utc=now_utc, window_minutes=70)
+        assert all(reminder.reminder_kind != PickReminderKind.MATCHDAY_START for reminder in reminders)
+    finally:
+        db.close()
+
+
+def test_send_matchday_summary_notifications_records_event(monkeypatch):
+    service = ReminderService()
+    db = SessionLocal()
+    try:
+        profile = db.get(Profile, PROFILE_USER_ID)
+        matchday = db.get(Matchday, MATCHDAY_ID)
+        assert profile is not None
+        assert matchday is not None
+        profile.pick_reminder_email_enabled = True
+        profile.matchday_summary_notification_enabled = True
+        matchday.status = MatchdayStatus.PUBLISHED
+        db.add(profile)
+        db.add(matchday)
+        db.add(
+            StandingsMatchday(
+                matchday_id=MATCHDAY_ID,
+                profile_id=PROFILE_USER_ID,
+                total_points=14,
+                correct_results=4,
+                exact_scores=1,
+                rank_position=1,
+            )
+        )
+        db.commit()
+
+        monkeypatch.setattr(service.push_service, "send_to_external_id", lambda **_: "msg_123")
+        results = service.send_matchday_summary_notifications(db, matchday_id=MATCHDAY_ID)
+
+        assert len(results) == 1
+        assert results[0].status == "sent"
+        saved = db.scalars(
+            select(PickReminderEmailEvent).where(PickReminderEmailEvent.matchday_id == MATCHDAY_ID)
+        ).all()
+        assert len(saved) == 1
+        assert saved[0].reminder_kind == PickReminderKind.MATCHDAY_SUMMARY
     finally:
         db.close()

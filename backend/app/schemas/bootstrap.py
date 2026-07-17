@@ -12,3 +12,7 @@ class AppBootstrapOut(BaseModel):
     matchdays: list[MatchdayOut] = Field(default_factory=list)
     active_matchdays: list[MatchdayOut] = Field(default_factory=list)
     teams: list[TeamOut] = Field(default_factory=list)
+
+
+class AppBrandingOut(BaseModel):
+    app_icon_url: str | None = None

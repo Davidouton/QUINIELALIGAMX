@@ -61,12 +61,6 @@ def update_me(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Selecciona un equipo favorito para usar ese ambiente",
         )
-    if payload.pick_reminder_email_enabled and not next_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Agrega un correo antes de activar recordatorios por mail",
-        )
-
     updated = service.update_settings(
         db,
         current_profile,
@@ -76,6 +70,21 @@ def update_me(
                 "favorite_team_id": favorite_team_id,
                 "modality": current_profile.modality,
                 "aval_profile_id": aval_profile_id,
+                "pick_reminder_opening_enabled": (
+                    payload.pick_reminder_opening_enabled if payload.pick_reminder_email_enabled else False
+                ),
+                "pick_reminder_hours_before": (
+                    payload.pick_reminder_hours_before if payload.pick_reminder_email_enabled else None
+                ),
+                "matchday_start_notification_enabled": (
+                    payload.matchday_start_notification_enabled if payload.pick_reminder_email_enabled else False
+                ),
+                "match_result_notification_enabled": (
+                    payload.match_result_notification_enabled if payload.pick_reminder_email_enabled else False
+                ),
+                "matchday_summary_notification_enabled": (
+                    payload.matchday_summary_notification_enabled if payload.pick_reminder_email_enabled else False
+                ),
             }
         ),
     )

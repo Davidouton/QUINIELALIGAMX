@@ -28,6 +28,7 @@ import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
   AdvancedStats,
   AppBootstrap,
+  DashboardWidgetConfig,
   DashboardWidgetId,
   DashboardHomeBundle,
   DashboardSummary,
@@ -63,10 +64,14 @@ type DashboardState = {
   vipCompetitions: VipCompetition[];
   publishedResults: PublishedResult[];
   personalTrophies: PersonalTrophyRecord[];
-  upcomingMatchdayGroups: {
-    matchday: Matchday;
-    matches: Match[];
-  }[];
+  dashboardBundlesBySeasonId: Record<string, DashboardHomeBundle>;
+  upcomingMatchdayGroupsBySeasonId: Record<
+    string,
+    {
+      matchday: Matchday;
+      matches: Match[];
+    }[]
+  >;
   survivorBoard: SurvivorBoard | null;
   error: string | null;
 };
@@ -86,6 +91,13 @@ const DEFAULT_DASHBOARD_WIDGET_IDS: DashboardWidgetId[] = [
   "prize_summary",
   "upcoming",
   "memberships",
+];
+const SEASON_SCOPED_WIDGET_IDS: DashboardWidgetId[] = [
+  "summary",
+  "performance",
+  "matchday_points",
+  "prize_summary",
+  "upcoming",
 ];
 const DASHBOARD_WIDGET_OPTIONS: Array<{
   id: DashboardWidgetId;
@@ -131,6 +143,30 @@ const DASHBOARD_WIDGET_PRESETS: Array<{
   },
 ];
 
+function createDashboardWidgetConfig(
+  widgetId: DashboardWidgetId,
+  seasonId: string | null = null,
+): DashboardWidgetConfig {
+  const supportsSeason = SEASON_SCOPED_WIDGET_IDS.includes(widgetId);
+  const fallbackId =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${widgetId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id: fallbackId,
+    widget_id: widgetId,
+    season_id: supportsSeason ? seasonId : null,
+  };
+}
+
+function buildDefaultDashboardWidgets() {
+  return DEFAULT_DASHBOARD_WIDGET_IDS.map((widgetId) => createDashboardWidgetConfig(widgetId));
+}
+
+function widgetSupportsSeasonContext(widgetId: DashboardWidgetId) {
+  return SEASON_SCOPED_WIDGET_IDS.includes(widgetId);
+}
+
 const initialState: DashboardState = {
   me: null,
   seasons: [],
@@ -148,7 +184,8 @@ const initialState: DashboardState = {
   vipCompetitions: [],
   publishedResults: [],
   personalTrophies: [],
-  upcomingMatchdayGroups: [],
+  dashboardBundlesBySeasonId: {},
+  upcomingMatchdayGroupsBySeasonId: {},
   survivorBoard: null,
   error: null,
 };
@@ -422,8 +459,27 @@ function buildDashboardHomePath(seasonId?: string | null, matchdayId?: string | 
   return query ? `/me/dashboard-home?${query}` : "/me/dashboard-home";
 }
 
-function areWidgetListsEqual(left: DashboardWidgetId[], right: DashboardWidgetId[]) {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
+function areWidgetConfigsEqual(left: DashboardWidgetConfig[], right: DashboardWidgetConfig[]) {
+  return (
+    left.length === right.length &&
+    left.every(
+      (value, index) =>
+        value.id === right[index]?.id &&
+        value.widget_id === right[index]?.widget_id &&
+        value.season_id === right[index]?.season_id,
+    )
+  );
+}
+
+function dedupeWidgetIds(widgetConfigs: DashboardWidgetConfig[]) {
+  const seen = new Set<DashboardWidgetId>();
+  return widgetConfigs.flatMap((widget) => {
+    if (seen.has(widget.widget_id)) {
+      return [];
+    }
+    seen.add(widget.widget_id);
+    return [widget.widget_id];
+  });
 }
 
 export function DashboardHome() {
@@ -434,19 +490,22 @@ export function DashboardHome() {
   const [selectedVipBoardId, setSelectedVipBoardId] = useState("");
   const [isTabMenuOpen, setIsTabMenuOpen] = useState(false);
   const [isWidgetEditorOpen, setIsWidgetEditorOpen] = useState(false);
-  const [dashboardWidgetDraft, setDashboardWidgetDraft] = useState<DashboardWidgetId[]>(DEFAULT_DASHBOARD_WIDGET_IDS);
+  const [dashboardWidgetDraft, setDashboardWidgetDraft] = useState<DashboardWidgetConfig[]>(buildDefaultDashboardWidgets);
   const [dashboardDefaultView, setDashboardDefaultView] = useState<DashboardDefaultView>(readStoredDashboardDefaultView);
   const [hasAppliedDashboardDefault, setHasAppliedDashboardDefault] = useState(false);
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
   const { seasonId: seasonIdParam, competitionId, setSeasonId, buildHrefWithSeason } = useDashboardSeasonParam();
-  const effectiveDashboardWidgetIds =
-    state.me?.dashboard_widget_ids?.length
-      ? state.me.dashboard_widget_ids
-      : DEFAULT_DASHBOARD_WIDGET_IDS;
+  const effectiveDashboardWidgets =
+    state.me?.dashboard_widgets?.length
+      ? state.me.dashboard_widgets
+      : state.me?.dashboard_widget_ids?.length
+        ? state.me.dashboard_widget_ids.map((widgetId) => createDashboardWidgetConfig(widgetId))
+        : buildDefaultDashboardWidgets();
+  const effectiveDashboardWidgetIds = dedupeWidgetIds(effectiveDashboardWidgets);
 
   useEffect(() => {
-    setDashboardWidgetDraft(effectiveDashboardWidgetIds);
-  }, [effectiveDashboardWidgetIds]);
+    setDashboardWidgetDraft(effectiveDashboardWidgets);
+  }, [effectiveDashboardWidgets]);
 
   async function loadSelectedMatchday(matchdayId: string, seasonsOverride?: Season[], matchdaysOverride?: Matchday[]) {
     const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -497,6 +556,12 @@ export function DashboardHome() {
         personalTrophies: dashboardBundle.personal_trophies,
         vipCompetitions: dashboardBundle.vip_competitions,
         leaderboard: dashboardBundle.leaderboard,
+        dashboardBundlesBySeasonId: selectedSeason?.id
+          ? {
+              ...current.dashboardBundlesBySeasonId,
+              [selectedSeason.id]: dashboardBundle,
+            }
+          : current.dashboardBundlesBySeasonId,
         error: null,
       }));
       void trackAnalyticsEvent({
@@ -615,6 +680,12 @@ export function DashboardHome() {
           personalTrophies: dashboardBundle.personal_trophies,
           vipCompetitions: dashboardBundle.vip_competitions,
           leaderboard: dashboardBundle.leaderboard,
+          dashboardBundlesBySeasonId: selectedSeason?.id
+            ? {
+                ...current.dashboardBundlesBySeasonId,
+                [selectedSeason.id]: dashboardBundle,
+              }
+            : current.dashboardBundlesBySeasonId,
           survivorBoard,
         }));
         void trackAnalyticsEvent({
@@ -699,62 +770,152 @@ export function DashboardHome() {
   }, [dashboardDefaultView, loadedVipDetailIds, selectedVipBoardId, state.vipCompetitions]);
 
   useEffect(() => {
+    if (loading || !state.me || dashboardDefaultView.startsWith("vip:")) {
+      return;
+    }
+
+    const targetSeasonIds = Array.from(
+      new Set(
+        effectiveDashboardWidgets
+          .filter((widget) => widgetSupportsSeasonContext(widget.widget_id))
+          .map((widget) => widget.season_id ?? state.selectedSeason?.id ?? null)
+          .filter((seasonId): seasonId is string => Boolean(seasonId))
+          .filter((seasonId) => !state.dashboardBundlesBySeasonId[seasonId]),
+      ),
+    );
+
+    if (targetSeasonIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    async function loadDashboardBundles() {
+      try {
+        const accessToken = await getBrowserAccessToken().catch(() => undefined);
+        const rows = await Promise.all(
+          targetSeasonIds.map(async (seasonId) => ({
+            seasonId,
+            bundle: await backendFetch<DashboardHomeBundle>(buildDashboardHomePath(seasonId, null), accessToken, {
+              cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+            }),
+          })),
+        );
+        if (cancelled) {
+          return;
+        }
+        setState((current) => ({
+          ...current,
+          dashboardBundlesBySeasonId: rows.reduce<Record<string, DashboardHomeBundle>>(
+            (accumulator, row) => {
+              accumulator[row.seasonId] = row.bundle;
+              return accumulator;
+            },
+            { ...current.dashboardBundlesBySeasonId },
+          ),
+        }));
+      } catch {
+        return;
+      }
+    }
+
+    void loadDashboardBundles();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    dashboardDefaultView,
+    effectiveDashboardWidgets,
+    loading,
+    state.dashboardBundlesBySeasonId,
+    state.me,
+    state.selectedSeason?.id,
+  ]);
+
+  useEffect(() => {
     async function loadUpcomingMatchdays() {
-      const shouldLoadForGeneralWidget =
-        activeTab === "general" && effectiveDashboardWidgetIds.includes("upcoming");
-      if ((!shouldLoadForGeneralWidget && activeTab !== "proximos") || !state.selectedSeason) {
+      const generalSeasonIds =
+        activeTab === "general" && !dashboardDefaultView.startsWith("vip:")
+          ? Array.from(
+              new Set(
+                effectiveDashboardWidgets
+                  .filter((widget) => widget.widget_id === "upcoming")
+                  .map((widget) => widget.season_id ?? state.selectedSeason?.id ?? null)
+                  .filter((seasonId): seasonId is string => Boolean(seasonId)),
+              ),
+            )
+          : [];
+      const targetSeasonIds =
+        activeTab === "proximos"
+          ? state.selectedSeason?.id
+            ? [state.selectedSeason.id]
+            : []
+          : generalSeasonIds;
+
+      if (targetSeasonIds.length === 0) {
         return;
       }
 
       try {
         const accessToken = await getBrowserAccessToken();
-        const seasonRows = state.matchdays
-          .filter((matchday) => matchday.season_id === state.selectedSeason?.id)
-          .sort((left, right) => left.number - right.number);
         const now = Date.now();
-        const upcomingByStatus = seasonRows.filter(
-          (matchday) =>
-            matchday.status === "draft" || matchday.status === "active",
-        );
-        const futureMatchdays = seasonRows.filter(
-          (matchday) =>
-            matchday.status !== "published" &&
-            matchday.status !== "closed" &&
-            new Date(matchday.ends_at).getTime() >= now,
-        );
-        const targetMatchdays =
-          upcomingByStatus.length > 0
-            ? upcomingByStatus
-            : futureMatchdays.length > 0
-            ? futureMatchdays
-            : seasonRows
-                .filter(
-                  (matchday) =>
-                    matchday.status === "draft" || matchday.status === "active",
-                )
-                .sort((left, right) => left.number - right.number);
-
-        const groups = await Promise.all(
-          targetMatchdays.map(async (matchday) => ({
-            matchday,
-            matches: asArray(await backendFetch<Match[]>(`/matches?matchday_id=${matchday.id}`, accessToken)),
-          })),
+        const seasonGroups = await Promise.all(
+          targetSeasonIds.map(async (seasonId) => {
+            const seasonRows = state.matchdays
+              .filter((matchday) => matchday.season_id === seasonId)
+              .sort((left, right) => left.number - right.number);
+            const upcomingByStatus = seasonRows.filter(
+              (matchday) => matchday.status === "draft" || matchday.status === "active",
+            );
+            const futureMatchdays = seasonRows.filter(
+              (matchday) =>
+                matchday.status !== "published" &&
+                matchday.status !== "closed" &&
+                new Date(matchday.ends_at).getTime() >= now,
+            );
+            const targetMatchdays =
+              upcomingByStatus.length > 0
+                ? upcomingByStatus
+                : futureMatchdays.length > 0
+                  ? futureMatchdays
+                  : seasonRows
+                      .filter((matchday) => matchday.status === "draft" || matchday.status === "active")
+                      .sort((left, right) => left.number - right.number);
+            const groups = await Promise.all(
+              targetMatchdays.map(async (matchday) => ({
+                matchday,
+                matches: asArray(await backendFetch<Match[]>(`/matches?matchday_id=${matchday.id}`, accessToken)),
+              })),
+            );
+            return { seasonId, groups };
+          }),
         );
 
         setState((current) => ({
           ...current,
-          upcomingMatchdayGroups: groups,
+          upcomingMatchdayGroupsBySeasonId: seasonGroups.reduce<Record<string, { matchday: Matchday; matches: Match[] }[]>>(
+            (accumulator, row) => {
+              accumulator[row.seasonId] = row.groups;
+              return accumulator;
+            },
+            { ...current.upcomingMatchdayGroupsBySeasonId },
+          ),
         }));
       } catch {
         setState((current) => ({
           ...current,
-          upcomingMatchdayGroups: [],
+          upcomingMatchdayGroupsBySeasonId: targetSeasonIds.reduce<Record<string, { matchday: Matchday; matches: Match[] }[]>>(
+            (accumulator, seasonId) => {
+              accumulator[seasonId] = [];
+              return accumulator;
+            },
+            { ...current.upcomingMatchdayGroupsBySeasonId },
+          ),
         }));
       }
     }
 
     void loadUpcomingMatchdays();
-  }, [activeTab, effectiveDashboardWidgetIds, state.selectedMatchday?.number, state.selectedSeason, state.matchdays]);
+  }, [activeTab, dashboardDefaultView, effectiveDashboardWidgets, state.matchdays, state.selectedSeason]);
 
   useEffect(() => {
     const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
@@ -835,19 +996,44 @@ export function DashboardHome() {
     setIsTabMenuOpen(false);
   }
 
-  function handleToggleDashboardWidget(widgetId: DashboardWidgetId) {
+  function handleAddDashboardWidget(widgetId: DashboardWidgetId = "summary") {
+    setDashboardWidgetDraft((current) => [
+      ...current,
+      createDashboardWidgetConfig(widgetId, state.selectedSeason?.id ?? null),
+    ]);
+  }
+
+  function handleRemoveDashboardWidget(widgetKey: string) {
     setDashboardWidgetDraft((current) => {
-      if (current.includes(widgetId)) {
-        const next = current.filter((value) => value !== widgetId);
-        return next.length > 0 ? next : [widgetId];
+      if (current.length <= 1) {
+        return current;
       }
-      return [...current, widgetId];
+      return current.filter((widget) => widget.id !== widgetKey);
     });
   }
 
-  function handleMoveDashboardWidget(widgetId: DashboardWidgetId, direction: -1 | 1) {
+  function handleUpdateDashboardWidget(
+    widgetKey: string,
+    updates: Partial<Pick<DashboardWidgetConfig, "widget_id" | "season_id">>,
+  ) {
+    setDashboardWidgetDraft((current) =>
+      current.map((widget) => {
+        if (widget.id !== widgetKey) {
+          return widget;
+        }
+        const nextWidgetId = updates.widget_id ?? widget.widget_id;
+        return {
+          ...widget,
+          widget_id: nextWidgetId,
+          season_id: widgetSupportsSeasonContext(nextWidgetId) ? updates.season_id ?? widget.season_id : null,
+        };
+      }),
+    );
+  }
+
+  function handleMoveDashboardWidget(widgetKey: string, direction: -1 | 1) {
     setDashboardWidgetDraft((current) => {
-      const currentIndex = current.indexOf(widgetId);
+      const currentIndex = current.findIndex((widget) => widget.id === widgetKey);
       if (currentIndex < 0) {
         return current;
       }
@@ -863,7 +1049,7 @@ export function DashboardHome() {
   }
 
   function handleApplyDashboardPreset(widgetIds: DashboardWidgetId[]) {
-    setDashboardWidgetDraft(widgetIds);
+    setDashboardWidgetDraft(widgetIds.map((widgetId) => createDashboardWidgetConfig(widgetId, state.selectedSeason?.id ?? null)));
   }
 
   async function handleSaveDashboardWidgets() {
@@ -885,10 +1071,14 @@ export function DashboardHome() {
           modality: state.me.modality,
           aval_profile_id: state.me.aval_profile_id,
           theme_preference: state.me.theme_preference,
-          dashboard_widget_ids: dashboardWidgetDraft,
+          dashboard_widgets: dashboardWidgetDraft,
+          dashboard_widget_ids: dashboardWidgetDraft.map((widget) => widget.widget_id),
           pick_reminder_email_enabled: state.me.pick_reminder_email_enabled,
           pick_reminder_opening_enabled: state.me.pick_reminder_opening_enabled,
           pick_reminder_hours_before: state.me.pick_reminder_hours_before,
+          matchday_start_notification_enabled: state.me.matchday_start_notification_enabled,
+          match_result_notification_enabled: state.me.match_result_notification_enabled,
+          matchday_summary_notification_enabled: state.me.matchday_summary_notification_enabled,
         }),
       });
       setState((current) => ({
@@ -945,9 +1135,6 @@ export function DashboardHome() {
     state.selectedSeason && state.me
       ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
       : null;
-  const visibleDashboardWidgetIds = effectiveDashboardWidgetIds.filter((widgetId) =>
-    DASHBOARD_WIDGET_OPTIONS.some((option) => option.id === widgetId),
-  );
   const isLigaMxSeason = state.selectedSeason?.tournament_format === "standard";
   const hasActiveLigaMxMembership = Boolean(selectedSeasonMembership?.is_active);
   const isPrePagoPendingApproval = Boolean(
@@ -1026,6 +1213,10 @@ export function DashboardHome() {
     vipCompletedMatchdays > 0 ? ((myVipEntry?.total_points ?? 0) / vipCompletedMatchdays).toFixed(1) : "0.0";
   const vipProjectedTotal = (vipPerformanceRace?.projected_user_total ?? myVipEntry?.total_points ?? 0).toFixed(1);
   const isVipDashboardContext = dashboardDefaultValue.startsWith("vip:") && selectedVipCompetition !== null;
+  const visibleDashboardWidgetConfigs = effectiveDashboardWidgets.filter((widget) =>
+    DASHBOARD_WIDGET_OPTIONS.some((option) => option.id === widget.widget_id),
+  );
+  const visibleDashboardWidgetIds = dedupeWidgetIds(visibleDashboardWidgetConfigs);
   const activeMatchdayPoints = isVipDashboardContext ? vipMatchdayPoints : state.matchdayPoints;
   const activePerformanceRace = isVipDashboardContext ? vipPerformanceRace : state.performanceRace;
   const activeContextName = isVipDashboardContext
@@ -1051,12 +1242,20 @@ export function DashboardHome() {
   const prizeRows = activeMatchdayPoints.filter((row) => row.rank_position !== null && row.rank_position <= 3);
   const totalWeeklyPrizeAmount = prizeRows.reduce((sum, row) => sum + row.weekly_prize_amount, 0);
   const bestPrizeRank = prizeRows.length > 0 ? Math.min(...prizeRows.map((row) => row.rank_position ?? 99)) : null;
-  const nextUpcomingGroup = state.upcomingMatchdayGroups[0] ?? null;
+  const nextUpcomingGroup =
+    (state.selectedSeason?.id ? state.upcomingMatchdayGroupsBySeasonId[state.selectedSeason.id]?.[0] : null) ?? null;
   const approvedVipCount = approvedVipCompetitions.length;
   const survivorMembershipSummary = state.survivorBoard?.my_membership ?? null;
   const activePresetId =
-    DASHBOARD_WIDGET_PRESETS.find((preset) => areWidgetListsEqual(preset.widgetIds, dashboardWidgetDraft))?.id ?? null;
-  const hasDashboardWidgetChanges = !areWidgetListsEqual(dashboardWidgetDraft, effectiveDashboardWidgetIds);
+    DASHBOARD_WIDGET_PRESETS.find(
+      (preset) =>
+        preset.widgetIds.length === dashboardWidgetDraft.length &&
+        preset.widgetIds.every(
+          (widgetId, index) =>
+            dashboardWidgetDraft[index]?.widget_id === widgetId && dashboardWidgetDraft[index]?.season_id === null,
+        ),
+    )?.id ?? null;
+  const hasDashboardWidgetChanges = !areWidgetConfigsEqual(dashboardWidgetDraft, effectiveDashboardWidgets);
   const canShowSurvivorDashboardTab = Boolean(
     survivorSeason && isSurvivorAvailableForSeason(survivorSeason),
   );
@@ -1090,12 +1289,294 @@ export function DashboardHome() {
   const summaryTileClass =
     "flex min-w-0 h-[78px] flex-col justify-between rounded-[16px] bg-transparent p-1.5 sm:h-auto sm:rounded-[30px] sm:p-5";
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
+  const selectedSeasonDashboardBundle: DashboardHomeBundle = {
+    summary: state.summary ?? {
+      season_id: state.selectedSeason?.id ?? null,
+      season_name: state.selectedSeason?.name ?? null,
+      total_points: 0,
+      overall_rank: null,
+      weekly_prizes_count: 0,
+      average_points_per_matchday: 0,
+      projected_total_points: 0,
+      projected_rank: null,
+      tournament_matchdays: 0,
+      completed_matchdays: 0,
+      remaining_matchdays: 0,
+    },
+    advanced_stats: state.advancedStats ?? {
+      season_id: state.selectedSeason?.id ?? null,
+      season_name: state.selectedSeason?.name ?? null,
+      graded_picks: 0,
+      best_matchday_name: null,
+      best_matchday_points: 0,
+      home_bets: 0,
+      draw_bets: 0,
+      away_bets: 0,
+      max_hit_points: 0,
+      result_hit_points: 0,
+      exact_hits: 0,
+      result_hits: 0,
+      overall_effectiveness_pct: 0,
+      home_effectiveness_pct: 0,
+      draw_effectiveness_pct: 0,
+      away_effectiveness_pct: 0,
+      home_points: 0,
+      draw_points: 0,
+      away_points: 0,
+    },
+    performance_race: state.performanceRace ?? {
+      season_id: state.selectedSeason?.id ?? null,
+      season_name: state.selectedSeason?.name ?? null,
+      leader_profile_id: null,
+      leader_name: null,
+      tournament_matchdays: 0,
+      completed_matchdays: 0,
+      projected_user_total: 0,
+      projected_leader_total: 0,
+      projected_first_place_total: 0,
+      projected_third_place_total: 0,
+      points: [],
+    },
+    matchday_points: state.matchdayPoints,
+    personal_trophies: state.personalTrophies,
+    vip_competitions: state.vipCompetitions,
+    leaderboard: state.leaderboard,
+    matches: state.matches,
+    pick_results: state.pickResults,
+  };
 
   function getMatchTeamLabel(teamId: string | null, fallbackName: string) {
     if (!useWorldCupAbbreviation || !teamId) {
       return fallbackName;
     }
     return teamShortNameById.get(teamId) ?? fallbackName;
+  }
+
+  function resolveDashboardWidgetSeason(widget: DashboardWidgetConfig) {
+    const seasonId = widgetSupportsSeasonContext(widget.widget_id) ? widget.season_id ?? state.selectedSeason?.id ?? null : null;
+    const season = seasonId ? state.seasons.find((row) => row.id === seasonId) ?? null : null;
+    const bundle = seasonId
+      ? seasonId === state.selectedSeason?.id
+        ? selectedSeasonDashboardBundle
+        : state.dashboardBundlesBySeasonId[seasonId] ?? null
+      : null;
+    const upcomingGroups = seasonId ? state.upcomingMatchdayGroupsBySeasonId[seasonId] ?? [] : [];
+    return { seasonId, season, bundle, upcomingGroups };
+  }
+
+  function renderWidgetSeasonBadge(widget: DashboardWidgetConfig, season: Season | null) {
+    if (!widgetSupportsSeasonContext(widget.widget_id) || !season) {
+      return null;
+    }
+    return (
+      <div className="mb-3 flex items-center gap-2">
+        <span className="app-pill-active px-3 text-[10px] uppercase tracking-[0.16em]">
+          {season.competition_name ?? "Torneo"}
+        </span>
+        <span className="text-xs text-steel">{season.name}</span>
+      </div>
+    );
+  }
+
+  function renderRegularDashboardWidget(widget: DashboardWidgetConfig) {
+    if (widget.widget_id === "memberships") {
+      return renderGeneralWidget("memberships");
+    }
+
+    const { season, bundle, upcomingGroups } = resolveDashboardWidgetSeason(widget);
+    if (!bundle && widget.widget_id !== "upcoming") {
+      return (
+        <section key={widget.id} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+          {renderWidgetSeasonBadge(widget, season)}
+          <p className="text-sm text-steel">Cargando widget para esta temporada...</p>
+        </section>
+      );
+    }
+
+    const widgetSummary = bundle?.summary;
+    const widgetMatchdayPoints = bundle?.matchday_points ?? [];
+    const widgetPerformanceRace = bundle?.performance_race ?? null;
+    const widgetPrizeRows = widgetMatchdayPoints.filter((row) => row.rank_position !== null && row.rank_position <= 3);
+    const widgetWeeklyPrizeTotal = widgetPrizeRows.reduce((sum, row) => sum + row.weekly_prize_amount, 0);
+    const widgetBestPrizeRank =
+      widgetPrizeRows.length > 0 ? Math.min(...widgetPrizeRows.map((row) => row.rank_position ?? 99)) : null;
+    const widgetUpcomingGroup = upcomingGroups[0] ?? null;
+    const useWidgetWorldCupAbbreviation = isWorldCupSeason(season);
+    const getWidgetMatchTeamLabel = (teamId: string | null, fallbackName: string) => {
+      if (!useWidgetWorldCupAbbreviation || !teamId) {
+        return fallbackName;
+      }
+      return teamShortNameById.get(teamId) ?? fallbackName;
+    };
+
+    if (widget.widget_id === "summary") {
+      return (
+        <section key={widget.id}>
+          {renderWidgetSeasonBadge(widget, season)}
+          <div className="grid grid-cols-5 gap-1 md:grid-cols-2 md:gap-3 xl:grid-cols-5">
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">Pts</span>
+                <span className="hidden sm:inline">Puntos acumulados</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">
+                {widgetSummary?.total_points ?? 0}
+              </p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">{formatCompactSeasonName(widgetSummary?.season_name ?? season?.name)}</span>
+                <span className="hidden sm:inline">{widgetSummary?.season_name ?? season?.name ?? "Torneo"}</span>
+              </p>
+            </div>
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">Lugar</span>
+                <span className="hidden sm:inline">Lugar general</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-coral sm:mt-2 sm:text-xl">
+                {widgetSummary?.overall_rank ? `#${widgetSummary.overall_rank}` : "-"}
+              </p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">{widgetSummary?.completed_matchdays ?? 0} jds</span>
+                <span className="hidden sm:inline">{widgetSummary?.completed_matchdays ?? 0} jornadas calificadas</span>
+              </p>
+            </div>
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">Podios</span>
+                <span className="hidden sm:inline">Premios por jornada</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">
+                {widgetSummary?.weekly_prizes_count ?? 0}
+              </p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">Top 3</span>
+                <span className="hidden sm:inline">Top 3 por jornada</span>
+              </p>
+            </div>
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">Prom</span>
+                <span className="hidden sm:inline">Puntos promedio</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-ink sm:mt-2 sm:text-xl">
+                {(widgetSummary?.average_points_per_matchday ?? 0).toFixed(1)}
+              </p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">por jd</span>
+                <span className="hidden sm:inline">Por jornada publicada</span>
+              </p>
+            </div>
+            <div className={summaryTileClass}>
+              <p className="text-[6px] uppercase tracking-[0.06em] text-steel sm:text-xs sm:tracking-[0.3em]">
+                <span className="sm:hidden">Proy</span>
+                <span className="hidden sm:inline">Cierre proyectado</span>
+              </p>
+              <p className="mt-1 text-[12px] font-semibold leading-none text-emerald-300 sm:mt-2 sm:text-xl">
+                {(widgetSummary?.projected_total_points ?? 0).toFixed(1)}
+              </p>
+              <p className="mt-1 text-[8px] leading-tight text-steel sm:mt-1.5 sm:text-sm">
+                <span className="sm:hidden">pts</span>
+                <span className="hidden sm:inline">Puntos proyectados al cierre</span>
+              </p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (widget.widget_id === "performance") {
+      return (
+        <section key={widget.id}>
+          {renderWidgetSeasonBadge(widget, season)}
+          <PerformanceRaceChart race={widgetPerformanceRace} userLabel={state.me?.display_name ?? "Tu desempeno"} />
+        </section>
+      );
+    }
+
+    if (widget.widget_id === "matchday_points") {
+      return (
+        <section key={widget.id}>
+          {renderWidgetSeasonBadge(widget, season)}
+          <MatchdayPointsTable rows={widgetMatchdayPoints} />
+        </section>
+      );
+    }
+
+    if (widget.widget_id === "prize_summary") {
+      return (
+        <section key={widget.id} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+          {renderWidgetSeasonBadge(widget, season)}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-steel">Premios</p>
+              <h2 className="mt-2 text-lg font-semibold text-ink">Resumen de premios</h2>
+            </div>
+            <Link href={buildHrefWithSeason("/dashboard/prizes")} className="app-pill px-4 text-xs">
+              Ver detalle
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Cobrado</p>
+              <p className="mt-2 text-xl font-semibold text-ink">{formatCurrency(widgetWeeklyPrizeTotal)}</p>
+            </div>
+            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Mejor lugar</p>
+              <p className="mt-2 text-xl font-semibold text-emerald-300">{widgetBestPrizeRank ? `#${widgetBestPrizeRank}` : "-"}</p>
+            </div>
+            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Podios</p>
+              <p className="mt-2 text-xl font-semibold text-ink">{widgetPrizeRows.length}</p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (widget.widget_id === "upcoming") {
+      return (
+        <section key={widget.id} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+          {renderWidgetSeasonBadge(widget, season)}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-steel">Agenda</p>
+              <h2 className="mt-2 text-lg font-semibold text-ink">Proximos juegos</h2>
+            </div>
+            <button type="button" onClick={() => setActiveTab("proximos")} className="app-pill px-4 text-xs">
+              Ver completos
+            </button>
+          </div>
+          {widgetUpcomingGroup ? (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+                <p className="text-sm font-semibold text-ink">{widgetUpcomingGroup.matchday.name}</p>
+                <p className="mt-1 text-xs text-steel">
+                  {formatMexicoCityDateTime(widgetUpcomingGroup.matchday.starts_at)} a {formatMexicoCityDateTime(widgetUpcomingGroup.matchday.ends_at)}
+                </p>
+              </div>
+              <div className="space-y-2">
+                {widgetUpcomingGroup.matches.slice(0, 3).map((match) => (
+                  <div key={match.id} className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-3">
+                    <MatchTeamsInline
+                      homeName={getWidgetMatchTeamLabel(match.home_team_id, match.home_team_name)}
+                      homeCrestUrl={match.home_team_id ? (teamCrestById.get(match.home_team_id) ?? null) : null}
+                      awayName={getWidgetMatchTeamLabel(match.away_team_id, match.away_team_name)}
+                      awayCrestUrl={match.away_team_id ? (teamCrestById.get(match.away_team_id) ?? null) : null}
+                      useWorldCupBubbles={useWidgetWorldCupAbbreviation}
+                    />
+                    <p className="mt-2 text-[11px] text-steel">{formatMexicoCityDateTime(match.kickoff_at)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-steel">No encontramos una siguiente jornada lista para mostrar aqui.</p>
+          )}
+        </section>
+      );
+    }
+
+    return renderGeneralWidget(widget.widget_id);
   }
 
   function renderGeneralWidget(widgetId: DashboardWidgetId) {
@@ -1652,7 +2133,7 @@ export function DashboardHome() {
           </div>
 
           <div className="space-y-4">
-            {state.upcomingMatchdayGroups.map((group) => (
+            {(state.selectedSeason?.id ? state.upcomingMatchdayGroupsBySeasonId[state.selectedSeason.id] ?? [] : []).map((group) => (
               <section key={group.matchday.id} className="border-b border-white/10 pb-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
@@ -1698,7 +2179,7 @@ export function DashboardHome() {
                 )}
               </section>
             ))}
-            {state.upcomingMatchdayGroups.length === 0 ? (
+            {(state.selectedSeason?.id ? state.upcomingMatchdayGroupsBySeasonId[state.selectedSeason.id] ?? [] : []).length === 0 ? (
               <p className="text-sm text-steel">No encontramos siguientes jornadas disponibles para esta temporada.</p>
             ) : null}
           </div>
@@ -1887,41 +2368,72 @@ export function DashboardHome() {
                     </button>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {dashboardWidgetDraft.map((widgetId) => {
-                      const widget = DASHBOARD_WIDGET_OPTIONS.find((option) => option.id === widgetId);
+                    {dashboardWidgetDraft.map((widget) => {
+                      const widgetOption = DASHBOARD_WIDGET_OPTIONS.find((option) => option.id === widget.widget_id);
+                      const season = widget.season_id
+                        ? state.seasons.find((seasonRow) => seasonRow.id === widget.season_id) ?? null
+                        : null;
                       return (
-                        <span key={widgetId} className="app-pill-active px-3 text-[11px]">
-                          {widget?.label ?? widgetId}
+                        <span key={widget.id} className="app-pill-active px-3 text-[11px]">
+                          {widgetOption?.label ?? widget.widget_id}
+                          {season ? ` · ${season.competition_name ?? season.name}` : ""}
                         </span>
                       );
                     })}
                   </div>
                 </div>
 
-                {DASHBOARD_WIDGET_OPTIONS.map((widget) => {
-                  const isVisible = dashboardWidgetDraft.includes(widget.id);
-                  const currentIndex = dashboardWidgetDraft.indexOf(widget.id);
+                {dashboardWidgetDraft.map((widget, currentIndex) => {
+                  const widgetOption = DASHBOARD_WIDGET_OPTIONS.find((option) => option.id === widget.widget_id);
                   return (
                     <div
                       key={widget.id}
                       className="flex flex-col gap-3 rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4 md:flex-row md:items-center md:justify-between"
                     >
                       <div className="min-w-0">
-                        <p className="text-sm font-semibold text-ink">{widget.label}</p>
-                        <p className="mt-1 text-xs text-steel">{widget.description}</p>
+                        <p className="text-sm font-semibold text-ink">{widgetOption?.label ?? widget.widget_id}</p>
+                        <p className="mt-1 text-xs text-steel">{widgetOption?.description ?? "Widget configurable."}</p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleDashboardWidget(widget.id)}
-                          className={isVisible ? "app-pill-active px-4 text-xs" : "app-pill px-4 text-xs"}
+                      <div className="flex flex-1 flex-wrap items-center gap-2 md:justify-end">
+                        <select
+                          value={widget.widget_id}
+                          onChange={(event) =>
+                            handleUpdateDashboardWidget(widget.id, {
+                              widget_id: event.target.value as DashboardWidgetId,
+                              season_id: widgetSupportsSeasonContext(event.target.value as DashboardWidgetId)
+                                ? widget.season_id ?? state.selectedSeason?.id ?? null
+                                : null,
+                            })
+                          }
+                          className="field-control min-w-[180px] text-xs"
                         >
-                          {isVisible ? "Visible" : "Oculto"}
-                        </button>
+                          {DASHBOARD_WIDGET_OPTIONS.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {widgetSupportsSeasonContext(widget.widget_id) ? (
+                          <select
+                            value={widget.season_id ?? state.selectedSeason?.id ?? ""}
+                            onChange={(event) =>
+                              handleUpdateDashboardWidget(widget.id, {
+                                season_id: event.target.value || null,
+                              })
+                            }
+                            className="field-control min-w-[180px] text-xs"
+                          >
+                            {state.seasons.map((season) => (
+                              <option key={season.id} value={season.id}>
+                                {(season.competition_name ?? "Torneo") + " · " + season.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleMoveDashboardWidget(widget.id, -1)}
-                          disabled={!isVisible || currentIndex <= 0}
+                          disabled={currentIndex <= 0}
                           className="app-pill px-3 text-xs disabled:opacity-40"
                         >
                           Subir
@@ -1929,16 +2441,31 @@ export function DashboardHome() {
                         <button
                           type="button"
                           onClick={() => handleMoveDashboardWidget(widget.id, 1)}
-                          disabled={!isVisible || currentIndex < 0 || currentIndex >= dashboardWidgetDraft.length - 1}
+                          disabled={currentIndex >= dashboardWidgetDraft.length - 1}
                           className="app-pill px-3 text-xs disabled:opacity-40"
                         >
                           Bajar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDashboardWidget(widget.id)}
+                          disabled={dashboardWidgetDraft.length <= 1}
+                          className="app-pill px-3 text-xs disabled:opacity-40"
+                        >
+                          Quitar
                         </button>
                       </div>
                     </div>
                   );
                 })}
                 <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleAddDashboardWidget()}
+                    className="app-pill px-4 text-sm"
+                  >
+                    Agregar widget
+                  </button>
                   <button
                     type="button"
                     onClick={() => void handleSaveDashboardWidgets()}
@@ -1950,7 +2477,7 @@ export function DashboardHome() {
                   <button
                     type="button"
                     onClick={() => {
-                      setDashboardWidgetDraft(effectiveDashboardWidgetIds);
+                      setDashboardWidgetDraft(effectiveDashboardWidgets);
                       setIsWidgetEditorOpen(false);
                     }}
                     className="app-pill px-4 text-sm"
@@ -1963,7 +2490,9 @@ export function DashboardHome() {
           </section>
 
           <div className="space-y-6">
-            {visibleDashboardWidgetIds.map((widgetId) => renderGeneralWidget(widgetId))}
+            {isVipDashboardContext
+              ? visibleDashboardWidgetIds.map((widgetId) => renderGeneralWidget(widgetId))
+              : visibleDashboardWidgetConfigs.map((widget) => renderRegularDashboardWidget(widget))}
           </div>
         </>
       ) : null}

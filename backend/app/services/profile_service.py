@@ -30,6 +30,7 @@ from app.repositories.profile_repository import ProfileRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.profile import (
     AdvancedStatsResponse,
+    DashboardWidgetConfigOut,
     DashboardSummaryResponse,
     MeResponse,
     MeUpdateRequest,
@@ -57,6 +58,13 @@ class ProfileService:
         "upcoming",
         "memberships",
     ]
+    SEASON_SCOPED_WIDGET_IDS = {
+        "summary",
+        "performance",
+        "matchday_points",
+        "prize_summary",
+        "upcoming",
+    }
 
     def ensure_profile(self, db: Session, auth_user: AuthUser) -> Profile:
         can_bootstrap_admin = settings.app_env == "development" and not self.repo.has_admin_account(db)
@@ -106,10 +114,13 @@ class ProfileService:
             modality=payload.modality,
             aval_profile_id=self._normalize_optional_text(payload.aval_profile_id),
             theme_preference=payload.theme_preference,
-            dashboard_widgets=self._serialize_dashboard_widget_ids(payload.dashboard_widget_ids),
+            dashboard_widgets=self._serialize_dashboard_widgets(payload.dashboard_widgets, payload.dashboard_widget_ids),
             pick_reminder_email_enabled=payload.pick_reminder_email_enabled,
             pick_reminder_opening_enabled=payload.pick_reminder_opening_enabled,
             pick_reminder_hours_before=payload.pick_reminder_hours_before,
+            matchday_start_notification_enabled=payload.matchday_start_notification_enabled,
+            match_result_notification_enabled=payload.match_result_notification_enabled,
+            matchday_summary_notification_enabled=payload.matchday_summary_notification_enabled,
         )
         db.commit()
         db.refresh(updated)
@@ -169,6 +180,7 @@ class ProfileService:
             if selected_membership is not None and selected_season is not None
             else None
         )
+        dashboard_widgets = self._deserialize_dashboard_widgets(profile.dashboard_widgets)
         return MeResponse(
             id=profile.id,
             auth_user_id=profile.auth_user_id,
@@ -184,10 +196,14 @@ class ProfileService:
             modality=profile.modality,
             aval_profile_id=profile.aval_profile_id,
             theme_preference=profile.theme_preference,
-            dashboard_widget_ids=self._deserialize_dashboard_widget_ids(profile.dashboard_widgets),
+            dashboard_widget_ids=[widget.widget_id for widget in dashboard_widgets],
+            dashboard_widgets=dashboard_widgets,
             pick_reminder_email_enabled=profile.pick_reminder_email_enabled,
             pick_reminder_opening_enabled=profile.pick_reminder_opening_enabled,
             pick_reminder_hours_before=profile.pick_reminder_hours_before,
+            matchday_start_notification_enabled=profile.matchday_start_notification_enabled,
+            match_result_notification_enabled=profile.match_result_notification_enabled,
+            matchday_summary_notification_enabled=profile.matchday_summary_notification_enabled,
             active_season_id=active_season.id if active_season is not None else None,
             active_season_name=active_season.name if active_season is not None else None,
             can_participate_active_season=bool(
@@ -358,6 +374,11 @@ class ProfileService:
         ).scalars().all()
 
         standings_by_matchday = {row.matchday_id for row in standings_rows}
+        finalized_matchday_ids = {
+            matchday.id
+            for matchday in tournament_matchdays
+            if self._is_matchday_finalized(matchday)
+        }
         completed_matchdays = [
             matchday
             for matchday in tournament_matchdays
@@ -386,7 +407,7 @@ class ProfileService:
             )
             bucket["total_points"] += row.total_points
             bucket["exact_scores"] += row.exact_scores
-            if row.rank_position <= 3:
+            if row.matchday_id in finalized_matchday_ids and row.rank_position <= 3:
                 bucket["weekly_prizes"] += 1
 
         current = totals_by_profile.get(
@@ -732,28 +753,102 @@ class ProfileService:
         return cleaned or None
 
     @classmethod
-    def _deserialize_dashboard_widget_ids(cls, raw_value: str | None) -> list[str]:
+    def _default_dashboard_widgets(cls) -> list[DashboardWidgetConfigOut]:
+        return [
+            DashboardWidgetConfigOut(id=f"default-{widget_id}", widget_id=widget_id, season_id=None)
+            for widget_id in cls.DEFAULT_DASHBOARD_WIDGET_IDS
+        ]
+
+    @classmethod
+    def _deserialize_dashboard_widgets(cls, raw_value: str | None) -> list[DashboardWidgetConfigOut]:
         if not raw_value:
-            return cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+            return cls._default_dashboard_widgets()
         try:
             parsed = json.loads(raw_value)
         except json.JSONDecodeError:
-            return cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+            return cls._default_dashboard_widgets()
         if not isinstance(parsed, list):
-            return cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+            return cls._default_dashboard_widgets()
 
         allowed = set(cls.DEFAULT_DASHBOARD_WIDGET_IDS)
-        cleaned = [value for value in parsed if isinstance(value, str) and value in allowed]
-        return cleaned or cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+        cleaned: list[DashboardWidgetConfigOut] = []
+        for index, value in enumerate(parsed):
+            if isinstance(value, str):
+                if value in allowed:
+                    cleaned.append(
+                        DashboardWidgetConfigOut(
+                            id=f"legacy-{index}-{value}",
+                            widget_id=value,
+                            season_id=None,
+                        )
+                    )
+                continue
+            if not isinstance(value, dict):
+                continue
+            widget_id = value.get("widget_id")
+            if not isinstance(widget_id, str) or widget_id not in allowed:
+                continue
+            widget_key = cls._normalize_optional_text(str(value.get("id") or "")) or f"widget-{index}-{widget_id}"
+            season_id = cls._normalize_optional_text(value.get("season_id")) if isinstance(value.get("season_id"), str) else None
+            if widget_id not in cls.SEASON_SCOPED_WIDGET_IDS:
+                season_id = None
+            cleaned.append(
+                DashboardWidgetConfigOut(
+                    id=widget_key,
+                    widget_id=widget_id,
+                    season_id=season_id,
+                )
+            )
+
+        return cleaned or cls._default_dashboard_widgets()
 
     @classmethod
-    def _serialize_dashboard_widget_ids(cls, widget_ids: list[str] | None) -> str | None:
-        if widget_ids is None:
+    def _serialize_dashboard_widgets(
+        cls,
+        widget_configs: list[DashboardWidgetConfigOut] | None,
+        widget_ids: list[str] | None,
+    ) -> str | None:
+        if widget_configs is None and widget_ids is None:
             return None
         allowed = set(cls.DEFAULT_DASHBOARD_WIDGET_IDS)
-        cleaned = [value for value in widget_ids if value in allowed]
+        cleaned: list[dict[str, str | None]] = []
+
+        if widget_configs is not None:
+            for index, widget in enumerate(widget_configs):
+                widget_id = widget.widget_id
+                if widget_id not in allowed:
+                    continue
+                season_id = cls._normalize_optional_text(widget.season_id)
+                if widget_id not in cls.SEASON_SCOPED_WIDGET_IDS:
+                    season_id = None
+                widget_key = cls._normalize_optional_text(widget.id) or f"widget-{index}-{widget_id}"
+                cleaned.append(
+                    {
+                        "id": widget_key,
+                        "widget_id": widget_id,
+                        "season_id": season_id,
+                    }
+                )
+        elif widget_ids is not None:
+            cleaned = [
+                {
+                    "id": f"legacy-{index}-{widget_id}",
+                    "widget_id": widget_id,
+                    "season_id": None,
+                }
+                for index, widget_id in enumerate(widget_ids)
+                if widget_id in allowed
+            ]
+
         if not cleaned:
-            cleaned = cls.DEFAULT_DASHBOARD_WIDGET_IDS.copy()
+            cleaned = [
+                {
+                    "id": widget.id,
+                    "widget_id": widget.widget_id,
+                    "season_id": widget.season_id,
+                }
+                for widget in cls._default_dashboard_widgets()
+            ]
         return json.dumps(cleaned)
 
     @staticmethod
@@ -782,6 +877,10 @@ class ProfileService:
         if end_number < start_number:
             end_number = start_number
         return [matchday for matchday in matchdays if start_number <= matchday.number <= end_number]
+
+    @staticmethod
+    def _is_matchday_finalized(matchday: Matchday) -> bool:
+        return matchday.status in {MatchdayStatus.CLOSED, MatchdayStatus.PUBLISHED}
 
     @staticmethod
     def _find_rank(profile_id: str, rows: list[tuple]) -> int | None:

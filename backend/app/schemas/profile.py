@@ -16,6 +16,12 @@ DashboardWidgetId = Literal[
 ]
 
 
+class DashboardWidgetConfigOut(BaseModel):
+    id: str
+    widget_id: DashboardWidgetId
+    season_id: str | None = None
+
+
 class ProfileOut(BaseModel):
     id: str
     auth_user_id: str
@@ -49,9 +55,13 @@ class MeResponse(ProfileOut):
     aval_profile_id: str | None = None
     theme_preference: ThemePreferenceLiteral = "standard"
     dashboard_widget_ids: list[DashboardWidgetId] = Field(default_factory=list)
+    dashboard_widgets: list[DashboardWidgetConfigOut] = Field(default_factory=list)
     pick_reminder_email_enabled: bool = False
     pick_reminder_opening_enabled: bool = False
     pick_reminder_hours_before: Literal[1, 3] | None = None
+    matchday_start_notification_enabled: bool = False
+    match_result_notification_enabled: bool = False
+    matchday_summary_notification_enabled: bool = False
     active_season_id: str | None = None
     active_season_name: str | None = None
     can_participate_active_season: bool = False
@@ -153,6 +163,10 @@ class MeUpdateRequest(BaseModel):
     aval_profile_id: str | None = None
     theme_preference: ThemePreferenceLiteral = "standard"
     dashboard_widget_ids: list[DashboardWidgetId] | None = None
+    dashboard_widgets: list[DashboardWidgetConfigOut] | None = None
     pick_reminder_email_enabled: bool = False
     pick_reminder_opening_enabled: bool = False
     pick_reminder_hours_before: Literal[1, 3] | None = None
+    matchday_start_notification_enabled: bool = False
+    match_result_notification_enabled: bool = False
+    matchday_summary_notification_enabled: bool = False

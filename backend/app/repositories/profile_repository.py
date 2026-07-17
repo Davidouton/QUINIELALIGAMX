@@ -67,6 +67,9 @@ class ProfileRepository:
         pick_reminder_email_enabled: bool,
         pick_reminder_opening_enabled: bool,
         pick_reminder_hours_before: int | None,
+        matchday_start_notification_enabled: bool,
+        match_result_notification_enabled: bool,
+        matchday_summary_notification_enabled: bool,
     ) -> Profile:
         profile.display_name = display_name
         profile.email = email
@@ -82,6 +85,9 @@ class ProfileRepository:
         profile.pick_reminder_email_enabled = pick_reminder_email_enabled
         profile.pick_reminder_opening_enabled = pick_reminder_opening_enabled
         profile.pick_reminder_hours_before = pick_reminder_hours_before
+        profile.matchday_start_notification_enabled = matchday_start_notification_enabled
+        profile.match_result_notification_enabled = match_result_notification_enabled
+        profile.matchday_summary_notification_enabled = matchday_summary_notification_enabled
         db.add(profile)
         db.flush()
         return profile

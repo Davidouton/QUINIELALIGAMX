@@ -20,6 +20,7 @@ from app.core.database import SessionLocal, engine, get_db
 from app.core.datetime import MEXICO_CITY_TZ
 from app.models.entities import (
     Competition,
+    CommerceSettings,
     HistoricalChampion,
     Match,
     MatchResult,
@@ -123,6 +124,7 @@ from app.services.match_service import MatchService
 from app.services.reminder_service import ReminderService
 from app.services.pick_service import PickService
 from app.services.result_service import ResultService
+from app.services.reminder_service import ReminderService
 from app.services.scoring_service import ScoringService
 from app.services.season_eligibility_service import SeasonEligibilityService
 from app.services.supabase_admin_service import SupabaseAdminError, SupabaseAdminService
@@ -145,6 +147,7 @@ pick_service = PickService()
 survivor_service = SurvivorService()
 season_eligibility_service = SeasonEligibilityService()
 vip_service = VipService()
+reminder_service = ReminderService()
 supabase_admin_service = SupabaseAdminService()
 REPO_ROOT = Path(__file__).resolve().parents[5]
 APPS_API_DIR = REPO_ROOT / "apps" / "api"
@@ -227,6 +230,17 @@ def run_scoring_and_vip_recalculate_for_matchday_background(
         ScoringService().recalculate_matchday(db, matchday_id)
         recalculate_vips_for_matchday(db, matchday_id)
         ReminderService().send_match_scoring_notifications(db, matchday_id=matchday_id, match_id=match_id)
+    finally:
+        db.close()
+
+
+def run_matchday_publish_notifications_background(matchday_id: str) -> None:
+    db = SessionLocal()
+    try:
+        ScoringService().recalculate(db)
+        recalculate_vips_for_matchday(db, matchday_id)
+        if reminder_service.push_service.is_configured():
+            reminder_service.send_matchday_summary_notifications(db, matchday_id=matchday_id)
     finally:
         db.close()
 
@@ -1061,6 +1075,17 @@ def set_active_matchday(db: Session, matchday_to_activate: Matchday) -> None:
         db.add(matchday)
 
 
+def get_or_create_commerce_settings(db: Session) -> CommerceSettings:
+    row = db.scalar(select(CommerceSettings).order_by(CommerceSettings.created_at.asc()))
+    if row is not None:
+        return row
+
+    row = CommerceSettings()
+    db.add(row)
+    db.flush()
+    return row
+
+
 def get_admin_settings_payload(
     db: Session,
     *,
@@ -1070,6 +1095,7 @@ def get_admin_settings_payload(
 ) -> AdminSettingsOut:
     active_season = db.scalar(select(Season).where(Season.is_active.is_(True)).order_by(Season.created_at.desc()))
     target_season = season_repo.get_by_id(db, season_id) if season_id else active_season
+    commerce_settings = get_or_create_commerce_settings(db)
     if target_season is not None:
         did_freeze = season_eligibility_service.freeze_season_if_due(db, target_season)
         if did_freeze:
@@ -1149,6 +1175,7 @@ def get_admin_settings_payload(
         selected_season_id=target_season.id if target_season is not None else None,
         selected_season_name=target_season.name if target_season is not None else None,
         selected_tournament_format=target_season.tournament_format if target_season is not None else None,
+        app_icon_url=commerce_settings.app_icon_url,
         start_matchday_id=target_season.start_matchday_id if target_season is not None else None,
         end_matchday_id=target_season.end_matchday_id if target_season is not None else None,
         participants_lock_at=participants_lock_at,
@@ -1941,6 +1968,7 @@ def update_admin_settings(
     season = season_repo.get_by_id(db, payload.active_season_id)
     if season is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+    commerce_settings = get_or_create_commerce_settings(db)
 
     if payload.start_matchday_id:
         start_matchday = matchday_repo.get_by_id(db, payload.start_matchday_id)
@@ -1991,6 +2019,7 @@ def update_admin_settings(
     season.first_place_pct = Decimal(str(payload.first_place_pct))
     season.second_place_pct = Decimal(str(payload.second_place_pct))
     season.third_place_pct = Decimal(str(payload.third_place_pct))
+    commerce_settings.app_icon_url = payload.app_icon_url
 
     stored_rule_values = {
         rule.rule_key: rule.points
@@ -2012,6 +2041,7 @@ def update_admin_settings(
     if set_active:
         set_active_season(db, season)
     season_repo.save(db, season)
+    db.add(commerce_settings)
     upsert_scoring_rule(db, "result_correct", payload.result_correct_points)
     upsert_scoring_rule(db, "exact_score", payload.exact_score_points)
     upsert_scoring_rule(db, "advancing_team", payload.advancing_team_points)
@@ -3240,7 +3270,7 @@ def publish_matchday(
     matchday.status = MatchdayStatus.PUBLISHED
     db.add(matchday)
     db.commit()
-    background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, matchday_id)
+    background_tasks.add_task(run_matchday_publish_notifications_background, matchday_id)
     return {
         "status": "published",
         "matchday_id": matchday_id,

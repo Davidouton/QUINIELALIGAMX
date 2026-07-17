@@ -31,6 +31,12 @@ export type DashboardWidgetId =
   | "prize_summary"
   | "upcoming"
   | "memberships";
+
+export interface DashboardWidgetConfig {
+  id: string;
+  widget_id: DashboardWidgetId;
+  season_id: string | null;
+}
 export type QuinielaPlusBillingPeriod = "weekly" | "monthly" | "quarterly" | "semiannual" | "annual";
 export type QuinielaPlusMembershipStatus = "active" | "expired" | "cancelled";
 
@@ -886,9 +892,13 @@ export interface Me {
   aval_profile_id: string | null;
   theme_preference: ThemePreference;
   dashboard_widget_ids: DashboardWidgetId[];
+  dashboard_widgets: DashboardWidgetConfig[];
   pick_reminder_email_enabled: boolean;
   pick_reminder_opening_enabled: boolean;
   pick_reminder_hours_before: PickReminderHoursBefore | null;
+  matchday_start_notification_enabled: boolean;
+  match_result_notification_enabled: boolean;
+  matchday_summary_notification_enabled: boolean;
   role_code: string;
   is_active: boolean;
   active_season_id: string | null;
@@ -909,6 +919,10 @@ export interface AppBootstrap {
   matchdays: Matchday[];
   active_matchdays: Matchday[];
   teams: Team[];
+}
+
+export interface AppBranding {
+  app_icon_url: string | null;
 }
 
 export interface SurvivorCurrentMatchday {
@@ -1372,6 +1386,7 @@ export interface AdminSettings {
   selected_season_id: string | null;
   selected_season_name: string | null;
   selected_tournament_format: TournamentFormat | null;
+  app_icon_url: string | null;
   start_matchday_id: string | null;
   end_matchday_id: string | null;
   participants_lock_at: string | null;

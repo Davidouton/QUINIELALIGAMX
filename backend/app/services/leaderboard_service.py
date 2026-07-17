@@ -5,7 +5,31 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.datetime import ensure_utc
-from app.models.entities import Competition, HistoricalChampion, Match, MatchResult, Matchday, PickPoint, PickSelection, Profile, Season, SeasonVisibilityStatus, StandingsMatchday, StandingsOverall, Team, TournamentFormat, UserPick, TrophyAsset, VipCompetition, VipCompetitionKind, VipCompetitionMatchday, VipMembership, VipMembershipStatus, VipStanding
+from app.models.entities import (
+    Competition,
+    HistoricalChampion,
+    Match,
+    MatchResult,
+    Matchday,
+    MatchdayStatus,
+    PickPoint,
+    PickSelection,
+    Profile,
+    Season,
+    SeasonVisibilityStatus,
+    StandingsMatchday,
+    StandingsOverall,
+    Team,
+    TournamentFormat,
+    TrophyAsset,
+    UserPick,
+    VipCompetition,
+    VipCompetitionKind,
+    VipCompetitionMatchday,
+    VipMembership,
+    VipMembershipStatus,
+    VipStanding,
+)
 from app.repositories.leaderboard_repository import LeaderboardRepository
 from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.leaderboard import (
@@ -171,7 +195,7 @@ class LeaderboardService:
             cumulative_points += total_points
             standings_for_matchday = standings_by_matchday.get(matchday.id, [])
             prize_amount = 0.0
-            if standings_for_matchday and standing is not None:
+            if self._is_matchday_finalized(matchday) and standings_for_matchday and standing is not None:
                 ranked_rows = [
                     (standing_row.profile_id, standing_row.rank_position)
                     for standing_row in sorted(
@@ -1028,6 +1052,10 @@ class LeaderboardService:
         if end_number < start_number:
             end_number = start_number
         return [matchday for matchday in matchdays if start_number <= matchday.number <= end_number]
+
+    @staticmethod
+    def _is_matchday_finalized(matchday: Matchday) -> bool:
+        return matchday.status in {MatchdayStatus.CLOSED, MatchdayStatus.PUBLISHED}
 
     def _counts_for_scoring(
         self,

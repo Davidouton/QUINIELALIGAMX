@@ -18,6 +18,7 @@ type PricingScopeType = Exclude<PaymentScopeType, "quiniela_plus">;
 
 type SettingsFormState = {
   active_season_id: string;
+  app_icon_url: string;
   start_matchday_id: string;
   end_matchday_id: string;
   result_correct_points: string;
@@ -41,6 +42,7 @@ type PricingFormState = {
 
 const initialForm: SettingsFormState = {
   active_season_id: "",
+  app_icon_url: "",
   start_matchday_id: "",
   end_matchday_id: "",
   result_correct_points: "3",
@@ -112,6 +114,7 @@ export function AdminSettingsPanel() {
     setSettings(settingsResponse);
     setForm({
       active_season_id: fallbackSeasonId,
+      app_icon_url: settingsResponse.app_icon_url ?? "",
       start_matchday_id: settingsResponse.start_matchday_id ?? "",
       end_matchday_id: settingsResponse.end_matchday_id ?? "",
       result_correct_points: String(settingsResponse.result_correct_points),
@@ -146,6 +149,7 @@ export function AdminSettingsPanel() {
         method: "PUT",
         body: JSON.stringify({
           active_season_id: form.active_season_id,
+          app_icon_url: form.app_icon_url.trim() || null,
           start_matchday_id: form.start_matchday_id || null,
           end_matchday_id: form.end_matchday_id || null,
           entry_fee_amount: settings?.entry_fee_amount ?? 0,
@@ -182,7 +186,7 @@ export function AdminSettingsPanel() {
     }
   }
 
-function resetPricingForm(nextScopeType: PricingScopeType = "season") {
+  function resetPricingForm(nextScopeType: PricingScopeType = "season") {
     setPricingForm({
       ...initialPricingForm,
       scope_type: nextScopeType,
@@ -311,6 +315,28 @@ function resetPricingForm(nextScopeType: PricingScopeType = "season") {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="space-y-2 md:col-span-2">
+            <span className="text-sm text-steel">Icono de app (URL publica)</span>
+            <input
+              type="url"
+              value={form.app_icon_url}
+              onChange={(event) => setForm((current) => ({ ...current, app_icon_url: event.target.value }))}
+              className="field-control"
+              placeholder="https://..."
+              inputMode="url"
+            />
+            <span className="block text-xs text-steel/80">
+              Usa una imagen cuadrada publica. Recomendado: PNG 512x512 para Android, iOS y Web App.
+            </span>
+            {form.app_icon_url ? (
+              <img
+                src={form.app_icon_url}
+                alt="Vista previa del icono de app"
+                className="mt-2 h-16 w-16 rounded-2xl border border-white/10 object-cover"
+              />
+            ) : null}
           </label>
 
           <label className="space-y-2 md:col-span-2">

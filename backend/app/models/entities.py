@@ -88,6 +88,8 @@ class VipCompetitionKind(str, Enum):
 class PickReminderKind(str, Enum):
     OPENING = "opening"
     PRE_GAME = "pre_game"
+    MATCHDAY_START = "matchday_start"
+    MATCHDAY_SUMMARY = "matchday_summary"
 
 
 class PaymentScopeType(str, Enum):
@@ -145,6 +147,9 @@ class Profile(Base):
     pick_reminder_email_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     pick_reminder_opening_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     pick_reminder_hours_before: Mapped[int | None] = mapped_column(Integer)
+    matchday_start_notification_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    match_result_notification_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    matchday_summary_notification_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     role_code: Mapped[RoleCode] = mapped_column(
         SqlEnum(RoleCode, native_enum=False, values_callable=enum_values),
         default=RoleCode.USER,
@@ -961,6 +966,7 @@ class CommerceSettings(Base):
     id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
     quiniela_plus_checkout_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     quiniela_plus_checkout_message: Mapped[str | None] = mapped_column(Text)
+    app_icon_url: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

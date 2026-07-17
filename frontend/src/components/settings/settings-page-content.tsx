@@ -4,11 +4,7 @@ import { FormEvent, type CSSProperties, useEffect, useMemo, useState } from "rea
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { env } from "@/lib/env";
-import {
-  getOneSignalPushStatus,
-  promptOneSignalPush,
-  type OneSignalPushStatus,
-} from "@/lib/onesignal/client";
+import { promptOneSignalPush } from "@/lib/onesignal/client";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import {
   THEME_PREFERENCE_OPTIONS,
@@ -38,8 +34,10 @@ type SettingsFormState = {
   aval_profile_id: string;
   theme_preference: ThemePreference;
   pick_reminder_email_enabled: boolean;
-  pick_reminder_opening_enabled: boolean;
   pick_reminder_hours_before: "" | PickReminderHoursBefore;
+  matchday_start_notification_enabled: boolean;
+  match_result_notification_enabled: boolean;
+  matchday_summary_notification_enabled: boolean;
 };
 
 const initialForm: SettingsFormState = {
@@ -53,8 +51,10 @@ const initialForm: SettingsFormState = {
   aval_profile_id: "",
   theme_preference: "night",
   pick_reminder_email_enabled: false,
-  pick_reminder_opening_enabled: false,
   pick_reminder_hours_before: "",
+  matchday_start_notification_enabled: false,
+  match_result_notification_enabled: false,
+  matchday_summary_notification_enabled: false,
 };
 
 function buildFormFromMe(me: Me): SettingsFormState {
@@ -69,31 +69,16 @@ function buildFormFromMe(me: Me): SettingsFormState {
     aval_profile_id: me.aval_profile_id ?? "",
     theme_preference: normalizeThemePreference(me.theme_preference),
     pick_reminder_email_enabled: me.pick_reminder_email_enabled ?? false,
-    pick_reminder_opening_enabled: me.pick_reminder_opening_enabled ?? false,
     pick_reminder_hours_before: me.pick_reminder_hours_before ?? "",
+    matchday_start_notification_enabled: me.matchday_start_notification_enabled ?? false,
+    match_result_notification_enabled: me.match_result_notification_enabled ?? false,
+    matchday_summary_notification_enabled: me.matchday_summary_notification_enabled ?? false,
   };
 }
 
 function normalizeOptionalValue(value: string) {
   const cleaned = value.trim();
   return cleaned || null;
-}
-
-function buildSettingsPayload(form: SettingsFormState) {
-  return {
-    display_name: form.display_name.trim(),
-    email: normalizeOptionalValue(form.email),
-    favorite_team_id: normalizeOptionalValue(form.favorite_team_id),
-    contact_phone: normalizeOptionalValue(form.contact_phone),
-    bank_name: normalizeOptionalValue(form.bank_name),
-    deposit_account: normalizeOptionalValue(form.deposit_account),
-    modality: form.modality,
-    aval_profile_id: form.modality === "aval" ? normalizeOptionalValue(form.aval_profile_id) : null,
-    theme_preference: form.theme_preference,
-    pick_reminder_email_enabled: form.pick_reminder_email_enabled,
-    pick_reminder_opening_enabled: form.pick_reminder_opening_enabled,
-    pick_reminder_hours_before: form.pick_reminder_hours_before === "" ? null : form.pick_reminder_hours_before,
-  };
 }
 
 function buildQrImageUrl(data: string) {
@@ -112,8 +97,8 @@ export function SettingsPageContent() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [teamLoadError, setTeamLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [pushStatus, setPushStatus] = useState<OneSignalPushStatus>("unavailable");
-  const [requestingPush, setRequestingPush] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">("unsupported");
+  const [requestingPushPermission, setRequestingPushPermission] = useState(false);
 
   const favoriteTeam = useMemo(
     () => teams.find((team) => team.id === form.favorite_team_id) ?? null,
@@ -123,6 +108,14 @@ export function SettingsPageContent() {
     () => registeredUsers.find((user) => user.id === form.aval_profile_id)?.display_name ?? null,
     [form.aval_profile_id, registeredUsers],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setPushPermission("unsupported");
+      return;
+    }
+    setPushPermission(Notification.permission);
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -175,43 +168,23 @@ export function SettingsPageContent() {
     void load();
   }, []);
 
-  useEffect(() => {
-    void getOneSignalPushStatus()
-      .then(setPushStatus)
-      .catch(() => setPushStatus("unavailable"));
-  }, []);
-
-  async function handleEnablePushNotifications() {
-    setRequestingPush(true);
+  async function handleRequestPushPermission() {
+    setRequestingPushPermission(true);
     setSaveError(null);
-    setMessage(null);
     try {
-      await promptOneSignalPush();
-      const nextStatus = await getOneSignalPushStatus();
-      setPushStatus(nextStatus);
-      if (nextStatus === "enabled") {
-        const nextForm = {
-          ...form,
-          pick_reminder_opening_enabled: true,
-          pick_reminder_hours_before: form.pick_reminder_hours_before || (3 as PickReminderHoursBefore),
-        };
-        const accessToken = await getBrowserAccessToken();
-        const saved = await backendFetch<Me>("/me", accessToken, {
-          method: "PUT",
-          body: JSON.stringify(buildSettingsPayload(nextForm)),
-        });
-        setMe(saved);
-        setForm(buildFormFromMe(saved));
-        setMessage("Notificaciones push activadas: al abrir jornada y 3 horas antes del primer juego.");
-      } else if (nextStatus === "blocked") {
-        setSaveError("Las notificaciones están bloqueadas. Actívalas desde los permisos del navegador.");
+      const granted = await promptOneSignalPush();
+      if (typeof window !== "undefined" && "Notification" in window) {
+        setPushPermission(Notification.permission);
       } else {
-        setSaveError("No se pudo activar el permiso de notificaciones en este dispositivo.");
+        setPushPermission(granted ? "granted" : "unsupported");
       }
+      setMessage(granted ? "Notificaciones push activadas en este dispositivo." : "No se activaron las notificaciones push.");
     } catch (caughtError) {
-      setSaveError(caughtError instanceof Error ? caughtError.message : "No se pudieron activar las notificaciones");
+      setSaveError(
+        caughtError instanceof Error ? caughtError.message : "No se pudo activar permisos de notificaciones",
+      );
     } finally {
-      setRequestingPush(false);
+      setRequestingPushPermission(false);
     }
   }
 
@@ -230,7 +203,29 @@ export function SettingsPageContent() {
       const accessToken = await getBrowserAccessToken();
       const saved = await backendFetch<Me>("/me", accessToken, {
         method: "PUT",
-        body: JSON.stringify(buildSettingsPayload(form)),
+        body: JSON.stringify({
+          display_name: form.display_name.trim(),
+          email: normalizeOptionalValue(form.email),
+          favorite_team_id: normalizeOptionalValue(form.favorite_team_id),
+          contact_phone: normalizeOptionalValue(form.contact_phone),
+          bank_name: normalizeOptionalValue(form.bank_name),
+          deposit_account: normalizeOptionalValue(form.deposit_account),
+          modality: form.modality,
+          aval_profile_id: form.modality === "aval" ? normalizeOptionalValue(form.aval_profile_id) : null,
+          theme_preference: form.theme_preference,
+          pick_reminder_email_enabled: form.pick_reminder_email_enabled,
+          pick_reminder_opening_enabled: false,
+          pick_reminder_hours_before:
+            form.pick_reminder_email_enabled && form.pick_reminder_hours_before !== ""
+              ? form.pick_reminder_hours_before
+              : null,
+          matchday_start_notification_enabled:
+            form.pick_reminder_email_enabled && form.matchday_start_notification_enabled,
+          match_result_notification_enabled:
+            form.pick_reminder_email_enabled && form.match_result_notification_enabled,
+          matchday_summary_notification_enabled:
+            form.pick_reminder_email_enabled && form.matchday_summary_notification_enabled,
+        }),
       });
 
       setMe(saved);
@@ -422,104 +417,119 @@ export function SettingsPageContent() {
             </div>
 
             <div>
-              <h3 className="text-xl font-semibold text-ink">Recordatorios</h3>
+              <h3 className="text-xl font-semibold text-ink">Notificaciones</h3>
               <p className="mt-2 text-sm text-steel">
-                Te avisamos cuando una jornada ya esté activa y antes del primer juego del día.
+                Elige que avisos push quieres recibir antes y durante la jornada.
               </p>
-            </div>
-
-            <div className="flex flex-col gap-4 rounded-[12px] border border-white/[0.08] p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-ink">Notificaciones push</p>
-                <p className="mt-1 text-xs text-steel">
-                  {pushStatus === "enabled"
-                    ? "Activadas en este dispositivo."
-                    : pushStatus === "blocked"
-                      ? "Bloqueadas por el navegador. Cambia el permiso desde la configuración del sitio."
-                      : pushStatus === "disabled"
-                        ? "Actívalas para recibir recordatorios aunque no tengas abierta la quiniela."
-                        : "Este navegador o dispositivo no admite notificaciones push."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleEnablePushNotifications()}
-                disabled={requestingPush || pushStatus === "enabled" || pushStatus === "unavailable"}
-                className={`app-pill h-10 shrink-0 px-4 text-sm disabled:opacity-60 ${
-                  pushStatus === "enabled" ? "border-mint/30 bg-mint/10 text-mint" : ""
-                }`}
-              >
-                {requestingPush
-                  ? "Activando..."
-                  : pushStatus === "enabled"
-                    ? "Push activado"
-                    : pushStatus === "blocked"
-                      ? "Permiso bloqueado"
-                      : "Activar notificaciones"}
-              </button>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2 text-sm">
-                <span className="text-steel">Mail de recordatorios</span>
+                <span className="text-steel">Recordatorios push</span>
                 <select
                   value={form.pick_reminder_email_enabled ? "si" : "no"}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
                       pick_reminder_email_enabled: event.target.value === "si",
-                      pick_reminder_opening_enabled:
-                        event.target.value === "si" ? current.pick_reminder_opening_enabled : false,
                       pick_reminder_hours_before:
                         event.target.value === "si" ? current.pick_reminder_hours_before : "",
+                      matchday_start_notification_enabled:
+                        event.target.value === "si" ? current.matchday_start_notification_enabled : false,
+                      match_result_notification_enabled:
+                        event.target.value === "si" ? current.match_result_notification_enabled : false,
+                      matchday_summary_notification_enabled:
+                        event.target.value === "si" ? current.matchday_summary_notification_enabled : false,
                     }))
                   }
                   className="field-control"
                 >
-                  <option value="no">No enviar</option>
-                  <option value="si">Enviar por mail</option>
+                  <option value="no">Desactivados</option>
+                  <option value="si">Activar push</option>
                 </select>
               </label>
 
-              <label className="space-y-2 text-sm">
-                <span className="text-steel">Antes del primer juego del dia</span>
-                <select
-                  value={form.pick_reminder_hours_before === "" ? "none" : String(form.pick_reminder_hours_before)}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      pick_reminder_hours_before:
-                        event.target.value === "none"
-                          ? ""
-                          : (Number(event.target.value) as PickReminderHoursBefore),
-                    }))
-                  }
-                  className="field-control"
-                  disabled={!form.pick_reminder_email_enabled && pushStatus !== "enabled"}
-                >
-                  <option value="none">Sin recordatorio previo</option>
-                  <option value="3">3 horas antes</option>
-                  <option value="1">1 hora antes</option>
-                </select>
-              </label>
+              <div className="space-y-2 text-sm">
+                <span className="text-steel">Permiso del navegador</span>
+                <div className="field-control flex items-center justify-between gap-3 bg-white/[0.03]">
+                  <span>
+                    {pushPermission === "granted"
+                      ? "Activo"
+                      : pushPermission === "denied"
+                        ? "Bloqueado"
+                        : pushPermission === "default"
+                          ? "Pendiente"
+                          : "No compatible"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleRequestPushPermission()}
+                    disabled={requestingPushPermission || pushPermission === "unsupported"}
+                    className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)] disabled:opacity-50"
+                  >
+                    {requestingPushPermission ? "Solicitando..." : "Activar"}
+                  </button>
+                </div>
+              </div>
 
-              <label className="space-y-2 text-sm md:col-span-2">
-                <span className="text-steel">Al abrir la jornada</span>
-                <select
-                  value={form.pick_reminder_opening_enabled ? "si" : "no"}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      pick_reminder_opening_enabled: event.target.value === "si",
-                    }))
-                  }
-                  className="field-control"
-                  disabled={!form.pick_reminder_email_enabled && pushStatus !== "enabled"}
-                >
-                  <option value="no">No mandar</option>
-                  <option value="si">Mandar una vez</option>
-                </select>
-              </label>
+              <div className="space-y-3 md:col-span-2">
+                <span className="text-sm text-steel">Checklist de avisos</span>
+                <label className="flex items-start gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={form.pick_reminder_hours_before === 1}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        pick_reminder_hours_before: event.target.checked ? 1 : "",
+                      }))
+                    }
+                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    disabled={!form.pick_reminder_email_enabled}
+                  />
+                  <span>1 hora antes de cerrar tu pick</span>
+                </label>
+                <label className="flex items-start gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={form.matchday_start_notification_enabled}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        matchday_start_notification_enabled: event.target.checked,
+                      }))
+                    }
+                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    disabled={!form.pick_reminder_email_enabled}
+                  />
+                  <span>1 hora antes del inicio de la jornada</span>
+                </label>
+                <label className="flex items-start gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={form.match_result_notification_enabled}
+                    onChange={() => undefined}
+                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    disabled
+                  />
+                  <span>Marcador y standings por partido (proximamente)</span>
+                </label>
+                <label className="flex items-start gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={form.matchday_summary_notification_enabled}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        matchday_summary_notification_enabled: event.target.checked,
+                      }))
+                    }
+                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    disabled={!form.pick_reminder_email_enabled}
+                  />
+                  <span>Standing y puntos al cierre de la jornada</span>
+                </label>
+              </div>
             </div>
 
             <button

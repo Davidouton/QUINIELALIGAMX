@@ -54,10 +54,33 @@ def run_startup_migrations() -> None:
                     "ALTER TABLE profiles "
                     "ADD COLUMN pick_reminder_hours_before INTEGER"
                 ),
+                "matchday_start_notification_enabled": (
+                    "ALTER TABLE profiles "
+                    "ADD COLUMN matchday_start_notification_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
+                "match_result_notification_enabled": (
+                    "ALTER TABLE profiles "
+                    "ADD COLUMN match_result_notification_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
+                "matchday_summary_notification_enabled": (
+                    "ALTER TABLE profiles "
+                    "ADD COLUMN matchday_summary_notification_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
             }
             for column_name, statement in missing_profile_columns.items():
                 if column_name not in profile_column_names:
                     connection.execute(text(statement))
+            if (
+                "matchday_start_notification_enabled" not in profile_column_names
+                and "pick_reminder_opening_enabled" in profile_column_names
+            ):
+                connection.execute(
+                    text(
+                        "UPDATE profiles "
+                        "SET matchday_start_notification_enabled = pick_reminder_opening_enabled "
+                        "WHERE pick_reminder_opening_enabled IS TRUE"
+                    )
+                )
 
         if "matchdays" in table_names:
             matchday_column_names = {column["name"] for column in inspector.get_columns("matchdays")}
@@ -972,12 +995,19 @@ def run_startup_migrations() -> None:
                       id UUID PRIMARY KEY,
                       quiniela_plus_checkout_enabled BOOLEAN NOT NULL DEFAULT FALSE,
                       quiniela_plus_checkout_message TEXT,
+                      app_icon_url TEXT,
                       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
                     )
                     """
                 )
             )
+        else:
+            commerce_settings_column_names = {
+                column["name"] for column in inspector.get_columns("commerce_settings")
+            }
+            if "app_icon_url" not in commerce_settings_column_names:
+                connection.execute(text("ALTER TABLE commerce_settings ADD COLUMN app_icon_url TEXT"))
 
         if "quiniela_plus_leagues" not in table_names:
             connection.execute(

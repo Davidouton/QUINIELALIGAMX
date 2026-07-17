@@ -336,6 +336,55 @@ def test_my_matchday_points_returns_rows_for_season(client):
     assert rows[0]["exact_scores"] == 1
     assert rows[0]["rank_position"] == 1
     assert rows[0]["cumulative_points"] == 8
+    assert rows[0]["weekly_prize_amount"] == 0
+
+
+def test_my_matchday_points_only_awards_prize_when_matchday_is_closed(client):
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        matchday = db.get(Matchday, MATCHDAY_ID)
+        assert season is not None
+        assert matchday is not None
+        season.weekly_first_place_amount = 100
+        season.weekly_second_place_amount = 50
+        season.weekly_third_place_amount = 25
+        matchday.status = MatchdayStatus.PUBLISHED
+        db.add_all(
+            [
+                season,
+                matchday,
+                StandingsMatchday(
+                    matchday_id=MATCHDAY_ID,
+                    profile_id=PROFILE_USER_ID,
+                    total_points=8,
+                    correct_results=2,
+                    exact_scores=1,
+                    rank_position=1,
+                ),
+                StandingsMatchday(
+                    matchday_id=MATCHDAY_ID,
+                    profile_id=PROFILE_LEADER_ID,
+                    total_points=6,
+                    correct_results=2,
+                    exact_scores=0,
+                    rank_position=2,
+                ),
+            ]
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(
+        f"/api/v1/leaderboard/my-matchdays?season_id={SEASON_ID}",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 1
+    assert rows[0]["weekly_prize_amount"] == 100
 
 
 def test_my_matchday_points_respects_tournament_bounds(client):
@@ -465,7 +514,7 @@ def test_dashboard_summary_returns_tournament_metrics(client):
     assert payload["season_id"] == SEASON_ID
     assert payload["total_points"] == 14
     assert payload["overall_rank"] == 2
-    assert payload["weekly_prizes_count"] == 2
+    assert payload["weekly_prizes_count"] == 1
     assert payload["average_points_per_matchday"] == 7.0
     assert payload["projected_total_points"] == 14.0
     assert payload["projected_rank"] == 2

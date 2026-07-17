@@ -175,6 +175,7 @@ class AdminSettingsOut(BaseModel):
     selected_season_id: str | None = None
     selected_season_name: str | None = None
     selected_tournament_format: TournamentFormat | None = None
+    app_icon_url: str | None = None
     start_matchday_id: str | None = None
     end_matchday_id: str | None = None
     participants_lock_at: datetime | None = None
@@ -210,6 +211,7 @@ class AdminSettingsOut(BaseModel):
 
 class AdminSettingsUpdateRequest(BaseModel):
     active_season_id: str
+    app_icon_url: str | None = Field(default=None, max_length=2000)
     start_matchday_id: str | None = None
     end_matchday_id: str | None = None
     entry_fee_amount: float = Field(default=0, ge=0, le=1000000)
@@ -224,6 +226,16 @@ class AdminSettingsUpdateRequest(BaseModel):
     result_correct_points: int = Field(default=3, ge=0, le=100)
     exact_score_points: int = Field(default=2, ge=0, le=100)
     advancing_team_points: int = Field(default=1, ge=0, le=100)
+
+    @field_validator("app_icon_url", mode="before")
+    @classmethod
+    def normalize_app_icon_url(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        return value
 
 
 class AdminUserSeasonMembershipOut(BaseModel):
