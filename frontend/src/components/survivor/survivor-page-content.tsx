@@ -484,100 +484,47 @@ export function SurvivorPageContent() {
                 </div>
               </div>
 
-              <div className="rounded-[20px] border border-white/[0.08] bg-white/[0.03]">
-                <div className="flex items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.22em] text-steel">Jornada</p>
-                    <p className="mt-1 text-sm font-semibold text-ink">{board.current_matchday?.name ?? "Semana actual"}</p>
-                  </div>
-                  <p className="text-[11px] text-steel">
-                    {board.current_matchday
-                      ? `${formatMexicoCityDateTime(board.current_matchday.starts_at)} a ${formatMexicoCityDateTime(board.current_matchday.ends_at)}`
-                      : ""}
-                  </p>
-                </div>
-
-                <div className="divide-y divide-white/[0.08]">
-                  {availableMatches.map((match) => (
-                    <div key={match.matchId} className="px-4 py-3">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="flex items-center gap-3">
-                          {(() => {
-                            const fixtureHome =
-                              match.homeOption
-                                ? {
-                                    name: match.homeOption.team_name,
-                                    shortName: match.homeOption.team_short_name,
-                                    crestUrl: match.homeOption.team_crest_url,
-                                  }
-                                : match.awayOption
-                                  ? {
-                                      name: match.awayOption.opponent_team_name,
-                                      shortName: match.awayOption.opponent_team_short_name,
-                                      crestUrl: match.awayOption.opponent_team_crest_url,
-                                    }
-                                  : null;
-                            const fixtureAway =
-                              match.awayOption
-                                ? {
-                                    name: match.awayOption.team_name,
-                                    shortName: match.awayOption.team_short_name,
-                                    crestUrl: match.awayOption.team_crest_url,
-                                  }
-                                : match.homeOption
-                                  ? {
-                                      name: match.homeOption.opponent_team_name,
-                                      shortName: match.homeOption.opponent_team_short_name,
-                                      crestUrl: match.homeOption.opponent_team_crest_url,
-                                    }
-                                  : null;
-
-                            return (
-                              <>
-                                {fixtureHome ? renderTeamLogo(fixtureHome.name, fixtureHome.shortName, fixtureHome.crestUrl, "h-10 w-10") : null}
-                                <div>
-                                  <p className="text-sm font-medium text-ink">
-                                    {fixtureHome?.shortName ?? "LOC"} vs {fixtureAway?.shortName ?? "VIS"}
-                                  </p>
-                                  <p className="text-[11px] text-steel">
-                                    {fixtureHome?.name ?? "Local"} vs {fixtureAway?.name ?? "Visitante"}
-                                  </p>
-                                </div>
-                                {fixtureAway ? renderTeamLogo(fixtureAway.name, fixtureAway.shortName, fixtureAway.crestUrl, "h-10 w-10") : null}
-                              </>
-                            );
-                          })()}
-                        </div>
-                        <div>
-                          <p className="text-[11px] text-steel">{formatMexicoCityDateTime(match.kickoffAt)}</p>
-                        </div>
-
-                        <div className="flex items-center gap-5">
-                          {match.options.map((option) => (
-                            <button
-                              key={option.team_id}
-                              type="button"
-                              onClick={() => void handlePick(option.team_id)}
-                              disabled={option.is_locked || Boolean(submitting)}
-                              title={option.team_name}
-                              aria-label={option.team_name}
-                              className={`group flex min-w-[72px] flex-col items-center gap-2 rounded-[18px] px-2 py-2 transition hover:bg-white/[0.05] disabled:opacity-60 ${
-                                option.is_current_pick
-                                  ? "bg-emerald-500/10 ring-2 ring-emerald-400/55"
-                                  : "ring-1 ring-transparent"
-                              }`}
-                            >
-                              {renderTeamLogo(option.team_name, option.team_short_name, option.team_crest_url, "h-14 w-14")}
-                              <span className="text-[10px] font-semibold uppercase tracking-wide text-steel group-hover:text-ink">
-                                {option.team_short_name}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
+              <div className="hidden grid-cols-[1.5fr_1fr_1fr_.7fr] gap-2 border-b border-white/10 pb-2 text-[10px] uppercase tracking-[0.14em] text-steel/80 md:grid">
+                <p>Partido</p><p className="text-center">Inicio</p><p className="text-center">Cierre</p><p className="text-center">Estado</p>
+              </div>
+              <div className="space-y-2 md:space-y-0">
+                {availableMatches.map((match) => {
+                  const home = match.homeOption ? {
+                    name: match.homeOption.team_name, shortName: match.homeOption.team_short_name,
+                    crestUrl: match.homeOption.team_crest_url, option: match.homeOption,
+                  } : match.awayOption ? {
+                    name: match.awayOption.opponent_team_name, shortName: match.awayOption.opponent_team_short_name,
+                    crestUrl: match.awayOption.opponent_team_crest_url, option: null,
+                  } : null;
+                  const away = match.awayOption ? {
+                    name: match.awayOption.team_name, shortName: match.awayOption.team_short_name,
+                    crestUrl: match.awayOption.team_crest_url, option: match.awayOption,
+                  } : match.homeOption ? {
+                    name: match.homeOption.opponent_team_name, shortName: match.homeOption.opponent_team_short_name,
+                    crestUrl: match.homeOption.opponent_team_crest_url, option: null,
+                  } : null;
+                  const selected = match.options.find((option) => option.is_current_pick) ?? null;
+                  const teamButton = (team: typeof home, side: "local" | "visitante") => team ? (
+                    <button type="button" onClick={() => team.option && void handlePick(team.option.team_id)}
+                      disabled={!team.option || team.option.is_locked || Boolean(submitting)} aria-pressed={Boolean(team.option?.is_current_pick)}
+                      aria-label={`Seleccionar ${team.name}`} title={!team.option ? `${team.name} ya fue utilizado` : `Seleccionar ${team.name}`}
+                      className={`mx-auto flex min-w-0 max-w-[74px] flex-col items-center justify-start gap-1 self-start rounded-full border-2 px-2 py-1 text-center transition disabled:cursor-default ${team.option?.is_current_pick ? "border-mint bg-mint/15 text-mint shadow-[0_0_0_1px_rgba(74,222,128,0.25)]" : team.option ? "border-transparent hover:border-mint/50 hover:bg-mint/10" : "border-transparent opacity-35"}`}>
+                      {renderTeamLogo(team.name, team.shortName, team.crestUrl, "h-7 w-7")}
+                      <span className={`min-h-[20px] max-w-[58px] text-[8px] leading-tight ${team.option?.is_current_pick ? "text-mint" : "text-steel"}`}>{team.shortName}</span>
+                      <span className="sr-only">{side}</span>
+                    </button>
+                  ) : null;
+                  return <div key={match.matchId} className="border-b border-white/5 py-2 last:border-b-0">
+                    <div className="grid grid-cols-[1.5fr_1fr_.7fr] items-center gap-2 md:grid-cols-[1.5fr_1fr_1fr_.7fr]">
+                      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
+                        {teamButton(home, "local")}<span className="self-start pt-2 text-[9px] font-semibold uppercase tracking-[.12em] text-steel/70">vs</span>{teamButton(away, "visitante")}
                       </div>
+                      <div className="text-center"><p className="text-[6px] uppercase text-steel/80 md:hidden">Inicio</p><p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityDateTime(match.kickoffAt)}</p></div>
+                      <div className="hidden text-center md:block"><p className="text-[9px] text-ink">{board.current_matchday ? formatMexicoCityDateTime(board.current_matchday.ends_at) : "-"}</p></div>
+                      <div className="text-center">{selected ? <span className="app-pill-active px-3 text-[9px] text-ink">{submitting ? "Guardando" : selected.team_short_name}</span> : <span className="app-pill px-3 text-[9px]">Elegir</span>}</div>
                     </div>
-                  ))}
-                </div>
+                  </div>;
+                })}
               </div>
             </div>
           ) : null}

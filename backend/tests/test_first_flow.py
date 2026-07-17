@@ -134,6 +134,42 @@ def test_overall_leaderboard_recomputes_stale_tie_positions(client):
     assert [row["rank_position"] for row in rows[:4]] == [1, 1, 1, 4]
 
 
+def test_overall_leaderboard_self_heals_when_cache_is_missing(client):
+    create_pick = client.post(
+        "/api/v1/picks",
+        json={
+            "match_id": MATCH_ONE_ID,
+            "selection": "home",
+            "predicted_home_score": 2,
+            "predicted_away_score": 1,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_pick.status_code == 201
+
+    db = SessionLocal()
+    try:
+        db.query(StandingsOverall).delete()
+        db.add(
+            MatchResult(
+                match_id=MATCH_ONE_ID,
+                home_score=2,
+                away_score=1,
+                is_official=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/v1/leaderboard/overall?season_id={SEASON_ID}")
+    assert response.status_code == 200
+    rows = response.json()
+    assert rows
+    assert rows[0]["profile_id"] == PROFILE_USER_ID
+    assert rows[0]["total_points"] > 0
+
+
 def test_registered_users_returns_other_profiles(client):
     response = client.get("/api/v1/me/registered-users", headers={"Authorization": "Bearer test-token"})
 

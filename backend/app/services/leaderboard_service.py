@@ -33,6 +33,9 @@ class LeaderboardService:
     def list_overall(self, db: Session, season_id: str | None = None) -> list[LeaderboardEntry]:
         season = self._resolve_season(db, season_id)
         rows = self.repo.list_overall(db, season.id if season is not None else None)
+        if season is not None and not rows and self._season_needs_overall_rebuild(db, season):
+            ScoringService().recalculate_season(db, season.id)
+            rows = self.repo.list_overall(db, season.id)
         season_cache: dict[str, Season | None] = {}
         eligible_profile_ids_cache: dict[str, set[str]] = {}
         eligible_rows = [
@@ -47,6 +50,26 @@ class LeaderboardService:
             )
         ]
         return self._overall_entries(eligible_rows)
+
+    def _season_needs_overall_rebuild(self, db: Session, season: Season) -> bool:
+        has_eligible_participants = any(
+            self.eligibility_service.counts_for_scoring(db, season, membership)
+            for membership in self.membership_repo.list_for_season(db, season.id)
+        )
+        if not has_eligible_participants:
+            return False
+        return bool(
+            db.execute(
+                select(MatchResult.id)
+                .join(Match, Match.id == MatchResult.match_id)
+                .join(Matchday, Matchday.id == Match.matchday_id)
+                .where(
+                    Matchday.season_id == season.id,
+                    MatchResult.is_official.is_(True),
+                )
+                .limit(1)
+            ).first()
+        )
 
     def list_matchday(self, db: Session, matchday_id: str) -> list[LeaderboardEntry]:
         matchday = db.get(Matchday, matchday_id)
