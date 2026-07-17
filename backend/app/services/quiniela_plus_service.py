@@ -222,7 +222,6 @@ class QuinielaPlusService:
             .join(Matchday, Matchday.id == Match.matchday_id)
             .join(Season, Season.id == Matchday.season_id)
             .where(
-                Season.tournament_format == TournamentFormat.WORLD_CUP,
                 Match.home_team_id.is_not(None),
                 Match.away_team_id.is_not(None),
             )
@@ -289,6 +288,8 @@ class QuinielaPlusService:
             if not vip_matchday_ids:
                 return QuinielaPlusUserDistributionOut(title=title, matches=[])
             match_query = match_query.where(Match.matchday_id.in_(vip_matchday_ids))
+        else:
+            match_query = match_query.where(Season.tournament_format == TournamentFormat.WORLD_CUP)
 
         if limit is not None:
             match_query = match_query.limit(limit)

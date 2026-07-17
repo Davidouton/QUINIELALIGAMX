@@ -21,7 +21,7 @@ from app.models.entities import (
     VipMembershipStatus,
 )
 
-from conftest import PROFILE_LEADER_ID, PROFILE_USER_ID, SessionLocal, TEAM_A_ID, TEAM_B_ID
+from conftest import MATCH_ONE_ID, PROFILE_LEADER_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal, TEAM_A_ID, TEAM_B_ID
 
 WORLD_CUP_SEASON_ID = "20000000-0000-0000-0000-000000000101"
 WORLD_CUP_MATCHDAY_ID = "30000000-0000-0000-0000-000000000101"
@@ -165,6 +165,36 @@ def test_user_distribution_can_filter_by_regular_or_vip_context() -> None:
         assert vip_payload["matches"][0]["selection_distribution"]["home_count"] == 1
         assert vip_payload["matches"][0]["selection_distribution"]["draw_count"] == 0
         assert vip_payload["matches"][0]["selection_distribution"]["away_count"] == 0
+    app.dependency_overrides.clear()
+
+
+def test_user_distribution_supports_standard_liga_mx_season() -> None:
+    db = SessionLocal()
+    try:
+        db.add(
+            UserPick(
+                profile_id=PROFILE_USER_ID,
+                match_id=MATCH_ONE_ID,
+                selection=PickSelection.HOME,
+                predicted_home_score=2,
+                predicted_away_score=0,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    with get_user_client() as test_client:
+        response = test_client.get(
+            f"/api/v1/quiniela-plus/user-distribution?context_type=season&context_id={SEASON_ID}",
+            headers={"Authorization": "Bearer test-token"},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["title"] == "Distribucion de usuarios · Clausura 2026"
+        assert len(payload["matches"]) == 1
+        assert payload["matches"][0]["total_picks"] == 1
+        assert payload["matches"][0]["selection_distribution"]["home_count"] == 1
     app.dependency_overrides.clear()
 
 
