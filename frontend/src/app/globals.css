@@ -173,6 +173,13 @@ body::after {
     background-color: var(--app-surface-soft-bg);
   }
 
+  .app-pill-success {
+    @apply app-pill;
+    border-color: rgba(74, 222, 128, 0.55);
+    background-color: rgba(74, 222, 128, 0.12);
+    color: rgb(187, 247, 208);
+  }
+
   .app-pill-ghost {
     @apply inline-flex h-10 items-center justify-center rounded-[12px] border px-4 text-xs font-semibold text-steel transition;
     border-color: var(--app-border-soft);

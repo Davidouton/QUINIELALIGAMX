@@ -439,7 +439,7 @@ export function SurvivorPageContent() {
 
             <div className="flex flex-wrap gap-2 text-xs">
               {board.my_membership.current_pick ? (
-                <span className="app-pill-active px-3 text-[10px] text-ink">
+                <span className="app-pill-success px-3 text-[10px]">
                   Pick actual: {board.my_membership.current_pick.team_short_name}
                 </span>
               ) : null}
@@ -521,7 +521,7 @@ export function SurvivorPageContent() {
                       </div>
                       <div className="text-center"><p className="text-[6px] uppercase text-steel/80 md:hidden">Inicio</p><p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityDateTime(match.kickoffAt)}</p></div>
                       <div className="hidden text-center md:block"><p className="text-[9px] text-ink">{board.current_matchday ? formatMexicoCityDateTime(board.current_matchday.ends_at) : "-"}</p></div>
-                      <div className="text-center">{selected ? <span className="app-pill-active px-3 text-[9px] text-ink">{submitting ? "Guardando" : selected.team_short_name}</span> : <span className="app-pill px-3 text-[9px]">Elegir</span>}</div>
+                      <div className="text-center">{selected ? <span className="app-pill-success px-3 text-[9px]">{submitting ? "Guardando" : selected.team_short_name}</span> : <span className="app-pill px-3 text-[9px]">Elegir</span>}</div>
                     </div>
                   </div>;
                 })}
