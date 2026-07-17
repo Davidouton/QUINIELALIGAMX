@@ -371,6 +371,7 @@ class ScoringService:
             matchday_agg=matchday_agg,
             has_official_results=bool(rows),
         )
+        db.flush()
         self._rebuild_overall_standings_for_season(
             db,
             season=season,
@@ -498,6 +499,7 @@ class ScoringService:
             weekly_leaders += matchday_weekly_leaders
             weekly_awards += matchday_weekly_awards
 
+        db.flush()
         self._rebuild_overall_standings_for_season(
             db,
             season=season,

@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.datetime import ensure_utc
@@ -78,6 +78,18 @@ class LeaderboardService:
         if not has_official_results:
             return False
         if not rows:
+            return True
+        cached_totals = {standing.profile_id: standing.total_points for standing, _profile in rows}
+        point_totals = {
+            profile_id: int(total_points or 0)
+            for profile_id, total_points in db.execute(
+                select(PickPoint.profile_id, func.sum(PickPoint.total_points))
+                .join(Matchday, Matchday.id == PickPoint.matchday_id)
+                .where(Matchday.season_id == season.id)
+                .group_by(PickPoint.profile_id)
+            )
+        }
+        if any(cached_totals.get(profile_id, 0) != total for profile_id, total in point_totals.items()):
             return True
         if any(
             standing.total_points or standing.correct_results or standing.exact_scores
