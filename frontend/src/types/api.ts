@@ -28,9 +28,11 @@ export type DashboardWidgetId =
   | "summary"
   | "performance"
   | "matchday_points"
+  | "matchday_results"
   | "prize_summary"
   | "upcoming"
-  | "memberships";
+  | "memberships"
+  | "survivor_summary";
 
 export interface DashboardWidgetConfig {
   id: string;
@@ -1260,6 +1262,7 @@ export interface RulePage {
   slug: string;
   season_id: string | null;
   season_name: string | null;
+  page_kind: "regular" | "survivor";
   title: string;
   content_markdown: string;
   version_label: string | null;

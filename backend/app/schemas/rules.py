@@ -1,6 +1,9 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+RulePageKind = Literal["regular", "survivor"]
 
 
 class RulePageOut(BaseModel):
@@ -8,6 +11,7 @@ class RulePageOut(BaseModel):
     slug: str
     season_id: str | None = None
     season_name: str | None = None
+    page_kind: RulePageKind = "regular"
     title: str
     content_markdown: str
     version_label: str | None = None

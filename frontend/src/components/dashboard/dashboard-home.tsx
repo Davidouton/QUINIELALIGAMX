@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { AdvancedStatsPanel } from "@/components/dashboard/advanced-stats-panel";
@@ -73,6 +73,7 @@ type DashboardState = {
     }[]
   >;
   survivorBoard: SurvivorBoard | null;
+  survivorBoardsBySeasonId: Record<string, SurvivorBoard | null>;
   error: string | null;
 };
 
@@ -96,8 +97,10 @@ const SEASON_SCOPED_WIDGET_IDS: DashboardWidgetId[] = [
   "summary",
   "performance",
   "matchday_points",
+  "matchday_results",
   "prize_summary",
   "upcoming",
+  "survivor_summary",
 ];
 const DASHBOARD_WIDGET_OPTIONS: Array<{
   id: DashboardWidgetId;
@@ -107,9 +110,11 @@ const DASHBOARD_WIDGET_OPTIONS: Array<{
   { id: "summary", label: "Resumen", description: "KPIs principales del torneo o VIP activo." },
   { id: "performance", label: "Performance", description: "Grafica de avance contra franja de premios." },
   { id: "matchday_points", label: "Puntos por jornada", description: "Historial acumulado por jornada." },
+  { id: "matchday_results", label: "Resultados por jornada", description: "Tus picks, marcador final y puntos de la jornada activa." },
   { id: "prize_summary", label: "Premios", description: "Cobros, podios y mejor posicion conseguida." },
   { id: "upcoming", label: "Proximos juegos", description: "Vista compacta de la siguiente jornada disponible." },
   { id: "memberships", label: "Membresias", description: "Estado regular, survivor y acceso VIP." },
+  { id: "survivor_summary", label: "Survivor", description: "Vidas, pick actual e historial reciente del survivor por temporada." },
 ];
 const DASHBOARD_WIDGET_PRESETS: Array<{
   id: "standard" | "competition" | "memberships" | "express";
@@ -187,6 +192,7 @@ const initialState: DashboardState = {
   dashboardBundlesBySeasonId: {},
   upcomingMatchdayGroupsBySeasonId: {},
   survivorBoard: null,
+  survivorBoardsBySeasonId: {},
   error: null,
 };
 
@@ -218,6 +224,43 @@ function formatCompactSeasonName(value: string | null | undefined) {
   const season = match[1];
   const year = match[2].slice(-2);
   return `${season.slice(0, 3)} ${year}`;
+}
+
+function formatSurvivorLivesLabel(remainingLives: number, maxLives: number) {
+  return `${remainingLives}/${maxLives} vidas`;
+}
+
+function getSurvivorResultLabel(resultStatus: "pending" | "won" | "lost" | "draw") {
+  if (resultStatus === "won") {
+    return "Ganado";
+  }
+  if (resultStatus === "lost") {
+    return "Perdido";
+  }
+  if (resultStatus === "draw") {
+    return "Empate";
+  }
+  return "Pendiente";
+}
+
+function getSurvivorLifeStateLabel(alive: boolean, remainingLives: number) {
+  if (!alive || remainingLives <= 0) {
+    return "Eliminado";
+  }
+  return "Vivo";
+}
+
+function getSurvivorResultTone(resultStatus: "pending" | "won" | "lost" | "draw") {
+  if (resultStatus === "won") {
+    return "text-emerald-300";
+  }
+  if (resultStatus === "lost") {
+    return "text-coral";
+  }
+  if (resultStatus === "draw") {
+    return "text-amber-100";
+  }
+  return "text-steel";
 }
 
 function getDashboardLeagueKey(season: Season) {
@@ -687,6 +730,13 @@ export function DashboardHome() {
               }
             : current.dashboardBundlesBySeasonId,
           survivorBoard,
+          survivorBoardsBySeasonId:
+            survivorSeason?.id
+              ? {
+                  ...current.survivorBoardsBySeasonId,
+                  [survivorSeason.id]: survivorBoard,
+                }
+              : current.survivorBoardsBySeasonId,
         }));
         void trackAnalyticsEvent({
           category: "screen",
@@ -829,6 +879,72 @@ export function DashboardHome() {
     state.dashboardBundlesBySeasonId,
     state.me,
     state.selectedSeason?.id,
+  ]);
+
+  useEffect(() => {
+    if (loading || !state.me || dashboardDefaultView.startsWith("vip:")) {
+      return;
+    }
+
+    const targetSeasonIds = Array.from(
+      new Set(
+        effectiveDashboardWidgets
+          .filter((widget) => widget.widget_id === "survivor_summary")
+          .map((widget) => widget.season_id ?? state.selectedSeason?.id ?? null)
+          .filter((seasonId): seasonId is string => Boolean(seasonId))
+          .filter((seasonId) => state.survivorBoardsBySeasonId[seasonId] === undefined),
+      ),
+    );
+
+    if (targetSeasonIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    async function loadSurvivorBoards() {
+      try {
+        const accessToken = await getBrowserAccessToken().catch(() => undefined);
+        const rows = await Promise.all(
+          targetSeasonIds.map(async (seasonId) => {
+            const season = state.seasons.find((row) => row.id === seasonId) ?? null;
+            if (!accessToken || !season || !isSurvivorAvailableForSeason(season)) {
+              return { seasonId, board: null as SurvivorBoard | null };
+            }
+            try {
+              const board = await backendFetch<SurvivorBoard>(`/survivor/board?season_id=${seasonId}`, accessToken);
+              return { seasonId, board };
+            } catch {
+              return { seasonId, board: null as SurvivorBoard | null };
+            }
+          }),
+        );
+        if (cancelled) {
+          return;
+        }
+        setState((current) => ({
+          ...current,
+          survivorBoardsBySeasonId: rows.reduce<Record<string, SurvivorBoard | null>>((accumulator, row) => {
+            accumulator[row.seasonId] = row.board;
+            return accumulator;
+          }, { ...current.survivorBoardsBySeasonId }),
+        }));
+      } catch {
+        return;
+      }
+    }
+
+    void loadSurvivorBoards();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    dashboardDefaultView,
+    effectiveDashboardWidgets,
+    loading,
+    state.me,
+    state.seasons,
+    state.selectedSeason?.id,
+    state.survivorBoardsBySeasonId,
   ]);
 
   useEffect(() => {
@@ -1378,13 +1494,123 @@ export function DashboardHome() {
     );
   }
 
+  function renderSurvivorSummarySection({
+    sectionKey,
+    season,
+    board,
+    seasonBadge,
+  }: {
+    sectionKey: string;
+    season: Season | null;
+    board: SurvivorBoard | null;
+    seasonBadge?: ReactNode;
+  }) {
+    const survivorName = season?.survivor_name ?? board?.season.survivor_name ?? "Survivor";
+    const currentPick = board?.my_membership?.current_pick ?? board?.my_picks?.[0] ?? null;
+    const recentPicks = (board?.my_picks ?? []).slice().sort((left, right) => right.matchday_number - left.matchday_number).slice(0, 3);
+
+    if (!season || !isSurvivorAvailableForSeason(season)) {
+      return (
+        <section key={sectionKey} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+          {seasonBadge}
+          <p className="text-sm text-steel">Esta temporada no tiene survivor disponible.</p>
+        </section>
+      );
+    }
+
+    return (
+      <section key={sectionKey} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+        {seasonBadge}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.24em] text-steel">Survivor</p>
+            <h2 className="mt-2 text-lg font-semibold text-ink">{survivorName}</h2>
+          </div>
+          <Link href={buildHrefWithSeason("/dashboard/survivor", season.id)} className="app-pill px-4 text-xs">
+            Ver tablero
+          </Link>
+        </div>
+
+        {!board?.my_membership ? (
+          <p className="mt-4 text-sm text-steel">Todavia no estas inscrito en este survivor.</p>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Estado</p>
+                <p className="mt-2 text-lg font-semibold text-ink">
+                  {getSurvivorLifeStateLabel(board.my_membership.alive, board.my_membership.remaining_lives)}
+                </p>
+              </div>
+              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Vidas</p>
+                <p className="mt-2 text-lg font-semibold text-ink">
+                  {formatSurvivorLivesLabel(board.my_membership.remaining_lives, board.my_membership.max_lives)}
+                </p>
+              </div>
+              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Entradas</p>
+                <p className="mt-2 text-lg font-semibold text-ink">{board.season.total_entries}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Pick actual</p>
+                {currentPick ? (
+                  <>
+                    <p className="mt-2 text-base font-semibold text-ink">
+                      {currentPick.team_short_name} vs {currentPick.opponent_team_short_name}
+                    </p>
+                    <p className="mt-1 text-xs text-steel">{currentPick.matchday_name}</p>
+                    <p className="mt-1 text-xs text-steel">{formatMexicoCityDateTime(currentPick.kickoff_at)}</p>
+                    <p className={`mt-2 text-sm font-semibold ${getSurvivorResultTone(currentPick.result_status)}`}>
+                      {getSurvivorResultLabel(currentPick.result_status)}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm text-steel">Todavia no tienes pick capturado.</p>
+                )}
+              </div>
+
+              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Historial reciente</p>
+                {recentPicks.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {recentPicks.map((pick) => (
+                      <div key={pick.id} className="flex items-center justify-between gap-3 rounded-[14px] border border-white/[0.06] px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-ink">
+                            J{pick.matchday_number} · {pick.team_short_name}
+                          </p>
+                          <p className="mt-1 truncate text-[11px] text-steel">
+                            vs {pick.opponent_team_short_name}
+                          </p>
+                        </div>
+                        <p className={`text-xs font-semibold ${getSurvivorResultTone(pick.result_status)}`}>
+                          {getSurvivorResultLabel(pick.result_status)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-steel">Aun no hay historial para mostrar.</p>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+    );
+  }
+
   function renderRegularDashboardWidget(widget: DashboardWidgetConfig) {
     if (widget.widget_id === "memberships") {
       return renderGeneralWidget("memberships");
     }
 
     const { season, bundle, upcomingGroups } = resolveDashboardWidgetSeason(widget);
-    if (!bundle && widget.widget_id !== "upcoming") {
+    if (!bundle && widget.widget_id !== "upcoming" && widget.widget_id !== "survivor_summary") {
       return (
         <section key={widget.id} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
           {renderWidgetSeasonBadge(widget, season)}
@@ -1396,11 +1622,18 @@ export function DashboardHome() {
     const widgetSummary = bundle?.summary;
     const widgetMatchdayPoints = bundle?.matchday_points ?? [];
     const widgetPerformanceRace = bundle?.performance_race ?? null;
+    const widgetPickResults = bundle?.pick_results ?? [];
     const widgetPrizeRows = widgetMatchdayPoints.filter((row) => row.rank_position !== null && row.rank_position <= 3);
     const widgetWeeklyPrizeTotal = widgetPrizeRows.reduce((sum, row) => sum + row.weekly_prize_amount, 0);
     const widgetBestPrizeRank =
       widgetPrizeRows.length > 0 ? Math.min(...widgetPrizeRows.map((row) => row.rank_position ?? 99)) : null;
     const widgetUpcomingGroup = upcomingGroups[0] ?? null;
+    const widgetSeasonMatchdays = season ? filterMatchdaysBySeason(state.matchdays, season.id) : [];
+    const widgetMatchday =
+      (widgetPickResults[0]?.matchday_id
+        ? widgetSeasonMatchdays.find((row) => row.id === widgetPickResults[0]?.matchday_id) ?? null
+        : null) ?? pickPreferredMatchday(widgetSeasonMatchdays);
+    const widgetSurvivorBoard = season ? state.survivorBoardsBySeasonId[season.id] ?? null : null;
     const useWidgetWorldCupAbbreviation = isWorldCupSeason(season);
     const getWidgetMatchTeamLabel = (teamId: string | null, fallbackName: string) => {
       if (!useWidgetWorldCupAbbreviation || !teamId) {
@@ -1502,6 +1735,20 @@ export function DashboardHome() {
       );
     }
 
+    if (widget.widget_id === "matchday_results") {
+      return (
+        <section key={widget.id}>
+          {renderWidgetSeasonBadge(widget, season)}
+          <PickResultsTable
+            rows={widgetPickResults}
+            title={widgetMatchday?.name ?? "Resultados por jornada"}
+            emptyMessage="No hay resultados de jornada disponibles para esta temporada."
+            useWorldCupBubbles={useWidgetWorldCupAbbreviation}
+          />
+        </section>
+      );
+    }
+
     if (widget.widget_id === "prize_summary") {
       return (
         <section key={widget.id} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
@@ -1574,6 +1821,15 @@ export function DashboardHome() {
           )}
         </section>
       );
+    }
+
+    if (widget.widget_id === "survivor_summary") {
+      return renderSurvivorSummarySection({
+        sectionKey: widget.id,
+        season,
+        board: widgetSurvivorBoard,
+        seasonBadge: renderWidgetSeasonBadge(widget, season),
+      });
     }
 
     return renderGeneralWidget(widget.widget_id);
@@ -1799,6 +2055,33 @@ export function DashboardHome() {
             </div>
           </div>
         </section>
+        </DashboardRuntimeBoundary>
+      );
+    }
+
+    if (widgetId === "matchday_results") {
+      return (
+        <DashboardRuntimeBoundary key={widgetId} title="Resultados por jornada">
+          <section>
+            <PickResultsTable
+              rows={state.pickResults}
+              title={state.selectedMatchday?.name ?? "Resultados por jornada"}
+              emptyMessage="No hay resultados de jornada disponibles para esta temporada."
+              useWorldCupBubbles={useWorldCupAbbreviation}
+            />
+          </section>
+        </DashboardRuntimeBoundary>
+      );
+    }
+
+    if (widgetId === "survivor_summary") {
+      return (
+        <DashboardRuntimeBoundary key={widgetId} title="Survivor">
+          {renderSurvivorSummarySection({
+            sectionKey: widgetId,
+            season: state.selectedSeason,
+            board: state.survivorBoard,
+          })}
         </DashboardRuntimeBoundary>
       );
     }

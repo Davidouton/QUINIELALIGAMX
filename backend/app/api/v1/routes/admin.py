@@ -101,7 +101,7 @@ from app.schemas.competition import CompetitionOut
 from app.schemas.match import MatchOut
 from app.schemas.matchday import MatchdayOut
 from app.schemas.profile import ProfileOut
-from app.schemas.rules import RulePageOut, RulePageUpdateRequest
+from app.schemas.rules import RulePageKind, RulePageOut, RulePageUpdateRequest
 from app.schemas.season import SeasonOut
 from app.schemas.team import TeamOut
 from app.schemas.survivor import AdminSurvivorPickOverrideRequest, AdminSurvivorPickRowOut
@@ -2462,10 +2462,11 @@ def delete_trophy_asset(
 @router.get("/rules", response_model=RulePageOut)
 def get_admin_rules_page(
     season_id: str | None = Query(default=None),
+    page_kind: RulePageKind = Query(default="regular"),
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> RulePageOut:
-    row = get_or_create_rule_page(db, season_id)
+    row = get_or_create_rule_page(db, season_id, page_kind)
     return build_rule_page_out(db, row)
 
 
@@ -2473,10 +2474,11 @@ def get_admin_rules_page(
 def update_admin_rules_page(
     payload: RulePageUpdateRequest,
     season_id: str | None = Query(default=None),
+    page_kind: RulePageKind = Query(default="regular"),
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> RulePageOut:
-    row = get_or_create_rule_page(db, season_id)
+    row = get_or_create_rule_page(db, season_id, page_kind)
     row.title = payload.title.strip()
     row.content_markdown = payload.content_markdown.strip()
     row.version_label = payload.version_label.strip() if payload.version_label and payload.version_label.strip() else None

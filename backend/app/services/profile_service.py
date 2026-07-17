@@ -58,12 +58,24 @@ class ProfileService:
         "upcoming",
         "memberships",
     ]
+    AVAILABLE_DASHBOARD_WIDGET_IDS = {
+        "summary",
+        "performance",
+        "matchday_points",
+        "matchday_results",
+        "prize_summary",
+        "upcoming",
+        "memberships",
+        "survivor_summary",
+    }
     SEASON_SCOPED_WIDGET_IDS = {
         "summary",
         "performance",
         "matchday_points",
+        "matchday_results",
         "prize_summary",
         "upcoming",
+        "survivor_summary",
     }
 
     def ensure_profile(self, db: Session, auth_user: AuthUser) -> Profile:
@@ -770,7 +782,7 @@ class ProfileService:
         if not isinstance(parsed, list):
             return cls._default_dashboard_widgets()
 
-        allowed = set(cls.DEFAULT_DASHBOARD_WIDGET_IDS)
+        allowed = cls.AVAILABLE_DASHBOARD_WIDGET_IDS
         cleaned: list[DashboardWidgetConfigOut] = []
         for index, value in enumerate(parsed):
             if isinstance(value, str):
@@ -810,7 +822,7 @@ class ProfileService:
     ) -> str | None:
         if widget_configs is None and widget_ids is None:
             return None
-        allowed = set(cls.DEFAULT_DASHBOARD_WIDGET_IDS)
+        allowed = cls.AVAILABLE_DASHBOARD_WIDGET_IDS
         cleaned: list[dict[str, str | None]] = []
 
         if widget_configs is not None:

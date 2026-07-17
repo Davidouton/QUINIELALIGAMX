@@ -10,9 +10,11 @@ DashboardWidgetId = Literal[
     "summary",
     "performance",
     "matchday_points",
+    "matchday_results",
     "prize_summary",
     "upcoming",
     "memberships",
+    "survivor_summary",
 ]
 
 

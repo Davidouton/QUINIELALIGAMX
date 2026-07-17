@@ -1233,6 +1233,7 @@ class RulePage(Base):
         nullable=True,
         index=True,
     )
+    page_kind: Mapped[str] = mapped_column(String(24), nullable=False, default="regular", index=True)
     title: Mapped[str] = mapped_column(String(160), nullable=False, default="Reglamento")
     content_markdown: Mapped[str] = mapped_column(Text, nullable=False, default="")
     version_label: Mapped[str | None] = mapped_column(String(60))

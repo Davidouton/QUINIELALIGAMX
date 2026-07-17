@@ -1463,6 +1463,7 @@ def run_startup_migrations() -> None:
                       id UUID PRIMARY KEY,
                       slug VARCHAR(80) NOT NULL UNIQUE,
                       season_id UUID REFERENCES seasons(id) ON DELETE CASCADE,
+                      page_kind VARCHAR(24) NOT NULL DEFAULT 'regular',
                       title VARCHAR(160) NOT NULL DEFAULT 'Reglamento',
                       content_markdown TEXT NOT NULL DEFAULT '',
                       version_label VARCHAR(60),
@@ -1481,8 +1482,15 @@ def run_startup_migrations() -> None:
             )
             connection.execute(
                 text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_pages_season_unique "
-                    "ON rules_pages(season_id) WHERE season_id IS NOT NULL"
+                    "CREATE INDEX IF NOT EXISTS idx_rules_pages_page_kind "
+                    "ON rules_pages(page_kind)"
+                )
+            )
+            connection.execute(text("DROP INDEX IF EXISTS idx_rules_pages_season_unique"))
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_pages_season_kind_unique "
+                    "ON rules_pages(season_id, page_kind) WHERE season_id IS NOT NULL"
                 )
             )
         else:
@@ -1492,24 +1500,33 @@ def run_startup_migrations() -> None:
                     "ALTER TABLE rules_pages "
                     "ADD COLUMN season_id UUID REFERENCES seasons(id) ON DELETE CASCADE"
                 ),
+                "page_kind": "ALTER TABLE rules_pages ADD COLUMN page_kind VARCHAR(24) NOT NULL DEFAULT 'regular'",
                 "version_label": "ALTER TABLE rules_pages ADD COLUMN version_label VARCHAR(60)",
                 "updated_by_profile_id": "ALTER TABLE rules_pages ADD COLUMN updated_by_profile_id UUID",
             }
             for column_name, statement in missing_rules_columns.items():
                 if column_name not in rules_column_names:
                     connection.execute(text(statement))
+            connection.execute(text("UPDATE rules_pages SET page_kind = 'regular' WHERE page_kind IS NULL OR page_kind = ''"))
             connection.execute(
                 text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_pages_season_unique "
-                    "ON rules_pages(season_id) WHERE season_id IS NOT NULL"
+                    "CREATE INDEX IF NOT EXISTS idx_rules_pages_page_kind "
+                    "ON rules_pages(page_kind)"
+                )
+            )
+            connection.execute(text("DROP INDEX IF EXISTS idx_rules_pages_season_unique"))
+            connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_rules_pages_season_kind_unique "
+                    "ON rules_pages(season_id, page_kind) WHERE season_id IS NOT NULL"
                 )
             )
 
         connection.execute(
             text(
                 """
-                INSERT INTO rules_pages (id, slug, title, content_markdown, version_label)
-                SELECT :id, 'main', 'Reglamento', '', 'v 1.06'
+                INSERT INTO rules_pages (id, slug, page_kind, title, content_markdown, version_label)
+                SELECT :id, 'main', 'regular', 'Reglamento', '', 'v 1.06'
                 WHERE NOT EXISTS (
                   SELECT 1 FROM rules_pages WHERE slug = 'main'
                 )

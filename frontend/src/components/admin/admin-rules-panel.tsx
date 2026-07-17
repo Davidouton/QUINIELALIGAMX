@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { isSurvivorAvailableForSeason } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { RulePage, Season } from "@/types/api";
 
@@ -18,18 +19,50 @@ const initialForm: FormState = {
   content_markdown: "",
 };
 
+type RuleSheetOption = {
+  key: string;
+  seasonId: string;
+  pageKind: RulePage["page_kind"];
+  label: string;
+};
+
 export function AdminRulesPanel() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
+  const [selectedPageKind, setSelectedPageKind] = useState<RulePage["page_kind"]>("regular");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function loadRulePage(seasonId?: string) {
+  const ruleSheetOptions: RuleSheetOption[] = seasons.flatMap((season) => [
+    {
+      key: `${season.id}:regular`,
+      seasonId: season.id,
+      pageKind: "regular" as const,
+      label: `${season.name} · Quiniela`,
+    },
+    ...(isSurvivorAvailableForSeason(season)
+      ? [
+          {
+            key: `${season.id}:survivor`,
+            seasonId: season.id,
+            pageKind: "survivor" as const,
+            label: `${season.name} · ${season.survivor_name ?? "Survivor"}`,
+          },
+        ]
+      : []),
+  ]);
+
+  async function loadRulePage(seasonId?: string, pageKind: RulePage["page_kind"] = "regular") {
     const accessToken = await getBrowserAccessToken();
-    const suffix = seasonId ? `?season_id=${seasonId}` : "";
+    const params = new URLSearchParams();
+    if (seasonId) {
+      params.set("season_id", seasonId);
+    }
+    params.set("page_kind", pageKind);
+    const suffix = `?${params.toString()}`;
     const data = await backendFetch<RulePage>(`/admin/rules${suffix}`, accessToken);
     setForm({
       title: data.title,
@@ -38,13 +71,14 @@ export function AdminRulesPanel() {
     });
   }
 
-  async function loadPanel(nextSeasonId?: string) {
+  async function loadPanel(nextSeasonId?: string, nextPageKind: RulePage["page_kind"] = "regular") {
     const accessToken = await getBrowserAccessToken();
     const seasonRows = await backendFetch<Season[]>("/seasons", accessToken);
     const targetSeasonId = nextSeasonId ?? seasonRows.find((season) => season.is_active)?.id ?? seasonRows[0]?.id ?? "";
     setSeasons(seasonRows);
     setSelectedSeasonId(targetSeasonId);
-    await loadRulePage(targetSeasonId);
+    setSelectedPageKind(nextPageKind);
+    await loadRulePage(targetSeasonId, nextPageKind);
   }
 
   useEffect(() => {
@@ -73,17 +107,23 @@ export function AdminRulesPanel() {
 
     try {
       const accessToken = await getBrowserAccessToken();
-      await backendFetch<RulePage>(`/admin/rules?season_id=${encodeURIComponent(selectedSeasonId)}`, accessToken, {
-        method: "PUT",
-        body: JSON.stringify({
-          title: form.title,
-          version_label: form.version_label || null,
-          content_markdown: form.content_markdown,
-        }),
-      });
-      await loadRulePage(selectedSeasonId);
+      await backendFetch<RulePage>(
+        `/admin/rules?season_id=${encodeURIComponent(selectedSeasonId)}&page_kind=${encodeURIComponent(selectedPageKind)}`,
+        accessToken,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            title: form.title,
+            version_label: form.version_label || null,
+            content_markdown: form.content_markdown,
+          }),
+        },
+      );
+      await loadRulePage(selectedSeasonId, selectedPageKind);
       const selectedSeason = seasons.find((season) => season.id === selectedSeasonId);
-      setMessage(`Reglamento actualizado para ${selectedSeason?.name ?? "la temporada"}.`);
+      setMessage(
+        `Reglamento ${selectedPageKind === "survivor" ? "de survivor" : "regular"} actualizado para ${selectedSeason?.name ?? "la temporada"}.`,
+      );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el reglamento");
     } finally {
@@ -106,21 +146,25 @@ export function AdminRulesPanel() {
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)_220px]">
             <select
-              value={selectedSeasonId}
+              value={selectedSeasonId && selectedPageKind ? `${selectedSeasonId}:${selectedPageKind}` : ""}
               onChange={(event) => {
-                const nextSeasonId = event.target.value;
-                setSelectedSeasonId(nextSeasonId);
+                const nextOption = ruleSheetOptions.find((option) => option.key === event.target.value) ?? null;
+                if (!nextOption) {
+                  return;
+                }
+                setSelectedSeasonId(nextOption.seasonId);
+                setSelectedPageKind(nextOption.pageKind);
                 setLoading(true);
                 setError(null);
                 setMessage(null);
-                void loadRulePage(nextSeasonId).finally(() => setLoading(false));
+                void loadRulePage(nextOption.seasonId, nextOption.pageKind).finally(() => setLoading(false));
               }}
               className="field-control"
-              disabled={loading || seasons.length === 0}
+              disabled={loading || ruleSheetOptions.length === 0}
             >
-              {seasons.map((season) => (
-                <option key={season.id} value={season.id}>
-                  {season.name}
+              {ruleSheetOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
                 </option>
               ))}
             </select>

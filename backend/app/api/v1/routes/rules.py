@@ -4,19 +4,22 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.entities import RulePage, Season
-from app.schemas.rules import RulePageOut
+from app.schemas.rules import RulePageKind, RulePageOut
 
 router = APIRouter()
 
 
-def get_or_create_main_rule_page(db: Session) -> RulePage:
-    row = db.scalar(select(RulePage).where(RulePage.slug == "main"))
+def get_or_create_main_rule_page(db: Session, page_kind: RulePageKind = "regular") -> RulePage:
+    main_slug = "main" if page_kind == "regular" else "main-survivor"
+    row = db.scalar(select(RulePage).where(RulePage.slug == main_slug))
     if row is not None:
         return row
 
+    title = "Reglamento" if page_kind == "regular" else "Reglamento Survivor"
     row = RulePage(
-        slug="main",
-        title="Reglamento",
+        slug=main_slug,
+        page_kind=page_kind,
+        title=title,
         content_markdown="",
         version_label="v 1.06",
     )
@@ -33,6 +36,7 @@ def build_rule_page_out(db: Session, row: RulePage) -> RulePageOut:
         slug=row.slug,
         season_id=row.season_id,
         season_name=season.name if season is not None else None,
+        page_kind=row.page_kind,
         title=row.title,
         content_markdown=row.content_markdown,
         version_label=row.version_label,
@@ -41,8 +45,12 @@ def build_rule_page_out(db: Session, row: RulePage) -> RulePageOut:
     )
 
 
-def get_or_create_rule_page(db: Session, season_id: str | None = None) -> RulePage:
-    main_row = get_or_create_main_rule_page(db)
+def get_or_create_rule_page(
+    db: Session,
+    season_id: str | None = None,
+    page_kind: RulePageKind = "regular",
+) -> RulePage:
+    main_row = get_or_create_main_rule_page(db, page_kind)
     if not season_id:
         return main_row
 
@@ -50,16 +58,37 @@ def get_or_create_rule_page(db: Session, season_id: str | None = None) -> RulePa
     if season is None:
         return main_row
 
-    row = db.scalar(select(RulePage).where(RulePage.season_id == season.id))
+    if page_kind == "survivor" and not (season.tournament_format == "standard" or season.survivor_enabled):
+        return main_row
+
+    row = db.scalar(
+        select(RulePage).where(
+            RulePage.season_id == season.id,
+            RulePage.page_kind == page_kind,
+        )
+    )
     if row is not None:
         return row
 
+    season_regular_row = db.scalar(
+        select(RulePage).where(
+            RulePage.season_id == season.id,
+            RulePage.page_kind == "regular",
+        )
+    )
+    fallback_row = season_regular_row if page_kind == "survivor" and season_regular_row is not None else main_row
+    title = (
+        season.survivor_name or "Reglamento Survivor"
+        if page_kind == "survivor"
+        else fallback_row.title
+    )
     row = RulePage(
-        slug=f"season-{season.id}",
+        slug=f"season-{season.id}" if page_kind == "regular" else f"season-{season.id}-survivor",
         season_id=season.id,
-        title=main_row.title,
-        content_markdown=main_row.content_markdown,
-        version_label=main_row.version_label,
+        page_kind=page_kind,
+        title=title,
+        content_markdown=fallback_row.content_markdown,
+        version_label=fallback_row.version_label,
     )
     db.add(row)
     db.commit()
@@ -70,7 +99,8 @@ def get_or_create_rule_page(db: Session, season_id: str | None = None) -> RulePa
 @router.get("/rules", response_model=RulePageOut)
 def get_rules_page(
     season_id: str | None = Query(default=None),
+    page_kind: RulePageKind = Query(default="regular"),
     db: Session = Depends(get_db),
 ) -> RulePageOut:
-    row = get_or_create_rule_page(db, season_id)
+    row = get_or_create_rule_page(db, season_id, page_kind)
     return build_rule_page_out(db, row)

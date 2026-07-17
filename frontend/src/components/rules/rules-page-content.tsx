@@ -3,15 +3,28 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
-import { getLiveSeasons, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import {
+  getLiveSeasons,
+  isSurvivorAvailableForSeason,
+  resolveLiveSeason,
+  useDashboardSeasonParam,
+} from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { RulePage, Season } from "@/types/api";
+
+type RuleSheetOption = {
+  key: string;
+  season: Season;
+  pageKind: RulePage["page_kind"];
+  label: string;
+};
 
 export function RulesPageContent() {
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
   const [rulePage, setRulePage] = useState<RulePage | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
+  const [selectedPageKind, setSelectedPageKind] = useState<RulePage["page_kind"]>("regular");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,10 +36,19 @@ export function RulesPageContent() {
           cacheTtlMs: CATALOG_CACHE_TTL_MS,
         });
         const resolvedSeason = resolveLiveSeason(seasonRows, seasonIdParam);
-        const seasonQuery = resolvedSeason?.id ? `?season_id=${resolvedSeason.id}` : "";
-        const data = await backendFetch<RulePage>(`/rules${seasonQuery}`, accessToken);
+        const nextPageKind =
+          selectedPageKind === "survivor" && isSurvivorAvailableForSeason(resolvedSeason)
+            ? "survivor"
+            : "regular";
+        const params = new URLSearchParams();
+        if (resolvedSeason?.id) {
+          params.set("season_id", resolvedSeason.id);
+        }
+        params.set("page_kind", nextPageKind);
+        const data = await backendFetch<RulePage>(`/rules?${params.toString()}`, accessToken);
         setSeasons(seasonRows);
         setSelectedSeason(resolvedSeason);
+        setSelectedPageKind(nextPageKind);
         setRulePage(data);
         if (resolvedSeason) {
           if (resolvedSeason.id !== seasonIdParam || competitionId) {
@@ -41,12 +63,60 @@ export function RulesPageContent() {
     }
 
     void load();
-  }, [competitionId, seasonIdParam, setSeasonId]);
+  }, [competitionId, seasonIdParam, selectedPageKind, setSeasonId]);
 
   const availableSeasons = useMemo(
     () => getLiveSeasons(seasons),
     [seasons],
   );
+  const ruleSheetOptions = useMemo<RuleSheetOption[]>(
+    () =>
+      availableSeasons.flatMap((season) => [
+        {
+          key: `${season.id}:regular`,
+          season,
+          pageKind: "regular" as const,
+          label: `${season.name} · Quiniela`,
+        },
+        ...(isSurvivorAvailableForSeason(season)
+          ? [
+              {
+                key: `${season.id}:survivor`,
+                season,
+                pageKind: "survivor" as const,
+                label: `${season.name} · ${season.survivor_name ?? "Survivor"}`,
+              },
+            ]
+          : []),
+      ]),
+    [availableSeasons],
+  );
+  const selectedRuleSheetKey = selectedSeason ? `${selectedSeason.id}:${selectedPageKind}` : "";
+
+  async function handleRuleSheetChange(nextValue: string) {
+    const nextOption = ruleSheetOptions.find((option) => option.key === nextValue) ?? null;
+    if (!nextOption) {
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const accessToken = await getBrowserAccessToken().catch(() => undefined);
+      const params = new URLSearchParams({
+        season_id: nextOption.season.id,
+        page_kind: nextOption.pageKind,
+      });
+      const data = await backendFetch<RulePage>(`/rules?${params.toString()}`, accessToken);
+      setSelectedSeason(nextOption.season);
+      setSelectedPageKind(nextOption.pageKind);
+      setRulePage(data);
+      setSeasonId(nextOption.season.id, "");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el reglamento");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (loading) {
     return <p className="text-sm text-steel">Cargando reglamento...</p>;
@@ -62,28 +132,23 @@ export function RulesPageContent() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h1 className="text-xl font-semibold text-ink">{rulePage?.title || "Reglamento"}</h1>
-            <p className="mt-1 text-sm text-steel">{rulePage?.season_name ?? selectedSeason?.name ?? "Reglamento general"}</p>
+            <p className="mt-1 text-sm text-steel">
+              {rulePage?.season_name ?? selectedSeason?.name ?? "Reglamento general"}
+              {rulePage?.page_kind === "survivor" ? ` · ${selectedSeason?.survivor_name ?? "Survivor"}` : ""}
+            </p>
           </div>
-          {availableSeasons.length > 1 ? (
+          {ruleSheetOptions.length > 1 ? (
             <label className="w-full max-w-[360px] space-y-2 text-left text-sm">
-              <span className="text-steel">Temporada</span>
+              <span className="text-steel">Hoja</span>
               <select
-                value={selectedSeason?.id ?? ""}
-                onChange={(event) => {
-                  const nextSeason = availableSeasons.find((season) => season.id === event.target.value) ?? null;
-                  if (!nextSeason) {
-                    return;
-                  }
-                  setLoading(true);
-                  setError(null);
-                  setSeasonId(nextSeason.id, "");
-                }}
+                value={selectedRuleSheetKey}
+                onChange={(event) => void handleRuleSheetChange(event.target.value)}
                 className="field-control"
                 disabled={loading}
               >
-                {availableSeasons.map((season) => (
-                  <option key={season.id} value={season.id}>
-                    {season.name}
+                {ruleSheetOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
                   </option>
                 ))}
               </select>
