@@ -194,6 +194,13 @@ export function VipPageContent() {
   const pendingQuestionResponseCount = questionPoolQuestions.filter(
     (question) => draftQuestionResponses[question.id] !== savedQuestionResponses[question.id],
   ).length;
+  const activeQuestionCount = questionPoolQuestions.filter((question) => question.is_active).length;
+  const resolvedQuestionCount = questionPoolQuestions.filter(
+    (question) => question.is_active && question.options.some((option) => option.is_correct),
+  ).length;
+  const myVipLeaderboardEntry = selectedVip?.leaderboard.find(
+    (entry) => entry.profile_id === selectedVip.my_membership?.profile_id,
+  ) ?? null;
   const selectedTeamWinnerEntries = useMemo(() => {
     if (!selectedVip || selectedVip.competition_kind !== "team_winner") {
       return [];
@@ -615,6 +622,30 @@ export function VipPageContent() {
                       {savingQuestionResponses ? "Guardando..." : "Guardar respuestas"}
                     </button>
                   </div>
+                  {resolvedQuestionCount > 0 ? (
+                    <div className="grid gap-3 rounded-[10px] border border-mint/20 bg-mint/[0.06] p-4 sm:grid-cols-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-steel">
+                          {resolvedQuestionCount === activeQuestionCount ? "Score final" : "Score parcial"}
+                        </p>
+                        <p className="mt-1 text-2xl font-semibold text-mint">
+                          {myVipLeaderboardEntry?.total_points ?? 0} pts
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-steel">Aciertos</p>
+                        <p className="mt-1 text-xl font-semibold text-ink">
+                          {myVipLeaderboardEntry?.correct_results ?? 0}/{resolvedQuestionCount}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-steel">Posición</p>
+                        <p className="mt-1 text-xl font-semibold text-ink">
+                          {myVipLeaderboardEntry ? `#${myVipLeaderboardEntry.rank_position}` : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
                     <div className="rounded-[10px] border border-white/[0.06] p-3">
                       <div className="flex items-center justify-between gap-3">
@@ -775,10 +806,12 @@ export function VipPageContent() {
                 </div>
               ) : null}
 
-              {selectedVip.competition_kind === "matchday" ? (
+              {selectedVip.competition_kind === "matchday" || selectedVip.competition_kind === "question_pool" ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-4">
-                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Leaderboard VIP</p>
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">
+                    {selectedVip.competition_kind === "question_pool" ? "Ranking de preguntas" : "Leaderboard VIP"}
+                  </p>
                   <p className="text-xs text-steel">{selectedVip.leaderboard.length} jugadores</p>
                 </div>
                 <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -786,7 +819,7 @@ export function VipPageContent() {
                     <colgroup>
                       <col className="w-[72px]" />
                       <col className="w-[42%]" />
-                      <col className="w-[120px]" />
+                      {selectedVip.competition_kind === "matchday" ? <col className="w-[120px]" /> : null}
                       <col className="w-[120px]" />
                       <col className="w-[120px]" />
                     </colgroup>
@@ -796,7 +829,9 @@ export function VipPageContent() {
                         <th className="px-3 py-3">Jugador</th>
                         <th className="px-3 py-3 text-center">Puntos</th>
                         <th className="px-3 py-3 text-center">Aciertos</th>
-                        <th className="px-3 py-3 text-center">Exactos</th>
+                        {selectedVip.competition_kind === "matchday" ? (
+                          <th className="px-3 py-3 text-center">Exactos</th>
+                        ) : null}
                       </tr>
                     </thead>
                     <tbody>
@@ -806,7 +841,9 @@ export function VipPageContent() {
                           <td className="px-3 py-3 font-medium">{entry.display_name}</td>
                           <td className="px-3 py-3 text-center">{entry.total_points}</td>
                           <td className="px-3 py-3 text-center">{entry.correct_results}</td>
-                          <td className="px-3 py-3 text-center">{entry.exact_scores}</td>
+                          {selectedVip.competition_kind === "matchday" ? (
+                            <td className="px-3 py-3 text-center">{entry.exact_scores}</td>
+                          ) : null}
                         </tr>
                       ))}
                     </tbody>

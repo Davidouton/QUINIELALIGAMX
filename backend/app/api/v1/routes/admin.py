@@ -2879,6 +2879,18 @@ def import_admin_vip_question_pool_csv(
     return admin_vip_row(db, vip_id, include_leaderboard=True)
 
 
+@router.put("/vip/{vip_id}/questions/correct-options", response_model=AdminVipCompetitionOut)
+def set_admin_vip_question_pool_correct_options_bulk(
+    vip_id: str,
+    payload: AdminVipQuestionPoolBulkCorrectOptionRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.set_question_pool_correct_options_bulk(db, vip_id=vip_id, payload=payload)
+    vip_service.recalculate_vip_standings(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
 @router.put("/vip/{vip_id}/questions/{question_id}", response_model=AdminVipCompetitionOut)
 def update_admin_vip_question_pool_question(
     vip_id: str,
@@ -2913,18 +2925,6 @@ def set_admin_vip_question_pool_correct_option(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminVipCompetitionOut:
     vip_service.set_question_pool_correct_option(db, vip_id=vip_id, question_id=question_id, payload=payload)
-    vip_service.recalculate_vip_standings(db, vip_id)
-    return admin_vip_row(db, vip_id, include_leaderboard=True)
-
-
-@router.put("/vip/{vip_id}/questions/correct-options", response_model=AdminVipCompetitionOut)
-def set_admin_vip_question_pool_correct_options_bulk(
-    vip_id: str,
-    payload: AdminVipQuestionPoolBulkCorrectOptionRequest,
-    db: Session = Depends(get_db),
-    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
-) -> AdminVipCompetitionOut:
-    vip_service.set_question_pool_correct_options_bulk(db, vip_id=vip_id, payload=payload)
     vip_service.recalculate_vip_standings(db, vip_id)
     return admin_vip_row(db, vip_id, include_leaderboard=True)
 

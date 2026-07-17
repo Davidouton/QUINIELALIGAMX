@@ -687,8 +687,8 @@ def test_admin_can_run_question_pool_vip_and_score_answers(admin_client: TestCli
     assert answered_question["selected_option_id"] == mexico_option["id"]
 
     correct_response = admin_client.put(
-        f"/api/v1/admin/vip/{vip_id}/questions/{question['id']}/correct-option",
-        json={"option_id": mexico_option["id"]},
+        f"/api/v1/admin/vip/{vip_id}/questions/correct-options",
+        json={"questions": [{"question_id": question["id"], "option_id": mexico_option["id"]}]},
         headers={"Authorization": "Bearer test-token"},
     )
     assert correct_response.status_code == 200
