@@ -428,7 +428,7 @@ export function SurvivorPageContent() {
       </section>
 
       {board.my_membership ? (
-        <section className="hidden surface-card px-5 py-5">
+        <section className="surface-card px-5 py-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-steel">Pick semanal</p>
@@ -585,7 +585,7 @@ export function SurvivorPageContent() {
       ) : null}
 
       {board.my_membership ? (
-        <section className="surface-card px-5 py-5">
+        <section className="hidden surface-card px-5 py-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-steel">Ruta survivor</p>
