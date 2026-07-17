@@ -182,20 +182,36 @@ class ReminderService:
             ))
         return results
 
-    def send_match_scoring_notifications(self, db: Session, *, matchday_id: str) -> list[ReminderDispatchResult]:
+    def send_match_scoring_notifications(
+        self,
+        db: Session,
+        *,
+        matchday_id: str,
+        match_id: str | None = None,
+    ) -> list[ReminderDispatchResult]:
         if not self.push_service.is_configured():
             return []
         dashboard_url = f"{settings.frontend_site_url.rstrip('/')}/dashboard/leaderboard"
         home_team_alias = aliased(Team)
         away_team_alias = aliased(Team)
-        match_rows = db.execute(
+        recent_result_cutoff = datetime.now(UTC) - timedelta(minutes=10)
+        recent_match_cutoff = datetime.now(UTC) - timedelta(hours=12)
+        match_query = (
             select(Match, MatchResult, Matchday, home_team_alias, away_team_alias)
             .join(MatchResult, MatchResult.match_id == Match.id)
             .join(Matchday, Matchday.id == Match.matchday_id)
             .join(home_team_alias, home_team_alias.id == Match.home_team_id)
             .join(away_team_alias, away_team_alias.id == Match.away_team_id)
-            .where(Match.matchday_id == matchday_id, MatchResult.is_official.is_(True))
-        ).all()
+            .where(
+                Match.matchday_id == matchday_id,
+                MatchResult.is_official.is_(True),
+                MatchResult.last_synced_at >= recent_result_cutoff,
+                Match.kickoff_at >= recent_match_cutoff,
+            )
+        )
+        if match_id is not None:
+            match_query = match_query.where(Match.id == match_id)
+        match_rows = db.execute(match_query).all()
         results: list[ReminderDispatchResult] = []
         for match, match_result, matchday, home_team, away_team in match_rows:
             scoring_rows = db.execute(

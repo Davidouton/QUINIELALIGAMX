@@ -218,12 +218,15 @@ def run_vip_recalculate_for_matchday_background(matchday_id: str) -> None:
         db.close()
 
 
-def run_scoring_and_vip_recalculate_for_matchday_background(matchday_id: str) -> None:
+def run_scoring_and_vip_recalculate_for_matchday_background(
+    matchday_id: str,
+    match_id: str | None = None,
+) -> None:
     db = SessionLocal()
     try:
         ScoringService().recalculate_matchday(db, matchday_id)
         recalculate_vips_for_matchday(db, matchday_id)
-        ReminderService().send_match_scoring_notifications(db, matchday_id=matchday_id)
+        ReminderService().send_match_scoring_notifications(db, matchday_id=matchday_id, match_id=match_id)
     finally:
         db.close()
 
@@ -3097,7 +3100,11 @@ def update_admin_result(
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.save_admin_result(db, match_id, payload, updated_by=current_profile)
-    background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, result.matchday_id)
+    background_tasks.add_task(
+        run_scoring_and_vip_recalculate_for_matchday_background,
+        result.matchday_id,
+        match_id,
+    )
     return result
 
 
@@ -3109,7 +3116,11 @@ def clear_admin_result_override(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_manual_override(db, match_id)
-    background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, result.matchday_id)
+    background_tasks.add_task(
+        run_scoring_and_vip_recalculate_for_matchday_background,
+        result.matchday_id,
+        match_id,
+    )
     return result
 
 
@@ -3121,7 +3132,11 @@ def clear_admin_result(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_admin_result(db, match_id)
-    background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, result.matchday_id)
+    background_tasks.add_task(
+        run_scoring_and_vip_recalculate_for_matchday_background,
+        result.matchday_id,
+        match_id,
+    )
     return result
 
 

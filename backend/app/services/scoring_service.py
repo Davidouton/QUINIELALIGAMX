@@ -2,7 +2,7 @@ from collections import defaultdict
 from decimal import Decimal
 from decimal import InvalidOperation
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
@@ -279,6 +279,11 @@ class ScoringService:
         }
 
     def recalculate_matchday(self, db: Session, matchday_id: str) -> dict[str, int]:
+        if db.get_bind().dialect.name == "postgresql":
+            db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+                {"lock_key": f"scoring-matchday:{matchday_id}"},
+            )
         matchday = db.get(Matchday, matchday_id)
         if matchday is None:
             return {
