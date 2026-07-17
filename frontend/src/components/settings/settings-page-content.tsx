@@ -508,11 +508,16 @@ export function SettingsPageContent() {
                   <input
                     type="checkbox"
                     checked={form.match_result_notification_enabled}
-                    onChange={() => undefined}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        match_result_notification_enabled: event.target.checked,
+                      }))
+                    }
                     className="mt-1 h-4 w-4 accent-[var(--accent)]"
-                    disabled
+                    disabled={!form.pick_reminder_email_enabled}
                   />
-                  <span>Marcador y standings por partido (proximamente)</span>
+                  <span>Marcador y standings por partido</span>
                 </label>
                 <label className="flex items-start gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ink">
                   <input
