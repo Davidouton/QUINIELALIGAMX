@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     resend_from_email: str = ""
     resend_from_name: str = "QuinielaMaestra"
     resend_reply_to: str = ""
+    onesignal_app_id: str = ""
+    onesignal_rest_api_key: str = ""
     default_provider: str = "mock"
     results_provider_name: str = "thesportsdb_v1"
     results_provider_base_url: str = "https://www.thesportsdb.com"

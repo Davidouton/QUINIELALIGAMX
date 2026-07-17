@@ -60,6 +60,34 @@ def test_collect_due_email_reminders_includes_opening_and_pre_game():
         db.close()
 
 
+def test_collect_due_push_reminders_does_not_require_email_opt_in():
+    service = ReminderService()
+    db = SessionLocal()
+    try:
+        profile = db.get(Profile, PROFILE_USER_ID)
+        assert profile is not None
+        profile.pick_reminder_email_enabled = False
+        profile.pick_reminder_opening_enabled = True
+        profile.pick_reminder_hours_before = 3
+        db.add(profile)
+        db.commit()
+
+        first_match = db.scalar(
+            select(Match).where(Match.matchday_id == MATCHDAY_ID).order_by(Match.picks_lock_at.asc())
+        )
+        assert first_match is not None
+        now_utc = first_match.picks_lock_at - timedelta(hours=3) + timedelta(minutes=5)
+        reminders = service.collect_due_push_reminders(db, now_utc=now_utc, window_minutes=70)
+
+        assert {reminder.reminder_kind for reminder in reminders} == {
+            PickReminderKind.OPENING,
+            PickReminderKind.PRE_GAME,
+        }
+        assert all(reminder.profile_id == PROFILE_USER_ID for reminder in reminders)
+    finally:
+        db.close()
+
+
 def test_collect_due_email_reminders_skips_already_sent_opening():
     service = ReminderService()
     db = SessionLocal()

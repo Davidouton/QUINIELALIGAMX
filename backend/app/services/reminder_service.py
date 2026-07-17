@@ -5,12 +5,13 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.config import get_settings
 from app.core.datetime import MEXICO_CITY_TZ, ensure_utc
 from app.models.entities import (
     Match,
+    MatchResult,
     MatchStatus,
     Matchday,
     MatchdayStatus,
@@ -20,8 +21,12 @@ from app.models.entities import (
     Season,
     SeasonMembership,
     UserPick,
+    PickPoint,
+    StandingsOverall,
+    Team,
 )
 from app.services.email_service import ResendEmailService
+from app.services.onesignal_service import OneSignalPushService
 
 settings = get_settings()
 
@@ -54,6 +59,7 @@ class ReminderDispatchResult:
 class ReminderService:
     def __init__(self) -> None:
         self.email_service = ResendEmailService()
+        self.push_service = OneSignalPushService()
 
     def collect_due_email_reminders(
         self,
@@ -61,6 +67,25 @@ class ReminderService:
         *,
         now_utc: datetime | None = None,
         window_minutes: int = 70,
+    ) -> list[DueReminder]:
+        return self._collect_due_reminders(db, now_utc=now_utc, window_minutes=window_minutes, channel="email")
+
+    def collect_due_push_reminders(
+        self,
+        db: Session,
+        *,
+        now_utc: datetime | None = None,
+        window_minutes: int = 70,
+    ) -> list[DueReminder]:
+        return self._collect_due_reminders(db, now_utc=now_utc, window_minutes=window_minutes, channel="push")
+
+    def _collect_due_reminders(
+        self,
+        db: Session,
+        *,
+        now_utc: datetime | None,
+        window_minutes: int,
+        channel: str,
     ) -> list[DueReminder]:
         now = ensure_utc(now_utc or datetime.now(UTC))
         window = max(window_minutes, 1)
@@ -88,24 +113,20 @@ class ReminderService:
             if not open_matches:
                 continue
 
-            participants = list(
-                db.scalars(
-                    select(Profile)
-                    .join(SeasonMembership, SeasonMembership.profile_id == Profile.id)
-                    .where(
-                        SeasonMembership.season_id == season.id,
-                        SeasonMembership.is_active.is_(True),
-                        Profile.is_active.is_(True),
-                        Profile.pick_reminder_email_enabled.is_(True),
-                        Profile.email.is_not(None),
-                    )
-                    .order_by(Profile.display_name.asc())
-                )
+            participant_query = (
+                select(Profile)
+                .join(SeasonMembership, SeasonMembership.profile_id == Profile.id)
+                .where(SeasonMembership.season_id == season.id, SeasonMembership.is_active.is_(True), Profile.is_active.is_(True))
             )
+            if channel == "email":
+                participant_query = participant_query.where(
+                    Profile.pick_reminder_email_enabled.is_(True), Profile.email.is_not(None)
+                )
+            participants = list(db.scalars(participant_query.order_by(Profile.display_name.asc())))
             if not participants:
                 continue
 
-            reminders.extend(self._collect_opening_reminders(db, participants, matchday, season, open_matches))
+            reminders.extend(self._collect_opening_reminders(db, participants, matchday, season, open_matches, channel=channel))
             reminders.extend(
                 self._collect_pre_game_reminders(
                     db,
@@ -115,10 +136,103 @@ class ReminderService:
                     open_matches,
                     now=now,
                     window_minutes=window,
+                    channel=channel,
                 )
             )
 
         return reminders
+
+    def send_due_push_reminders(
+        self,
+        db: Session,
+        *,
+        now_utc: datetime | None = None,
+        window_minutes: int = 70,
+        dry_run: bool = False,
+    ) -> list[ReminderDispatchResult]:
+        reminders = self.collect_due_push_reminders(db, now_utc=now_utc, window_minutes=window_minutes)
+        results: list[ReminderDispatchResult] = []
+        for reminder in reminders:
+            provider_message_id = None
+            dispatch_status = "dry_run"
+            if not dry_run:
+                profile = db.get(Profile, reminder.profile_id)
+                if profile is None:
+                    continue
+                message = (
+                    f"Te faltan picks en {reminder.matchday_name}. Entra antes de que cierre la jornada."
+                    if reminder.reminder_kind == PickReminderKind.OPENING
+                    else f"Todavía tienes picks pendientes en {reminder.matchday_name}."
+                )
+                provider_message_id = self.push_service.send_to_external_id(
+                    external_id=profile.auth_user_id,
+                    title=reminder.subject,
+                    message=message,
+                    url=self._dashboard_url(),
+                    dedupe_key=reminder.dedupe_key,
+                )
+                dispatch_status = "sent"
+            results.append(ReminderDispatchResult(
+                dedupe_key=reminder.dedupe_key,
+                profile_id=reminder.profile_id,
+                recipient_email="",
+                subject=reminder.subject,
+                status=dispatch_status,
+                provider_message_id=provider_message_id,
+            ))
+        return results
+
+    def send_match_scoring_notifications(self, db: Session, *, matchday_id: str) -> list[ReminderDispatchResult]:
+        if not self.push_service.is_configured():
+            return []
+        dashboard_url = f"{settings.frontend_site_url.rstrip('/')}/dashboard/leaderboard"
+        home_team_alias = aliased(Team)
+        away_team_alias = aliased(Team)
+        match_rows = db.execute(
+            select(Match, MatchResult, Matchday, home_team_alias, away_team_alias)
+            .join(MatchResult, MatchResult.match_id == Match.id)
+            .join(Matchday, Matchday.id == Match.matchday_id)
+            .join(home_team_alias, home_team_alias.id == Match.home_team_id)
+            .join(away_team_alias, away_team_alias.id == Match.away_team_id)
+            .where(Match.matchday_id == matchday_id, MatchResult.is_official.is_(True))
+        ).all()
+        results: list[ReminderDispatchResult] = []
+        for match, match_result, matchday, home_team, away_team in match_rows:
+            scoring_rows = db.execute(
+                select(PickPoint, Profile, StandingsOverall)
+                .join(Profile, Profile.id == PickPoint.profile_id)
+                .join(
+                    StandingsOverall,
+                    (StandingsOverall.profile_id == PickPoint.profile_id)
+                    & (StandingsOverall.season_id == matchday.season_id),
+                    isouter=True,
+                )
+                .where(PickPoint.match_id == match.id, Profile.is_active.is_(True))
+            ).all()
+            title = f"{home_team.short_name} {match_result.home_score}-{match_result.away_score} {away_team.short_name}"
+            for point, profile, standing in scoring_rows:
+                total_points = standing.total_points if standing is not None else point.total_points
+                rank_label = f" y vas #{standing.rank_position}" if standing is not None else ""
+                message = f"Sumaste {point.total_points} pts. Llevas {total_points} pts{rank_label} en el ranking."
+                dedupe_key = (
+                    f"score:{match.id}:{match_result.home_score}:{match_result.away_score}:{profile.id}"
+                )
+                provider_message_id = self.push_service.send_to_external_id(
+                    external_id=profile.auth_user_id,
+                    title=title,
+                    message=message,
+                    url=dashboard_url,
+                    dedupe_key=dedupe_key,
+                )
+                results.append(ReminderDispatchResult(
+                    dedupe_key=dedupe_key,
+                    profile_id=profile.id,
+                    recipient_email="",
+                    subject=title,
+                    status="sent",
+                    provider_message_id=provider_message_id,
+                ))
+        return results
 
     def send_due_email_reminders(
         self,
@@ -167,6 +281,8 @@ class ReminderService:
         matchday: Matchday,
         season: Season,
         open_matches: list[Match],
+        *,
+        channel: str,
     ) -> list[DueReminder]:
         eligible_profiles = [profile for profile in participants if profile.pick_reminder_opening_enabled]
         if not eligible_profiles:
@@ -188,7 +304,7 @@ class ReminderService:
             for profile in eligible_profiles
             if total_matches - picks_by_profile.get(profile.id, 0) > 0
         ]
-        return self._filter_existing_reminders(db, candidates)
+        return self._filter_existing_reminders(db, candidates) if channel == "email" else candidates
 
     def _collect_pre_game_reminders(
         self,
@@ -200,6 +316,7 @@ class ReminderService:
         *,
         now: datetime,
         window_minutes: int,
+        channel: str,
     ) -> list[DueReminder]:
         reminders: list[DueReminder] = []
         matches_by_date: dict[date, list[Match]] = defaultdict(list)
@@ -241,7 +358,7 @@ class ReminderService:
                     for profile in eligible_profiles
                     if total_matches - picks_by_profile.get(profile.id, 0) > 0
                 ]
-                reminders.extend(self._filter_existing_reminders(db, candidates))
+                reminders.extend(self._filter_existing_reminders(db, candidates) if channel == "email" else candidates)
 
         return reminders
 

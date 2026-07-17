@@ -4,6 +4,11 @@ import { FormEvent, type CSSProperties, useEffect, useMemo, useState } from "rea
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { env } from "@/lib/env";
+import {
+  getOneSignalPushStatus,
+  promptOneSignalPush,
+  type OneSignalPushStatus,
+} from "@/lib/onesignal/client";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import {
   THEME_PREFERENCE_OPTIONS,
@@ -74,6 +79,23 @@ function normalizeOptionalValue(value: string) {
   return cleaned || null;
 }
 
+function buildSettingsPayload(form: SettingsFormState) {
+  return {
+    display_name: form.display_name.trim(),
+    email: normalizeOptionalValue(form.email),
+    favorite_team_id: normalizeOptionalValue(form.favorite_team_id),
+    contact_phone: normalizeOptionalValue(form.contact_phone),
+    bank_name: normalizeOptionalValue(form.bank_name),
+    deposit_account: normalizeOptionalValue(form.deposit_account),
+    modality: form.modality,
+    aval_profile_id: form.modality === "aval" ? normalizeOptionalValue(form.aval_profile_id) : null,
+    theme_preference: form.theme_preference,
+    pick_reminder_email_enabled: form.pick_reminder_email_enabled,
+    pick_reminder_opening_enabled: form.pick_reminder_opening_enabled,
+    pick_reminder_hours_before: form.pick_reminder_hours_before === "" ? null : form.pick_reminder_hours_before,
+  };
+}
+
 function buildQrImageUrl(data: string) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(data)}`;
 }
@@ -90,6 +112,8 @@ export function SettingsPageContent() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [teamLoadError, setTeamLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [pushStatus, setPushStatus] = useState<OneSignalPushStatus>("unavailable");
+  const [requestingPush, setRequestingPush] = useState(false);
 
   const favoriteTeam = useMemo(
     () => teams.find((team) => team.id === form.favorite_team_id) ?? null,
@@ -151,6 +175,46 @@ export function SettingsPageContent() {
     void load();
   }, []);
 
+  useEffect(() => {
+    void getOneSignalPushStatus()
+      .then(setPushStatus)
+      .catch(() => setPushStatus("unavailable"));
+  }, []);
+
+  async function handleEnablePushNotifications() {
+    setRequestingPush(true);
+    setSaveError(null);
+    setMessage(null);
+    try {
+      await promptOneSignalPush();
+      const nextStatus = await getOneSignalPushStatus();
+      setPushStatus(nextStatus);
+      if (nextStatus === "enabled") {
+        const nextForm = {
+          ...form,
+          pick_reminder_opening_enabled: true,
+          pick_reminder_hours_before: form.pick_reminder_hours_before || (3 as PickReminderHoursBefore),
+        };
+        const accessToken = await getBrowserAccessToken();
+        const saved = await backendFetch<Me>("/me", accessToken, {
+          method: "PUT",
+          body: JSON.stringify(buildSettingsPayload(nextForm)),
+        });
+        setMe(saved);
+        setForm(buildFormFromMe(saved));
+        setMessage("Notificaciones push activadas: al abrir jornada y 3 horas antes del primer juego.");
+      } else if (nextStatus === "blocked") {
+        setSaveError("Las notificaciones están bloqueadas. Actívalas desde los permisos del navegador.");
+      } else {
+        setSaveError("No se pudo activar el permiso de notificaciones en este dispositivo.");
+      }
+    } catch (caughtError) {
+      setSaveError(caughtError instanceof Error ? caughtError.message : "No se pudieron activar las notificaciones");
+    } finally {
+      setRequestingPush(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -166,23 +230,7 @@ export function SettingsPageContent() {
       const accessToken = await getBrowserAccessToken();
       const saved = await backendFetch<Me>("/me", accessToken, {
         method: "PUT",
-        body: JSON.stringify({
-          display_name: form.display_name.trim(),
-          email: normalizeOptionalValue(form.email),
-          favorite_team_id: normalizeOptionalValue(form.favorite_team_id),
-          contact_phone: normalizeOptionalValue(form.contact_phone),
-          bank_name: normalizeOptionalValue(form.bank_name),
-          deposit_account: normalizeOptionalValue(form.deposit_account),
-          modality: form.modality,
-          aval_profile_id: form.modality === "aval" ? normalizeOptionalValue(form.aval_profile_id) : null,
-          theme_preference: form.theme_preference,
-          pick_reminder_email_enabled: form.pick_reminder_email_enabled,
-          pick_reminder_opening_enabled: form.pick_reminder_opening_enabled,
-          pick_reminder_hours_before:
-            form.pick_reminder_email_enabled && form.pick_reminder_hours_before !== ""
-              ? form.pick_reminder_hours_before
-              : null,
-        }),
+        body: JSON.stringify(buildSettingsPayload(form)),
       });
 
       setMe(saved);
@@ -376,8 +424,39 @@ export function SettingsPageContent() {
             <div>
               <h3 className="text-xl font-semibold text-ink">Recordatorios</h3>
               <p className="mt-2 text-sm text-steel">
-                Te avisamos por mail cuando una jornada ya este activa y antes del primer juego del dia.
+                Te avisamos cuando una jornada ya esté activa y antes del primer juego del día.
               </p>
+            </div>
+
+            <div className="flex flex-col gap-4 rounded-[12px] border border-white/[0.08] p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-ink">Notificaciones push</p>
+                <p className="mt-1 text-xs text-steel">
+                  {pushStatus === "enabled"
+                    ? "Activadas en este dispositivo."
+                    : pushStatus === "blocked"
+                      ? "Bloqueadas por el navegador. Cambia el permiso desde la configuración del sitio."
+                      : pushStatus === "disabled"
+                        ? "Actívalas para recibir recordatorios aunque no tengas abierta la quiniela."
+                        : "Este navegador o dispositivo no admite notificaciones push."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleEnablePushNotifications()}
+                disabled={requestingPush || pushStatus === "enabled" || pushStatus === "unavailable"}
+                className={`app-pill h-10 shrink-0 px-4 text-sm disabled:opacity-60 ${
+                  pushStatus === "enabled" ? "border-mint/30 bg-mint/10 text-mint" : ""
+                }`}
+              >
+                {requestingPush
+                  ? "Activando..."
+                  : pushStatus === "enabled"
+                    ? "Push activado"
+                    : pushStatus === "blocked"
+                      ? "Permiso bloqueado"
+                      : "Activar notificaciones"}
+              </button>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -416,7 +495,7 @@ export function SettingsPageContent() {
                     }))
                   }
                   className="field-control"
-                  disabled={!form.pick_reminder_email_enabled}
+                  disabled={!form.pick_reminder_email_enabled && pushStatus !== "enabled"}
                 >
                   <option value="none">Sin recordatorio previo</option>
                   <option value="3">3 horas antes</option>
@@ -435,7 +514,7 @@ export function SettingsPageContent() {
                     }))
                   }
                   className="field-control"
-                  disabled={!form.pick_reminder_email_enabled}
+                  disabled={!form.pick_reminder_email_enabled && pushStatus !== "enabled"}
                 >
                   <option value="no">No mandar</option>
                   <option value="si">Mandar una vez</option>

@@ -11,7 +11,7 @@ from app.services.reminder_service import ReminderService
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Envia recordatorios de picks por mail.")
+    parser = argparse.ArgumentParser(description="Envia recordatorios de picks por mail y push.")
     parser.add_argument("--dry-run", action="store_true", help="Solo muestra los correos candidatos sin enviarlos.")
     parser.add_argument(
         "--window-minutes",
@@ -35,7 +35,13 @@ def main() -> int:
 
     db = SessionLocal()
     try:
-        results = service.send_due_email_reminders(
+        email_results = service.send_due_email_reminders(
+            db,
+            now_utc=now,
+            window_minutes=args.window_minutes,
+            dry_run=args.dry_run,
+        )
+        push_results = service.send_due_push_reminders(
             db,
             now_utc=now,
             window_minutes=args.window_minutes,
@@ -47,7 +53,7 @@ def main() -> int:
     summary = {
         "dry_run": args.dry_run,
         "now_utc": now.isoformat(),
-        "results": [
+        "email_results": [
             {
                 "dedupe_key": row.dedupe_key,
                 "profile_id": row.profile_id,
@@ -56,7 +62,17 @@ def main() -> int:
                 "status": row.status,
                 "provider_message_id": row.provider_message_id,
             }
-            for row in results
+            for row in email_results
+        ],
+        "push_results": [
+            {
+                "dedupe_key": row.dedupe_key,
+                "profile_id": row.profile_id,
+                "subject": row.subject,
+                "status": row.status,
+                "provider_message_id": row.provider_message_id,
+            }
+            for row in push_results
         ],
     }
     print(json.dumps(summary, ensure_ascii=True, indent=2))

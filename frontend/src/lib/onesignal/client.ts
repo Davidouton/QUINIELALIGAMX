@@ -71,5 +71,24 @@ export async function promptOneSignalPush() {
     return false;
   }
 
-  return OneSignal.Notifications.requestPermission();
+  const granted = await OneSignal.Notifications.requestPermission();
+  if (granted) {
+    await OneSignal.User.PushSubscription.optIn();
+  }
+  return granted;
+}
+
+export type OneSignalPushStatus = "enabled" | "disabled" | "blocked" | "unavailable";
+
+export async function getOneSignalPushStatus(): Promise<OneSignalPushStatus> {
+  if (!hasBrowserSupport() || !("Notification" in window)) {
+    return "unavailable";
+  }
+  if (Notification.permission === "denied") {
+    return "blocked";
+  }
+  await initializeOneSignal();
+  return Notification.permission === "granted" && OneSignal.User.PushSubscription.optedIn
+    ? "enabled"
+    : "disabled";
 }

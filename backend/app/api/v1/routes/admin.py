@@ -22,6 +22,7 @@ from app.models.entities import (
     Competition,
     HistoricalChampion,
     Match,
+    MatchResult,
     Matchday,
     MatchdayStatus,
     Profile,
@@ -119,6 +120,7 @@ from app.schemas.vip import (
 )
 from app.api.v1.routes.rules import build_rule_page_out, get_or_create_rule_page
 from app.services.match_service import MatchService
+from app.services.reminder_service import ReminderService
 from app.services.pick_service import PickService
 from app.services.result_service import ResultService
 from app.services.scoring_service import ScoringService
@@ -186,6 +188,16 @@ def run_scoring_recalculate_background() -> None:
     db = SessionLocal()
     try:
         ScoringService().recalculate(db)
+        matchday_ids = set(
+            db.scalars(
+                select(Match.matchday_id)
+                .join(MatchResult, MatchResult.match_id == Match.id)
+                .where(MatchResult.is_official.is_(True))
+            )
+        )
+        reminder_service = ReminderService()
+        for matchday_id in matchday_ids:
+            reminder_service.send_match_scoring_notifications(db, matchday_id=matchday_id)
     finally:
         db.close()
 
@@ -211,6 +223,7 @@ def run_scoring_and_vip_recalculate_for_matchday_background(matchday_id: str) ->
     try:
         ScoringService().recalculate_matchday(db, matchday_id)
         recalculate_vips_for_matchday(db, matchday_id)
+        ReminderService().send_match_scoring_notifications(db, matchday_id=matchday_id)
     finally:
         db.close()
 
