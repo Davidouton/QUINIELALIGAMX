@@ -78,6 +78,10 @@ class SurvivorPickOut(BaseModel):
     is_revealed: bool = False
     result_status: SurvivorPickResultLiteral = "pending"
     consumed_life: bool = False
+    is_admin_override: bool = False
+    admin_override_note: str | None = None
+    result_override: SurvivorPickResultLiteral | None = None
+    consumes_life_override: bool | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -114,6 +118,7 @@ class SurvivorLeaderboardEntryOut(BaseModel):
     alive: bool = False
     last_pick_team_name: str | None = None
     current_pick: SurvivorPickOut | None = None
+    picks: list[SurvivorPickOut] = Field(default_factory=list)
 
 
 class SurvivorBoardOut(BaseModel):
@@ -129,3 +134,27 @@ class SurvivorPickUpsertRequest(BaseModel):
     season_id: str
     matchday_id: str
     team_id: str
+
+
+class AdminSurvivorPickOverrideRequest(BaseModel):
+    season_id: str
+    profile_id: str
+    matchday_id: str
+    team_id: str
+    result_override: SurvivorPickResultLiteral | None = None
+    consumes_life_override: bool | None = None
+    admin_override_note: str = Field(min_length=1, max_length=500)
+
+
+class AdminSurvivorPickRowOut(SurvivorPickOut):
+    profile_id: str
+    profile_display_name: str
+    overridden_by_profile_id: str | None = None
+    overridden_by_display_name: str | None = None
+    overridden_at: datetime | None = None
+
+    @field_serializer("overridden_at")
+    def serialize_overridden_at(self, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        return ensure_utc(value).isoformat().replace("+00:00", "Z")

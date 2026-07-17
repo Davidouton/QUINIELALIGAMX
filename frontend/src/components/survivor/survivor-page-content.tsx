@@ -218,25 +218,13 @@ export function SurvivorPageContent() {
       }))
       .sort((left, right) => new Date(left.kickoffAt).getTime() - new Date(right.kickoffAt).getTime());
   }, [board.available_teams]);
-  const availableLogoTeams = useMemo(
-    () => board.available_teams.slice(),
-    [board.available_teams],
-  );
   const survivorJourneySlots = useMemo(() => {
-    const maxKnownMatchday = Math.max(
-      17,
-      board.current_matchday?.number ?? 0,
-      ...board.my_picks.map((pick) => pick.matchday_number),
-    );
     const picksByMatchdayNumber = new Map(board.my_picks.map((pick) => [pick.matchday_number, pick]));
-    return Array.from({ length: maxKnownMatchday }, (_, index) => {
-      const matchdayNumber = index + 1;
-      return {
-        matchdayNumber,
-        pick: picksByMatchdayNumber.get(matchdayNumber) ?? null,
-        isCurrent: board.current_matchday?.number === matchdayNumber,
-      };
-    });
+    return Array.from({ length: 17 }, (_, index) => ({
+      matchdayNumber: index + 1,
+      pick: picksByMatchdayNumber.get(index + 1) ?? null,
+      isCurrent: board.current_matchday?.number === index + 1,
+    }));
   }, [board.current_matchday?.number, board.my_picks]);
 
   async function handleJoin() {
@@ -390,8 +378,57 @@ export function SurvivorPageContent() {
         ) : null}
       </section>
 
+      <section className="surface-card overflow-hidden px-5 py-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-steel">Tablero Survivor</p>
+            <h2 className="mt-2 text-lg font-semibold text-ink">Participantes por jornada</h2>
+            <p className="mt-1 text-sm text-steel">Escudo: pick capturado · círculo oscuro: pendiente u oculto.</p>
+          </div>
+          <div className="flex flex-wrap gap-3 text-[10px] uppercase tracking-wide text-steel">
+            <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-emerald-400" /> Ganó</span>
+            <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-coral" /> Perdió</span>
+            <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-gold" /> Empate</span>
+          </div>
+        </div>
+        <div className="no-scrollbar mt-5 overflow-x-auto touch-pan-x">
+          {board.leaderboard.length === 0 ? <p className="text-sm text-steel">Aún no hay participantes inscritos.</p> : (
+            <table className="min-w-[1330px] border-separate border-spacing-0 text-center text-[11px]">
+              <thead><tr className="text-[10px] uppercase tracking-wider text-steel">
+                <th className="sticky left-0 z-20 min-w-[210px] border-b border-white/10 bg-[#0c1727] px-3 py-3 text-left">Participante</th>
+                {Array.from({ length: 17 }, (_, index) => <th key={index} className={`w-[58px] border-b border-white/10 px-1 py-3 ${board.current_matchday?.number === index + 1 ? "text-coral" : ""}`}>J{index + 1}</th>)}
+                <th className="w-[70px] border-b border-white/10 px-2 py-3">Vidas</th>
+                <th className="w-[80px] border-b border-white/10 px-2 py-3">Estado</th>
+              </tr></thead>
+              <tbody>{board.leaderboard.map((entry, index) => {
+                const picksByJourney = new Map((entry.picks ?? []).map((pick) => [pick.matchday_number, pick]));
+                return <tr key={entry.profile_id} className="group">
+                  <td className="sticky left-0 z-10 border-b border-white/[0.07] bg-[#0c1727] px-3 py-3 text-left group-hover:bg-[#101d30]">
+                    <p className="font-semibold text-ink">{index + 1}. {entry.display_name}</p>
+                    <p className="mt-0.5 text-[10px] text-steel">{entry.total_picks} picks</p>
+                  </td>
+                  {Array.from({ length: 17 }, (_, journeyIndex) => {
+                    const pick = picksByJourney.get(journeyIndex + 1);
+                    const visiblePick = pick && (pick.is_revealed || board.my_picks.some((myPick) => myPick.id === pick.id)) ? pick : null;
+                    const stateClass = visiblePick?.result_status === "won" ? "ring-2 ring-emerald-400/70" : visiblePick?.result_status === "lost" ? "ring-2 ring-coral/70" : visiblePick?.result_status === "draw" ? "ring-2 ring-gold/70" : visiblePick ? "ring-1 ring-white/20" : "";
+                    return <td key={journeyIndex} className={`border-b border-white/[0.07] px-1 py-2 ${board.current_matchday?.number === journeyIndex + 1 ? "bg-coral/[0.035]" : ""}`}>
+                      {visiblePick ? <span className="relative inline-flex" title={`J${journeyIndex + 1}: ${visiblePick.team_name} · ${getSurvivorResultLabel(visiblePick.result_status)}`}>
+                        {renderTeamLogo(visiblePick.team_name, visiblePick.team_short_name, visiblePick.team_crest_url, `h-9 w-9 ${stateClass}`)}
+                        {visiblePick.is_admin_override ? <i className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-[#0c1727] bg-violet-400" title="Override administrativo" /> : null}
+                      </span> : <span className="inline-flex h-9 w-9 rounded-full border border-white/[0.07] bg-black/55" title={pick ? "Pick oculto hasta el cierre" : `J${journeyIndex + 1}: pendiente`} />}
+                    </td>;
+                  })}
+                  <td className="border-b border-white/[0.07] px-2 font-semibold text-ink">{entry.remaining_lives}</td>
+                  <td className="border-b border-white/[0.07] px-2"><span className={getSurvivorLifeStatePillClassName(entry.alive, entry.remaining_lives)}>{getSurvivorLifeStateLabel(entry.alive, entry.remaining_lives)}</span></td>
+                </tr>;
+              })}</tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
       {board.my_membership ? (
-        <section className="surface-card px-5 py-5">
+        <section className="hidden surface-card px-5 py-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.22em] text-steel">Pick semanal</p>
@@ -439,43 +476,12 @@ export function SurvivorPageContent() {
             <div className="mt-5 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-steel">Equipos disponibles</p>
-                  <p className="mt-1 text-sm text-steel">Selecciona tu equipo desde la parrilla de logos.</p>
+                  <p className="text-xs uppercase tracking-[0.22em] text-steel">Pick Center Survivor</p>
+                  <p className="mt-1 text-sm text-steel">Elige un equipo tocando su escudo dentro del partido.</p>
                 </div>
                 <div className="app-pill px-3 text-[10px]">
                   Jornada {board.current_matchday?.number ?? "-"}
                 </div>
-              </div>
-
-              <div className="grid grid-cols-4 gap-x-4 gap-y-5 md:grid-cols-6 xl:grid-cols-9">
-                {availableLogoTeams.map((option) => (
-                  <button
-                    key={`${option.match_id}:${option.team_id}`}
-                    type="button"
-                    onClick={() => void handlePick(option.team_id)}
-                    disabled={option.is_locked || Boolean(submitting)}
-                    title={option.team_name}
-                    aria-label={option.team_name}
-                    className={`flex flex-col items-center justify-center gap-2 rounded-[999px] bg-transparent p-0 text-center transition disabled:opacity-60 ${
-                      option.is_locked ? "opacity-55" : ""
-                    }`}
-                  >
-                    <span
-                      className={`inline-flex rounded-full p-[4px] ${
-                        option.is_current_pick
-                          ? "ring-2 ring-emerald-400/55 ring-offset-2 ring-offset-transparent"
-                          : option.is_locked
-                            ? "ring-1 ring-white/8"
-                            : "ring-1 ring-transparent"
-                      }`}
-                    >
-                      {renderTeamLogo(option.team_name, option.team_short_name, option.team_crest_url, "h-14 w-14")}
-                    </span>
-                    <span className="text-[11px] font-semibold text-steel">
-                      {option.team_short_name}
-                    </span>
-                  </button>
-                ))}
               </div>
 
               <div className="rounded-[20px] border border-white/[0.08] bg-white/[0.03]">
@@ -546,7 +552,7 @@ export function SurvivorPageContent() {
                           <p className="text-[11px] text-steel">{formatMexicoCityDateTime(match.kickoffAt)}</p>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex items-center gap-5">
                           {match.options.map((option) => (
                             <button
                               key={option.team_id}
@@ -555,13 +561,16 @@ export function SurvivorPageContent() {
                               disabled={option.is_locked || Boolean(submitting)}
                               title={option.team_name}
                               aria-label={option.team_name}
-                              className={`rounded-full p-[4px] transition disabled:opacity-60 ${
+                              className={`group flex min-w-[72px] flex-col items-center gap-2 rounded-[18px] px-2 py-2 transition hover:bg-white/[0.05] disabled:opacity-60 ${
                                 option.is_current_pick
-                                  ? "ring-2 ring-emerald-400/55 ring-offset-2 ring-offset-transparent"
-                                  : "ring-1 ring-white/10"
+                                  ? "bg-emerald-500/10 ring-2 ring-emerald-400/55"
+                                  : "ring-1 ring-transparent"
                               }`}
                             >
-                              {renderTeamLogo(option.team_name, option.team_short_name, option.team_crest_url, "h-10 w-10")}
+                              {renderTeamLogo(option.team_name, option.team_short_name, option.team_crest_url, "h-14 w-14")}
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-steel group-hover:text-ink">
+                                {option.team_short_name}
+                              </span>
                             </button>
                           ))}
                         </div>
@@ -660,7 +669,7 @@ export function SurvivorPageContent() {
         </section>
       ) : null}
 
-      <section className="surface-card px-5 py-5">
+      <section className="hidden surface-card px-5 py-5">
         <p className="text-xs uppercase tracking-[0.22em] text-steel">Tablero survivor</p>
         <div className="mt-4 no-scrollbar overflow-x-auto touch-pan-x">
           {board.leaderboard.length === 0 ? (
@@ -760,7 +769,7 @@ export function SurvivorPageContent() {
         </div>
       </section>
 
-      <section className="surface-card px-5 py-5">
+      <section className="hidden surface-card px-5 py-5">
         <p className="text-xs uppercase tracking-[0.22em] text-steel">Historial</p>
         <div className="mt-4 no-scrollbar overflow-x-auto touch-pan-x">
           {board.my_picks.length === 0 ? (

@@ -524,6 +524,29 @@ def run_startup_migrations() -> None:
             )
             connection.execute(text("CREATE INDEX IF NOT EXISTS idx_survivor_picks_team_id ON survivor_picks(team_id)"))
 
+        if "survivor_picks" in inspect(connection).get_table_names():
+            survivor_pick_columns = {column["name"] for column in inspect(connection).get_columns("survivor_picks")}
+            survivor_pick_additions = {
+                "result_override": "ALTER TABLE survivor_picks ADD COLUMN result_override VARCHAR(16)",
+                "consumes_life_override": "ALTER TABLE survivor_picks ADD COLUMN consumes_life_override BOOLEAN",
+                "is_admin_override": "ALTER TABLE survivor_picks ADD COLUMN is_admin_override BOOLEAN NOT NULL DEFAULT FALSE",
+                "admin_override_note": "ALTER TABLE survivor_picks ADD COLUMN admin_override_note TEXT",
+                "overridden_by_profile_id": (
+                    "ALTER TABLE survivor_picks ADD COLUMN overridden_by_profile_id UUID "
+                    "REFERENCES profiles(id) ON DELETE SET NULL"
+                ),
+                "overridden_at": "ALTER TABLE survivor_picks ADD COLUMN overridden_at TIMESTAMP WITH TIME ZONE",
+            }
+            for column_name, statement in survivor_pick_additions.items():
+                if column_name not in survivor_pick_columns:
+                    connection.execute(text(statement))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_survivor_picks_overridden_by "
+                    "ON survivor_picks(overridden_by_profile_id)"
+                )
+            )
+
         if "pick_reminder_email_events" not in table_names:
             connection.execute(
                 text(

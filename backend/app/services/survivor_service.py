@@ -20,6 +20,8 @@ from app.models.entities import (
     Team,
 )
 from app.schemas.survivor import (
+    AdminSurvivorPickOverrideRequest,
+    AdminSurvivorPickRowOut,
     SurvivorAvailableTeamOut,
     SurvivorBoardOut,
     SurvivorCurrentMatchdayOut,
@@ -196,9 +198,89 @@ class SurvivorService:
         else:
             pick.match_id = selected_match.id
             pick.team_id = payload.team_id
+            pick.result_override = None
+            pick.consumes_life_override = None
+            pick.is_admin_override = False
+            pick.admin_override_note = None
+            pick.overridden_by_profile_id = None
+            pick.overridden_at = None
         db.add(pick)
         db.commit()
         return self.get_board(db, season.id, profile)
+
+    def list_admin_picks(self, db: Session, season_id: str) -> list[AdminSurvivorPickRowOut]:
+        season = self._get_enabled_season(db, season_id)
+        bundle = self._build_board_bundle(db, season)
+        profiles = {row.id: row for row in db.scalars(select(Profile))}
+        rows: list[AdminSurvivorPickRowOut] = []
+        for pick in bundle["picks"]:
+            view = self._build_pick_out(
+                pick,
+                matchdays_by_id=bundle["matchdays_by_id"],
+                matches_by_matchday=bundle["matches_by_matchday"],
+                matches_by_id=bundle["matches_by_id"],
+                teams_by_id=bundle["teams_by_id"],
+                results_by_match_id=bundle["results_by_match_id"],
+            )
+            profile = profiles.get(pick.profile_id)
+            overridden_by = profiles.get(pick.overridden_by_profile_id)
+            rows.append(AdminSurvivorPickRowOut(
+                **view.model_dump(), profile_id=pick.profile_id,
+                profile_display_name=profile.display_name if profile else "Participante",
+                overridden_by_profile_id=pick.overridden_by_profile_id,
+                overridden_by_display_name=overridden_by.display_name if overridden_by else None,
+                overridden_at=pick.overridden_at,
+            ))
+        return rows
+
+    def save_admin_override(
+        self, db: Session, payload: AdminSurvivorPickOverrideRequest, updated_by: Profile
+    ) -> AdminSurvivorPickRowOut:
+        season = self._get_enabled_season(db, payload.season_id)
+        membership = db.scalar(select(SurvivorMembership).where(
+            SurvivorMembership.season_id == season.id,
+            SurvivorMembership.profile_id == payload.profile_id,
+            SurvivorMembership.is_active.is_(True),
+        ))
+        if membership is None:
+            raise HTTPException(status_code=404, detail="El usuario no esta inscrito en Survivor")
+        matchday = db.get(Matchday, payload.matchday_id)
+        if matchday is None or matchday.season_id != season.id:
+            raise HTTPException(status_code=404, detail="Jornada no encontrada en esta temporada")
+        matches = list(db.scalars(select(Match).where(Match.matchday_id == matchday.id)))
+        match = next((row for row in matches if payload.team_id in {row.home_team_id, row.away_team_id}), None)
+        if match is None:
+            raise HTTPException(status_code=400, detail="El equipo no juega en esta jornada")
+        pick = db.scalar(select(SurvivorPick).where(
+            SurvivorPick.season_id == season.id,
+            SurvivorPick.profile_id == payload.profile_id,
+            SurvivorPick.matchday_id == matchday.id,
+        ))
+        if pick is None:
+            pick = SurvivorPick(season_id=season.id, profile_id=payload.profile_id,
+                                matchday_id=matchday.id, match_id=match.id, team_id=payload.team_id)
+        else:
+            pick.match_id = match.id
+            pick.team_id = payload.team_id
+        pick.result_override = payload.result_override
+        pick.consumes_life_override = payload.consumes_life_override
+        pick.is_admin_override = True
+        pick.admin_override_note = payload.admin_override_note.strip()
+        pick.overridden_by_profile_id = updated_by.id
+        pick.overridden_at = datetime.now(UTC)
+        db.add(pick)
+        db.commit()
+        return next(row for row in self.list_admin_picks(db, season.id) if row.id == pick.id)
+
+    def clear_admin_override(self, db: Session, pick_id: str) -> AdminSurvivorPickRowOut:
+        pick = db.get(SurvivorPick, pick_id)
+        if pick is None:
+            raise HTTPException(status_code=404, detail="Pick de Survivor no encontrado")
+        pick.result_override = None
+        pick.consumes_life_override = None
+        db.add(pick)
+        db.commit()
+        return next(row for row in self.list_admin_picks(db, pick.season_id) if row.id == pick.id)
 
     def _build_board_bundle(self, db: Session, season: Season) -> dict[str, object]:
         competition = db.get(Competition, season.competition_id) if season.competition_id else None
@@ -312,6 +394,7 @@ class SurvivorService:
                     else None
                 ),
                 current_pick=membership_out.current_pick,
+                picks=pick_views_by_profile.get(membership.profile_id, []),
             )
             for membership, membership_out in sorted(
                 leaderboard_rows,
@@ -330,9 +413,12 @@ class SurvivorService:
             "matchdays": matchdays,
             "matches_by_matchday": matches_by_matchday,
             "matches_by_id": matches_by_id,
+            "matchdays_by_id": matchdays_by_id,
+            "results_by_match_id": results_by_match_id,
             "teams_by_id": teams_by_id,
             "memberships": memberships,
             "picks_by_profile": picks_by_profile,
+            "picks": picks,
             "pick_views_by_profile": pick_views_by_profile,
             "leaderboard": leaderboard,
             "current_matchday": current_matchday,
@@ -377,7 +463,7 @@ class SurvivorService:
             matchdays=matchdays,
             matches_by_matchday=matches_by_matchday,
         )
-        lives_spent = sum(1 for pick_view in pick_views if pick_view.result_status == "lost") + len(missed_matchday_ids)
+        lives_spent = sum(1 for pick_view in pick_views if pick_view.consumed_life) + len(missed_matchday_ids)
         max_lives = max(1, season.survivor_max_lives)
         remaining_lives = max(max_lives - lives_spent, 0)
         used_team_ids = [pick.team_id for pick in picks]
@@ -415,7 +501,8 @@ class SurvivorService:
         opponent_team_id = match.away_team_id if pick.team_id == match.home_team_id else match.home_team_id
         opponent_team = teams_by_id.get(opponent_team_id) if opponent_team_id else None
         result = results_by_match_id.get(pick.match_id)
-        result_status = self._resolve_pick_result_status(pick, match, result)
+        result_status = pick.result_override or self._resolve_pick_result_status(pick, match, result)
+        consumed_life = pick.consumes_life_override if pick.consumes_life_override is not None else result_status == "lost"
         is_locked = self._is_matchday_locked(matchday, matches_by_matchday.get(pick.matchday_id, []))
         return SurvivorPickOut(
             id=pick.id,
@@ -434,7 +521,11 @@ class SurvivorService:
             is_locked=is_locked,
             is_revealed=is_locked,
             result_status=result_status,
-            consumed_life=result_status == "lost",
+            consumed_life=consumed_life,
+            is_admin_override=pick.is_admin_override,
+            admin_override_note=pick.admin_override_note,
+            result_override=pick.result_override,
+            consumes_life_override=pick.consumes_life_override,
             created_at=pick.created_at,
             updated_at=pick.updated_at,
         )

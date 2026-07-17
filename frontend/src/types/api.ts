@@ -937,8 +937,20 @@ export interface SurvivorPick {
   is_revealed: boolean;
   result_status: "pending" | "won" | "lost" | "draw";
   consumed_life: boolean;
+  is_admin_override: boolean;
+  admin_override_note: string | null;
+  result_override: "pending" | "won" | "lost" | "draw" | null;
+  consumes_life_override: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AdminSurvivorPick extends SurvivorPick {
+  profile_id: string;
+  profile_display_name: string;
+  overridden_by_profile_id: string | null;
+  overridden_by_display_name: string | null;
+  overridden_at: string | null;
 }
 
 export interface SurvivorMembership {
@@ -980,6 +992,7 @@ export interface SurvivorLeaderboardEntry {
   alive: boolean;
   last_pick_team_name: string | null;
   current_pick: SurvivorPick | null;
+  picks: SurvivorPick[];
 }
 
 export interface SurvivorSeasonSummary {

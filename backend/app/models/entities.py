@@ -582,6 +582,16 @@ class SurvivorPick(Base):
     matchday_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("matchdays.id", ondelete="CASCADE"), index=True)
     match_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("matches.id", ondelete="CASCADE"), index=True)
     team_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    result_override: Mapped[str | None] = mapped_column(String(16))
+    consumes_life_override: Mapped[bool | None] = mapped_column(Boolean)
+    is_admin_override: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    admin_override_note: Mapped[str | None] = mapped_column(Text)
+    overridden_by_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -17,6 +17,7 @@ const links = [
   { href: "/dashboard/admin/prizes", label: "Premios" },
   { href: "/dashboard/admin/users", label: "Usuarios" },
   { href: "/dashboard/admin/picks", label: "Picks" },
+  { href: "/dashboard/admin/survivor", label: "Survivor" },
   { href: "/dashboard/admin/vip", label: "VIP" },
   { href: "/dashboard/admin/user-info", label: "Info usuarios" },
   { href: "/dashboard/admin/seasons", label: "Temporadas" },

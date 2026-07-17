@@ -102,6 +102,7 @@ from app.schemas.profile import ProfileOut
 from app.schemas.rules import RulePageOut, RulePageUpdateRequest
 from app.schemas.season import SeasonOut
 from app.schemas.team import TeamOut
+from app.schemas.survivor import AdminSurvivorPickOverrideRequest, AdminSurvivorPickRowOut
 from app.schemas.vip import (
     AdminVipQuestionPoolBulkCorrectOptionRequest,
     AdminVipCompetitionOut,
@@ -122,6 +123,7 @@ from app.services.result_service import ResultService
 from app.services.scoring_service import ScoringService
 from app.services.season_eligibility_service import SeasonEligibilityService
 from app.services.supabase_admin_service import SupabaseAdminError, SupabaseAdminService
+from app.services.survivor_service import SurvivorService
 from app.services.sync_matches import sync_matches
 from app.services.sync_odds import sync_odds
 from app.services.sync_results import sync_results
@@ -137,6 +139,7 @@ team_repo = TeamRepository()
 match_service = MatchService()
 result_service = ResultService()
 pick_service = PickService()
+survivor_service = SurvivorService()
 season_eligibility_service = SeasonEligibilityService()
 vip_service = VipService()
 supabase_admin_service = SupabaseAdminService()
@@ -2729,6 +2732,33 @@ def save_admin_pick_override(
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminPickRowOut:
     return pick_service.save_admin_override(db, payload, updated_by=current_profile)
+
+
+@router.get("/survivor/picks", response_model=list[AdminSurvivorPickRowOut])
+def list_admin_survivor_picks(
+    season_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> list[AdminSurvivorPickRowOut]:
+    return survivor_service.list_admin_picks(db, season_id)
+
+
+@router.post("/survivor/picks/override", response_model=AdminSurvivorPickRowOut)
+def save_admin_survivor_pick_override(
+    payload: AdminSurvivorPickOverrideRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminSurvivorPickRowOut:
+    return survivor_service.save_admin_override(db, payload, updated_by=current_profile)
+
+
+@router.delete("/survivor/picks/{pick_id}/override", response_model=AdminSurvivorPickRowOut)
+def clear_admin_survivor_pick_override(
+    pick_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminSurvivorPickRowOut:
+    return survivor_service.clear_admin_override(db, pick_id)
 
 
 @router.get("/vip", response_model=list[AdminVipCompetitionOut])
