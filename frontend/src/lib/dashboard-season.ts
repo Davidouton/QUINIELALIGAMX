@@ -20,12 +20,18 @@ export function isSeasonLive(season: Season) {
   return season.visibility_status === "live";
 }
 
+export function isSeasonCurrentForUser(season: Season) {
+  return season.visibility_status === "live" || season.visibility_status === "testing";
+}
+
 export function isSeasonArchived(season: Season) {
   return season.visibility_status === "archived";
 }
 
 export function getLiveSeasons(seasons: Season[]) {
-  return asSeasonArray(seasons).filter((season) => isSeasonLive(season));
+  // Testing seasons have already been authorization-filtered by the backend.
+  // Treat the assigned ones as current everywhere except public enrollment.
+  return asSeasonArray(seasons).filter((season) => isSeasonCurrentForUser(season));
 }
 
 export function filterSeasonsByCompetition(seasons: Season[], competitionId: string) {

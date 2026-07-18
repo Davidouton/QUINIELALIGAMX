@@ -8,6 +8,7 @@ import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/tra
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import {
   filterMatchdaysBySeason,
+  getLiveSeasons,
   isSurvivorAvailableForSeason,
   resolveLiveSeason,
   resolveSurvivorSeason,
@@ -539,20 +540,7 @@ export function PickBoard() {
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
   const visibleSeasons = useMemo(
     () =>
-      state.seasons
-        .filter((season) => {
-          if (season.visibility_status === "live") {
-            return true;
-          }
-          if (season.visibility_status !== "testing") {
-            return false;
-          }
-          return Boolean(
-            state.me?.season_memberships.some(
-              (membership) => membership.season_id === season.id && membership.is_active,
-            ),
-          );
-        })
+      getLiveSeasons(state.seasons)
         .sort((left, right) => {
           if (left.is_active !== right.is_active) {
             return left.is_active ? -1 : 1;
@@ -562,7 +550,7 @@ export function PickBoard() {
           }
           return left.name.localeCompare(right.name, "es-MX");
         }),
-    [state.me?.season_memberships, state.seasons],
+    [state.seasons],
   );
 
   useEffect(() => {
