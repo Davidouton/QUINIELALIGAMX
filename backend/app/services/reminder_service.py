@@ -371,17 +371,16 @@ class ReminderService:
         window_minutes: int,
     ) -> list[DueReminder]:
         reminders: list[DueReminder] = []
-        matches_by_date: dict[date, list[Match]] = defaultdict(list)
+        matches_by_lock: dict[datetime, list[Match]] = defaultdict(list)
         for match in open_matches:
-            local_match_date = ensure_utc(match.picks_lock_at).astimezone(MEXICO_CITY_TZ).date()
-            matches_by_date[local_match_date].append(match)
+            matches_by_lock[ensure_utc(match.picks_lock_at)].append(match)
 
-        for local_match_date, date_matches in matches_by_date.items():
-            first_lock = min(match.picks_lock_at for match in date_matches)
+        for lock_at, lock_matches in matches_by_lock.items():
+            local_match_date = lock_at.astimezone(MEXICO_CITY_TZ).date()
             for hours_before in (1, 3):
                 if not self._is_due_window(
                     now=now,
-                    target_at=first_lock - timedelta(hours=hours_before),
+                    target_at=lock_at - timedelta(hours=hours_before),
                     window_minutes=window_minutes,
                 ):
                     continue
@@ -392,23 +391,46 @@ class ReminderService:
                 if not eligible_profiles:
                     continue
 
-                match_ids = [match.id for match in date_matches]
+                match_ids = [match.id for match in lock_matches]
                 profile_ids = [profile.id for profile in eligible_profiles]
-                picks_by_profile = self._count_picks_by_profile(db, profile_ids=profile_ids, match_ids=match_ids)
-                total_matches = len(match_ids)
+                picked_match_ids_by_profile: dict[str, set[str]] = defaultdict(set)
+                for profile_id, match_id in db.execute(
+                    select(UserPick.profile_id, UserPick.match_id).where(
+                        UserPick.profile_id.in_(profile_ids),
+                        UserPick.match_id.in_(match_ids),
+                    )
+                ):
+                    picked_match_ids_by_profile[profile_id].add(match_id)
+
+                team_ids = {
+                    team_id
+                    for match in lock_matches
+                    for team_id in (match.home_team_id, match.away_team_id)
+                    if team_id is not None
+                }
+                teams_by_id = (
+                    {team.id: team for team in db.scalars(select(Team).where(Team.id.in_(team_ids)))}
+                    if team_ids
+                    else {}
+                )
 
                 candidates = [
                     self._build_pre_game_reminder(
                         profile=profile,
                         matchday=matchday,
                         season=season,
-                        date_matches=date_matches,
+                        lock_at=lock_at,
                         local_match_date=local_match_date,
                         hours_before=hours_before,
-                        missing_count=total_matches - picks_by_profile.get(profile.id, 0),
+                        missing_matches=[
+                            match
+                            for match in lock_matches
+                            if match.id not in picked_match_ids_by_profile[profile.id]
+                        ],
+                        teams_by_id=teams_by_id,
                     )
                     for profile in eligible_profiles
-                    if total_matches - picks_by_profile.get(profile.id, 0) > 0
+                    if len(picked_match_ids_by_profile[profile.id]) < len(match_ids)
                 ]
                 reminders.extend(self._filter_existing_reminders(db, candidates))
 
@@ -549,21 +571,30 @@ class ReminderService:
         profile: Profile,
         matchday: Matchday,
         season: Season,
-        date_matches: list[Match],
+        lock_at: datetime,
         local_match_date: date,
         hours_before: int,
-        missing_count: int,
+        missing_matches: list[Match],
+        teams_by_id: dict[str, Team],
     ) -> DueReminder:
         dashboard_url = self._dashboard_url()
         formatted_date = local_match_date.strftime("%d/%m/%Y")
-        title = f"Cierra tu pick en {hours_before} hora{'s' if hours_before != 1 else ''}"
+        title = "Tu pick está próximo a cerrar"
+        missing_match_labels = [
+            (
+                f"{teams_by_id[match.home_team_id].short_name} vs "
+                f"{teams_by_id[match.away_team_id].short_name}"
+            )
+            if match.home_team_id in teams_by_id and match.away_team_id in teams_by_id
+            else "Partido pendiente"
+            for match in missing_matches
+        ]
         body = (
-            f"Quedan {hours_before} hora{'s' if hours_before != 1 else ''} para el cierre del primer pick del dia "
-            f"en {matchday.name} ({formatted_date}) y aun te faltan {missing_count} picks. "
-            f"Partidos abiertos hoy: {len(date_matches)}."
+            f"Aún no tienes pick en: {', '.join(missing_match_labels)}. "
+            f"El cierre está próximo en {matchday.name} ({formatted_date})."
         )
         return DueReminder(
-            dedupe_key=f"pre-game:{matchday.id}:{local_match_date.isoformat()}:{hours_before}:{profile.id}",
+            dedupe_key=f"pre-game:{matchday.id}:{lock_at.isoformat()}:{hours_before}:{profile.id}",
             profile_id=profile.id,
             external_user_id=profile.auth_user_id,
             recipient_reference=profile.email or profile.auth_user_id,

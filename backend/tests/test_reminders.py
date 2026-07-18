@@ -60,6 +60,25 @@ def test_collect_due_push_reminders_includes_pre_game():
 
         assert reminder_kinds == {PickReminderKind.PRE_GAME}
         assert all(reminder.profile_id == PROFILE_USER_ID for reminder in reminders)
+        assert reminders[0].title == "Tu pick está próximo a cerrar"
+        assert "AME vs CHI" in reminders[0].body
+        assert "TIG vs MTY" not in reminders[0].body
+        assert "1 hora" not in reminders[0].body
+        assert "3 horas" not in reminders[0].body
+
+        second_match = db.scalar(
+            select(Match).where(Match.matchday_id == MATCHDAY_ID).order_by(Match.picks_lock_at.desc())
+        )
+        assert second_match is not None
+        later_reminders = service.collect_due_push_reminders(
+            db,
+            now_utc=second_match.picks_lock_at - timedelta(hours=3) + timedelta(minutes=5),
+            window_minutes=70,
+        )
+        assert len(later_reminders) == 1
+        assert "TIG vs MTY" in later_reminders[0].body
+        assert "AME vs CHI" not in later_reminders[0].body
+        assert later_reminders[0].dedupe_key != reminders[0].dedupe_key
     finally:
         db.close()
 
