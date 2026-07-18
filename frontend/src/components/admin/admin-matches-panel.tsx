@@ -152,9 +152,24 @@ export function AdminMatchesPanel() {
     return teams.filter((team) => team.competition_id === competitionId);
   }
 
-  async function loadMatches(matchdayId: string, accessToken?: string) {
+  async function loadMatches(
+    matchdayId: string,
+    accessToken?: string,
+    seasonId: string = selectedSeasonId,
+    availableMatchdays: Matchday[] = matchdays,
+  ) {
     const path = matchdayId ? `/matches?matchday_id=${matchdayId}` : "/matches";
-    const rows = await backendFetch<Match[]>(path, accessToken);
+    const resolvedAccessToken = accessToken ?? await getBrowserAccessToken();
+    const rows = await backendFetch<Match[]>(path, resolvedAccessToken);
+    if (!matchdayId && seasonId) {
+      const seasonMatchdayIds = new Set(
+        availableMatchdays
+          .filter((matchday) => matchday.season_id === seasonId)
+          .map((matchday) => matchday.id),
+      );
+      setMatches(rows.filter((match) => seasonMatchdayIds.has(match.matchday_id)));
+      return;
+    }
     setMatches(rows);
   }
 
@@ -176,7 +191,7 @@ export function AdminMatchesPanel() {
     setSelectedSeasonId((current) => current || defaultSeasonId);
     setBulkMatchdayId((current) => current || defaultMatchdayId);
     setCreateForm((current) => ({ ...current, matchday_id: current.matchday_id || defaultMatchdayId }));
-    await loadMatches(selectedMatchdayId);
+    await loadMatches(selectedMatchdayId, accessToken, defaultSeasonId, matchdayRows);
   }
 
   useEffect(() => {
@@ -417,7 +432,7 @@ export function AdminMatchesPanel() {
                 }));
                 setError(null);
                 setMessage(null);
-                void loadMatches(nextMatchdayId);
+                void loadMatches(nextMatchdayId, undefined, nextSeasonId);
               }}
               className="field-control"
             >
@@ -440,7 +455,7 @@ export function AdminMatchesPanel() {
                 setError(null);
                 setMessage(null);
                 try {
-                  await loadMatches(nextMatchdayId);
+                  await loadMatches(nextMatchdayId, undefined, selectedSeasonId);
                 } catch (caughtError) {
                   setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los partidos");
                 }
