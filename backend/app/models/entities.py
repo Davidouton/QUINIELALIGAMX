@@ -497,6 +497,31 @@ class MatchResult(Base):
     )
 
 
+class LiveMatchScore(Base):
+    __tablename__ = "live_match_scores"
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    match_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("matches.id", ondelete="CASCADE"),
+        unique=True,
+        index=True,
+    )
+    home_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    away_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_by_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class RawMatchResult(Base):
     __tablename__ = "raw_match_results"
 

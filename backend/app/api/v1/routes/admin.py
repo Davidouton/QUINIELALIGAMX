@@ -23,6 +23,7 @@ from app.models.entities import (
     Competition,
     CommerceSettings,
     HistoricalChampion,
+    LiveMatchScore,
     Match,
     MatchResult,
     Matchday,
@@ -56,6 +57,8 @@ from app.repositories.season_repository import SeasonRepository
 from app.repositories.team_repository import TeamRepository
 from app.schemas.admin import (
     AdvancedStatsPullResponse,
+    AdminLiveScoreRowOut,
+    AdminLiveScoreUpdateRequest,
     AdminPickOverrideRequest,
     AdminPickRowOut,
     AdminResultRowOut,
@@ -2798,6 +2801,79 @@ def list_admin_results(
     return result_service.list_admin_results(db, matchday_id=matchday_id)
 
 
+@router.get("/live-scores", response_model=list[AdminLiveScoreRowOut])
+def list_admin_live_scores(
+    matchday_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> list[AdminLiveScoreRowOut]:
+    result_rows = result_service.list_admin_results(db, matchday_id=matchday_id)
+    live_by_match_id = {
+        row.match_id: row
+        for row in db.scalars(
+            select(LiveMatchScore)
+            .join(Match, Match.id == LiveMatchScore.match_id)
+            .where(Match.matchday_id == matchday_id)
+        )
+    }
+    return [
+        AdminLiveScoreRowOut(
+            match_id=row.match_id,
+            matchday_id=row.matchday_id,
+            kickoff_at=row.kickoff_at,
+            match_status=row.match_status,
+            home_team_name=row.home_team_name,
+            away_team_name=row.away_team_name,
+            live_home_score=live_by_match_id[row.match_id].home_score if row.match_id in live_by_match_id else None,
+            live_away_score=live_by_match_id[row.match_id].away_score if row.match_id in live_by_match_id else None,
+            official_home_score=row.home_score,
+            official_away_score=row.away_score,
+            official_is_official=row.is_official,
+            updated_at=live_by_match_id[row.match_id].updated_at if row.match_id in live_by_match_id else None,
+        )
+        for row in result_rows
+    ]
+
+
+@router.put("/live-scores/{match_id}", response_model=AdminLiveScoreRowOut)
+def update_admin_live_score(
+    match_id: str,
+    payload: AdminLiveScoreUpdateRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminLiveScoreRowOut:
+    match = db.get(Match, match_id)
+    if match is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+    row = db.scalar(select(LiveMatchScore).where(LiveMatchScore.match_id == match_id))
+    if row is None:
+        row = LiveMatchScore(match_id=match_id, home_score=payload.home_score, away_score=payload.away_score)
+    row.home_score = payload.home_score
+    row.away_score = payload.away_score
+    row.updated_by_profile_id = current_profile.id
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return next(
+        item
+        for item in list_admin_live_scores(matchday_id=match.matchday_id, db=db, _=current_profile)
+        if item.match_id == match_id
+    )
+
+
+@router.delete("/live-scores/{match_id}", status_code=204)
+def clear_admin_live_score(
+    match_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> Response:
+    row = db.scalar(select(LiveMatchScore).where(LiveMatchScore.match_id == match_id))
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/picks", response_model=list[AdminPickRowOut])
 def list_admin_picks(
     matchday_id: str,
@@ -3166,6 +3242,9 @@ def update_admin_result(
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.save_admin_result(db, match_id, payload, updated_by=current_profile)
+    if payload.is_official:
+        db.execute(delete(LiveMatchScore).where(LiveMatchScore.match_id == match_id))
+        db.commit()
     recalculate_matchday_scoring_inline(db, matchday_id=result.matchday_id, match_id=match_id)
     return result
 

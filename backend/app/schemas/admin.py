@@ -114,6 +114,26 @@ class AdminResultUpdateRequest(BaseModel):
     is_official: bool = True
 
 
+class AdminLiveScoreRowOut(BaseModel):
+    match_id: str
+    matchday_id: str
+    kickoff_at: datetime
+    match_status: MatchStatus
+    home_team_name: str
+    away_team_name: str
+    live_home_score: int | None = None
+    live_away_score: int | None = None
+    official_home_score: int | None = None
+    official_away_score: int | None = None
+    official_is_official: bool = False
+    updated_at: datetime | None = None
+
+
+class AdminLiveScoreUpdateRequest(BaseModel):
+    home_score: int = Field(ge=0)
+    away_score: int = Field(ge=0)
+
+
 class AdminPickOverrideRequest(BaseModel):
     profile_id: str
     match_id: str

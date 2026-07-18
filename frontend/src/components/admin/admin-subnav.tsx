@@ -25,6 +25,7 @@ const links = [
   { href: "/dashboard/admin/odds", label: "Probabilidades" },
   { href: "/dashboard/admin/matches", label: "Partidos" },
   { href: "/dashboard/admin/results", label: "Resultados" },
+  { href: "/dashboard/admin/live-score", label: "Live Score" },
   { href: "/dashboard/admin/hall-of-fame", label: "Salon de la Fama" },
   { href: "/dashboard/admin/trophies", label: "Trofeos" },
   { href: "/dashboard/admin/rules", label: "Editar regl." },

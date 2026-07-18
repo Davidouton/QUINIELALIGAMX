@@ -1391,6 +1391,30 @@ def run_startup_migrations() -> None:
                 )
             )
 
+        if "live_match_scores" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS live_match_scores (
+                      id UUID PRIMARY KEY,
+                      match_id UUID NOT NULL UNIQUE REFERENCES matches(id) ON DELETE CASCADE,
+                      home_score INTEGER NOT NULL,
+                      away_score INTEGER NOT NULL,
+                      updated_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_live_match_scores_match ON live_match_scores(match_id)"))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_live_match_scores_updated_by "
+                    "ON live_match_scores(updated_by_profile_id)"
+                )
+            )
+
         if "historical_champions" in table_names:
             backfill_rows = connection.execute(
                 text(

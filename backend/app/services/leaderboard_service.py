@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ from app.core.datetime import ensure_utc
 from app.models.entities import (
     Competition,
     HistoricalChampion,
+    LiveMatchScore,
     Match,
     MatchResult,
     Matchday,
@@ -563,26 +565,28 @@ class LeaderboardService:
         updated_at: datetime | None = None
 
         rows = db.execute(
-            select(UserPick, Match, MatchResult)
+            select(UserPick, Match, MatchResult, LiveMatchScore)
             .join(Match, Match.id == UserPick.match_id)
             .join(Matchday, Matchday.id == Match.matchday_id)
-            .join(MatchResult, MatchResult.match_id == Match.id)
+            .outerjoin(MatchResult, MatchResult.match_id == Match.id)
+            .outerjoin(LiveMatchScore, LiveMatchScore.match_id == Match.id)
             .where(
                 Matchday.season_id == season.id,
-                MatchResult.home_score.is_not(None),
-                MatchResult.away_score.is_not(None),
             )
             .order_by(Match.kickoff_at.asc())
         ).all()
 
-        for pick, match, result in rows:
+        for pick, match, result, live_score in rows:
             if pick.profile_id not in totals_by_profile:
+                continue
+            effective_result = self._effective_live_result(result, live_score)
+            if effective_result is None:
                 continue
 
             score = self._score_pick(
                 pick=pick,
                 match=match,
-                result=result,
+                result=effective_result,
                 season=season,
                 is_nfl_competition=is_nfl_competition,
                 rules=rules,
@@ -594,7 +598,11 @@ class LeaderboardService:
             if live_matchday is not None and match.matchday_id == live_matchday.id:
                 bucket["live_matchday_points"] += score["total_points"]
 
-            result_updated_at = result.updated_at or result.last_synced_at or result.source_updated_at
+            result_updated_at = (
+                live_score.updated_at
+                if live_score is not None
+                else result.updated_at or result.last_synced_at or result.source_updated_at
+            )
             if result_updated_at is not None and (updated_at is None or result_updated_at > updated_at):
                 updated_at = result_updated_at
 
@@ -635,15 +643,17 @@ class LeaderboardService:
         matches: list[LiveMatchScoreOut] = []
         if live_matchday is not None:
             live_match_rows = db.execute(
-                select(Match, MatchResult)
+                select(Match, MatchResult, LiveMatchScore)
                 .outerjoin(MatchResult, MatchResult.match_id == Match.id)
+                .outerjoin(LiveMatchScore, LiveMatchScore.match_id == Match.id)
                 .where(Match.matchday_id == live_matchday.id)
                 .order_by(Match.kickoff_at.asc())
             ).all()
-            for match, result in live_match_rows:
+            for match, result, live_score in live_match_rows:
                 home_team = teams.get(match.home_team_id)
                 away_team = teams.get(match.away_team_id)
-                result_updated_at = result.updated_at if result is not None else None
+                effective_result = self._effective_live_result(result, live_score)
+                result_updated_at = live_score.updated_at if live_score is not None else result.updated_at if result is not None else None
                 if result_updated_at is not None and (updated_at is None or result_updated_at > updated_at):
                     updated_at = result_updated_at
                 matches.append(
@@ -657,9 +667,9 @@ class LeaderboardService:
                         home_team_crest_url=home_team.crest_url if home_team is not None else None,
                         away_team_name=away_team.name if away_team is not None else match.away_placeholder or "Visitante",
                         away_team_crest_url=away_team.crest_url if away_team is not None else None,
-                        home_score=result.home_score if result is not None else None,
-                        away_score=result.away_score if result is not None else None,
-                        is_official=bool(result.is_official) if result is not None else False,
+                        home_score=effective_result.home_score if effective_result is not None else None,
+                        away_score=effective_result.away_score if effective_result is not None else None,
+                        is_official=bool(result.is_official) if result is not None and live_score is None else False,
                         updated_at=result_updated_at,
                     )
                 )
@@ -745,26 +755,28 @@ class LeaderboardService:
         updated_at: datetime | None = None
 
         rows = db.execute(
-            select(UserPick, Match, MatchResult)
+            select(UserPick, Match, MatchResult, LiveMatchScore)
             .join(Match, Match.id == UserPick.match_id)
-            .join(MatchResult, MatchResult.match_id == Match.id)
+            .outerjoin(MatchResult, MatchResult.match_id == Match.id)
+            .outerjoin(LiveMatchScore, LiveMatchScore.match_id == Match.id)
             .where(
                 Match.matchday_id.in_(matchday_ids),
                 UserPick.profile_id.in_(eligible_profile_ids),
-                MatchResult.home_score.is_not(None),
-                MatchResult.away_score.is_not(None),
             )
             .order_by(Match.kickoff_at.asc())
         ).all()
 
-        for pick, match, result in rows:
+        for pick, match, result, live_score in rows:
             if pick.profile_id not in totals_by_profile:
+                continue
+            effective_result = self._effective_live_result(result, live_score)
+            if effective_result is None:
                 continue
 
             score = self._score_pick(
                 pick=pick,
                 match=match,
-                result=result,
+                result=effective_result,
                 season=season,
                 is_nfl_competition=is_nfl_competition,
                 rules=rules,
@@ -776,7 +788,11 @@ class LeaderboardService:
             if live_matchday is not None and match.matchday_id == live_matchday.id:
                 bucket["live_matchday_points"] += score["total_points"]
 
-            result_updated_at = result.updated_at or result.last_synced_at or result.source_updated_at
+            result_updated_at = (
+                live_score.updated_at
+                if live_score is not None
+                else result.updated_at or result.last_synced_at or result.source_updated_at
+            )
             if result_updated_at is not None and (updated_at is None or result_updated_at > updated_at):
                 updated_at = result_updated_at
 
@@ -818,15 +834,17 @@ class LeaderboardService:
         matches: list[LiveMatchScoreOut] = []
         if live_matchday is not None:
             live_match_rows = db.execute(
-                select(Match, MatchResult)
+                select(Match, MatchResult, LiveMatchScore)
                 .outerjoin(MatchResult, MatchResult.match_id == Match.id)
+                .outerjoin(LiveMatchScore, LiveMatchScore.match_id == Match.id)
                 .where(Match.matchday_id == live_matchday.id)
                 .order_by(Match.kickoff_at.asc())
             ).all()
-            for match, result in live_match_rows:
+            for match, result, live_score in live_match_rows:
                 home_team = teams.get(match.home_team_id)
                 away_team = teams.get(match.away_team_id)
-                result_updated_at = result.updated_at if result is not None else None
+                effective_result = self._effective_live_result(result, live_score)
+                result_updated_at = live_score.updated_at if live_score is not None else result.updated_at if result is not None else None
                 if result_updated_at is not None and (updated_at is None or result_updated_at > updated_at):
                     updated_at = result_updated_at
                 matches.append(
@@ -840,9 +858,9 @@ class LeaderboardService:
                         home_team_crest_url=home_team.crest_url if home_team is not None else None,
                         away_team_name=away_team.name if away_team is not None else match.away_placeholder or "Visitante",
                         away_team_crest_url=away_team.crest_url if away_team is not None else None,
-                        home_score=result.home_score if result is not None else None,
-                        away_score=result.away_score if result is not None else None,
-                        is_official=bool(result.is_official) if result is not None else False,
+                        home_score=effective_result.home_score if effective_result is not None else None,
+                        away_score=effective_result.away_score if effective_result is not None else None,
+                        is_official=bool(result.is_official) if result is not None and live_score is None else False,
                         updated_at=result_updated_at,
                     )
                 )
@@ -964,12 +982,29 @@ class LeaderboardService:
                 team_ids.add(away_team_id)
         return team_ids
 
+    @staticmethod
+    def _effective_live_result(
+        official_result: MatchResult | None,
+        live_score: LiveMatchScore | None,
+    ) -> MatchResult | SimpleNamespace | None:
+        if live_score is not None:
+            return SimpleNamespace(
+                home_score=live_score.home_score,
+                away_score=live_score.away_score,
+                advancing_team_id=official_result.advancing_team_id if official_result is not None else None,
+            )
+        if official_result is not None and (
+            official_result.home_score is None or official_result.away_score is None
+        ):
+            return None
+        return official_result
+
     def _score_pick(
         self,
         *,
         pick: UserPick,
         match: Match,
-        result: MatchResult,
+        result: MatchResult | SimpleNamespace,
         season: Season,
         is_nfl_competition: bool,
         rules: dict[str, int],

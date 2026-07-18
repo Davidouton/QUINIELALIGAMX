@@ -1485,3 +1485,18 @@ export interface AdminResultRow {
   source_provider_name: string | null;
   is_manual_override: boolean;
 }
+
+export interface AdminLiveScoreRow {
+  match_id: string;
+  matchday_id: string;
+  kickoff_at: string;
+  match_status: MatchStatus;
+  home_team_name: string;
+  away_team_name: string;
+  live_home_score: number | null;
+  live_away_score: number | null;
+  official_home_score: number | null;
+  official_away_score: number | null;
+  official_is_official: boolean;
+  updated_at: string | null;
+}
