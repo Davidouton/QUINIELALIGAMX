@@ -1376,9 +1376,7 @@ export function DashboardHome() {
     survivorSeason && isSurvivorAvailableForSeason(survivorSeason),
   );
   const resolvedActiveTab: DashboardTab =
-    activeTab === "probabilidades"
-      ? "general"
-      : activeTab === "survivor" && !canShowSurvivorDashboardTab
+    activeTab === "survivor" && !canShowSurvivorDashboardTab
       ? "general"
       : activeTab;
 
