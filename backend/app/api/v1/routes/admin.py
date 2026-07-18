@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import os
 import re
 import subprocess
@@ -134,6 +135,8 @@ from app.services.sync_odds import sync_odds
 from app.services.sync_results import sync_results
 from app.services.vip_service import VipService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 profile_repo = ProfileRepository()
 matchday_repo = MatchdayRepository()
@@ -232,6 +235,27 @@ def run_scoring_and_vip_recalculate_for_matchday_background(
         ReminderService().send_match_scoring_notifications(db, matchday_id=matchday_id, match_id=match_id)
     finally:
         db.close()
+
+
+def recalculate_matchday_scoring_inline(
+    db: Session,
+    *,
+    matchday_id: str,
+    match_id: str | None = None,
+) -> dict[str, int]:
+    summary = ScoringService().recalculate_matchday(db, matchday_id)
+    try:
+        recalculate_vips_for_matchday(db, matchday_id)
+    except Exception:
+        logger.exception("VIP recalculation failed", extra={"matchday_id": matchday_id})
+    try:
+        ReminderService().send_match_scoring_notifications(db, matchday_id=matchday_id, match_id=match_id)
+    except Exception:
+        logger.exception(
+            "Match scoring notifications failed",
+            extra={"matchday_id": matchday_id, "match_id": match_id},
+        )
+    return summary
 
 
 def run_matchday_publish_notifications_background(matchday_id: str) -> None:
@@ -3127,48 +3151,33 @@ def update_admin_vip_membership_payment(
 def update_admin_result(
     match_id: str,
     payload: AdminResultUpdateRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.save_admin_result(db, match_id, payload, updated_by=current_profile)
-    background_tasks.add_task(
-        run_scoring_and_vip_recalculate_for_matchday_background,
-        result.matchday_id,
-        match_id,
-    )
+    recalculate_matchday_scoring_inline(db, matchday_id=result.matchday_id, match_id=match_id)
     return result
 
 
 @router.post("/results/{match_id}/clear-override", response_model=AdminResultRowOut)
 def clear_admin_result_override(
     match_id: str,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_manual_override(db, match_id)
-    background_tasks.add_task(
-        run_scoring_and_vip_recalculate_for_matchday_background,
-        result.matchday_id,
-        match_id,
-    )
+    recalculate_matchday_scoring_inline(db, matchday_id=result.matchday_id, match_id=match_id)
     return result
 
 
 @router.delete("/results/{match_id}", response_model=AdminResultRowOut)
 def clear_admin_result(
     match_id: str,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminResultRowOut:
     result = result_service.clear_admin_result(db, match_id)
-    background_tasks.add_task(
-        run_scoring_and_vip_recalculate_for_matchday_background,
-        result.matchday_id,
-        match_id,
-    )
+    recalculate_matchday_scoring_inline(db, matchday_id=result.matchday_id, match_id=match_id)
     return result
 
 
@@ -3181,7 +3190,7 @@ def sync_admin_results(
 ) -> SyncResponse:
     response = SyncResponse(**sync_results(db, get_results_provider(), matchday_id=matchday_id))
     if matchday_id is not None:
-        background_tasks.add_task(run_scoring_and_vip_recalculate_for_matchday_background, matchday_id)
+        recalculate_matchday_scoring_inline(db, matchday_id=matchday_id)
     else:
         background_tasks.add_task(run_scoring_recalculate_background)
         background_tasks.add_task(run_all_vip_recalculate_background)

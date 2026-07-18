@@ -309,7 +309,7 @@ def load_raw_rows(
     return rows
 
 
-def build_match_lookup(db: Session) -> dict[str, list[Match]]:
+def build_match_lookup(db: Session, season_id: str) -> dict[str, list[Match]]:
     from sqlalchemy.orm import aliased
 
     HomeTeam = aliased(Team)
@@ -318,6 +318,11 @@ def build_match_lookup(db: Session) -> dict[str, list[Match]]:
         select(Match, HomeTeam, AwayTeam)
         .join(HomeTeam, HomeTeam.id == Match.home_team_id)
         .join(AwayTeam, AwayTeam.id == Match.away_team_id)
+        .join(Matchday, Matchday.id == Match.matchday_id)
+        .where(
+            Matchday.season_id == season_id,
+            Match.status != MatchStatus.ARCHIVED,
+        )
         .order_by(Match.kickoff_at.asc())
     )
     lookup: dict[str, list[Match]] = defaultdict(list)
@@ -328,10 +333,28 @@ def build_match_lookup(db: Session) -> dict[str, list[Match]]:
     return lookup
 
 
-def find_match_by_external_id(db: Session, fixture_id: str | None) -> Match | None:
+def find_match_by_external_id(db: Session, fixture_id: str | None, *, season_id: str) -> Match | None:
     if not fixture_id:
         return None
-    return db.scalar(select(Match).where(Match.external_id == str(fixture_id)))
+
+    in_season_match = db.scalar(
+        select(Match)
+        .join(Matchday, Matchday.id == Match.matchday_id)
+        .where(
+            Match.external_id == str(fixture_id),
+            Matchday.season_id == season_id,
+            Match.status != MatchStatus.ARCHIVED,
+        )
+    )
+    if in_season_match is not None:
+        return in_season_match
+
+    return db.scalar(
+        select(Match).where(
+            Match.external_id == str(fixture_id),
+            Match.status != MatchStatus.ARCHIVED,
+        )
+    )
 
 
 def create_match_from_row(db: Session, matchday: Matchday, home_team: Team, away_team: Team, row: RawOddsRow) -> Match:
@@ -398,7 +421,7 @@ def main() -> int:
         season, created_season = ensure_active_season(db, raw_rows[0].match_date, sport_key=args.sport_key)
         matchday, created_matchday = ensure_snapshot_matchday(db, season, raw_rows)
         teams_by_code, teams_by_name = load_team_registry(db)
-        match_lookup = build_match_lookup(db)
+        match_lookup = build_match_lookup(db, season.id)
         matched = 0
         unmatched = 0
         missing_teams = 0
@@ -427,11 +450,18 @@ def main() -> int:
                 continue
 
             candidates = match_lookup.get(row.source_match_key, [])
-            if not candidates and row.fixture_id:
-                existing_by_external_id = find_match_by_external_id(db, row.fixture_id)
-                if existing_by_external_id is not None:
+            existing_by_external_id = find_match_by_external_id(db, row.fixture_id, season_id=season.id)
+
+            if existing_by_external_id is not None:
+                exact_candidate = next(
+                    (candidate for candidate in candidates if candidate.id == existing_by_external_id.id),
+                    None,
+                )
+                if exact_candidate is not None:
+                    candidates = [exact_candidate, *[candidate for candidate in candidates if candidate.id != exact_candidate.id]]
+                else:
                     match_lookup[row.source_match_key].append(existing_by_external_id)
-                    candidates = [existing_by_external_id]
+                    candidates = [existing_by_external_id, *candidates]
             if not candidates:
                 created_match = create_match_from_row(db, matchday, home_team, away_team, row)
                 match_lookup[row.source_match_key].append(created_match)
