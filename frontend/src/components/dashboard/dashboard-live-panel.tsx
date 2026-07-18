@@ -215,7 +215,6 @@ export function DashboardLivePanel({ season, vipId = null }: DashboardLivePanelP
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-steel">Ranking provisional</p>
-            <p className="mt-1 text-sm text-steel">Cada jugador muestra su subida o bajada al momento.</p>
           </div>
           {error ? <p className="text-xs text-coral">{error}</p> : null}
         </div>

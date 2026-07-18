@@ -127,11 +127,8 @@ export function LivePageContent() {
   if (liveEnabledSeasons.length === 0) {
     return (
       <section className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5">
-        <p className="text-xs uppercase tracking-[0.28em] text-steel">Live</p>
-        <h1 className="mt-2 text-xl font-semibold text-ink">Quiniela al momento</h1>
-        <p className="mt-2 text-sm text-steel">
-          Aun no hay temporadas con la vista live prendida desde admin.
-        </p>
+        <h1 className="text-xl font-semibold text-ink">Live</h1>
+        <p className="mt-2 text-sm text-steel">No hay torneos Live disponibles.</p>
       </section>
     );
   }
@@ -140,11 +137,7 @@ export function LivePageContent() {
     <section className="space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-[#ff7b9a]">Live</p>
-          <h1 className="mt-2 text-xl font-semibold text-ink">Quiniela al momento</h1>
-          <p className="mt-2 max-w-3xl text-sm text-steel">
-            Aqui admin mueve marcadores en resultados y esta vista recalcula posiciones provisionales en tiempo real para torneo regular o VIP.
-          </p>
+          <h1 className="text-xl font-semibold text-ink">Live</h1>
         </div>
         <label className="space-y-1">
           <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-steel">Torneo</span>

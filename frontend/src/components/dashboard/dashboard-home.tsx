@@ -1376,7 +1376,9 @@ export function DashboardHome() {
     survivorSeason && isSurvivorAvailableForSeason(survivorSeason),
   );
   const resolvedActiveTab: DashboardTab =
-    activeTab === "survivor" && !canShowSurvivorDashboardTab
+    activeTab === "probabilidades"
+      ? "general"
+      : activeTab === "survivor" && !canShowSurvivorDashboardTab
       ? "general"
       : activeTab;
 
@@ -1396,7 +1398,6 @@ export function DashboardHome() {
     { id: "jornada", label: "Jornada" },
     { id: "proximos", label: "Proximos juegos" },
     ...(canShowSurvivorDashboardTab ? [{ id: "survivor" as DashboardTab, label: "Survivor" }] : []),
-    { id: "probabilidades", label: "Probabilidades" },
     { id: "advanced", label: "E. Avanzadas" },
     { id: "premios", label: "Premios" },
   ];

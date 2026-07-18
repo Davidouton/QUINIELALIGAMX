@@ -210,14 +210,7 @@ export function PrizesPageContent() {
               >
                 {paying ? "Abriendo checkout..." : `Pagar Liga + Liguilla · ${formatMoney(pricing.amount)}`}
               </button>
-            ) : (
-              <span className="app-pill px-4 text-sm">Precio no disponible</span>
-            )}
-            <p className="text-sm text-steel">
-              {activeSeasonMembership?.is_paid
-                ? "Tu pago de temporada ya esta confirmado."
-                : "El pago se abre en Stripe con el monto vigente que definiste en admin."}
-            </p>
+            ) : null}
           </div>
         ) : null}
         {paymentError ? <p className="mt-3 text-sm text-coral">{paymentError}</p> : null}

@@ -518,7 +518,7 @@ export function QuinielaPlusPageContent() {
   const [distributionRefreshing, setDistributionRefreshing] = useState(false);
   const [distributionUpdatedAt, setDistributionUpdatedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<QuinielaPlusTab>("probabilities");
+  const [activeTab, setActiveTab] = useState<QuinielaPlusTab>("user-distribution");
   const [oddsScope, setOddsScope] = useState<OddsScope>("today");
   const [valueLabMode, setValueLabMode] = useState<ValueLabMode>("entries");
   const [valueMarketFilter, setValueMarketFilter] = useState<ValueMarketFilter>("all");
@@ -802,16 +802,6 @@ export function QuinielaPlusPageContent() {
         <button
           type="button"
           onClick={() => {
-            setActiveTab("probabilities");
-            setOddsScope((current) => (current === "locked" ? "today" : current));
-          }}
-          className={activeTab === "probabilities" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
-        >
-          Probabilidades
-        </button>
-        <button
-          type="button"
-          onClick={() => {
             setActiveTab("user-distribution");
             setOddsScope((current) => (current === "locked" ? "today" : current));
           }}
@@ -822,22 +812,26 @@ export function QuinielaPlusPageContent() {
         <button
           type="button"
           onClick={() => {
-            setActiveTab("value-lab");
-            setOddsScope("today");
+            setActiveTab("probabilities");
+            setOddsScope((current) => (current === "locked" ? "today" : current));
           }}
-          className={activeTab === "value-lab" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+          className={activeTab === "probabilities" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
         >
-          Value Lab
+          Probabilidades
         </button>
         <button
           type="button"
-          onClick={() => {
-            setActiveTab("advanced-stats");
-            setOddsScope("today");
-          }}
-          className={activeTab === "advanced-stats" ? "app-pill-active min-w-[12rem] px-3" : "app-pill min-w-[12rem] px-3"}
+          disabled
+          className="app-pill min-w-[12rem] cursor-not-allowed px-3 opacity-50"
         >
-          Estadisticas avanzadas
+          Value Lab · Próximamente
+        </button>
+        <button
+          type="button"
+          disabled
+          className="app-pill min-w-[15rem] cursor-not-allowed px-3 opacity-50"
+        >
+          Estadisticas avanzadas · Próximamente
         </button>
       </section>
 

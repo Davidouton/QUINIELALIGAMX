@@ -17,7 +17,7 @@ const primaryLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
   { href: "/dashboard/live", label: "Live", shortLabel: "Live" },
   { href: "/dashboard/survivor", label: "Survivor", shortLabel: "Sur" },
-  { href: "/dashboard/world-cup", label: "Mundial", shortLabel: "WC" },
+  { href: "/dashboard/world-cup", label: "Tournament Stats", shortLabel: "Stats" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks Center" },
@@ -45,7 +45,7 @@ const primaryMobileLinks = [
   { href: "/dashboard/picks", label: "Picks" },
 ];
 
-const appVersionLabel = "v 1.07";
+const appVersionLabel = "v 2.0 local";
 
 function renderLinkLabel(label: string) {
   if (label !== "Quiniela +") {

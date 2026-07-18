@@ -387,12 +387,7 @@ export function WorldCupPageContent() {
   return (
     <div className="space-y-8">
       <section className="space-y-2">
-        <p className="text-[11px] uppercase tracking-[0.28em] text-steel">Quiniela Mundialista</p>
-        <h1 className="text-2xl font-semibold text-ink">Mundial</h1>
-        <p className="max-w-3xl text-sm text-steel">
-          Grupos, eliminatorias y llaves finales sobre el mismo motor de picks, con punto extra por acertar el
-          clasificado en knockout.
-        </p>
+        <h1 className="text-2xl font-semibold text-ink">Tournament Stats</h1>
       </section>
 
       {error ? (
@@ -408,7 +403,7 @@ export function WorldCupPageContent() {
       {worldCupSeasons.length > 0 ? (
         <section className="max-w-[360px]">
           <label className="space-y-2 text-sm">
-            <span className="text-steel">Temporada mundialista</span>
+            <span className="text-steel">Torneo</span>
             <select
               value={selectedSeasonId}
               onChange={(event) => void handleSeasonChange(event.target.value)}
@@ -460,7 +455,6 @@ export function WorldCupPageContent() {
           <section className="space-y-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Grupos</p>
-              <p className="mt-2 text-sm text-steel">La tabla se arma con los resultados oficiales de la fase de grupos.</p>
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               {board.groups.map((group) => (

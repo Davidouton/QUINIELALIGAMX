@@ -1,6 +1,6 @@
 {
   "name": "quinielamaestra-frontend",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "NEXT_DIST_DIR=.next-dev node ./node_modules/next/dist/bin/next dev",

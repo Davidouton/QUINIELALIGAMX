@@ -95,7 +95,7 @@ export function getDashboardScreenName(pathname: string) {
     "/dashboard/prizes": "Premios",
     "/dashboard/quiniela-plus": "Quiniela Plus",
     "/dashboard/results": "Resultados",
-    "/dashboard/world-cup": "Mundial",
+    "/dashboard/world-cup": "Tournament Stats",
     "/dashboard/rules": "Reglamento",
     "/dashboard/settings": "Settings",
     "/dashboard/admin": "Admin Resumen",

@@ -716,33 +716,6 @@ export function DashboardEnrollmentsPageContent() {
         )}
       </section>
 
-      <section className="rounded-[28px] border border-white/[0.06] bg-white/[0.03] px-5 py-5 sm:px-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-steel">Quiniela +</p>
-            <h2 className="mt-2 text-xl font-semibold text-ink">Productos extra</h2>
-          </div>
-          <Link href={buildHrefWithSeason("/dashboard/quiniela-plus")} className="app-pill px-4 text-sm">
-            Abrir Quiniela +
-          </Link>
-        </div>
-        <p className="mt-3 text-sm text-steel">
-          Si quieres ir mas alla del torneo base, desde Quiniela + puedes revisar planes y ligas adicionales sin ensuciar el dashboard principal.
-        </p>
-        <div className="mt-5 rounded-[22px] border border-white/[0.06] bg-night/20 px-4 py-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-ink">Extension del producto base</p>
-              <p className="mt-1 text-xs text-steel">
-                Ideal cuando quieres separar la experiencia premium del tablero principal del torneo.
-              </p>
-            </div>
-            <Link href={buildHrefWithSeason("/dashboard/quiniela-plus")} className="secondary-button">
-              Ver planes
-            </Link>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
