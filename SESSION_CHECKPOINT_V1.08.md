@@ -78,6 +78,24 @@ Pruebas · solo usuarios asignados
   2. Seleccionar el torneo de prueba.
   3. Usar `Dar de alta en el torneo`.
 - La membresia activa de temporada funciona como permiso de visibilidad; no se creo una lista de acceso separada.
+- Los torneos de prueba autorizados se tratan como torneos vigentes en:
+  - Dashboard
+  - Picks
+  - Ranking
+  - Reglas
+  - Premios
+  - Selectores generales de temporada
+- `Inscripciones` conserva un filtro exclusivo para temporadas `live`, por lo que los torneos `testing` no se ofrecen para alta publica.
+
+## Admin > Partidos
+
+- Se corrigio el filtro por temporada en la lista editable.
+- Antes, seleccionar una temporada solo filtraba las opciones del selector de jornadas y la tabla podia volver a cargar todos los partidos.
+- Ahora:
+  - Seleccionar una temporada muestra solo partidos de sus jornadas.
+  - `Todas las jornadas` significa todas las jornadas de la temporada seleccionada.
+  - Seleccionar una jornada limita la tabla a esa jornada.
+  - Los administradores pueden filtrar tambien torneos privados de prueba.
 
 ## Railway
 
@@ -89,6 +107,14 @@ Pruebas · solo usuarios asignados
 ### Cron de recordatorios
 
 - Debe usar `/backend/railway.cron.json` en Settings > Config-as-code.
+- La configuracion correcta en Railway es:
+
+```text
+Root Directory:      /backend
+Railway Config File: /backend/railway.cron.json
+```
+
+- Los cambios morados/staged de Railway deben aplicarse con `Review Changes > Deploy Changes`; un simple redeploy puede reutilizar la configuracion anterior.
 - No debe tener dominio publico.
 - No debe tener Healthcheck Path.
 - Serverless queda desactivado por Railway al existir un Cron Schedule.
@@ -108,6 +134,10 @@ Ejemplo de salida valida sin recordatorios pendientes:
 ## Commits incluidos
 
 ```text
+79895a3 Fix admin match filtering by season
+89c05d5 Expose assigned testing tournaments across dashboard
+825f66e Show assigned testing tournaments in picks
+d335861 Add v1.08 checkpoint
 c8e562f Add Railway config for reminder cron
 9dbb235 Add private testing tournaments
 76a2be2 Send pick reminders per lock window
@@ -127,8 +157,9 @@ c8e562f Add Railway config for reminder cron
 1. Confirmar en Railway que la primera ejecucion de `Pick_reminders_cron` termine como `Completed/Succeeded`.
 2. Confirmar que los logs impriman el JSON del script y no inicien `uvicorn`.
 3. Probar un recordatorio real con un usuario que tenga push habilitado y un partido sin pick.
-4. Crear un torneo `Pruebas`, asignar un usuario desde Admin > Usuarios y validar visibilidad con una cuenta autorizada y otra no autorizada.
+4. Validar en produccion que un torneo `Pruebas` asignado aparezca en Dashboard, Picks, Ranking, Reglas y Premios, pero no en Inscripciones.
+5. Validar en Admin > Partidos que el filtro por temporada limite correctamente la tabla editable.
 
 ## Marca de tiempo
 
-- Generado el `2026-07-17` en zona `America/Mexico_City`.
+- Actualizado el `2026-07-18` en zona `America/Mexico_City`.
