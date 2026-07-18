@@ -8,8 +8,9 @@ class SeasonRepository:
     def list_all(self, db: Session) -> list[Season]:
         visibility_rank = case(
             (Season.visibility_status == SeasonVisibilityStatus.LIVE, 0),
-            (Season.visibility_status == SeasonVisibilityStatus.CLOSED, 1),
-            else_=2,
+            (Season.visibility_status == SeasonVisibilityStatus.TESTING, 1),
+            (Season.visibility_status == SeasonVisibilityStatus.CLOSED, 2),
+            else_=3,
         )
         stmt = select(Season).order_by(
             visibility_rank.asc(),

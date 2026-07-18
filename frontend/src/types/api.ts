@@ -1,7 +1,7 @@
 export type MatchdayStatus = "draft" | "active" | "closed" | "published";
 export type MatchStatus = "scheduled" | "final" | "postponed" | "cancelled";
 export type TournamentFormat = "standard" | "world_cup";
-export type SeasonVisibilityStatus = "live" | "closed" | "archived";
+export type SeasonVisibilityStatus = "live" | "testing" | "closed" | "archived";
 export type MatchStageType =
   | "regular"
   | "group"

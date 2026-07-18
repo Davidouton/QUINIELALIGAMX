@@ -48,8 +48,9 @@ export function AdminWorldCupGroupsPanel() {
   );
 
   async function loadBase() {
+    const accessToken = await getBrowserAccessToken();
     const [seasonRows, teamRows] = await Promise.all([
-      backendFetch<Season[]>("/seasons"),
+      backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Team[]>("/teams"),
     ]);
     const nextWorldCupSeasons = seasonRows.filter((season) => season.tournament_format === "world_cup");

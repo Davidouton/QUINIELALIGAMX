@@ -10,6 +10,7 @@ from app.models.entities import Profile, RoleCode
 from app.services.profile_service import ProfileService
 
 bearer_scheme = HTTPBearer(auto_error=True)
+optional_bearer_scheme = HTTPBearer(auto_error=False)
 profile_service = ProfileService()
 
 
@@ -26,6 +27,16 @@ def get_current_profile(
     return profile_service.ensure_profile(db, auth_user)
 
 
+def get_optional_current_profile(
+    db: Session = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_bearer_scheme),
+) -> Profile | None:
+    if credentials is None:
+        return None
+    auth_user = decode_supabase_token(credentials.credentials)
+    return profile_service.ensure_profile(db, auth_user)
+
+
 def require_roles(*allowed_roles: RoleCode) -> Callable[[Profile], Profile]:
     def dependency(current_profile: Profile = Depends(get_current_profile)) -> Profile:
         if current_profile.role_code not in allowed_roles:
@@ -36,4 +47,3 @@ def require_roles(*allowed_roles: RoleCode) -> Callable[[Profile], Profile]:
         return current_profile
 
     return dependency
-

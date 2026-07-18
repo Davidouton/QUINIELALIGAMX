@@ -138,7 +138,8 @@ export function SurvivorPageContent() {
   useEffect(() => {
     async function load() {
       try {
-        const seasonsResponse = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        const accessToken = await getBrowserAccessToken();
+        const seasonsResponse = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
         const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
         const resolvedSeason = resolveSurvivorSeason(seasons, seasonIdParam, competitionId);
         if (!resolvedSeason) {
@@ -161,7 +162,6 @@ export function SurvivorPageContent() {
           return;
         }
         setBoard(buildSeasonBoardFallback(resolvedSeason));
-        const accessToken = await getBrowserAccessToken();
         const boardResponse = await backendFetch<SurvivorBoard>(`/survivor/board?season_id=${resolvedSeason.id}`, accessToken);
         setBoard(boardResponse);
         setError(null);
@@ -278,7 +278,8 @@ export function SurvivorPageContent() {
     setLoading(true);
     setError(null);
     try {
-      const seasonsResponse = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+      const accessToken = await getBrowserAccessToken();
+      const seasonsResponse = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
       const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
       const resolvedSeason = resolveSurvivorSeason(seasons, seasonIdParam, competitionId);
       if (!resolvedSeason) {
@@ -293,7 +294,6 @@ export function SurvivorPageContent() {
         setError(null);
         return;
       }
-      const accessToken = await getBrowserAccessToken();
       const boardResponse = await backendFetch<SurvivorBoard>(`/survivor/board?season_id=${resolvedSeason.id}`, accessToken);
       setBoard(boardResponse);
     } catch (caughtError) {

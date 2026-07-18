@@ -47,6 +47,7 @@ class TournamentFormat(str, Enum):
 
 class SeasonVisibilityStatus(str, Enum):
     LIVE = "live"
+    TESTING = "testing"
     CLOSED = "closed"
     ARCHIVED = "archived"
 

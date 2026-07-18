@@ -2,13 +2,16 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_optional_current_profile
 from app.core.database import get_db
-from app.models.entities import Competition, Season, TournamentFormat
+from app.models.entities import Competition, Profile, Season, TournamentFormat
 from app.repositories.season_repository import SeasonRepository
 from app.schemas.season import SeasonOut
+from app.services.season_visibility_service import SeasonVisibilityService
 
 router = APIRouter()
 repo = SeasonRepository()
+visibility_service = SeasonVisibilityService()
 
 
 def _normalize_text(value: str | None) -> str:
@@ -60,8 +63,9 @@ def _resolve_season_competition(
 def list_seasons(
     competition_id: str | None = Query(default=None),
     db: Session = Depends(get_db),
+    current_profile: Profile | None = Depends(get_optional_current_profile),
 ) -> list[SeasonOut]:
-    seasons = repo.list_all(db)
+    seasons = [season for season in repo.list_all(db) if visibility_service.can_view(db, current_profile, season)]
     competitions = {
         row.id: row
         for row in db.scalars(select(Competition))

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { Season } from "@/types/api";
 
 type CompetitionContext = {
@@ -92,7 +93,8 @@ export function DashboardSeasonSwitcher() {
   useEffect(() => {
     async function load() {
       try {
-        const rows = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        const accessToken = await getBrowserAccessToken();
+        const rows = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
         setSeasons(Array.isArray(rows) ? rows : []);
       } catch {
         setSeasons([]);

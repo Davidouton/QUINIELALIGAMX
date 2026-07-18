@@ -168,10 +168,11 @@ export function AdminWorldCupBracketPanel() {
   useEffect(() => {
     async function load() {
       try {
+        const accessToken = await getBrowserAccessToken();
         const [seasonRows, teamRows, matchdayRows] = await Promise.all([
-          backendFetch<Season[]>("/seasons"),
+          backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<Team[]>("/teams"),
-          backendFetch<Matchday[]>("/matchdays"),
+          backendFetch<Matchday[]>("/matchdays", accessToken),
         ]);
         const nextWorldCupSeasons = seasonRows.filter((season) => season.tournament_format === "world_cup");
         const nextSeasonId =

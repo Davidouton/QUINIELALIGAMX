@@ -58,9 +58,10 @@ export function AdminMatchdaysPanel() {
   const [message, setMessage] = useState<string | null>(null);
 
   async function loadData() {
+    const accessToken = await getBrowserAccessToken();
     const [seasonRows, matchdayRows] = await Promise.all([
-      backendFetch<Season[]>("/seasons"),
-      backendFetch<Matchday[]>("/matchdays"),
+      backendFetch<Season[]>("/seasons", accessToken),
+      backendFetch<Matchday[]>("/matchdays", accessToken),
     ]);
     setSeasons(seasonRows);
     setMatchdays(matchdayRows);

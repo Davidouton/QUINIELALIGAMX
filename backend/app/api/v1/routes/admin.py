@@ -35,6 +35,7 @@ from app.models.entities import (
     ScoringRule,
     Season,
     SeasonMembership,
+    SeasonVisibilityStatus,
     StandingsMatchday,
     SurvivorMembership,
     Team,
@@ -2087,6 +2088,11 @@ def create_season(
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SeasonOut:
+    if payload.visibility_status == SeasonVisibilityStatus.TESTING and payload.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Un torneo de pruebas no puede ser la temporada default",
+        )
     competition = db.get(Competition, payload.competition_id) if payload.competition_id else None
     if payload.competition_id and competition is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
@@ -2122,6 +2128,11 @@ def update_season(
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SeasonOut:
+    if payload.visibility_status == SeasonVisibilityStatus.TESTING and payload.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Un torneo de pruebas no puede ser la temporada default",
+        )
     season = season_repo.get_by_id(db, season_id)
     if season is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")

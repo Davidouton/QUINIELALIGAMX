@@ -8,6 +8,7 @@ import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { resolveSeasonForContext } from "@/lib/dashboard-season";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { cn } from "@/lib/utils";
 import type { Season } from "@/types/api";
@@ -73,7 +74,8 @@ export function DashboardSidebar() {
   useEffect(() => {
     async function loadSeasons() {
       try {
-        const rows = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        const accessToken = await getBrowserAccessToken();
+        const rows = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
         setSeasons(Array.isArray(rows) ? rows : []);
       } catch {
         setSeasons([]);

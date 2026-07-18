@@ -32,7 +32,7 @@ export function LivePageContent() {
         setLoading(true);
         const accessToken = await getBrowserAccessToken();
         const [rows, vipRows] = await Promise.all([
-          backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
+          backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
           backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
         ]);
         const nextSeasons = Array.isArray(rows) ? rows : [];

@@ -55,16 +55,18 @@ export function AdminSeasonsPanel() {
   );
 
   async function loadSeasons() {
-    const rows = await backendFetch<Season[]>("/seasons");
+    const accessToken = await getBrowserAccessToken();
+    const rows = await backendFetch<Season[]>("/seasons", accessToken);
     setSeasons(rows);
   }
 
   useEffect(() => {
     async function load() {
       try {
+        const accessToken = await getBrowserAccessToken();
         const [seasonRows, competitionRows] = await Promise.all([
-          backendFetch<Season[]>("/seasons"),
-          backendFetch<Competition[]>("/competitions"),
+          backendFetch<Season[]>("/seasons", accessToken),
+          backendFetch<Competition[]>("/competitions", accessToken),
         ]);
         setSeasons(seasonRows);
         setCompetitions(competitionRows);
@@ -258,11 +260,13 @@ export function AdminSeasonsPanel() {
               setSeasonForm((current) => ({
                 ...current,
                 visibility_status: event.target.value as SeasonVisibilityStatus,
+                is_active: event.target.value === "testing" ? false : current.is_active,
               }))
             }
             className="field-control"
           >
             <option value="live">Live</option>
+            <option value="testing">Pruebas · solo usuarios asignados</option>
             <option value="closed">Closed</option>
             <option value="archived">Archived</option>
           </select>
@@ -280,11 +284,14 @@ export function AdminSeasonsPanel() {
             <input
               type="checkbox"
               checked={seasonForm.is_active}
+              disabled={seasonForm.visibility_status === "testing"}
               onChange={(event) =>
                 setSeasonForm((current) => ({ ...current, is_active: event.target.checked }))
               }
             />
-            Usar como temporada default del admin
+            {seasonForm.visibility_status === "testing"
+              ? "Los torneos de prueba no pueden ser temporada default"
+              : "Usar como temporada default del admin"}
           </label>
           <label className="flex items-center gap-3 text-sm text-ink">
             <input
@@ -434,6 +441,8 @@ export function AdminSeasonsPanel() {
                   <td className="px-3 py-3 text-steel">
                     {season.visibility_status === "live"
                       ? "Live"
+                      : season.visibility_status === "testing"
+                        ? "Pruebas"
                       : season.visibility_status === "closed"
                         ? "Closed"
                         : "Archived"}

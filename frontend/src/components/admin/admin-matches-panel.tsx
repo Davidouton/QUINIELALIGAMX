@@ -159,10 +159,11 @@ export function AdminMatchesPanel() {
   }
 
   async function loadData() {
+    const accessToken = await getBrowserAccessToken();
     const [seasonRows, teamRows, matchdayRows] = await Promise.all([
-      backendFetch<Season[]>("/seasons"),
+      backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Team[]>("/teams"),
-      backendFetch<Matchday[]>("/matchdays"),
+      backendFetch<Matchday[]>("/matchdays", accessToken),
     ]);
     const defaultMatchdayId =
       matchdayRows.find((matchday) => matchday.status === "active")?.id || matchdayRows[0]?.id || "";

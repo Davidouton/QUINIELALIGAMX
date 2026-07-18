@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { isSeasonLive, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
+import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
   Season,
   WorldCupBoard,
@@ -252,7 +253,8 @@ export function WorldCupPageContent() {
   useEffect(() => {
     async function loadInitial() {
       try {
-        const seasonRows = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        const accessToken = await getBrowserAccessToken();
+        const seasonRows = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
         const wcSeasons = seasonRows.filter(
           (season) => season.tournament_format === "world_cup" && season.visibility_status !== "archived",
         );
@@ -291,7 +293,8 @@ export function WorldCupPageContent() {
     setLoading(true);
     setError(null);
     try {
-      const seasonRows = await backendFetch<Season[]>("/seasons", undefined, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+      const accessToken = await getBrowserAccessToken();
+      const seasonRows = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
       const wcSeasons = seasonRows.filter(
         (season) => season.tournament_format === "world_cup" && season.visibility_status !== "archived",
       );
