@@ -244,8 +244,15 @@ export function VipPageContent() {
   }, [questionPoolQuestions, selectedQuestionId]);
 
   useEffect(() => {
-    setQuestionResponseDrafts(
-      Object.fromEntries(questionPoolQuestions.map((question) => [question.id, question.selected_option_id ?? null])),
+    setQuestionResponseDrafts((current) =>
+      Object.fromEntries(
+        questionPoolQuestions.map((question) => [
+          question.id,
+          Object.prototype.hasOwnProperty.call(current, question.id)
+            ? current[question.id]
+            : (question.selected_option_id ?? null),
+        ]),
+      ),
     );
   }, [questionPoolQuestions]);
 
