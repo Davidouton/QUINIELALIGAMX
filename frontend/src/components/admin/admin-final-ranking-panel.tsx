@@ -36,6 +36,20 @@ function formatMoney(value: number) {
   }).format(value);
 }
 
+function getPendingBalance(user: AdminUser | null, entryFee: number) {
+  return user?.selected_season_membership?.is_paid ? 0 : entryFee;
+}
+
+function formatNetPayment(value: number) {
+  if (value > 0) {
+    return `Recibe ${formatMoney(value)}`;
+  }
+  if (value < 0) {
+    return `Paga ${formatMoney(Math.abs(value))}`;
+  }
+  return formatMoney(0);
+}
+
 export function AdminFinalRankingPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
@@ -125,6 +139,7 @@ export function AdminFinalRankingPanel() {
       "estado_pago",
       "saldo_por_pagar",
       "premio_final",
+      "pago_neto",
       "telefono",
       "banco",
       "numero_cuenta",
@@ -139,8 +154,9 @@ export function AdminFinalRankingPanel() {
       row.user?.aval_display_name ?? "",
       settings?.entry_fee_amount ?? 0,
       row.user?.selected_season_membership?.is_paid ? "Pagado" : "Pendiente",
-      row.user?.selected_season_membership?.is_paid ? 0 : (settings?.entry_fee_amount ?? 0),
+      getPendingBalance(row.user, settings?.entry_fee_amount ?? 0),
       getFinalPrize(row.rank_position),
+      getFinalPrize(row.rank_position) - getPendingBalance(row.user, settings?.entry_fee_amount ?? 0),
       row.user?.contact_phone ?? "",
       row.user?.bank_name ?? "",
       row.user?.deposit_account ?? "",
@@ -200,12 +216,13 @@ export function AdminFinalRankingPanel() {
             <p className="text-sm text-steel">{rows.length} participantes</p>
           </div>
           <div className="no-scrollbar overflow-x-auto touch-pan-x">
-            <table className="min-w-[1530px] w-full table-fixed text-left text-[11px] text-ink">
+            <table className="min-w-[1670px] w-full table-fixed text-left text-[11px] text-ink">
               <colgroup>
                 <col className="w-[80px]" />
                 <col className="w-[200px]" />
                 <col className="w-[90px]" />
                 <col className="w-[130px]" />
+                <col className="w-[150px]" />
                 <col className="w-[170px]" />
                 <col className="w-[120px]" />
                 <col className="w-[110px]" />
@@ -226,6 +243,7 @@ export function AdminFinalRankingPanel() {
                   <th className="px-3 py-3">Pago</th>
                   <th className="px-3 py-3">Por pagar</th>
                   <th className="px-3 py-3">Premio final</th>
+                  <th className="px-3 py-3">Pago neto</th>
                   <th className="px-3 py-3">Teléfono</th>
                   <th className="px-3 py-3">Banco</th>
                   <th className="px-3 py-3">Número de cuenta</th>
@@ -245,10 +263,16 @@ export function AdminFinalRankingPanel() {
                     </td>
                     <td className="px-3 py-3 font-medium text-ink">
                       {formatMoney(
-                        row.user?.selected_season_membership?.is_paid ? 0 : (settings?.entry_fee_amount ?? 0),
+                        getPendingBalance(row.user, settings?.entry_fee_amount ?? 0),
                       )}
                     </td>
                     <td className="px-3 py-3 font-semibold text-ink">{formatMoney(getFinalPrize(row.rank_position))}</td>
+                    <td className="px-3 py-3 font-semibold text-ink">
+                      {formatNetPayment(
+                        getFinalPrize(row.rank_position) -
+                          getPendingBalance(row.user, settings?.entry_fee_amount ?? 0),
+                      )}
+                    </td>
                     <td className="px-3 py-3 text-steel">{row.user?.contact_phone ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.bank_name ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.deposit_account ?? "-"}</td>
@@ -256,7 +280,7 @@ export function AdminFinalRankingPanel() {
                 ))}
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-3 py-8 text-sm text-steel">
+                    <td colSpan={13} className="px-3 py-8 text-sm text-steel">
                       Este torneo todavía no tiene posiciones calculadas.
                     </td>
                   </tr>
