@@ -110,16 +110,19 @@ export function AdminFinalRankingPanel() {
   }, [leaderboard, users]);
 
   function getFinalPrize(rankPosition: number) {
+    let positionPrize = 0;
     if (rankPosition === 1) {
-      return settings?.first_place_amount ?? 0;
+      positionPrize = settings?.first_place_amount ?? 0;
+    } else if (rankPosition === 2) {
+      positionPrize = settings?.second_place_amount ?? 0;
+    } else if (rankPosition === 3) {
+      positionPrize = settings?.third_place_amount ?? 0;
     }
-    if (rankPosition === 2) {
-      return settings?.second_place_amount ?? 0;
+    if (positionPrize === 0) {
+      return 0;
     }
-    if (rankPosition === 3) {
-      return settings?.third_place_amount ?? 0;
-    }
-    return 0;
+    const tiedPlayers = rows.filter((row) => row.rank_position === rankPosition).length;
+    return positionPrize / Math.max(tiedPlayers, 1);
   }
 
   function downloadRanking() {
