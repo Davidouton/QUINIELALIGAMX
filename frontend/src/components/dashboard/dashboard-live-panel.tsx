@@ -237,7 +237,7 @@ export function DashboardLivePanel({ season, vipId = null }: DashboardLivePanelP
                 <th className="px-3 py-3">Jugador</th>
                 <th className="px-3 py-3">Movimiento</th>
                 <th className="px-3 py-3">Pts</th>
-                <th className="px-3 py-3">+ Jornada</th>
+                <th className="px-3 py-3">+ En vivo</th>
                 <th className="px-3 py-3">Oficial</th>
                 <th className="px-3 py-3">Exactos</th>
               </tr>

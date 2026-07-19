@@ -595,7 +595,7 @@ class LeaderboardService:
             bucket["total_points"] += score["total_points"]
             bucket["correct_results"] += score["correct_results"]
             bucket["exact_scores"] += score["exact_scores"]
-            if live_matchday is not None and match.matchday_id == live_matchday.id:
+            if live_matchday is not None and match.matchday_id == live_matchday.id and live_score is not None:
                 bucket["live_matchday_points"] += score["total_points"]
 
             result_updated_at = (
@@ -785,7 +785,7 @@ class LeaderboardService:
             bucket["total_points"] += score["total_points"]
             bucket["correct_results"] += score["correct_results"]
             bucket["exact_scores"] += score["exact_scores"]
-            if live_matchday is not None and match.matchday_id == live_matchday.id:
+            if live_matchday is not None and match.matchday_id == live_matchday.id and live_score is not None:
                 bucket["live_matchday_points"] += score["total_points"]
 
             result_updated_at = (
