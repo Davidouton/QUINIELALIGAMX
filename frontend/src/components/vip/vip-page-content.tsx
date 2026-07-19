@@ -286,6 +286,38 @@ export function VipPageContent() {
     void runLoad();
   }, []);
 
+  useEffect(() => {
+    async function refreshVipAccessState() {
+      try {
+        const accessToken = await getBrowserAccessToken();
+        const rows = await backendFetch<VipCompetition[]>("/vip", accessToken);
+        setVips(rows);
+        setSelectedVipId((current) => (rows.some((vip) => vip.id === current) ? current : (rows[0]?.id ?? "")));
+      } catch {
+        // Keep the last successfully loaded state; the normal error UI handles the initial load.
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void refreshVipAccessState();
+      }
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshVipAccessState();
+    }, 30_000);
+
+    window.addEventListener("focus", refreshVipAccessState);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshVipAccessState);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   async function handleRequest(vipId: string) {
     setRequestingVipId(vipId);
     setError(null);
