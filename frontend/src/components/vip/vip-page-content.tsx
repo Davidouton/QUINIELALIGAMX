@@ -313,7 +313,7 @@ export function VipPageContent() {
 
     const intervalId = window.setInterval(() => {
       void refreshVipAccessState();
-    }, 30_000);
+    }, 5 * 60_000);
 
     window.addEventListener("focus", refreshVipAccessState);
     document.addEventListener("visibilitychange", handleVisibilityChange);
