@@ -69,6 +69,11 @@ export default function DashboardAdminPage() {
                   "Info usuarios",
                   "Consulta telefono, equipo, modalidad, aval, ambiente y cuenta capturados en settings.",
                 ],
+                [
+                  "/dashboard/admin/final-ranking",
+                  "Ranking final",
+                  "Consulta y descarga posiciones, membresia, aval, telefono y cuenta para el cierre del torneo.",
+                ],
                 ["/dashboard/admin/seasons", "Temporadas", "Crea, edita y activa torneos."],
                 ["/dashboard/admin/matchdays", "Jornadas", "Define jornada, status y cierre automatico."],
                 ["/dashboard/admin/odds", "Probabilidades", "Baja raw de odds y sincroniza partidos futuros."],

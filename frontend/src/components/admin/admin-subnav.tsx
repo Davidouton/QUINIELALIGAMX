@@ -20,6 +20,7 @@ const links = [
   { href: "/dashboard/admin/survivor", label: "Survivor" },
   { href: "/dashboard/admin/vip", label: "VIP" },
   { href: "/dashboard/admin/user-info", label: "Info usuarios" },
+  { href: "/dashboard/admin/final-ranking", label: "Ranking final" },
   { href: "/dashboard/admin/seasons", label: "Temporadas" },
   { href: "/dashboard/admin/matchdays", label: "Jornadas" },
   { href: "/dashboard/admin/odds", label: "Probabilidades" },
