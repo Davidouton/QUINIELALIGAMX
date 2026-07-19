@@ -54,7 +54,7 @@ export function AdminVipFinalRankingPanel() {
       try {
         const accessToken = await getBrowserAccessToken();
         const [vipRows, userRows] = await Promise.all([
-          backendFetch<AdminVipCompetition[]>("/admin/vips?include_leaderboard=true", accessToken),
+          backendFetch<AdminVipCompetition[]>("/admin/vip?include_leaderboard=true", accessToken),
           backendFetch<AdminUser[]>("/admin/users", accessToken),
         ]);
         setVips(vipRows);
