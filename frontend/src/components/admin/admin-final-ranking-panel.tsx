@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminUser, LeaderboardEntry, Season } from "@/types/api";
+import type { AdminSettings, AdminUser, LeaderboardEntry, Season } from "@/types/api";
 
 type FinalRankingRow = LeaderboardEntry & {
   user: AdminUser | null;
@@ -28,11 +28,20 @@ function slugify(value: string) {
     .replace(/^-|-$/g, "");
 }
 
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export function AdminFinalRankingPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,12 +71,14 @@ export function AdminFinalRankingPanel() {
       setError(null);
       try {
         const accessToken = await getBrowserAccessToken();
-        const [rankingRows, userRows] = await Promise.all([
+        const [rankingRows, userRows, settingsRow] = await Promise.all([
           backendFetch<LeaderboardEntry[]>(`/leaderboard/overall?season_id=${selectedSeasonId}`, accessToken),
           backendFetch<AdminUser[]>(`/admin/users?season_id=${selectedSeasonId}`, accessToken),
+          backendFetch<AdminSettings>(`/admin/settings?season_id=${selectedSeasonId}`, accessToken),
         ]);
         setLeaderboard(rankingRows);
         setUsers(userRows);
+        setSettings(settingsRow);
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el ranking final");
       } finally {
@@ -84,6 +95,19 @@ export function AdminFinalRankingPanel() {
     return leaderboard.map((entry) => ({ ...entry, user: usersById.get(entry.profile_id) ?? null }));
   }, [leaderboard, users]);
 
+  function getFinalPrize(rankPosition: number) {
+    if (rankPosition === 1) {
+      return settings?.first_place_amount ?? 0;
+    }
+    if (rankPosition === 2) {
+      return settings?.second_place_amount ?? 0;
+    }
+    if (rankPosition === 3) {
+      return settings?.third_place_amount ?? 0;
+    }
+    return 0;
+  }
+
   function downloadRanking() {
     if (!selectedSeason) {
       return;
@@ -97,6 +121,10 @@ export function AdminFinalRankingPanel() {
       "marcadores_exactos",
       "tipo_membresia",
       "aval",
+      "costo_entrada",
+      "estado_pago",
+      "saldo_por_pagar",
+      "premio_final",
       "telefono",
       "banco",
       "numero_cuenta",
@@ -109,6 +137,10 @@ export function AdminFinalRankingPanel() {
       row.exact_scores,
       getModalityLabel(row.user?.modality),
       row.user?.aval_display_name ?? "",
+      settings?.entry_fee_amount ?? 0,
+      row.user?.selected_season_membership?.is_paid ? "Pagado" : "Pendiente",
+      row.user?.selected_season_membership?.is_paid ? 0 : (settings?.entry_fee_amount ?? 0),
+      getFinalPrize(row.rank_position),
       row.user?.contact_phone ?? "",
       row.user?.bank_name ?? "",
       row.user?.deposit_account ?? "",
@@ -168,13 +200,17 @@ export function AdminFinalRankingPanel() {
             <p className="text-sm text-steel">{rows.length} participantes</p>
           </div>
           <div className="no-scrollbar overflow-x-auto touch-pan-x">
-            <table className="min-w-[1160px] w-full table-fixed text-left text-[11px] text-ink">
+            <table className="min-w-[1530px] w-full table-fixed text-left text-[11px] text-ink">
               <colgroup>
                 <col className="w-[80px]" />
                 <col className="w-[200px]" />
                 <col className="w-[90px]" />
                 <col className="w-[130px]" />
                 <col className="w-[170px]" />
+                <col className="w-[120px]" />
+                <col className="w-[110px]" />
+                <col className="w-[130px]" />
+                <col className="w-[130px]" />
                 <col className="w-[170px]" />
                 <col className="w-[140px]" />
                 <col className="w-[170px]" />
@@ -186,6 +222,10 @@ export function AdminFinalRankingPanel() {
                   <th className="px-3 py-3">Puntos</th>
                   <th className="px-3 py-3">Membresía</th>
                   <th className="px-3 py-3">Aval</th>
+                  <th className="px-3 py-3">Entrada</th>
+                  <th className="px-3 py-3">Pago</th>
+                  <th className="px-3 py-3">Por pagar</th>
+                  <th className="px-3 py-3">Premio final</th>
                   <th className="px-3 py-3">Teléfono</th>
                   <th className="px-3 py-3">Banco</th>
                   <th className="px-3 py-3">Número de cuenta</th>
@@ -199,6 +239,16 @@ export function AdminFinalRankingPanel() {
                     <td className="px-3 py-3 font-semibold text-ink">{row.total_points}</td>
                     <td className="px-3 py-3 text-steel">{getModalityLabel(row.user?.modality)}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.aval_display_name ?? "-"}</td>
+                    <td className="px-3 py-3 text-steel">{formatMoney(settings?.entry_fee_amount ?? 0)}</td>
+                    <td className="px-3 py-3 text-steel">
+                      {row.user?.selected_season_membership?.is_paid ? "Pagado" : "Pendiente"}
+                    </td>
+                    <td className="px-3 py-3 font-medium text-ink">
+                      {formatMoney(
+                        row.user?.selected_season_membership?.is_paid ? 0 : (settings?.entry_fee_amount ?? 0),
+                      )}
+                    </td>
+                    <td className="px-3 py-3 font-semibold text-ink">{formatMoney(getFinalPrize(row.rank_position))}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.contact_phone ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.bank_name ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.deposit_account ?? "-"}</td>
@@ -206,7 +256,7 @@ export function AdminFinalRankingPanel() {
                 ))}
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-sm text-steel">
+                    <td colSpan={12} className="px-3 py-8 text-sm text-steel">
                       Este torneo todavía no tiene posiciones calculadas.
                     </td>
                   </tr>
