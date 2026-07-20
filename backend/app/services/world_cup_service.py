@@ -162,6 +162,7 @@ class WorldCupService:
                         "goals_against": 0,
                         "goal_difference": 0,
                         "points": 0,
+                        "recent_form": [],
                     },
                 )
 
@@ -180,19 +181,28 @@ class WorldCupService:
                 home["wins"] += 1
                 home["points"] += 3
                 away["losses"] += 1
+                home["recent_form"].append("win")
+                away["recent_form"].append("loss")
             elif result.away_score > result.home_score:
                 away["wins"] += 1
                 away["points"] += 3
                 home["losses"] += 1
+                home["recent_form"].append("loss")
+                away["recent_form"].append("win")
             else:
                 home["draws"] += 1
                 away["draws"] += 1
                 home["points"] += 1
                 away["points"] += 1
+                home["recent_form"].append("draw")
+                away["recent_form"].append("draw")
             home["goal_difference"] = home["goals_for"] - home["goals_against"]
             away["goal_difference"] = away["goals_for"] - away["goals_against"]
 
-        rows = [WorldCupGroupStandingOut(**row) for row in standings.values()]
+        rows = [
+            WorldCupGroupStandingOut(**{**row, "recent_form": row["recent_form"][-5:]})
+            for row in standings.values()
+        ]
         rows.sort(key=lambda row: (-row.points, -row.goal_difference, -row.goals_for, row.team_name.lower()))
         return rows
 

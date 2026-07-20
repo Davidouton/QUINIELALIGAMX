@@ -751,6 +751,7 @@ export interface WorldCupGroupStanding {
   goals_against: number;
   goal_difference: number;
   points: number;
+  recent_form: Array<"win" | "draw" | "loss">;
 }
 
 export interface WorldCupGroup {
