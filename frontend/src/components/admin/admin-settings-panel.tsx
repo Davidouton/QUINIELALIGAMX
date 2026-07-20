@@ -95,6 +95,7 @@ export function AdminSettingsPanel() {
   const [pricingError, setPricingError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pricingMessage, setPricingMessage] = useState<string | null>(null);
+  const [iconPreviewVersion, setIconPreviewVersion] = useState(() => Date.now());
 
   async function loadSettings() {
     const accessToken = await getBrowserAccessToken();
@@ -167,6 +168,7 @@ export function AdminSettingsPanel() {
         }),
       });
       await loadSettings();
+      setIconPreviewVersion(Date.now());
       setMessage(
         [
           "Configuracion guardada.",
@@ -317,27 +319,52 @@ export function AdminSettingsPanel() {
             </select>
           </label>
 
-          <label className="space-y-2 md:col-span-2">
-            <span className="text-sm text-steel">Icono de app (URL publica)</span>
-            <input
-              type="url"
-              value={form.app_icon_url}
-              onChange={(event) => setForm((current) => ({ ...current, app_icon_url: event.target.value }))}
-              className="field-control"
-              placeholder="https://..."
-              inputMode="url"
-            />
-            <span className="block text-xs text-steel/80">
-              Usa una imagen cuadrada publica. Recomendado: PNG 512x512 para Android, iOS y Web App.
-            </span>
-            {form.app_icon_url ? (
+          <div className="space-y-4 border-y border-white/[0.08] py-5 md:col-span-2">
+            <div className="flex items-center gap-4">
               <img
-                src={form.app_icon_url}
-                alt="Vista previa del icono de app"
-                className="mt-2 h-16 w-16 rounded-2xl border border-white/10 object-cover"
+                src={`/app-icon/192?v=${iconPreviewVersion}`}
+                alt="Icono actual de la app"
+                className="h-20 w-20 shrink-0 rounded-2xl border border-white/10 object-cover"
               />
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-steel">Icono actual</p>
+                <p className="mt-1 text-sm font-semibold text-ink">
+                  {settings?.app_icon_url ? "Imagen personalizada" : "Imagen predeterminada"}
+                </p>
+                {settings?.app_icon_url ? (
+                  <p className="mt-1 break-all text-xs text-steel">{settings.app_icon_url}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-steel">No hay una URL personalizada guardada.</p>
+                )}
+              </div>
+            </div>
+
+            <label className="block space-y-2">
+              <span className="text-sm text-steel">Reemplazar icono (URL pública)</span>
+              <input
+                type="url"
+                value={form.app_icon_url}
+                onChange={(event) => setForm((current) => ({ ...current, app_icon_url: event.target.value }))}
+                className="field-control"
+                placeholder="https://.../logo-liga-mx.png"
+                inputMode="url"
+              />
+              <span className="block text-xs text-steel/80">
+                Usa una imagen cuadrada pública. Recomendado: PNG 512x512 para Android, iOS y Web App.
+              </span>
+            </label>
+
+            {form.app_icon_url && form.app_icon_url !== settings?.app_icon_url ? (
+              <div className="flex items-center gap-3">
+                <img
+                  src={form.app_icon_url}
+                  alt="Vista previa del nuevo icono"
+                  className="h-14 w-14 rounded-xl border border-white/10 object-cover"
+                />
+                <p className="text-xs text-steel">Vista previa del reemplazo. Presiona Guardar para aplicarlo.</p>
+              </div>
             ) : null}
-          </label>
+          </div>
 
           <label className="space-y-2 md:col-span-2">
             <span className="text-sm text-steel">Jornada final del torneo</span>
