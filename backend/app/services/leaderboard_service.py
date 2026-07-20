@@ -45,6 +45,8 @@ from app.schemas.leaderboard import (
     MyMatchdayPointsEntry,
     PerformanceRacePoint,
     PerformanceRaceResponse,
+    WeeklyPrizeMatchday,
+    WeeklyPrizeWinner,
 )
 from app.services.scoring_service import ScoringService
 from app.services.season_eligibility_service import SeasonEligibilityService
@@ -239,6 +241,80 @@ class LeaderboardService:
                     weekly_prize_amount=prize_amount,
                 )
             )
+        return entries
+
+    def list_weekly_prizes(
+        self,
+        db: Session,
+        season_id: str | None = None,
+    ) -> list[WeeklyPrizeMatchday]:
+        season = self._resolve_season(db, season_id)
+        if season is None:
+            return []
+
+        matchdays = list(
+            db.scalars(
+                select(Matchday)
+                .where(Matchday.season_id == season.id)
+                .order_by(Matchday.number.asc(), Matchday.starts_at.asc())
+            )
+        )
+        tournament_matchdays = self._get_tournament_matchdays(matchdays, season) if matchdays else []
+        finalized_matchdays = [matchday for matchday in tournament_matchdays if self._is_matchday_finalized(matchday)]
+        if not finalized_matchdays:
+            return []
+
+        rows = db.execute(
+            select(StandingsMatchday, Profile)
+            .join(Profile, Profile.id == StandingsMatchday.profile_id)
+            .where(StandingsMatchday.matchday_id.in_([matchday.id for matchday in finalized_matchdays]))
+            .order_by(StandingsMatchday.rank_position.asc(), Profile.display_name.asc())
+        ).all()
+        rows_by_matchday: dict[str, list[tuple[StandingsMatchday, Profile]]] = defaultdict(list)
+        season_cache: dict[str, Season | None] = {}
+        eligible_profile_ids_cache: dict[str, set[str]] = {}
+        for standing, profile in rows:
+            if self._counts_for_scoring(
+                db,
+                season.id,
+                profile.id,
+                season_cache=season_cache,
+                eligible_profile_ids_cache=eligible_profile_ids_cache,
+            ):
+                rows_by_matchday[standing.matchday_id].append((standing, profile))
+
+        entries: list[WeeklyPrizeMatchday] = []
+        for matchday in finalized_matchdays:
+            standings = rows_by_matchday.get(matchday.id, [])
+            ranked_rows = [(standing.profile_id, standing.rank_position) for standing, _profile in standings]
+            prize_shares = ScoringService.calculate_prize_shares(
+                ranked_rows=ranked_rows,
+                first_place_amount=season.weekly_first_place_amount,
+                second_place_amount=season.weekly_second_place_amount,
+                third_place_amount=season.weekly_third_place_amount,
+            )
+            winners = [
+                WeeklyPrizeWinner(
+                    profile_id=profile.id,
+                    display_name=profile.display_name,
+                    rank_position=standing.rank_position,
+                    total_points=standing.total_points,
+                    exact_scores=standing.exact_scores,
+                    prize_amount=float(prize_shares[profile.id]),
+                )
+                for standing, profile in standings
+                if profile.id in prize_shares and prize_shares[profile.id] > 0
+            ]
+            if winners:
+                entries.append(
+                    WeeklyPrizeMatchday(
+                        matchday_id=matchday.id,
+                        matchday_number=matchday.number,
+                        matchday_name=matchday.name,
+                        total_prize_amount=sum(winner.prize_amount for winner in winners),
+                        winners=winners,
+                    )
+                )
         return entries
 
     def get_performance_race(
