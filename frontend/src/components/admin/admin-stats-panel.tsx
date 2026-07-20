@@ -95,13 +95,7 @@ export function AdminStatsPanel() {
   return (
     <div className="space-y-6">
       <section className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Producto</p>
-          <h1 className="mt-2 text-2xl font-semibold text-ink">Stats</h1>
-          <p className="mt-2 text-sm text-steel">
-            Uso real del panel y de las pantallas clave para decidir que pulir, acelerar y empujar.
-          </p>
-        </div>
+        <div />
         <div className="space-y-2">
           <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Ventana</p>
           <div className="flex gap-2">

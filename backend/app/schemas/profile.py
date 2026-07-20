@@ -15,6 +15,7 @@ DashboardWidgetId = Literal[
     "upcoming",
     "memberships",
     "survivor_summary",
+    "ranking",
 ]
 
 

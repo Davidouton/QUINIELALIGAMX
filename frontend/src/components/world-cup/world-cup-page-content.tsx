@@ -9,7 +9,6 @@ import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
   Season,
   WorldCupBoard,
-  WorldCupBracketMatch,
   WorldCupNewsArticle,
   WorldCupNewsFeed,
   WorldCupOfficialResult,
@@ -30,7 +29,7 @@ const stageTitles = {
   final: "Final",
 } as const;
 
-type WorldCupSection = "groups" | "official-results" | "news";
+type WorldCupSection = "standings" | "groups" | "official-results" | "playoffs" | "news";
 type ResultsGrouping = "matchday" | "day";
 type NewsCategory = "all" | "official" | "mexico";
 
@@ -52,9 +51,7 @@ function TeamMiniBadge({
   return (
     <div className="flex min-w-0 items-center gap-2">
       {crestUrl ? (
-        <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06]">
-          <img src={crestUrl} alt={name} className="h-full w-full object-cover" />
-        </div>
+        <img src={crestUrl} alt={name} className="h-8 w-8 object-contain" />
       ) : (
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.06] text-[9px] text-steel">
           {shortName.slice(0, 1)}
@@ -65,24 +62,14 @@ function TeamMiniBadge({
   );
 }
 
-function formatScore(match: WorldCupBracketMatch) {
-  if (match.home_score === null || match.away_score === null) {
-    return "Pendiente";
-  }
-  return `${match.home_score}-${match.away_score}`;
-}
-
-function getAdvancingTeamName(match: WorldCupBracketMatch) {
-  if (!match.advancing_team_id) {
-    return null;
-  }
-  if (match.advancing_team_id === match.home_team_id) {
-    return match.home_team_name;
-  }
-  if (match.advancing_team_id === match.away_team_id) {
-    return match.away_team_name;
-  }
-  return "Clasificado";
+function TeamCrestOnly({ name, shortName, crestUrl }: { name: string; shortName: string; crestUrl: string | null }) {
+  return crestUrl ? (
+    <img src={crestUrl} alt={name} title={name} className="h-10 w-10 object-contain" />
+  ) : (
+    <span title={name} className="inline-flex h-10 w-10 items-center justify-center text-[10px] font-semibold text-steel">
+      {shortName.slice(0, 3)}
+    </span>
+  );
 }
 
 function getOfficialAdvancingTeamName(match: WorldCupOfficialResult) {
@@ -206,7 +193,7 @@ export function WorldCupPageContent() {
   const [board, setBoard] = useState<WorldCupBoard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<WorldCupSection>("official-results");
+  const [activeSection, setActiveSection] = useState<WorldCupSection>("standings");
   const [resultsGrouping, setResultsGrouping] = useState<ResultsGrouping>("matchday");
   const [selectedResultsGroupKey, setSelectedResultsGroupKey] = useState("");
   const [newsCategory, setNewsCategory] = useState<NewsCategory>("all");
@@ -239,10 +226,23 @@ export function WorldCupPageContent() {
     }
   }
 
-  const worldCupSeasons = useMemo(
-    () => seasons.filter((season) => season.tournament_format === "world_cup" && season.visibility_status !== "archived"),
+  const tournamentSeasons = useMemo(
+    () => seasons.filter((season) => season.visibility_status !== "archived"),
     [seasons],
   );
+  const selectedSeason = tournamentSeasons.find((season) => season.id === selectedSeasonId) ?? null;
+  const playoffRounds = useMemo(
+    () => board ? [
+      ["round_of_32", board.round_of_32],
+      ["round_of_16", board.round_of_16],
+      ["quarterfinals", board.quarterfinals],
+      ["semifinals", board.semifinals],
+      ["final", board.final],
+      ["third_place", board.third_place],
+    ] as const : [],
+    [board],
+  );
+  const hasPlayoffs = playoffRounds.some(([, matches]) => matches.length > 0);
   const officialResultGroups = useMemo(() => {
     const results = board?.official_results ?? [];
     return resultsGrouping === "matchday" ? groupResultsByMatchday(results) : groupResultsByDay(results);
@@ -255,23 +255,22 @@ export function WorldCupPageContent() {
       try {
         const accessToken = await getBrowserAccessToken();
         const seasonRows = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
-        const wcSeasons = seasonRows.filter(
-          (season) => season.tournament_format === "world_cup" && season.visibility_status !== "archived",
-        );
+        const statsSeasons = seasonRows.filter((season) => season.visibility_status !== "archived");
         setSeasons(seasonRows);
-        if (wcSeasons.length === 0) {
+        if (statsSeasons.length === 0) {
           setBoard(null);
           setError(null);
           return;
         }
         const nextSeason =
-          wcSeasons.find((season) => season.id === seasonIdParam) ??
-          wcSeasons.find(isSeasonLive) ??
-          wcSeasons.find((season) => season.is_active) ??
-          wcSeasons[0];
+          statsSeasons.find((season) => season.id === seasonIdParam) ??
+          statsSeasons.find(isSeasonLive) ??
+          statsSeasons.find((season) => season.is_active) ??
+          statsSeasons[0];
         const nextSeasonId = nextSeason.id;
         const nextCompetitionId = nextSeason.competition_id ?? "";
         setSelectedSeasonId(nextSeasonId);
+        setActiveSection(nextSeason.tournament_format === "world_cup" ? "groups" : "standings");
         if (seasonIdParam !== nextSeasonId || competitionId !== nextCompetitionId) {
           setSeasonId(nextSeasonId, nextCompetitionId);
         }
@@ -295,21 +294,20 @@ export function WorldCupPageContent() {
     try {
       const accessToken = await getBrowserAccessToken();
       const seasonRows = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
-      const wcSeasons = seasonRows.filter(
-        (season) => season.tournament_format === "world_cup" && season.visibility_status !== "archived",
-      );
+      const statsSeasons = seasonRows.filter((season) => season.visibility_status !== "archived");
       setSeasons(seasonRows);
-      if (wcSeasons.length === 0) {
+      if (statsSeasons.length === 0) {
         setBoard(null);
         return;
       }
       const nextSeason =
-        wcSeasons.find((season) => season.id === selectedSeasonId) ??
-        wcSeasons.find((season) => season.id === seasonIdParam) ??
-        wcSeasons.find(isSeasonLive) ??
-        wcSeasons.find((season) => season.is_active) ??
-        wcSeasons[0];
+        statsSeasons.find((season) => season.id === selectedSeasonId) ??
+        statsSeasons.find((season) => season.id === seasonIdParam) ??
+        statsSeasons.find(isSeasonLive) ??
+        statsSeasons.find((season) => season.is_active) ??
+        statsSeasons[0];
       setSelectedSeasonId(nextSeason.id);
+      setActiveSection(nextSeason.tournament_format === "world_cup" ? "groups" : "standings");
       const boardState = await loadBoardForSeason(nextSeason.id);
       setBoard(boardState.board);
       setError(boardState.error);
@@ -369,6 +367,7 @@ export function WorldCupPageContent() {
     setLoading(true);
     try {
       const selectedSeason = seasons.find((season) => season.id === seasonId);
+      setActiveSection(selectedSeason?.tournament_format === "world_cup" ? "groups" : "standings");
       setSeasonId(seasonId, selectedSeason?.competition_id ?? "");
       const boardState = await loadBoardForSeason(seasonId);
       setBoard(boardState.board);
@@ -386,17 +385,11 @@ export function WorldCupPageContent() {
 
   return (
     <div className="space-y-8">
-      <section className="space-y-2">
-        <p className="text-[11px] uppercase tracking-[0.28em] text-steel">Quiniela Mundialista</p>
-        <h1 className="text-2xl font-semibold text-ink">Mundial</h1>
-        <p className="max-w-3xl text-sm text-steel">
-          Grupos, eliminatorias y llaves finales sobre el mismo motor de picks, con punto extra por acertar el
-          clasificado en knockout.
-        </p>
-      </section>
+      <header className="page-header">
+        <h1 className="page-title">Tournament Stats</h1>
 
       {error ? (
-        <section className="rounded-[18px] border border-coral/20 bg-coral/10 px-4 py-4">
+        <section className="border-l-2 border-coral px-4 py-2">
           <p className="text-sm text-coral">No se pudo cargar la vista del Mundial en este momento.</p>
           <p className="mt-2 text-xs text-coral/80">{error}</p>
           <button type="button" onClick={() => void handleReload()} className="secondary-button mt-4">
@@ -405,66 +398,135 @@ export function WorldCupPageContent() {
         </section>
       ) : null}
 
-      {worldCupSeasons.length > 0 ? (
-        <section className="max-w-[360px]">
-          <label className="space-y-2 text-sm">
-            <span className="text-steel">Temporada mundialista</span>
+      {tournamentSeasons.length > 0 ? (
+        <div className="max-w-md">
+          <label className="page-context-label">
+            <span>Torneo</span>
             <select
               value={selectedSeasonId}
               onChange={(event) => void handleSeasonChange(event.target.value)}
-              className="field-control"
+              className="page-context-select"
             >
-              {worldCupSeasons.map((season) => (
+              {tournamentSeasons.map((season) => (
                 <option key={season.id} value={season.id}>
-                  {season.name}
+                  {season.competition_name ? `${season.competition_name} · ` : ""}{season.name}
                 </option>
               ))}
             </select>
           </label>
-        </section>
+        </div>
       ) : null}
+      </header>
 
-      {worldCupSeasons.length === 0 ? (
-        <p className="text-sm text-steel">Todavia no hay una temporada marcada como Mundial.</p>
+      {tournamentSeasons.length === 0 ? (
+        <p className="text-sm text-steel">Todavia no hay temporadas disponibles.</p>
       ) : null}
 
       {board ? (
         <>
-          <section className="flex flex-wrap items-center gap-2">
+          <section className="tab-list">
+            {selectedSeason?.tournament_format !== "world_cup" ? (
+              <button
+                type="button"
+                onClick={() => setActiveSection("standings")}
+                className={activeSection === "standings" ? "tab-control tab-control-active" : "tab-control"}
+              >
+                Tabla general
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setActiveSection("official-results")}
               className={
-                activeSection === "official-results" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"
+                activeSection === "official-results" ? "tab-control tab-control-active" : "tab-control"
               }
             >
               Resultados oficiales
             </button>
-            <button
-              type="button"
-              onClick={() => setActiveSection("groups")}
-              className={activeSection === "groups" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
-            >
-              Grupos
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveSection("news")}
-              className={activeSection === "news" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
-            >
-              Noticias
-            </button>
+            {selectedSeason?.tournament_format === "world_cup" ? (
+              <button
+                type="button"
+                onClick={() => setActiveSection("groups")}
+                className={activeSection === "groups" ? "tab-control tab-control-active" : "tab-control"}
+              >
+                Grupos
+              </button>
+            ) : null}
+            {hasPlayoffs ? (
+              <button
+                type="button"
+                onClick={() => setActiveSection("playoffs")}
+                className={activeSection === "playoffs" ? "tab-control tab-control-active" : "tab-control"}
+              >
+                Playoffs
+              </button>
+            ) : null}
           </section>
+
+          {activeSection === "standings" ? (
+            <section>
+              <h2 className="text-lg font-semibold text-ink">Tabla general</h2>
+              {(board.league_standings ?? []).length === 0 ? (
+                <p className="mt-4 text-sm text-steel">La tabla aparecerá cuando existan equipos en esta temporada.</p>
+              ) : (
+                <div className="mt-4 overflow-x-auto border-t border-white/[0.1]">
+                  <table className="min-w-[720px] w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/[0.1] text-[10px] uppercase tracking-[0.14em] text-steel">
+                        <th className="w-10 px-2 py-3 text-center">#</th>
+                        <th className="px-2 py-3 text-left">Equipo</th>
+                        <th className="px-2 py-3 text-right">PJ</th>
+                        <th className="px-2 py-3 text-right">G</th>
+                        <th className="px-2 py-3 text-right">E</th>
+                        <th className="px-2 py-3 text-right">P</th>
+                        <th className="px-2 py-3 text-right">GF</th>
+                        <th className="px-2 py-3 text-right">GC</th>
+                        <th className="px-2 py-3 text-right">DG</th>
+                        <th className="px-2 py-3 text-right">PTS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(board.league_standings ?? []).map((team, index) => (
+                        <tr key={team.team_id} className="border-b border-white/[0.07]">
+                          <td className="px-2 py-3 text-center text-steel">{index + 1}</td>
+                          <td className="px-2 py-3">
+                            <div className="flex items-center gap-3">
+                              {team.team_crest_url ? (
+                                <img src={team.team_crest_url} alt={team.team_name} className="h-9 w-9 object-contain" />
+                              ) : (
+                                <span className="inline-flex h-9 w-9 items-center justify-center text-xs text-steel">{team.team_short_name.slice(0, 3)}</span>
+                              )}
+                              <div>
+                                <p className="font-semibold text-ink">{team.team_name}</p>
+                                <p className="text-[10px] text-steel">{team.team_short_name}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-2 py-3 text-right text-ink">{team.played}</td>
+                          <td className="px-2 py-3 text-right text-ink">{team.wins}</td>
+                          <td className="px-2 py-3 text-right text-ink">{team.draws}</td>
+                          <td className="px-2 py-3 text-right text-ink">{team.losses}</td>
+                          <td className="px-2 py-3 text-right text-steel">{team.goals_for}</td>
+                          <td className="px-2 py-3 text-right text-steel">{team.goals_against}</td>
+                          <td className="px-2 py-3 text-right text-steel">{team.goal_difference > 0 ? `+${team.goal_difference}` : team.goal_difference}</td>
+                          <td className="px-2 py-3 text-right text-base font-bold text-[#4f7df3]">{team.points}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          ) : null}
 
           {activeSection === "groups" ? (
           <section className="space-y-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Grupos</p>
-              <p className="mt-2 text-sm text-steel">La tabla se arma con los resultados oficiales de la fase de grupos.</p>
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               {board.groups.map((group) => (
-                <div key={group.group_label} className="rounded-[18px] border border-white/[0.06] bg-white/[0.03] p-4">
+                <div key={group.group_label} className="border-t border-white/[0.1] py-4">
                   <div className="flex items-center justify-between gap-3">
                     <h2 className="text-lg font-semibold text-ink">Grupo {group.group_label}</h2>
                     <span className="text-xs uppercase tracking-[0.16em] text-steel">
@@ -525,22 +587,19 @@ export function WorldCupPageContent() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Resultados oficiales</p>
-                  <p className="mt-2 text-sm text-steel">
-                    Marcadores publicados para esta temporada mundialista, agrupados por jornada o por dia.
-                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setResultsGrouping("matchday")}
-                    className={resultsGrouping === "matchday" ? "app-pill-active px-3" : "app-pill px-3"}
+                    className={resultsGrouping === "matchday" ? "tab-control tab-control-active" : "tab-control"}
                   >
                     Por jornada
                   </button>
                   <button
                     type="button"
                     onClick={() => setResultsGrouping("day")}
-                    className={resultsGrouping === "day" ? "app-pill-active px-3" : "app-pill px-3"}
+                    className={resultsGrouping === "day" ? "tab-control tab-control-active" : "tab-control"}
                   >
                     Por dia
                   </button>
@@ -567,30 +626,29 @@ export function WorldCupPageContent() {
                   </label>
 
                   {selectedOfficialResultGroup ? (
-                    <div
-                      key={selectedOfficialResultGroup.key}
-                      className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4"
-                    >
+                    <div key={selectedOfficialResultGroup.key} className="border-t border-white/[0.1] pt-4">
                       <div className="flex items-center justify-between gap-3">
                         <h2 className="text-base font-semibold text-ink">{selectedOfficialResultGroup.label}</h2>
                         <span className="text-xs uppercase tracking-[0.16em] text-steel">
                           {selectedOfficialResultGroup.results.length} partidos
                         </span>
                       </div>
-                      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                      <div className="relative mt-5 grid gap-x-10 lg:grid-cols-2 lg:after:absolute lg:after:inset-y-0 lg:after:left-1/2 lg:after:w-px lg:after:-translate-x-1/2 lg:after:bg-white/[0.08]">
                         {selectedOfficialResultGroup.results.map((result) => (
-                          <div key={result.match_id} className="rounded-md border border-white/[0.06] bg-black/10 p-3">
-                            <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.14em] text-steel">
-                              <span>{getStageTitle(result.stage_type)}</span>
+                          <div key={result.match_id} className="min-h-[132px] border-b border-white/[0.08] py-5">
+                            <div className="flex min-h-4 items-center justify-between gap-3 text-[10px] uppercase tracking-[0.14em] text-steel">
+                              <span>{result.stage_type === "regular" ? "" : getStageTitle(result.stage_type)}</span>
                               <span>{formatMexicoCityDateTime(result.kickoff_at)}</span>
                             </div>
-                            <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                              <TeamMiniBadge
-                                name={result.home_team_name}
-                                shortName={result.home_team_short_name}
-                                crestUrl={result.home_team_crest_url}
-                              />
-                              <span className="rounded-md border border-moss/30 bg-moss/10 px-2 py-1 text-sm font-semibold text-ink">
+                            <div className="mt-4 grid grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)] items-center gap-4">
+                              <div className="min-w-0">
+                                <TeamMiniBadge
+                                  name={result.home_team_name}
+                                  shortName={result.home_team_short_name}
+                                  crestUrl={result.home_team_crest_url}
+                                />
+                              </div>
+                              <span className="text-center text-xl font-bold tabular-nums text-ink">
                                 {result.home_score ?? "-"}-{result.away_score ?? "-"}
                               </span>
                               <div className="min-w-0 justify-self-end">
@@ -635,7 +693,7 @@ export function WorldCupPageContent() {
                       key={category}
                       type="button"
                       onClick={() => setNewsCategory(category)}
-                      className={newsCategory === category ? "app-pill-active px-3" : "app-pill px-3"}
+                      className={newsCategory === category ? "tab-control tab-control-active" : "tab-control"}
                     >
                       {newsCategoryLabels[category]}
                     </button>
@@ -677,95 +735,38 @@ export function WorldCupPageContent() {
             </section>
           ) : null}
 
-          <section className="space-y-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Bracket final</p>
-              <p className="mt-2 text-sm text-steel">
-                La llave usa la fase marcada en cada partido y muestra el clasificado oficial cuando ya existe.
-              </p>
-            </div>
-
-            {(
-              [
-                ["round_of_32", board.round_of_32],
-                ["round_of_16", board.round_of_16],
-                ["quarterfinals", board.quarterfinals],
-                ["semifinals", board.semifinals],
-                ["third_place", board.third_place],
-                ["final", board.final],
-              ] as const
-            ).map(([stageKey, matches]) =>
-              matches.length > 0 ? (
-                <div key={stageKey} className="space-y-3">
-                  <h2 className="text-lg font-semibold text-ink">{stageTitles[stageKey]}</h2>
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {matches.map((match) => (
-                      <div key={match.match_id} className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-ink">{match.bracket_slot ?? "Llave"}</p>
-                          <div className="flex flex-wrap items-center justify-end gap-2 text-xs uppercase tracking-[0.16em]">
-                            <span className="text-steel">{match.is_official ? "Oficial" : "Pendiente"}</span>
-                            <span className={match.is_ready_for_picks ? "text-moss" : "text-amber-100"}>
-                              {match.is_ready_for_picks ? "Equipos listos" : "Seed pendiente"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="mt-3 space-y-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <TeamMiniBadge
-                                name={match.home_team_name}
-                                shortName={match.home_team_short_name}
-                                crestUrl={match.home_team_crest_url}
-                              />
-                              {match.home_placeholder ? (
-                                <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-steel">
-                                  Seed {match.home_placeholder}
-                                </p>
-                              ) : null}
+          {activeSection === "playoffs" && hasPlayoffs ? (
+            <section>
+              <h2 className="text-lg font-semibold text-ink">Bracket</h2>
+              <div className="no-scrollbar mt-5 overflow-x-auto pb-4">
+                <div className="flex min-w-max items-stretch gap-8">
+                  {playoffRounds.map(([stageKey, matches]) => matches.length > 0 ? (
+                    <div key={stageKey} className="flex w-[140px] shrink-0 flex-col">
+                      <h3 className="border-b border-white/[0.12] pb-3 text-sm font-semibold text-ink">
+                        {stageTitles[stageKey]}
+                      </h3>
+                      <div className="flex flex-1 flex-col justify-around gap-8 py-5">
+                        {matches.map((match) => (
+                          <article key={match.match_id} className={`relative border-y border-white/[0.1] py-3 ${stageKey === "final" || stageKey === "third_place" ? "" : "after:absolute after:-right-8 after:top-1/2 after:h-px after:w-8 after:bg-white/[0.12]"}`}>
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <TeamCrestOnly name={match.home_team_name} shortName={match.home_team_short_name} crestUrl={match.home_team_crest_url} />
+                                <span className="text-base font-bold text-ink">{match.home_score ?? "-"}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-3">
+                                <TeamCrestOnly name={match.away_team_name} shortName={match.away_team_short_name} crestUrl={match.away_team_crest_url} />
+                                <span className="text-base font-bold text-ink">{match.away_score ?? "-"}</span>
+                              </div>
                             </div>
-                            <span className="text-sm font-semibold text-ink">
-                              {match.home_score ?? "-"}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <TeamMiniBadge
-                                name={match.away_team_name}
-                                shortName={match.away_team_short_name}
-                                crestUrl={match.away_team_crest_url}
-                              />
-                              {match.away_placeholder ? (
-                                <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-steel">
-                                  Seed {match.away_placeholder}
-                                </p>
-                              ) : null}
-                            </div>
-                            <span className="text-sm font-semibold text-ink">
-                              {match.away_score ?? "-"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-steel">
-                          <span>{formatMexicoCityDateTime(match.kickoff_at)}</span>
-                          <span>90 min: {formatScore(match)}</span>
-                        </div>
-                        {getAdvancingTeamName(match) ? (
-                          <p className="mt-3 text-xs font-semibold uppercase tracking-[0.16em] text-moss">
-                            Avanza: {getAdvancingTeamName(match)}
-                          </p>
-                        ) : !match.is_ready_for_picks ? (
-                          <p className="mt-3 text-xs text-amber-100">
-                            Este cruce ya puede quedar visible en el bracket aunque los clasificados reales aun no esten definidos.
-                          </p>
-                        ) : null}
+                          </article>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ) : null)}
                 </div>
-              ) : null,
-            )}
-          </section>
+              </div>
+            </section>
+          ) : null}
         </>
       ) : null}
     </div>

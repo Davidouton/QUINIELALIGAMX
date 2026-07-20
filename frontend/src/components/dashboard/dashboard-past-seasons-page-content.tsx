@@ -22,28 +22,24 @@ function getMembershipStatus(membership: UserSeasonMembership | null) {
   if (!membership) {
     return {
       label: "Sin membresia",
-      className: "app-pill px-3 text-[10px]",
-      detail: "No tuviste alta registrada en esta temporada.",
+      tone: "text-steel",
     };
   }
   if (membership.is_active) {
     return {
       label: "Jugaste",
-      className: "app-pill-active px-3 text-[10px] text-ink",
-      detail: "Tu membresia quedo activa y el torneo ya vive como historico.",
+      tone: "text-mint",
     };
   }
   if (membership.is_paid) {
     return {
       label: "Pagado",
-      className: "app-pill px-3 text-[10px] text-gold",
-      detail: "Hubo registro de pago, pero el alta no quedo activa para competir.",
+      tone: "text-gold",
     };
   }
   return {
     label: "Cerrada",
-    className: "app-pill px-3 text-[10px] text-steel",
-    detail: "Tuviste relacion con esta temporada, pero no quedo activa al cierre.",
+    tone: "text-coral",
   };
 }
 
@@ -110,65 +106,51 @@ export function DashboardPastSeasonsPageContent() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="overflow-hidden rounded-[30px] border border-white/[0.06] bg-white/[0.03] px-5 py-5 sm:px-6 sm:py-6">
-        <p className="text-xs uppercase tracking-[0.28em] text-steel">Past Seasons</p>
-        <h1 className="mt-2 text-2xl font-semibold text-ink sm:text-3xl">Historico de temporadas</h1>
-        <p className="mt-3 max-w-3xl text-sm text-steel">
-          Aqui se van las temporadas archivadas para que el panel vivo se quede limpio. Puedes entrar a revisar
-          resultados y ranking sin mezclarlo con lo que esta corriendo hoy.
-        </p>
-      </section>
+    <div className="space-y-12">
+      <header className="page-header">
+        <h1 className="page-title">Histórico de temporadas</h1>
+      </header>
 
-      <section className="rounded-[28px] border border-white/[0.06] bg-white/[0.03] px-5 py-5 sm:px-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-steel">Archivadas</p>
-            <h2 className="mt-2 text-xl font-semibold text-ink">Temporadas cerradas y guardadas</h2>
-          </div>
-          <div className="text-xs text-steel">{archivedRows.length} temporadas</div>
+      <section>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Archivadas</h2>
+          <p className="text-sm text-steel">{archivedRows.length}</p>
         </div>
 
         {archivedRows.length > 0 ? (
-          <div className="mt-5 overflow-hidden rounded-[20px] border border-white/[0.06]">
-            <div className="hidden grid-cols-[minmax(0,1.5fr)_140px_minmax(0,1fr)_220px] gap-3 border-b border-white/[0.06] bg-white/[0.03] px-4 py-3 text-[10px] uppercase tracking-[0.16em] text-steel md:grid">
+          <div className="mt-5 border-y border-white/10">
+            <div className="hidden grid-cols-[minmax(0,1.5fr)_140px_minmax(0,0.8fr)_220px] gap-6 border-b border-white/10 py-4 text-xs uppercase tracking-[0.18em] text-steel md:grid">
               <span>Temporada</span>
-              <span>Scope</span>
-              <span>Tu estatus</span>
-              <span>Accesos</span>
+              <span>Competencia</span>
+              <span>Estado</span>
+              <span className="text-right">Acciones</span>
             </div>
-            <div className="divide-y divide-white/[0.06]">
+            <div className="divide-y divide-white/10">
               {archivedRows.map(({ season, membership }) => {
                 const status = getMembershipStatus(membership);
                 return (
                   <div
                     key={season.id}
-                    className="grid gap-4 px-4 py-4 md:grid-cols-[minmax(0,1.5fr)_140px_minmax(0,1fr)_220px] md:items-center"
+                    className="grid gap-4 py-5 md:grid-cols-[minmax(0,1.5fr)_140px_minmax(0,0.8fr)_220px] md:items-center md:gap-6"
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-ink">{season.name}</p>
-                      <p className="mt-1 text-xs text-steel">
-                        {season.competition_name ?? getSeasonScopeLabel(season)}
-                        {season.survivor_enabled ? ` · ${season.survivor_name ?? "Survivor"} habilitado` : ""}
-                      </p>
+                      <p className="mt-1 text-xs text-steel">{season.competition_name ?? getSeasonScopeLabel(season)}</p>
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm text-steel">{getSeasonScopeLabel(season)}</p>
                     </div>
-                    <div className="min-w-0">
-                      <span className={status.className}>{status.label}</span>
-                      <p className="mt-2 text-xs text-steel">{status.detail}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
+                    <p className={`text-sm font-semibold ${status.tone}`}>{status.label}</p>
+                    <div className="flex flex-wrap gap-5 md:justify-end">
                       <Link
                         href={buildHrefWithSeason("/dashboard/results", season.id, season.competition_id ?? "")}
-                        className="secondary-button"
+                        className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]"
                       >
                         Ver resultados
                       </Link>
                       <Link
                         href={buildHrefWithSeason("/dashboard/leaderboard", season.id, season.competition_id ?? "")}
-                        className="secondary-button"
+                        className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]"
                       >
                         Ver ranking
                       </Link>
@@ -179,9 +161,7 @@ export function DashboardPastSeasonsPageContent() {
             </div>
           </div>
         ) : (
-          <div className="mt-5 rounded-[22px] border border-white/[0.06] bg-night/20 px-4 py-4">
-            <p className="text-sm text-steel">Todavia no hay temporadas archivadas.</p>
-          </div>
+          <p className="mt-5 border-y border-white/10 py-5 text-sm text-steel">No hay temporadas archivadas.</p>
         )}
       </section>
     </div>

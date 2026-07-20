@@ -8,6 +8,7 @@ node_modules/
 .next/
 frontend/node_modules/
 frontend/.next/
+frontend/.next-dev/
 
 # Python
 __pycache__/
@@ -34,3 +35,6 @@ apps/api/.env
 *.db
 backend/test.db
 apps/api/test.db
+
+# Office temporary lock files
+~$*.xlsx

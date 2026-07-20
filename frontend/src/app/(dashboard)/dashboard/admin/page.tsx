@@ -1,111 +1,61 @@
 import Link from "next/link";
 
+import { ADMIN_LINKS } from "@/components/admin/admin-links";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
+
+const groups = [
+  {
+    title: "Operación",
+    paths: ["competitions", "seasons", "matchdays", "matches", "results", "live-score", "teams"],
+  },
+  {
+    title: "Usuarios y juego",
+    paths: ["users", "user-info", "final-ranking", "picks", "survivor", "vip", "prizes", "trophies"],
+  },
+  {
+    title: "Mundial y producto",
+    paths: ["world-cup-groups", "world-cup-bracket", "quiniela-plus", "odds", "hall-of-fame"],
+  },
+  {
+    title: "Sistema",
+    paths: ["settings", "rules", "stats"],
+  },
+];
+
+function linkSlug(href: string) {
+  return href.split("/").filter(Boolean).at(-1) ?? "";
+}
 
 export default function DashboardAdminPage() {
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="text-xl font-semibold text-ink">Panel de Administracion</h1>
-      </section>
-
       <AdminSubnav />
 
-      <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Secciones</p>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm text-ink">
-            <thead>
-              <tr className="text-left text-[10px] uppercase tracking-[0.18em] text-steel">
-                <th className="px-3 py-3">Modulo</th>
-                <th className="px-3 py-3">Descripcion</th>
-                <th className="px-3 py-3 text-right">Ir</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                [
-                  "/dashboard/admin/settings",
-                  "Configuracion",
-                  "Define el torneo activo y la puntuacion por ganador y marcador exacto.",
-                ],
-                [
-                  "/dashboard/admin/competitions",
-                  "Competencias",
-                  "Ordena el catalogo base por liga, federacion o deporte y liga equipos y temporadas a esa estructura.",
-                ],
-                [
-                  "/dashboard/admin/world-cup-groups",
-                  "Mundial · Grupos",
-                  "Define grupos A, B, C..., asigna selecciones y deja lista la base para tablas y stats.",
-                ],
-                [
-                  "/dashboard/admin/world-cup-bracket",
-                  "Mundial · Bracket",
-                  "Siembra llaves de octavos a final con placeholders, sorteos o equipos reales sin depender de Partidos.",
-                ],
-                [
-                  "/dashboard/admin/quiniela-plus",
-                  "Quiniela +",
-                  "Configura ligas, bundles, periodos y deja el checkout listo para activarlo cuando proceda.",
-                ],
-                [
-                  "/dashboard/admin/prizes",
-                  "Premios",
-                  "Configura costo por ingreso, premios semanales, comision, reserva y bolsa del torneo.",
-                ],
-                [
-                  "/dashboard/admin/users",
-                  "Usuarios",
-                  "Activa acceso a la app y da de alta participantes dentro del torneo elegido.",
-                ],
-                [
-                  "/dashboard/admin/vip",
-                  "VIP",
-                  "Crea VIPs por jornadas, define costo de entrada y aprueba solicitudes de acceso.",
-                ],
-                [
-                  "/dashboard/admin/user-info",
-                  "Info usuarios",
-                  "Consulta telefono, equipo, modalidad, aval, ambiente y cuenta capturados en settings.",
-                ],
-                [
-                  "/dashboard/admin/final-ranking",
-                  "Ranking final",
-                  "Consulta y descarga posiciones, membresia, aval, telefono y cuenta para el cierre del torneo.",
-                ],
-                ["/dashboard/admin/seasons", "Temporadas", "Crea, edita y activa torneos."],
-                ["/dashboard/admin/matchdays", "Jornadas", "Define jornada, status y cierre automatico."],
-                ["/dashboard/admin/odds", "Probabilidades", "Baja raw de odds y sincroniza partidos futuros."],
-                ["/dashboard/admin/matches", "Partidos", "Carga juegos y ajusta horarios."],
-                [
-                  "/dashboard/admin/results",
-                  "Resultados",
-                  "Baja marcadores, ajusta resultados oficiales y recalcula scoring antes de publicar.",
-                ],
-                ["/dashboard/admin/hall-of-fame", "Salon de la Fama", "Carga historico manual de podios y records."],
-                ["/dashboard/admin/trophies", "Trofeos", "Da de alta trofeos, badges y sus imagenes para reutilizarlos."],
-                ["/dashboard/admin/rules", "Editor reglamento", "Carga y actualiza el reglamento vivo que aparece dentro del dashboard."],
-                ["/dashboard/admin/teams", "Equipos", "Alta rapida del catalogo de clubes."],
-              ].map(([href, label, description]) => (
-                <tr key={href} className="text-sm text-ink">
-                  <td className="px-3 py-3 font-medium">{label}</td>
-                  <td className="px-3 py-3 text-[12px] leading-5 text-justify text-steel">{description}</td>
-                  <td className="px-3 py-3 text-right">
-                    <Link
-                      href={href}
-                      prefetch={false}
-                      className="app-pill h-9 px-3 text-[11px] uppercase tracking-[0.16em] text-steel hover:text-ink"
-                    >
-                      Ir
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <div className="space-y-10 pt-4">
+        {groups.map((group) => {
+          const links = group.paths
+            .map((path) => ADMIN_LINKS.find((link) => linkSlug(link.href) === path))
+            .filter((link): link is (typeof ADMIN_LINKS)[number] => Boolean(link));
+
+          return (
+            <section key={group.title}>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">{group.title}</h2>
+              <div className="mt-5 grid border-l border-t border-white/10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    prefetch={false}
+                    className="flex min-h-20 items-center border-b border-r border-white/10 px-5 py-4 text-sm font-semibold text-ink transition hover:border-[#4f7df3]/50 hover:text-[#4f7df3]"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }

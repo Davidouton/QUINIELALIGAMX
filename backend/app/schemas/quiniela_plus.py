@@ -135,9 +135,11 @@ class QuinielaPlusUserDistributionMatchOut(BaseModel):
     home_team_name: str
     home_team_short_name: str
     home_team_crest_url: str | None = None
+    home_team_primary_color: str | None = None
     away_team_name: str
     away_team_short_name: str
     away_team_crest_url: str | None = None
+    away_team_primary_color: str | None = None
     kickoff_at: datetime
     is_locked: bool
     total_picks: int

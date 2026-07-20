@@ -124,6 +124,7 @@ class WorldCupService:
         return WorldCupBoardOut(
             season_id=season.id,
             season_name=season.name,
+            league_standings=self._build_league_standings(matches, results_by_match_id, teams_by_id),
             groups=groups,
             official_results=official_results,
             round_of_32=bracket[MatchStageType.ROUND_OF_32],
@@ -133,6 +134,67 @@ class WorldCupService:
             third_place=bracket[MatchStageType.THIRD_PLACE],
             final=bracket[MatchStageType.FINAL],
         )
+
+    @staticmethod
+    def _build_league_standings(
+        matches: list[Match],
+        results_by_match_id: dict[str, MatchResult],
+        teams_by_id: dict[str, Team],
+    ) -> list[WorldCupGroupStandingOut]:
+        standings: dict[str, dict[str, int | str | None]] = {}
+        for match in matches:
+            if match.home_team_id is None or match.away_team_id is None:
+                continue
+            for team_id in (match.home_team_id, match.away_team_id):
+                team = teams_by_id.get(team_id)
+                standings.setdefault(
+                    team_id,
+                    {
+                        "team_id": team_id,
+                        "team_name": team.name if team is not None else "Equipo",
+                        "team_short_name": team.short_name if team is not None else "EQ",
+                        "team_crest_url": team.crest_url if team is not None else None,
+                        "played": 0,
+                        "wins": 0,
+                        "draws": 0,
+                        "losses": 0,
+                        "goals_for": 0,
+                        "goals_against": 0,
+                        "goal_difference": 0,
+                        "points": 0,
+                    },
+                )
+
+            result = results_by_match_id.get(match.id)
+            if result is None or not result.is_official:
+                continue
+            home = standings[match.home_team_id]
+            away = standings[match.away_team_id]
+            home["played"] += 1
+            away["played"] += 1
+            home["goals_for"] += result.home_score
+            home["goals_against"] += result.away_score
+            away["goals_for"] += result.away_score
+            away["goals_against"] += result.home_score
+            if result.home_score > result.away_score:
+                home["wins"] += 1
+                home["points"] += 3
+                away["losses"] += 1
+            elif result.away_score > result.home_score:
+                away["wins"] += 1
+                away["points"] += 3
+                home["losses"] += 1
+            else:
+                home["draws"] += 1
+                away["draws"] += 1
+                home["points"] += 1
+                away["points"] += 1
+            home["goal_difference"] = home["goals_for"] - home["goals_against"]
+            away["goal_difference"] = away["goals_for"] - away["goals_against"]
+
+        rows = [WorldCupGroupStandingOut(**row) for row in standings.values()]
+        rows.sort(key=lambda row: (-row.points, -row.goal_difference, -row.goals_for, row.team_name.lower()))
+        return rows
 
     def _build_groups(
         self,
@@ -374,7 +436,7 @@ class WorldCupService:
         return None
 
     def _resolve_season(self, db: Session, season_id: str | None) -> Season:
-        query = select(Season).where(Season.tournament_format == TournamentFormat.WORLD_CUP)
+        query = select(Season)
         visibility_rank = case(
             (Season.visibility_status == SeasonVisibilityStatus.LIVE, 0),
             (Season.visibility_status == SeasonVisibilityStatus.CLOSED, 1),
@@ -383,12 +445,15 @@ class WorldCupService:
         if season_id:
             query = query.where(Season.id == season_id)
         else:
-            query = query.where(Season.visibility_status == SeasonVisibilityStatus.LIVE)
+            query = query.where(
+                Season.tournament_format == TournamentFormat.WORLD_CUP,
+                Season.visibility_status == SeasonVisibilityStatus.LIVE,
+            )
         season = db.scalar(query.order_by(visibility_rank.asc(), Season.is_active.desc(), Season.created_at.desc()))
         if season is not None:
             return season
         if season_id:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada mundialista no encontrada")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada no encontrada")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No hay una temporada mundialista en estado live")
 
     def list_news(self, category: str = "all") -> WorldCupNewsFeedOut:

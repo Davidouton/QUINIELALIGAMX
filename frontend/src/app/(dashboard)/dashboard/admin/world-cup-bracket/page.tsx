@@ -4,10 +4,6 @@ import { AdminWorldCupBracketPanel } from "@/components/admin/admin-world-cup-br
 export default function DashboardAdminWorldCupBracketPage() {
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="text-xl font-semibold text-ink">Mundial · Bracket</h1>
-      </section>
-
       <AdminSubnav />
       <AdminWorldCupBracketPanel />
     </div>

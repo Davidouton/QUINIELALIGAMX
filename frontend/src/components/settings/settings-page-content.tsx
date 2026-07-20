@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, type CSSProperties, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { env } from "@/lib/env";
@@ -9,7 +9,6 @@ import { getBrowserAccessToken } from "@/lib/supabase/session";
 import {
   THEME_PREFERENCE_OPTIONS,
   applyAppTheme,
-  getThemePreferenceDescription,
   getThemePreferenceLabel,
   getThemeTokens,
   normalizeThemePreference,
@@ -246,27 +245,16 @@ export function SettingsPageContent() {
     () => getThemeTokens(form.theme_preference, favoriteTeam),
     [favoriteTeam, form.theme_preference],
   );
-  const previewStyle = {
-    background: `linear-gradient(135deg, ${previewTheme.bgTop} 0%, ${previewTheme.bgMid} 58%, ${previewTheme.bgBottom} 100%)`,
-    border: `1px solid ${previewTheme.borderSoft}`,
-    boxShadow:
-      previewTheme.surfaceMode === "light"
-        ? "0 24px 60px rgba(18, 57, 122, 0.12)"
-        : "0 24px 60px rgba(4, 10, 22, 0.34)",
-    color: `rgb(${previewTheme.inkRgb})`,
-  } satisfies CSSProperties;
   const whatsappCards = [
     {
       title: "WhatsApp general",
       link: env.whatsappGeneralUrl,
       fallbackValue: "Configura NEXT_PUBLIC_WHATSAPP_GENERAL_URL",
-      description: "Canal general para avisos, resultados y movimiento del torneo.",
     },
     {
       title: "WhatsApp conversacion",
       link: env.whatsappConversationUrl,
       fallbackValue: "Configura NEXT_PUBLIC_WHATSAPP_CONVERSATION_URL",
-      description: "Espacio para cotorreo, picks, debate y seguimiento del grupo.",
     },
   ];
 
@@ -276,24 +264,24 @@ export function SettingsPageContent() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="text-xl font-semibold text-ink">Perfil</h1>
-      </section>
+      <header className="page-header">
+        <h1 className="page-title">Settings</h1>
+      </header>
 
       {loadError && !me ? <p className="text-sm text-coral">{loadError}</p> : null}
       {saveError ? <p className="text-sm text-coral">{saveError}</p> : null}
       {message ? <p className="text-sm text-moss">{message}</p> : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className="space-y-5">
-          <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="grid gap-12 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <section>
+          <form onSubmit={handleSubmit} className="space-y-10">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">
                 Datos principales
               </h2>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-x-10 gap-y-7 border-t border-white/10 pt-6 md:grid-cols-2">
               <label className="space-y-2 text-sm">
                 <span className="text-steel">Nombre</span>
                 <input
@@ -301,7 +289,7 @@ export function SettingsPageContent() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, display_name: event.target.value }))
                   }
-                  className="field-control"
+                  className="h-14 w-full border-0 border-b border-white/15 bg-transparent px-0 text-ink outline-none transition focus:border-[#4f7df3]"
                   placeholder="Tu nickname"
                 />
               </label>
@@ -311,7 +299,7 @@ export function SettingsPageContent() {
                   type="email"
                   value={form.email}
                   onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                  className="field-control"
+                  className="w-full border-0 border-b border-white/15 bg-transparent px-0 py-3 text-ink outline-none transition focus:border-[#4f7df3]"
                   placeholder="tu@correo.com"
                 />
               </label>
@@ -323,7 +311,7 @@ export function SettingsPageContent() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, contact_phone: event.target.value }))
                   }
-                  className="field-control"
+                  className="w-full border-0 border-b border-white/15 bg-transparent px-0 py-3 text-ink outline-none transition focus:border-[#4f7df3]"
                   placeholder="+52 55 0000 0000"
                 />
               </label>
@@ -334,7 +322,7 @@ export function SettingsPageContent() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, bank_name: event.target.value }))
                   }
-                  className="field-control"
+                  className="w-full border-0 border-b border-white/15 bg-transparent px-0 py-3 text-ink outline-none transition focus:border-[#4f7df3]"
                   placeholder="Banco o institucion"
                 />
               </label>
@@ -345,33 +333,31 @@ export function SettingsPageContent() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, deposit_account: event.target.value }))
                   }
-                  className="field-control"
+                  className="w-full border-0 border-b border-white/15 bg-transparent px-0 py-3 text-ink outline-none transition focus:border-[#4f7df3]"
                   placeholder="CLABE, cuenta o referencia"
                 />
               </label>
               <label className="space-y-2 text-sm">
                 <span className="text-steel">Modalidad</span>
-                <div className="field-control flex items-center justify-between gap-3 bg-white/[0.03]">
+                <div className="flex min-h-12 items-center border-b border-white/15 py-3 text-ink/70">
                   <span>{form.modality === "aval" ? "Aval" : "Pre-pago"}</span>
-                  <span className="text-[10px] uppercase tracking-[0.16em] text-steel">Solo admin</span>
                 </div>
               </label>
               {form.modality === "aval" ? (
                 <label className="space-y-2 text-sm">
                   <span className="text-steel">Aval</span>
-                  <div className="field-control flex items-center justify-between gap-3 bg-white/[0.03]">
+                  <div className="flex min-h-12 items-center border-b border-white/15 py-3 text-ink/70">
                     <span>{avalDisplayName ?? "Aval asignado por admin"}</span>
-                    <span className="text-[10px] uppercase tracking-[0.16em] text-steel">Solo admin</span>
                   </div>
                 </label>
               ) : null}
             </div>
 
             <div>
-              <h3 className="text-xl font-semibold text-ink">Equipo y ambiente</h3>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Equipo y ambiente</h2>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-x-10 gap-y-7 border-t border-white/10 pt-6 md:grid-cols-2">
               <label className="space-y-2 text-sm">
                 <span className="text-steel">Equipo favorito</span>
                 <select
@@ -379,7 +365,7 @@ export function SettingsPageContent() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, favorite_team_id: event.target.value }))
                   }
-                  className="field-control"
+                  className="w-full border-0 border-b border-white/15 bg-transparent px-0 py-3 text-ink outline-none transition focus:border-[#4f7df3]"
                   disabled={teamsLoading}
                 >
                   <option value="">
@@ -391,9 +377,7 @@ export function SettingsPageContent() {
                     </option>
                   ))}
                 </select>
-                <p className={`text-xs ${teamLoadError ? "text-coral" : "text-steel"}`}>
-                  {teamLoadError ?? `${teams.length} equipos disponibles`}
-                </p>
+                {teamLoadError ? <p className="text-xs text-coral">{teamLoadError}</p> : null}
               </label>
               <label className="space-y-2 text-sm">
                 <span className="text-steel">Ambiente</span>
@@ -405,7 +389,7 @@ export function SettingsPageContent() {
                       theme_preference: event.target.value as ThemePreference,
                     }))
                   }
-                  className="field-control"
+                  className="w-full border-0 border-b border-white/15 bg-transparent px-0 py-3 text-ink outline-none transition focus:border-[#4f7df3]"
                 >
                   {THEME_PREFERENCE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -417,13 +401,10 @@ export function SettingsPageContent() {
             </div>
 
             <div>
-              <h3 className="text-xl font-semibold text-ink">Notificaciones</h3>
-              <p className="mt-2 text-sm text-steel">
-                Elige que avisos push quieres recibir antes y durante la jornada.
-              </p>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Notificaciones</h2>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-x-10 gap-y-7 border-t border-white/10 pt-6 md:grid-cols-2">
               <label className="space-y-2 text-sm">
                 <span className="text-steel">Recordatorios push</span>
                 <select
@@ -442,7 +423,7 @@ export function SettingsPageContent() {
                         event.target.value === "si" ? current.matchday_summary_notification_enabled : false,
                     }))
                   }
-                  className="field-control"
+                  className="h-14 w-full border-0 border-b border-white/15 bg-transparent px-0 text-ink outline-none transition focus:border-[#4f7df3]"
                 >
                   <option value="no">Desactivados</option>
                   <option value="si">Activar push</option>
@@ -451,7 +432,7 @@ export function SettingsPageContent() {
 
               <div className="space-y-2 text-sm">
                 <span className="text-steel">Permiso del navegador</span>
-                <div className="field-control flex items-center justify-between gap-3 bg-white/[0.03]">
+                <div className="flex h-14 items-center justify-between gap-3 border-b border-white/15">
                   <span>
                     {pushPermission === "granted"
                       ? "Activo"
@@ -465,16 +446,15 @@ export function SettingsPageContent() {
                     type="button"
                     onClick={() => void handleRequestPushPermission()}
                     disabled={requestingPushPermission || pushPermission === "unsupported"}
-                    className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)] disabled:opacity-50"
+                    className="text-xs font-semibold uppercase tracking-[0.14em] text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3] disabled:opacity-50"
                   >
                     {requestingPushPermission ? "Solicitando..." : "Activar"}
                   </button>
                 </div>
               </div>
 
-              <div className="space-y-3 md:col-span-2">
-                <span className="text-sm text-steel">Checklist de avisos</span>
-                <label className="flex items-start gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ink">
+              <div className="divide-y divide-white/10 border-y border-white/10 md:col-span-2">
+                <label className="flex items-center gap-3 py-4 text-sm text-ink">
                   <input
                     type="checkbox"
                     checked={form.pick_reminder_hours_before === 1}
@@ -484,12 +464,12 @@ export function SettingsPageContent() {
                         pick_reminder_hours_before: event.target.checked ? 1 : "",
                       }))
                     }
-                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    className="h-4 w-4 accent-[#4f7df3]"
                     disabled={!form.pick_reminder_email_enabled}
                   />
                   <span>1 hora antes de cerrar tu pick</span>
                 </label>
-                <label className="flex items-start gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ink">
+                <label className="flex items-center gap-3 py-4 text-sm text-ink">
                   <input
                     type="checkbox"
                     checked={form.matchday_start_notification_enabled}
@@ -499,12 +479,12 @@ export function SettingsPageContent() {
                         matchday_start_notification_enabled: event.target.checked,
                       }))
                     }
-                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    className="h-4 w-4 accent-[#4f7df3]"
                     disabled={!form.pick_reminder_email_enabled}
                   />
                   <span>1 hora antes del inicio de la jornada</span>
                 </label>
-                <label className="flex items-start gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ink">
+                <label className="flex items-center gap-3 py-4 text-sm text-ink">
                   <input
                     type="checkbox"
                     checked={form.match_result_notification_enabled}
@@ -514,12 +494,12 @@ export function SettingsPageContent() {
                         match_result_notification_enabled: event.target.checked,
                       }))
                     }
-                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    className="h-4 w-4 accent-[#4f7df3]"
                     disabled={!form.pick_reminder_email_enabled}
                   />
                   <span>Marcador y standings por partido</span>
                 </label>
-                <label className="flex items-start gap-3 rounded-[18px] border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ink">
+                <label className="flex items-center gap-3 py-4 text-sm text-ink">
                   <input
                     type="checkbox"
                     checked={form.matchday_summary_notification_enabled}
@@ -529,7 +509,7 @@ export function SettingsPageContent() {
                         matchday_summary_notification_enabled: event.target.checked,
                       }))
                     }
-                    className="mt-1 h-4 w-4 accent-[var(--accent)]"
+                    className="h-4 w-4 accent-[#4f7df3]"
                     disabled={!form.pick_reminder_email_enabled}
                   />
                   <span>Standing y puntos al cierre de la jornada</span>
@@ -540,55 +520,32 @@ export function SettingsPageContent() {
             <button
               type="submit"
               disabled={saving || !form.display_name.trim()}
-              className="secondary-button disabled:opacity-60"
+              className={`text-sm font-semibold uppercase tracking-[0.16em] transition disabled:opacity-50 ${saving ? "text-[#4f7df3]" : "text-ink hover:text-[#4f7df3]"}`}
             >
               {saving ? "Guardando..." : "Guardar"}
             </button>
           </form>
         </section>
 
-        <section className="space-y-5">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Preview</p>
-            <h2 className="mt-2 text-sm font-semibold uppercase tracking-[0.22em] text-ink">
-              Ambiente activo
-            </h2>
-          </div>
-
-          <div
-            className="rounded-[18px] px-4 py-4"
-            style={previewStyle}
-          >
-            <p
-              className="text-xs uppercase tracking-[0.25em]"
-              style={{ color: previewTheme.accentHex, opacity: previewTheme.surfaceMode === "light" ? 0.92 : 0.78 }}
-            >
+        <section className="space-y-5 border-t border-white/10 pt-6 xl:border-l xl:border-t-0 xl:pl-8 xl:pt-0">
+          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Ambiente</h2>
+          <div className="space-y-4 border-t border-white/10 pt-5">
+            <p className="text-xs uppercase tracking-[0.25em]" style={{ color: previewTheme.accentHex }}>
               {getThemePreferenceLabel(form.theme_preference)}
             </p>
-            <p className="mt-3 text-2xl font-semibold" style={{ color: `rgb(${previewTheme.inkRgb})` }}>
+            <p className="text-2xl font-semibold text-ink">
               {form.theme_preference === "favorite_team" && favoriteTeam
                 ? favoriteTeam.name
                 : me?.display_name ?? "Usuario"}
-            </p>
-            <p className="mt-2 text-sm" style={{ color: `rgba(${previewTheme.steelRgb}, 0.94)` }}>
-              {getThemePreferenceDescription(form.theme_preference, Boolean(favoriteTeam))}
             </p>
           </div>
         </section>
       </div>
 
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Comunidad</p>
-            <h2 className="mt-2 text-sm font-semibold uppercase tracking-[0.22em] text-ink">WhatsApp</h2>
-            <p className="mt-2 max-w-2xl text-sm text-steel">
-              Escanea cualquiera de los QR para entrar rapido al grupo general o al chat de conversacion.
-            </p>
-          </div>
-        </div>
+      <section className="space-y-5 border-t border-white/10 pt-8">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">WhatsApp</h2>
 
-        <div className="grid gap-5 lg:grid-cols-2">
+        <div className="grid gap-x-12 gap-y-8 lg:grid-cols-2">
           {whatsappCards.map((item) => {
             const effectiveValue = item.link || item.fallbackValue;
             const isConfigured = Boolean(item.link);
@@ -596,47 +553,32 @@ export function SettingsPageContent() {
             return (
               <div
                 key={item.title}
-                className="space-y-4 px-1 py-4 sm:px-3"
+                className="space-y-5 border-t border-white/10 pt-5"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-base font-semibold text-ink">{item.title}</p>
-                    <p className="mt-2 text-sm text-steel">{item.description}</p>
-                  </div>
-                  <span
-                    className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                      isConfigured
-                        ? "border-emerald-300/35 bg-emerald-400/12 text-emerald-100"
-                        : "border-amber-300/30 bg-amber-400/10 text-amber-100"
-                    }`}
-                  >
-                    {isConfigured ? "Activo" : "Pendiente"}
-                  </span>
-                </div>
+                <p className="text-base font-semibold text-ink">{item.title}</p>
 
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                  <div className="flex h-[188px] w-[188px] items-center justify-center rounded-[18px] bg-white p-3">
+                  <div className="flex h-[176px] w-[176px] items-center justify-center bg-white p-3">
                     <img
                       src={buildQrImageUrl(effectiveValue)}
                       alt={`QR ${item.title}`}
-                      className="h-full w-full rounded-[18px] object-contain"
+                      className="h-full w-full object-contain"
                     />
                   </div>
 
                   <div className="min-w-0 flex-1 space-y-3">
-                    <p className="text-xs uppercase tracking-[0.2em] text-steel/80">Link</p>
                     {isConfigured ? (
                       <a
                         href={item.link}
                         target="_blank"
                         rel="noreferrer"
-                        className="block break-all text-sm text-ink underline decoration-white/20 underline-offset-4 transition hover:decoration-white/60"
+                        className="block break-all text-sm text-ink transition hover:text-[#4f7df3]"
                       >
                         {item.link}
                       </a>
                     ) : (
                       <p className="text-sm text-steel">
-                        Agrega la URL en `frontend/.env.local` para activar este QR.
+                        No disponible
                       </p>
                     )}
                   </div>

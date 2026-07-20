@@ -32,7 +32,8 @@ export type DashboardWidgetId =
   | "prize_summary"
   | "upcoming"
   | "memberships"
-  | "survivor_summary";
+  | "survivor_summary"
+  | "ranking";
 
 export interface DashboardWidgetConfig {
   id: string;
@@ -615,9 +616,11 @@ export interface QuinielaPlusUserDistributionMatch {
   home_team_name: string;
   home_team_short_name: string;
   home_team_crest_url: string | null;
+  home_team_primary_color: string | null;
   away_team_name: string;
   away_team_short_name: string;
   away_team_crest_url: string | null;
+  away_team_primary_color: string | null;
   kickoff_at: string;
   is_locked: boolean;
   total_picks: number;
@@ -822,6 +825,7 @@ export interface WorldCupOfficialResult {
 export interface WorldCupBoard {
   season_id: string;
   season_name: string;
+  league_standings: WorldCupGroupStanding[];
   groups: WorldCupGroup[];
   official_results: WorldCupOfficialResult[];
   round_of_32: WorldCupBracketMatch[];

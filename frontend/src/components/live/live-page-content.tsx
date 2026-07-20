@@ -126,28 +126,19 @@ export function LivePageContent() {
 
   if (liveEnabledSeasons.length === 0) {
     return (
-      <section className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5">
-        <p className="text-xs uppercase tracking-[0.28em] text-steel">Live</p>
-        <h1 className="mt-2 text-xl font-semibold text-ink">Quiniela al momento</h1>
-        <p className="mt-2 text-sm text-steel">
-          Aun no hay temporadas con la vista live prendida desde admin.
-        </p>
+      <section className="py-2">
+        <h1 className="text-xl font-semibold text-ink">Live</h1>
+        <p className="mt-2 text-sm text-steel">No hay torneos Live disponibles.</p>
       </section>
     );
   }
 
   return (
     <section className="space-y-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.28em] text-[#ff7b9a]">Live</p>
-          <h1 className="mt-2 text-xl font-semibold text-ink">Quiniela al momento</h1>
-          <p className="mt-2 max-w-3xl text-sm text-steel">
-            Aqui admin mueve marcadores en resultados y esta vista recalcula posiciones provisionales en tiempo real para torneo regular o VIP.
-          </p>
-        </div>
-        <label className="space-y-1">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-steel">Torneo</span>
+      <header className="page-header">
+        <h1 className="page-title">Live</h1>
+        <label className="page-context-label">
+          <span className="text-xs text-steel">Torneo</span>
           <select
             value={selectedBoardId}
             onChange={(event) => {
@@ -167,7 +158,7 @@ export function LivePageContent() {
                 setSeasonId(nextVip.season_id, "");
               }
             }}
-            className="field-control h-10 min-w-[280px] rounded-[8px] border-white/[0.08] bg-transparent px-3 text-sm"
+            className="page-context-select"
           >
             {boardOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -176,7 +167,7 @@ export function LivePageContent() {
             ))}
           </select>
         </label>
-      </div>
+      </header>
 
       <DashboardLivePanel season={selectedSeason} vipId={selectedVip?.id ?? null} />
     </section>

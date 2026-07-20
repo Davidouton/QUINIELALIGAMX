@@ -61,6 +61,7 @@ class LeaderboardService:
         rows = self.repo.list_overall(db, season.id if season is not None else None)
         if season is not None and self._season_needs_overall_rebuild(db, season, rows):
             ScoringService().recalculate_season(db, season.id)
+            db.expire_all()
             rows = self.repo.list_overall(db, season.id)
         season_cache: dict[str, Season | None] = {}
         eligible_profile_ids_cache: dict[str, set[str]] = {}
@@ -122,13 +123,30 @@ class LeaderboardService:
             for standing, _profile in rows
         ):
             return False
-        return bool(
+        has_positive_pick_points = bool(
             db.execute(
                 select(PickPoint.id)
                 .join(Matchday, Matchday.id == PickPoint.matchday_id)
                 .where(
                     Matchday.season_id == season.id,
                     PickPoint.total_points > 0,
+                )
+                .limit(1)
+            ).first()
+        )
+        if has_positive_pick_points:
+            return True
+        return bool(
+            db.execute(
+                select(UserPick.id)
+                .join(Match, Match.id == UserPick.match_id)
+                .join(Matchday, Matchday.id == Match.matchday_id)
+                .join(MatchResult, MatchResult.match_id == Match.id)
+                .outerjoin(PickPoint, PickPoint.pick_id == UserPick.id)
+                .where(
+                    Matchday.season_id == season.id,
+                    MatchResult.is_official.is_(True),
+                    PickPoint.id.is_(None),
                 )
                 .limit(1)
             ).first()

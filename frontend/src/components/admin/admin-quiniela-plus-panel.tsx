@@ -321,14 +321,6 @@ export function AdminQuinielaPlusPanel() {
 
   return (
     <div className="space-y-8">
-      <section className="space-y-2">
-        <h1 className="text-xl font-semibold text-ink">Quiniela +</h1>
-        <p className="max-w-3xl text-sm text-steel">
-          Configura el catalogo de ligas, los bundles por periodo y el switch global del checkout para activarlo cuando
-          cierres el frente fiscal.
-        </p>
-      </section>
-
       <section className="rounded-[18px] border border-white/[0.06] bg-white/[0.03] p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
