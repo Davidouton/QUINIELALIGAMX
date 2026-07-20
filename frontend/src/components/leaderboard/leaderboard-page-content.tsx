@@ -7,7 +7,7 @@ import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/tra
 import { VIP_SUMMARY_PATH, buildVipDetailPath } from "@/lib/api/vip";
 import { filterMatchdaysBySeason, getLiveSeasons, resolveLiveSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AppBootstrap, LeaderboardEntry, Matchday, Me, PrizeSummary, Season, VipCompetition } from "@/types/api";
+import type { AppBootstrap, LeaderboardEntry, Matchday, Me, PrizeSummary, Season, VipCompetition, WeeklyPrizeMatchday } from "@/types/api";
 
 type RankingEntry = Pick<
   LeaderboardEntry,
@@ -26,6 +26,7 @@ type LeaderboardState = {
   selectedSeason: Season | null;
   overallBySeasonId: Record<string, LeaderboardEntry[]>;
   participantCountBySeasonId: Record<string, number>;
+  weeklyPrizesBySeasonId: Record<string, WeeklyPrizeMatchday[]>;
   vipCompetitions: VipCompetition[];
   error: string | null;
 };
@@ -37,6 +38,7 @@ const initialState: LeaderboardState = {
   selectedSeason: null,
   overallBySeasonId: {},
   participantCountBySeasonId: {},
+  weeklyPrizesBySeasonId: {},
   vipCompetitions: [],
   error: null,
 };
@@ -49,6 +51,7 @@ export function LeaderboardPageContent() {
   const [loading, setLoading] = useState(true);
   const [loadingVipBoardId, setLoadingVipBoardId] = useState("");
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
+  const [activeView, setActiveView] = useState<"overall" | "weekly-prizes">("overall");
   const lastLoadedAtRef = useRef(0);
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
@@ -76,7 +79,7 @@ export function LeaderboardPageContent() {
       const seasonBoardBundles = await Promise.all(
         liveSeasons.map(async (season) => {
           try {
-            const [rows, prizeSummary] = await Promise.all([
+            const [rows, prizeSummary, weeklyPrizes] = await Promise.all([
               backendFetch<LeaderboardEntry[]>(
                 `/leaderboard/overall?season_id=${season.id}`,
                 accessToken,
@@ -87,17 +90,24 @@ export function LeaderboardPageContent() {
                 accessToken,
                 { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
               ),
+              backendFetch<WeeklyPrizeMatchday[]>(
+                `/leaderboard/weekly-prizes?season_id=${season.id}`,
+                accessToken,
+                { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
+              ).catch(() => []),
             ]);
             return {
               seasonId: season.id,
               rows,
               participantCount: prizeSummary.confirmed_participants,
+              weeklyPrizes,
             };
           } catch {
             return {
               seasonId: season.id,
               rows: [],
               participantCount: 0,
+              weeklyPrizes: [],
             };
           }
         }),
@@ -123,6 +133,9 @@ export function LeaderboardPageContent() {
         ),
         participantCountBySeasonId: Object.fromEntries(
           seasonBoardBundles.map((bundle) => [bundle.seasonId, bundle.participantCount]),
+        ),
+        weeklyPrizesBySeasonId: Object.fromEntries(
+          seasonBoardBundles.map((bundle) => [bundle.seasonId, bundle.weeklyPrizes]),
         ),
         vipCompetitions,
         error: null,
@@ -267,6 +280,9 @@ export function LeaderboardPageContent() {
       ? state.participantCountBySeasonId[selectedRegularSeason.id] ?? activeEntries.length
       : activeEntries.length;
   const myActiveEntry = activeEntries.find((entry) => entry.profile_id === state.me?.id) ?? null;
+  const activeWeeklyPrizes = selectedRegularSeason
+    ? state.weeklyPrizesBySeasonId[selectedRegularSeason.id] ?? []
+    : [];
   const isLoadingActiveVipBoard = Boolean(selectedVipCompetition && loadingVipBoardId === selectedVipCompetition.id);
   const hasSeasonParticipantsWithoutStandings = Boolean(
     selectedRegularSeason && activeEntries.length === 0 && activeParticipantsCount > 0,
@@ -419,9 +435,24 @@ export function LeaderboardPageContent() {
       </header>
 
       <section className="space-y-3">
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">{activeSectionLabel}</p>
+        <div className="flex flex-wrap gap-x-8 gap-y-3 border-b border-white/[0.08]">
+          <button
+            type="button"
+            onClick={() => setActiveView("overall")}
+            className={activeView === "overall" ? "tab-control tab-control-active" : "tab-control"}
+          >
+            {activeSectionLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveView("weekly-prizes")}
+            className={activeView === "weekly-prizes" ? "tab-control tab-control-active" : "tab-control"}
+          >
+            Premios por jornada
+          </button>
+        </div>
 
-        <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {activeView === "overall" ? <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <table className="min-w-[720px] w-full table-fixed text-left text-[11px] text-ink sm:text-sm">
             <colgroup>
               <col className="w-[72px]" />
@@ -461,7 +492,53 @@ export function LeaderboardPageContent() {
                 : "Aun no hay posiciones calculadas."}
             </p>
           ) : null}
-        </div>
+        </div> : selectedVipCompetition ? (
+          <p className="py-6 text-sm text-steel">Los premios por jornada corresponden a los torneos regulares.</p>
+        ) : activeWeeklyPrizes.length === 0 ? (
+          <p className="py-6 text-sm text-steel">Todavía no hay jornadas cerradas con premios calculados.</p>
+        ) : (
+          <div className="divide-y divide-white/[0.08] border-t border-white/[0.08]">
+            {activeWeeklyPrizes.map((matchday) => (
+              <section key={matchday.matchday_id} className="py-5">
+                <div className="flex items-baseline justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Jornada {matchday.matchday_number}</p>
+                    <h2 className="mt-1 text-base font-semibold text-ink">{matchday.matchday_name}</h2>
+                  </div>
+                  <p className="text-sm font-semibold text-ink">
+                    {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(matchday.total_prize_amount)}
+                  </p>
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-[620px] w-full table-fixed text-sm">
+                    <thead className="app-table-head">
+                      <tr>
+                        <th className="w-20 px-3 py-3 text-left">Lugar</th>
+                        <th className="px-3 py-3 text-left">Jugador</th>
+                        <th className="w-28 px-3 py-3 text-center">Puntos</th>
+                        <th className="w-28 px-3 py-3 text-center">Exactos</th>
+                        <th className="w-32 px-3 py-3 text-right">Premio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {matchday.winners.map((winner) => (
+                        <tr key={winner.profile_id} className={`app-table-row border-b last:border-b-0 ${winner.profile_id === state.me?.id ? "font-semibold text-[#4f7df3] [&>td]:text-[#4f7df3]" : ""}`}>
+                          <td className="px-3 py-3 font-semibold">#{winner.rank_position}</td>
+                          <td className="px-3 py-3 font-medium">{winner.display_name}</td>
+                          <td className="px-3 py-3 text-center">{winner.total_points}</td>
+                          <td className="px-3 py-3 text-center">{winner.exact_scores}</td>
+                          <td className="px-3 py-3 text-right font-semibold">
+                            {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(winner.prize_amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

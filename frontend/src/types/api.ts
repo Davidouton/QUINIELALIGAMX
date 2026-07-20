@@ -865,6 +865,23 @@ export interface MyMatchdayPointsEntry {
   weekly_prize_amount: number;
 }
 
+export interface WeeklyPrizeWinner {
+  profile_id: string;
+  display_name: string;
+  rank_position: number;
+  total_points: number;
+  exact_scores: number;
+  prize_amount: number;
+}
+
+export interface WeeklyPrizeMatchday {
+  matchday_id: string;
+  matchday_number: number;
+  matchday_name: string;
+  total_prize_amount: number;
+  winners: WeeklyPrizeWinner[];
+}
+
 export interface PublishedResult {
   match_id: string;
   matchday_id: string;

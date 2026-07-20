@@ -28,6 +28,23 @@ class MyMatchdayPointsEntry(BaseModel):
     weekly_prize_amount: float = 0
 
 
+class WeeklyPrizeWinner(BaseModel):
+    profile_id: str
+    display_name: str
+    rank_position: int
+    total_points: int
+    exact_scores: int
+    prize_amount: float
+
+
+class WeeklyPrizeMatchday(BaseModel):
+    matchday_id: str
+    matchday_number: int
+    matchday_name: str
+    total_prize_amount: float
+    winners: list[WeeklyPrizeWinner] = []
+
+
 class PerformanceRacePoint(BaseModel):
     matchday_id: str
     matchday_number: int
