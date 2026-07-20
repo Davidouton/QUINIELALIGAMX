@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminPickRow, AdminVipCompetition, Matchday, PickSelection, Season } from "@/types/api";
+import type { AdminPickRow, Matchday, PickSelection, Season } from "@/types/api";
 
 type DraftState = {
   predicted_home_score: string;
@@ -128,8 +128,6 @@ function toDraft(row: AdminPickRow): DraftState {
 export function AdminPicksPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [matchdays, setMatchdays] = useState<Matchday[]>([]);
-  const [vips, setVips] = useState<AdminVipCompetition[]>([]);
-  const [selectedVipId, setSelectedVipId] = useState("");
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [selectedMatchdayId, setSelectedMatchdayId] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState("");
@@ -141,25 +139,11 @@ export function AdminPicksPanel() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const selectedVip = useMemo(
-    () => vips.find((vip) => vip.id === selectedVipId) ?? null,
-    [selectedVipId, vips],
-  );
-
   const seasonMatchdays = useMemo(
-    () => {
-      if (selectedVip) {
-        const vipMatchdayIds = new Set(selectedVip.matchdays.map((matchday) => matchday.id));
-        return matchdays
-          .filter((matchday) => vipMatchdayIds.has(matchday.id))
-          .sort((left, right) => left.number - right.number);
-      }
-
-      return matchdays
-        .filter((matchday) => !selectedSeasonId || matchday.season_id === selectedSeasonId)
-        .sort((left, right) => left.number - right.number);
-    },
-    [matchdays, selectedSeasonId, selectedVip],
+    () => matchdays
+      .filter((matchday) => !selectedSeasonId || matchday.season_id === selectedSeasonId)
+      .sort((left, right) => left.number - right.number),
+    [matchdays, selectedSeasonId],
   );
 
   const profileOptions = useMemo(() => {
@@ -202,7 +186,7 @@ export function AdminPicksPanel() {
     }
   }, [rows, selectedProfileId]);
 
-  async function loadRows(matchdayId: string, accessToken?: string, vipId = selectedVipId) {
+  async function loadRows(matchdayId: string, accessToken?: string) {
     if (!matchdayId) {
       setRows([]);
       setDrafts({});
@@ -211,9 +195,6 @@ export function AdminPicksPanel() {
 
     const token = accessToken ?? (await getBrowserAccessToken());
     const params = new URLSearchParams({ matchday_id: matchdayId });
-    if (vipId) {
-      params.set("vip_id", vipId);
-    }
     const data = await backendFetch<AdminPickRow[]>(`/admin/picks?${params.toString()}`, token);
     setRows(data);
     setDrafts(Object.fromEntries(data.map((row) => [rowKey(row), toDraft(row)])));
@@ -221,10 +202,9 @@ export function AdminPicksPanel() {
 
   async function loadPanel() {
     const accessToken = await getBrowserAccessToken();
-    const [seasonRows, matchdayRows, vipRows] = await Promise.all([
+    const [seasonRows, matchdayRows] = await Promise.all([
       backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Matchday[]>("/matchdays", accessToken),
-      backendFetch<AdminVipCompetition[]>("/admin/vip", accessToken),
     ]);
 
     const defaultSeason = seasonRows.find((season) => season.is_active) ?? seasonRows[0] ?? null;
@@ -236,7 +216,6 @@ export function AdminPicksPanel() {
 
     setSeasons(seasonRows);
     setMatchdays(matchdayRows);
-    setVips(vipRows);
     setSelectedSeasonId(defaultSeason?.id ?? "");
     setSelectedMatchdayId(defaultMatchday?.id ?? "");
     await loadRows(defaultMatchday?.id ?? "", accessToken);
@@ -257,7 +236,6 @@ export function AdminPicksPanel() {
   }, []);
 
   async function handleSeasonChange(seasonId: string) {
-    setSelectedVipId("");
     setSelectedSeasonId(seasonId);
     setError(null);
     setMessage(null);
@@ -268,34 +246,6 @@ export function AdminPicksPanel() {
       await loadRows(nextMatchday?.id ?? "");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los picks del torneo");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleVipChange(vipId: string) {
-    const vip = vips.find((row) => row.id === vipId) ?? null;
-    setSelectedVipId(vipId);
-    setSelectedSeasonId(vip?.season_id ?? selectedSeasonId);
-    setError(null);
-    setMessage(null);
-    setLoading(true);
-    try {
-      if (!vipId) {
-        const nextMatchday = pickPreferredMatchday(
-          matchdays.filter((matchday) => !selectedSeasonId || matchday.season_id === selectedSeasonId),
-        );
-        setSelectedMatchdayId(nextMatchday?.id ?? "");
-        await loadRows(nextMatchday?.id ?? "", undefined, "");
-        return;
-      }
-
-      const vipMatchdayIds = new Set(vip?.matchdays.map((matchday) => matchday.id) ?? []);
-      const nextMatchday = pickPreferredMatchday(matchdays.filter((matchday) => vipMatchdayIds.has(matchday.id)));
-      setSelectedMatchdayId(nextMatchday?.id ?? "");
-      await loadRows(nextMatchday?.id ?? "", undefined, vipId);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los picks de la VIP");
     } finally {
       setLoading(false);
     }
@@ -367,7 +317,7 @@ export function AdminPicksPanel() {
           admin_override_note: draft.admin_override_note || null,
         }),
       });
-      await loadRows(selectedMatchdayId, accessToken, selectedVipId);
+      await loadRows(selectedMatchdayId, accessToken);
       setMessage(`${row.profile_display_name}: pick overrideado.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el override");
@@ -382,26 +332,13 @@ export function AdminPicksPanel() {
 
   return (
     <section className="space-y-5">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,220px)_minmax(0,220px)_minmax(0,220px)_minmax(0,260px)_minmax(0,1fr)]">
-        <label className="space-y-1.5 text-xs">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">VIP</span>
-          <select value={selectedVipId} onChange={(event) => void handleVipChange(event.target.value)} className="field-control text-xs">
-            <option value="">Torneo regular</option>
-            {vips.map((vip) => (
-              <option key={vip.id} value={vip.id}>
-                {vip.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,260px)_minmax(0,220px)_minmax(0,260px)_minmax(0,1fr)]">
         <label className="space-y-1.5 text-xs">
           <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Temporada</span>
           <select
             value={selectedSeasonId}
             onChange={(event) => void handleSeasonChange(event.target.value)}
-            disabled={selectedVipId !== ""}
-            className="field-control text-xs disabled:opacity-70"
+            className="field-control text-xs"
           >
             <option value="">Selecciona temporada</option>
             {seasons.map((season) => (
@@ -476,7 +413,19 @@ export function AdminPicksPanel() {
 
       {!loading && filteredRows.length > 0 ? (
         <div className="no-scrollbar overflow-x-auto touch-pan-x">
-          <table className="min-w-[1320px] text-left text-sm text-steel">
+          <table className="min-w-[1480px] table-fixed text-left text-sm text-steel">
+            <colgroup>
+              <col className="w-[150px]" />
+              <col className="w-[210px]" />
+              <col className="w-[150px]" />
+              <col className="w-[150px]" />
+              <col className="w-[110px]" />
+              <col className="w-[190px]" />
+              <col className="w-[180px]" />
+              <col className="w-[220px]" />
+              <col className="w-[150px]" />
+              <col className="w-[120px]" />
+            </colgroup>
             <thead className="app-table-head">
               <tr>
                 <th className="px-3 py-2">Jugador</th>
@@ -500,23 +449,23 @@ export function AdminPicksPanel() {
                 const advancingTeamId = resolveAdvancingTeamId(row, draft, selectedSeason);
 
                 return (
-                  <tr key={key} className="app-table-row border-b align-top last:border-b-0">
-                    <td className="px-3 py-3">
+                  <tr key={key} className="app-table-row border-b align-middle last:border-b-0">
+                    <td className="px-3 py-5">
                       <p className="font-semibold text-ink">{row.profile_display_name}</p>
                       <p className="mt-1 text-[11px] text-steel">{row.has_pick ? "Con pick" : "Sin pick"}</p>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-5">
                       <p className="font-semibold text-ink">{row.home_team_name} vs {row.away_team_name}</p>
                       <p className="mt-1 text-[11px] text-steel">{row.match_status}</p>
                     </td>
-                    <td className="px-3 py-3 text-[12px] text-ink">{formatMexicoCityDateTime(row.kickoff_at)}</td>
-                    <td className="px-3 py-3 text-[12px] text-ink">{formatMexicoCityDateTime(row.picks_lock_at)}</td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-5 text-[12px] text-ink">{formatMexicoCityDateTime(row.kickoff_at)}</td>
+                    <td className="px-3 py-5 text-[12px] text-ink">{formatMexicoCityDateTime(row.picks_lock_at)}</td>
+                    <td className="px-3 py-5">
                       <p className={`font-semibold ${row.is_locked ? "text-coral" : "text-emerald-200"}`}>
                         {row.is_locked ? "Cerrado" : "Abierto"}
                       </p>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-5">
                       <div className="flex items-center gap-2">
                         <input
                           value={draft.predicted_home_score}
@@ -539,7 +488,7 @@ export function AdminPicksPanel() {
                         />
                       </div>
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-5">
                       <p className="font-semibold text-ink">{getSelectionLabel(selection)}</p>
                       {row.selection ? <p className="mt-1 text-[11px] text-steel">Actual: {getSelectionLabel(row.selection)}</p> : null}
                       {mustPickAdvancingTeam ? (
@@ -565,16 +514,16 @@ export function AdminPicksPanel() {
                         </label>
                       ) : null}
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-5">
                       <textarea
                         value={draft.admin_override_note}
                         onChange={(event) => updateDraft(key, { admin_override_note: event.target.value.slice(0, 220) })}
-                        rows={3}
+                        rows={1}
                         placeholder="Motivo o contexto visible para el usuario"
-                        className="field-control min-h-[84px] resize-y py-2 text-xs"
+                        className="field-control min-h-12 resize-none text-xs"
                       />
                     </td>
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-5">
                       {row.is_admin_override ? (
                         <div className="space-y-1 text-[11px]">
                           <p className="font-semibold text-amber-100">Overrideado</p>
@@ -585,7 +534,7 @@ export function AdminPicksPanel() {
                         <p className="text-[11px] text-steel">Sin override</p>
                       )}
                     </td>
-                    <td className="px-3 py-3 text-center">
+                    <td className="px-3 py-5 text-center">
                       <button
                         type="button"
                         onClick={() => void handleSaveOverride(row)}

@@ -19,6 +19,8 @@
   --app-primary-hex: #87e0a1;
   --app-primary-rgb: 135, 224, 161;
   --app-primary-text: #07111f;
+  --app-selection-hex: #4f7df3;
+  --app-selection-rgb: 79, 125, 243;
   --app-ink-rgb: 245, 247, 255;
   --app-sand-rgb: 219, 229, 255;
   --app-steel-rgb: 142, 165, 209;
@@ -68,11 +70,47 @@ body::after {
 }
 
 ::selection {
-  background: rgba(var(--app-accent-rgb), 0.35);
+  background: rgba(var(--app-selection-rgb), 0.38);
   color: rgb(var(--app-ink-rgb));
 }
 
 @layer components {
+  .page-header {
+    @apply space-y-3 border-b border-white/[0.08] pb-5;
+  }
+
+  .page-title {
+    @apply text-3xl font-semibold leading-tight text-ink;
+  }
+
+  .page-context-label {
+    @apply block max-w-md text-xs text-steel;
+  }
+
+  .page-context-select {
+    @apply mt-1 h-9 w-full border-0 border-b border-white/[0.12] bg-transparent px-0 text-sm font-medium text-ink outline-none transition;
+  }
+
+  .page-context-select:focus {
+    border-color: rgb(var(--app-selection-rgb));
+  }
+
+  .tab-list {
+    @apply flex flex-wrap items-center gap-x-6 gap-y-1;
+  }
+
+  .tab-control {
+    @apply inline-flex h-11 items-center justify-center border-0 bg-transparent px-2 text-sm font-semibold text-steel transition;
+  }
+
+  .tab-control:hover {
+    color: rgb(var(--app-ink-rgb));
+  }
+
+  .tab-control-active {
+    color: rgb(var(--app-selection-rgb));
+  }
+
   .surface-card {
     @apply rounded-[8px] p-4 md:p-5;
     background-color: var(--app-surface-subtle-bg);
@@ -139,8 +177,8 @@ body::after {
   }
 
   .field-control:focus {
-    border-color: rgb(var(--app-accent-rgb));
-    --tw-ring-color: rgba(var(--app-accent-rgb), 0.25);
+    border-color: rgb(var(--app-selection-rgb));
+    --tw-ring-color: rgba(var(--app-selection-rgb), 0.25);
   }
 
   .compact-table-control {
@@ -148,20 +186,19 @@ body::after {
   }
 
   .app-pill {
-    @apply inline-flex h-10 items-center justify-center rounded-[8px] border px-4 text-xs font-semibold text-ink transition;
-    border-color: var(--app-border-soft);
-    background-color: var(--app-surface-subtle-bg);
+    @apply inline-flex h-11 items-center justify-center rounded-none border border-transparent px-4 text-sm font-semibold text-steel transition;
+    background-color: transparent;
   }
 
   .app-pill:hover {
-    border-color: var(--app-border-strong);
-    background-color: var(--app-surface-soft-bg);
+    color: rgb(var(--app-ink-rgb));
+    background-color: transparent;
   }
 
   .app-pill-active {
     @apply app-pill;
-    border-color: rgba(var(--app-accent-rgb), 0.28);
-    background-color: var(--app-surface-soft-bg);
+    background-color: transparent;
+    color: rgb(var(--app-selection-rgb));
   }
 
   .app-pill-success {
@@ -172,13 +209,12 @@ body::after {
   }
 
   .app-pill-ghost {
-    @apply inline-flex h-10 items-center justify-center rounded-[8px] border border-transparent px-4 text-xs font-semibold text-steel transition;
-    border-color: var(--app-border-soft);
+    @apply inline-flex h-11 items-center justify-center rounded-none border border-transparent px-4 text-sm font-semibold text-steel transition;
     background-color: transparent;
   }
 
   .app-pill-ghost:hover {
-    border-color: var(--app-border-strong);
+    border-color: transparent;
     color: rgb(var(--app-ink-rgb));
   }
 
@@ -201,6 +237,60 @@ body::after {
     text-align: center;
     margin: 0 auto;
     width: 100%;
+  }
+
+  .admin-shell .field-control,
+  .admin-shell .app-input {
+    @apply h-12 rounded-none border-0 border-b border-white/[0.14] bg-transparent px-0 font-medium shadow-none focus:ring-0;
+  }
+
+  .admin-shell textarea.field-control,
+  .admin-shell textarea.app-input {
+    @apply h-auto min-h-24 py-3;
+  }
+
+  .admin-shell .primary-button,
+  .admin-shell .secondary-button {
+    @apply h-auto rounded-none border-0 bg-transparent px-0 py-2 text-ink shadow-none;
+  }
+
+  .admin-shell .primary-button:hover,
+  .admin-shell .secondary-button:hover {
+    border-color: transparent;
+    background-color: transparent;
+    color: rgb(var(--app-selection-rgb));
+  }
+
+  .admin-shell .app-pill,
+  .admin-shell .app-pill-active,
+  .admin-shell .app-pill-ghost {
+    @apply h-auto rounded-none border-0 bg-transparent px-0 py-2 shadow-none;
+  }
+
+  .admin-shell .surface-card,
+  .admin-shell .surface-card-strong {
+    @apply rounded-none border-x-0 bg-transparent px-0 shadow-none;
+  }
+
+  .admin-shell [class*="rounded-["] {
+    border-radius: 0 !important;
+  }
+
+  .admin-shell .rounded-xl,
+  .admin-shell .rounded-2xl {
+    border-radius: 0 !important;
+  }
+
+  .admin-shell [class*="bg-white/["],
+  .admin-shell [class*="bg-night/20"],
+  .admin-shell [class*="bg-night/30"] {
+    background-color: transparent !important;
+  }
+
+  .admin-shell .admin-users-table tbody td {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    vertical-align: middle !important;
   }
 
   .compact-datetime-control::-webkit-datetime-edit {

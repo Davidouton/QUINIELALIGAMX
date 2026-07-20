@@ -77,6 +77,39 @@ function registrationStatusCopy(vip: VipCompetition) {
   };
 }
 
+export function VipStatusIcon({ type }: { type: "approved" | "pending" | "rejected" | "none" | "open" | "closed" }) {
+  const className = type === "approved" || type === "open"
+    ? "text-[#3ff28a]"
+    : type === "pending"
+      ? "text-[#ffe45c]"
+      : type === "rejected" || type === "closed"
+        ? "text-[#ff647c]"
+        : "text-[#8793a6]";
+  if (type === "open" || type === "closed") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" className={`h-5 w-5 shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="1.8">
+        <rect x="5" y="10" width="14" height="10" rx="2" />
+        <path d={type === "open" ? "M9 10V7a4 4 0 0 1 7-2.6" : "M8 10V7a4 4 0 0 1 8 0v3"} />
+      </svg>
+    );
+  }
+  if (type === "approved") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true" className={`h-5 w-5 shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="2"><path d="m5 12 4 4L19 6" /></svg>;
+  }
+  if (type === "rejected") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true" className={`h-5 w-5 shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="2"><path d="m7 7 10 10M17 7 7 17" /></svg>;
+  }
+  if (type === "pending") {
+    return <svg viewBox="0 0 24 24" aria-hidden="true" className={`h-5 w-5 shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" /></svg>;
+  }
+  return <span aria-hidden="true" className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${className}`}>—</span>;
+}
+
+function membershipIconType(status: VipMembershipStatus | null) {
+  if (status === "approved" || status === "pending" || status === "rejected") return status;
+  return "none" as const;
+}
+
 function getVipModeLabel(vip: VipCompetition) {
   if (vip.competition_kind === "team_winner") {
     return `${vip.team_winner_teams.length} equipos`;
@@ -244,8 +277,15 @@ export function VipPageContent() {
   }, [questionPoolQuestions, selectedQuestionId]);
 
   useEffect(() => {
-    setQuestionResponseDrafts(
-      Object.fromEntries(questionPoolQuestions.map((question) => [question.id, question.selected_option_id ?? null])),
+    setQuestionResponseDrafts((current) =>
+      Object.fromEntries(
+        questionPoolQuestions.map((question) => [
+          question.id,
+          Object.prototype.hasOwnProperty.call(current, question.id)
+            ? current[question.id]
+            : (question.selected_option_id ?? null),
+        ]),
+      ),
     );
   }, [questionPoolQuestions]);
 
@@ -284,6 +324,28 @@ export function VipPageContent() {
     }
 
     void runLoad();
+  }, []);
+
+  useEffect(() => {
+    const refreshVips = () => {
+      void loadVips().catch((caughtError) => {
+        setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar VIP");
+      });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        refreshVips();
+      }
+    };
+
+    window.addEventListener("focus", refreshVips);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    const intervalId = window.setInterval(refreshVips, 5 * 60_000);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshVips);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
 
   async function handleRequest(vipId: string) {
@@ -370,13 +432,9 @@ export function VipPageContent() {
 
   return (
     <div className="space-y-6">
-      <section className="space-y-2">
-        <p className="text-[11px] uppercase tracking-[0.28em] text-steel">VIP</p>
-        <h1 className="text-2xl font-semibold text-ink">VIP</h1>
-        <p className="max-w-3xl text-sm text-steel">
-          Consulta tus VIPs por jornadas, sorteos especiales y dinamicas de preguntas.
-        </p>
-      </section>
+      <header className="page-header">
+        <h1 className="page-title">VIP</h1>
+      </header>
 
       {message ? <p className="text-sm text-mint">{message}</p> : null}
       {error ? <p className="text-sm text-coral">{error}</p> : null}
@@ -386,11 +444,11 @@ export function VipPageContent() {
           <div>
             <div className="hidden grid-cols-[minmax(0,1.55fr)_minmax(0,0.72fr)_minmax(0,0.58fr)_minmax(0,0.62fr)_minmax(0,0.72fr)_minmax(0,0.82fr)] gap-3 border-b border-white/[0.08] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-steel md:grid">
               <span>VIP</span>
-              <span>Mi acceso</span>
-              <span>Entrada</span>
-              <span>Bolsa</span>
-              <span>Participantes</span>
-              <span>Estado</span>
+              <span className="text-center">Mi acceso</span>
+              <span className="text-center">Entrada</span>
+              <span className="text-center">Bolsa</span>
+              <span className="text-center">Participantes</span>
+              <span className="text-center">Estado</span>
             </div>
           {vips.map((vip) => {
             const membershipStatus = statusCopy(vip.my_membership?.status ?? null);
@@ -403,21 +461,24 @@ export function VipPageContent() {
                 onClick={() => setSelectedVipId(vip.id)}
                 className={`grid w-full gap-2 border-b border-white/[0.05] px-4 py-3 text-left transition last:border-b-0 md:min-h-[76px] md:grid-cols-[minmax(0,1.55fr)_minmax(0,0.72fr)_minmax(0,0.58fr)_minmax(0,0.62fr)_minmax(0,0.72fr)_minmax(0,0.82fr)] md:items-center md:gap-3 ${
                   selectedVip?.id === vip.id
-                    ? "bg-white/[0.04]"
-                    : "hover:bg-white/[0.025]"
+                    ? "text-[#4f7df3]"
+                    : "text-ink hover:text-[#4f7df3]"
                 }`}
               >
                 <div className="min-w-0">
                   <div className="flex items-start justify-between gap-3 md:block">
-                    <p className="truncate text-[13px] font-semibold leading-5 text-ink">{vip.name}</p>
+                    <p className="truncate text-[13px] font-semibold leading-5">{vip.name}</p>
                     <div className="flex shrink-0 flex-wrap justify-end gap-2 md:hidden">
                       <span className={`flex items-center gap-1.5 text-[11px] font-semibold ${membershipStatus.tone}`}>
-                        <span className={`h-2 w-2 rounded-full ${membershipStatus.dot}`} />
+                        <VipStatusIcon type={membershipIconType(vip.my_membership?.status ?? null)} />
                         {membershipStatus.label}
                       </span>
-                      <span className={`flex items-center gap-1.5 text-[11px] font-semibold ${registrationStatus.tone}`}>
-                        <span className={`h-2 w-2 rounded-full ${registrationStatus.dot}`} />
-                        {registrationStatus.label}
+                      <span
+                        className={`flex items-center ${registrationStatus.tone}`}
+                        title={`${registrationStatus.label} · ${registrationStatus.sublabel}`}
+                        aria-label={`${registrationStatus.label}. ${registrationStatus.sublabel}`}
+                      >
+                        <VipStatusIcon type={vip.join_locked ? "closed" : "open"} />
                       </span>
                     </div>
                   </div>
@@ -426,39 +487,41 @@ export function VipPageContent() {
                     {getVipModeLabel(vip)} · {participantsCount} participantes · {formatCurrency(vip.entry_fee_amount)}
                   </p>
                 </div>
-                <div className="hidden min-w-0 md:block">
+                <div className="hidden min-w-0 text-center md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Mi acceso</p>
-                  <p className={`flex min-w-0 items-center gap-2 text-[13px] font-semibold leading-5 ${membershipStatus.tone}`}>
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${membershipStatus.dot}`} />
+                  <p className={`flex min-w-0 items-center justify-center gap-2 text-[13px] font-semibold leading-5 ${membershipStatus.tone}`}>
+                    <VipStatusIcon type={membershipIconType(vip.my_membership?.status ?? null)} />
                     <span className="truncate">{membershipStatus.label}</span>
                   </p>
                 </div>
-                <div className="hidden min-w-0 md:block">
+                <div className="hidden min-w-0 text-center md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Entrada</p>
                   <p className="text-[13px] font-semibold leading-5 text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
                 </div>
-                <div className="hidden min-w-0 md:block">
+                <div className="hidden min-w-0 text-center md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Bolsa</p>
                   <p className="text-[13px] font-semibold leading-5 text-ink">{formatCurrency(vip.gross_pool_amount)}</p>
                 </div>
-                <div className="hidden min-w-0 md:block">
+                <div className="hidden min-w-0 text-center md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Participantes</p>
                   <p className="text-[13px] font-semibold leading-5 text-ink">{participantsCount}</p>
                 </div>
-                <div className="hidden min-w-0 md:block">
+                <div className="hidden min-w-0 text-center md:block">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Estado</p>
-                  <p className={`flex min-w-0 items-center gap-2 text-[13px] font-semibold leading-5 ${registrationStatus.tone}`}>
-                    <span className={`h-2 w-2 shrink-0 rounded-full ${registrationStatus.dot}`} />
-                    <span className="truncate">{registrationStatus.label}</span>
-                  </p>
-                  <p className="mt-0.5 truncate text-xs leading-5 text-steel">{registrationStatus.sublabel}</p>
+                  <span
+                    className="inline-flex items-center justify-center"
+                    title={`${registrationStatus.label} · ${registrationStatus.sublabel}`}
+                    aria-label={`${registrationStatus.label}. ${registrationStatus.sublabel}`}
+                  >
+                    <VipStatusIcon type={vip.join_locked ? "closed" : "open"} />
+                  </span>
                 </div>
               </button>
             );
           })}
 
           {vips.length === 0 ? (
-            <div className="rounded-[12px] border border-white/[0.06] bg-white/[0.02] px-4 py-5 text-sm text-steel">
+            <div className="border-y border-white/[0.06] px-4 py-5 text-sm text-steel">
               Aun no hay VIPs activas disponibles.
             </div>
           ) : null}
@@ -472,12 +535,15 @@ export function VipPageContent() {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-sm uppercase tracking-[0.22em] text-steel">{selectedVip.season_name}</p>
-                    <span className={`flex items-center gap-1.5 text-xs font-semibold ${registrationStatusCopy(selectedVip).tone}`}>
-                      <span className={`h-2 w-2 rounded-full ${registrationStatusCopy(selectedVip).dot}`} />
-                      {registrationStatusCopy(selectedVip).label}
+                    <span
+                      className={`flex items-center ${registrationStatusCopy(selectedVip).tone}`}
+                      title={`${registrationStatusCopy(selectedVip).label} · ${registrationStatusCopy(selectedVip).sublabel}`}
+                      aria-label={`${registrationStatusCopy(selectedVip).label}. ${registrationStatusCopy(selectedVip).sublabel}`}
+                    >
+                      <VipStatusIcon type={selectedVip.join_locked ? "closed" : "open"} />
                     </span>
                     <span className={`flex items-center gap-1.5 text-xs font-semibold ${statusCopy(selectedVip.my_membership?.status ?? null).tone}`}>
-                      <span className={`h-2 w-2 rounded-full ${statusCopy(selectedVip.my_membership?.status ?? null).dot}`} />
+                      <VipStatusIcon type={membershipIconType(selectedVip.my_membership?.status ?? null)} />
                       {statusCopy(selectedVip.my_membership?.status ?? null).label}
                     </span>
                   </div>
@@ -514,7 +580,7 @@ export function VipPageContent() {
                       type="button"
                       onClick={() => void handleVipCheckout(selectedVip.id)}
                       disabled={payingVipId === selectedVip.id}
-                      className="secondary-button disabled:opacity-60"
+                      className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3] disabled:opacity-50"
                     >
                       {payingVipId === selectedVip.id
                         ? "Abriendo checkout..."
@@ -525,7 +591,7 @@ export function VipPageContent() {
                       type="button"
                       onClick={() => void handleRequest(selectedVip.id)}
                       disabled={requestingVipId === selectedVip.id}
-                      className="app-pill px-4 text-sm disabled:opacity-60"
+                      className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3] disabled:opacity-50"
                     >
                       {requestingVipId === selectedVip.id ? "Enviando..." : "Solicitar acceso"}
                     </button>
@@ -546,13 +612,13 @@ export function VipPageContent() {
                     <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Asignaciones</p>
                     <p className="text-xs text-steel">{selectedTeamWinnerEntries.length} participantes</p>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid border-y border-white/[0.08] sm:grid-cols-2 sm:gap-x-8">
                     {selectedTeamWinnerEntries.map((entry) => (
                       <div
                         key={entry.key}
-                        className={`rounded-[8px] border border-white/[0.06] px-4 py-3 ${
+                        className={`border-b border-white/[0.07] px-2 py-3 ${
                           entry.assignedTeamChampion
-                            ? "bg-mint/10"
+                            ? "text-mint"
                             : entry.assignedTeamEliminated
                               ? "opacity-55"
                               : ""
@@ -611,20 +677,19 @@ export function VipPageContent() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <p className="text-sm text-steel">Selecciona varias respuestas y guarda todo junto.</p>
+                  <div className="flex justify-end">
                     <button
                       type="button"
                       onClick={() => void handleSaveQuestionPoolResponses(selectedVip.id)}
                       disabled={savingQuestionResponses || pendingQuestionResponseCount === 0}
-                      className="app-pill px-4 disabled:opacity-50"
+                      className={`text-sm font-semibold transition hover:text-[#4f7df3] active:text-[#4f7df3] disabled:text-steel/45 ${savingQuestionResponses ? "text-[#4f7df3]" : "text-ink"}`}
                     >
                       {savingQuestionResponses ? "Guardando..." : "Guardar respuestas"}
                     </button>
                   </div>
                   {resolvedQuestionCount > 0 ? (
-                    <div className="grid gap-3 rounded-[10px] border border-mint/20 bg-mint/[0.06] p-4 sm:grid-cols-3">
-                      <div>
+                    <div className="grid border-y border-white/[0.08] sm:grid-cols-3">
+                      <div className="px-4 py-4">
                         <p className="text-xs uppercase tracking-[0.18em] text-steel">
                           {resolvedQuestionCount === activeQuestionCount ? "Score final" : "Score parcial"}
                         </p>
@@ -632,13 +697,13 @@ export function VipPageContent() {
                           {myVipLeaderboardEntry?.total_points ?? 0} pts
                         </p>
                       </div>
-                      <div>
+                      <div className="border-white/[0.08] px-4 py-4 sm:border-l">
                         <p className="text-xs uppercase tracking-[0.18em] text-steel">Aciertos</p>
                         <p className="mt-1 text-xl font-semibold text-ink">
                           {myVipLeaderboardEntry?.correct_results ?? 0}/{resolvedQuestionCount}
                         </p>
                       </div>
-                      <div>
+                      <div className="border-white/[0.08] px-4 py-4 sm:border-l">
                         <p className="text-xs uppercase tracking-[0.18em] text-steel">Posición</p>
                         <p className="mt-1 text-xl font-semibold text-ink">
                           {myVipLeaderboardEntry ? `#${myVipLeaderboardEntry.rank_position}` : "—"}
@@ -647,14 +712,14 @@ export function VipPageContent() {
                     </div>
                   ) : null}
                   <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
-                    <div className="rounded-[10px] border border-white/[0.06] p-3">
+                    <div className="xl:border-r xl:border-white/[0.08] xl:pr-4">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-xs uppercase tracking-[0.18em] text-steel">Preguntas</p>
                         <p className="text-xs text-steel">
                           {answeredQuestionCount}/{questionPoolQuestions.length}
                         </p>
                       </div>
-                      <div className="mt-3 max-h-[520px] space-y-2 overflow-y-auto pr-1">
+                      <div className="mt-3 max-h-[520px] overflow-y-auto pr-1">
                         {questionPoolQuestions.map((question) => {
                           const draftOptionId = draftQuestionResponses[question.id] ?? null;
                           const savedOptionId = savedQuestionResponses[question.id] ?? null;
@@ -666,14 +731,14 @@ export function VipPageContent() {
                               key={question.id}
                               type="button"
                               onClick={() => setSelectedQuestionId(question.id)}
-                              className={`w-full rounded-[10px] border px-3 py-3 text-left transition ${
+                              className={`w-full border-b border-white/[0.07] px-2 py-3 text-left transition ${
                                 isActive
-                                  ? "border-white/[0.18] bg-white/[0.08] text-ink"
+                                  ? "text-[#4f7df3]"
                                   : hasPendingChange
-                                    ? "border-sky-300/35 bg-sky-300/10 text-ink"
+                                    ? "text-[#4f7df3]"
                                     : isAnswered
-                                      ? "border-mint/25 bg-mint/10 text-mint"
-                                      : "border-white/[0.06] bg-white/[0.02] text-steel hover:border-white/[0.12]"
+                                      ? "text-mint"
+                                      : "text-steel hover:text-ink"
                               }`}
                             >
                               <div className="flex items-start justify-between gap-3">
@@ -684,7 +749,7 @@ export function VipPageContent() {
                                   <p className="mt-1 truncate text-sm">{shortenQuestionLabel(question.prompt)}</p>
                                 </div>
                                 <span className="text-[10px] uppercase tracking-[0.14em]">
-                                  {hasPendingChange ? "Draft" : isAnswered ? "OK" : "Pend"}
+                                  {hasPendingChange ? "Cambio" : isAnswered ? "Lista" : "Pendiente"}
                                 </span>
                               </div>
                             </button>
@@ -694,7 +759,7 @@ export function VipPageContent() {
                     </div>
 
                     {selectedQuestion ? (
-                      <div className="rounded-[10px] border border-white/[0.06] px-4 py-4">
+                      <div className="px-4 py-2">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-xs uppercase tracking-[0.18em] text-steel">
@@ -704,7 +769,7 @@ export function VipPageContent() {
                           </div>
                           {!selectedQuestion.is_active ? <span className="text-xs text-coral">Inactiva</span> : null}
                         </div>
-                        <div className="mt-4 grid gap-2">
+                        <div className="mt-5 border-t border-white/[0.08]">
                           {selectedQuestion.options.map((option) => {
                             const draftSelected = draftQuestionResponses[selectedQuestion.id] === option.id;
                             const savedSelected = savedQuestionResponses[selectedQuestion.id] === option.id;
@@ -719,12 +784,12 @@ export function VipPageContent() {
                                 type="button"
                                 onClick={() => handleSelectQuestionResponse(selectedQuestion.id, option.id)}
                                 disabled={!canAnswer || savingQuestionResponses}
-                                className={`rounded-[8px] border px-3 py-3 text-left text-sm transition ${
+                                className={`w-full border-b border-white/[0.08] px-3 py-4 text-left text-sm transition ${
                                   solved
-                                    ? "border-mint/40 bg-mint/10 text-mint"
+                                    ? "text-mint"
                                     : draftSelected
-                                      ? "border-sky-300/35 bg-sky-300/10 text-ink"
-                                      : "border-white/[0.06] text-ink hover:border-white/[0.16]"
+                                      ? "border-l-2 border-l-[#4f7df3] text-[#4f7df3]"
+                                      : "text-ink hover:text-[#4f7df3]"
                                 } disabled:opacity-80`}
                               >
                                 <div className="flex items-center justify-between gap-3">
@@ -794,7 +859,7 @@ export function VipPageContent() {
               </div>
 
               {selectedVip.my_membership?.admin_note ? (
-                <div className="rounded-[12px] border border-white/[0.06] bg-night/40 px-4 py-3 text-sm text-steel">
+                <div className="border-l-2 border-white/[0.12] px-4 py-2 text-sm text-steel">
                   <p className="font-semibold text-ink">Nota del admin</p>
                   <p className="mt-1">{selectedVip.my_membership.admin_note}</p>
                   {formatMexicoDate(selectedVip.my_membership.decided_at) ? (

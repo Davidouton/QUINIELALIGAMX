@@ -70,18 +70,7 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="surface-card-strong w-full p-8">
         <div className="mb-8 flex flex-col items-center text-center">
           <p className="eyebrow">El Quinielón</p>
-          <div className="mt-5 flex items-center justify-center gap-4">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white p-1 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
-              {env.worldCupLogoUrl ? (
-                <img
-                  src={env.worldCupLogoUrl}
-                  alt="FIFA World Cup"
-                  className="h-full w-full object-contain"
-                />
-              ) : (
-                <span className="text-sm font-semibold text-night">WC</span>
-              )}
-            </div>
+          <div className="mt-5 flex items-center justify-center">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white p-1 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
               {env.ligaMxLogoUrl ? (
                 <img

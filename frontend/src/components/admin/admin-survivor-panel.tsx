@@ -98,7 +98,6 @@ export function AdminSurvivorPanel() {
 
   if (loading) return <p className="text-sm text-steel">Cargando Survivor admin...</p>;
   return <section className="space-y-6">
-    <div><p className="app-kicker">Control administrativo</p><h1 className="mt-2 text-2xl font-semibold text-ink">Overrides de Survivor</h1><p className="mt-2 text-sm text-steel">Captura o corrige picks cerrados sin modificar el resultado oficial.</p></div>
     {error ? <p className="text-sm text-red-300">{error}</p> : null}{message ? <p className="text-sm text-mint">{message}</p> : null}
     <div className="grid gap-4 border-y border-white/10 py-5 md:grid-cols-3">
       <label className="text-xs text-steel">Temporada<select className="app-input mt-2 w-full" value={seasonId} onChange={(e) => void changeSeason(e.target.value)}>{seasons.filter((s) => s.tournament_format === "standard" || s.survivor_enabled).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>

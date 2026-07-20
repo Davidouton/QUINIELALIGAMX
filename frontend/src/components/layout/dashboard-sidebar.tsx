@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
+import { useDevMode } from "@/components/layout/dev-mode-provider";
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { resolveSeasonForContext } from "@/lib/dashboard-season";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
@@ -27,7 +28,7 @@ const primaryLinks = [
 
 const competitionHubLinks = [
   { href: "/dashboard/enrollments", label: "Inscripciones", shortLabel: "Alta" },
-  { href: "/dashboard/past-seasons", label: "Past Seasons", shortLabel: "Past" },
+  { href: "/dashboard/past-seasons", label: "Histórico", shortLabel: "Hist." },
   { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
   { href: "/dashboard/hall-of-fame", label: "Salon de la Fama" },
   { href: "/dashboard/rules", label: "Reglamento" },
@@ -69,6 +70,7 @@ export function DashboardSidebar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { buildHrefWithSeason, competitionId, seasonId } = useDashboardSeasonParam();
   const canViewAdmin = useAdminVisibility();
+  const { enabled: devModeEnabled, toggle: toggleDevMode } = useDevMode();
   const [seasons, setSeasons] = useState<Season[]>([]);
 
   useEffect(() => {
@@ -292,6 +294,15 @@ export function DashboardSidebar() {
           </div>
 
           <div className="mt-6 pt-2">
+            {canViewAdmin ? (
+              <button
+                type="button"
+                onClick={toggleDevMode}
+                className={cn("mb-2 block w-full px-4 py-2 text-left text-xs transition", devModeEnabled ? "text-[#4f7df3]" : "text-steel hover:text-ink")}
+              >
+                Dev mode {devModeEnabled ? "on" : "off"}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={handleSignOut}

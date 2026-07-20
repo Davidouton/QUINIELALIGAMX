@@ -101,10 +101,6 @@ export function AdminLiveScorePanel() {
 
   return (
     <section className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold text-ink">Live Score</h1>
-        <p className="mt-1 text-sm text-steel">Marcadores provisionales para calcular el tablero Live sin modificar resultados oficiales.</p>
-      </div>
       <div className="grid gap-3 md:grid-cols-2">
         <select value={seasonId} onChange={(event) => {
           const nextSeasonId = event.target.value;

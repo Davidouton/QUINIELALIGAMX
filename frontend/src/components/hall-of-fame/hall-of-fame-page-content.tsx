@@ -11,7 +11,7 @@ type ConsolidatedTab = "champions" | "points" | "weekly_wins" | "exact_scores";
 
 const TAB_LABELS: Record<HallTab, string> = {
   tournaments: "Torneos",
-  consolidated: "Consolidados",
+  consolidated: "Récords",
 };
 
 const CONSOLIDATED_TAB_LABELS: Record<ConsolidatedTab, string> = {
@@ -85,13 +85,13 @@ export function HallOfFamePageContent() {
   const leader = rows[0] ?? null;
 
   return (
-    <div className="space-y-6">
-      <section>
-        <h1 className="text-xl font-semibold text-ink">Salon de la Fama</h1>
-      </section>
+    <div className="space-y-10">
+      <header className="page-header">
+        <h1 className="page-title">Salón de la Fama</h1>
+      </header>
 
-      <section className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap items-center gap-3">
+      <section>
+        <div className="tab-list">
           {(Object.keys(TAB_LABELS) as HallTab[]).map((tab) => (
             <button
               key={tab}
@@ -99,8 +99,8 @@ export function HallOfFamePageContent() {
               onClick={() => setActiveTab(tab)}
               className={
                 activeTab === tab
-                  ? "app-pill-active h-9 px-3 text-[11px] uppercase tracking-[0.18em]"
-                  : "app-pill-ghost h-9 px-3 text-[11px] uppercase tracking-[0.18em]"
+                  ? "tab-control tab-control-active"
+                  : "tab-control"
               }
             >
               {TAB_LABELS[tab]}
@@ -110,15 +110,13 @@ export function HallOfFamePageContent() {
       </section>
 
       {activeTab === "tournaments" && selectedPodium ? (
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">
-              {selectedPodium.tournament_name}
-            </p>
+        <section className="space-y-10">
+          <label className="page-context-label max-w-[680px]">
+            <span>Torneo</span>
             <select
               value={selectedTournament}
               onChange={(event) => setSelectedTournament(event.target.value)}
-              className="field-control min-w-[220px] max-w-[260px]"
+              className="page-context-select"
             >
               {state.podium_tournaments.map((tournament) => (
                 <option key={tournament} value={tournament}>
@@ -126,12 +124,12 @@ export function HallOfFamePageContent() {
                 </option>
               ))}
             </select>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          </label>
+          <div className="flex flex-wrap justify-center gap-x-16 gap-y-10 border-t border-white/10 pt-8">
             {selectedPodium.entries.map((entry) => (
               <div
                 key={`${entry.profile_id}-${entry.place_label}`}
-                className="space-y-3 px-1 py-2 text-center md:px-4"
+                className="w-full max-w-[240px] space-y-3 text-center"
               >
                 <p className="text-[10px] uppercase tracking-[0.24em] text-steel">
                   {entry.place_label === "Campeon" ? "1er Lugar" : entry.place_label}
@@ -146,7 +144,7 @@ export function HallOfFamePageContent() {
                       />
                     </div>
                   ) : (
-                    <div className="flex h-28 w-28 items-center justify-center border border-white/8 text-xs text-steel sm:h-36 sm:w-36">
+                    <div className="flex h-28 w-28 items-center justify-center text-xs text-steel sm:h-36 sm:w-36">
                       Sin imagen
                     </div>
                   )}
@@ -161,8 +159,8 @@ export function HallOfFamePageContent() {
 
       {activeTab === "consolidated" ? (
         <>
-          <section className="flex flex-wrap items-center gap-2">
-            <div className="flex flex-wrap items-center gap-2">
+          <section>
+            <div className="tab-list">
               {(Object.keys(CONSOLIDATED_TAB_LABELS) as ConsolidatedTab[]).map((tab) => (
                 <button
                   key={tab}
@@ -170,8 +168,8 @@ export function HallOfFamePageContent() {
                   onClick={() => setActiveConsolidatedTab(tab)}
                   className={
                     activeConsolidatedTab === tab
-                      ? "app-pill-active h-9 px-3 text-[11px] uppercase tracking-[0.18em]"
-                      : "app-pill-ghost h-9 px-3 text-[11px] uppercase tracking-[0.18em]"
+                      ? "tab-control tab-control-active"
+                      : "tab-control"
                   }
                 >
                   {CONSOLIDATED_TAB_LABELS[tab]}
@@ -180,27 +178,19 @@ export function HallOfFamePageContent() {
             </div>
           </section>
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <div className="px-3 py-2">
+          <div className="grid gap-6 border-y border-white/10 py-5 sm:grid-cols-2">
+            <div>
               <p className="text-[10px] uppercase tracking-[0.22em] text-steel">
                 {CONSOLIDATED_TAB_LABELS[activeConsolidatedTab]}
               </p>
               <p className="mt-2 text-lg font-semibold text-ink">{leader?.display_name ?? "Sin datos"}</p>
               <p className="mt-1 text-sm text-steel">
-                {leader
-                  ? `${leader.value} ${VALUE_LABELS[activeConsolidatedTab].toLowerCase()}`
-                  : "Aun no hay historico suficiente"}
+                {leader ? `${leader.value} ${VALUE_LABELS[activeConsolidatedTab].toLowerCase()}` : "Sin datos"}
               </p>
             </div>
-            <div className="px-3 py-2">
+            <div>
               <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Registros</p>
               <p className="mt-2 text-lg font-semibold text-ink">{rows.length}</p>
-              <p className="mt-1 text-sm text-steel">Participantes con historico</p>
-            </div>
-            <div className="px-3 py-2">
-              <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Categoria</p>
-              <p className="mt-2 text-lg font-semibold text-ink">{CONSOLIDATED_TAB_LABELS[activeConsolidatedTab]}</p>
-              <p className="mt-1 text-sm text-steel">Vista historica ordenada</p>
             </div>
           </div>
 
@@ -209,34 +199,33 @@ export function HallOfFamePageContent() {
               <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">
                 {CONSOLIDATED_TAB_LABELS[activeConsolidatedTab]}
               </p>
-              <p className="text-xs text-steel">{rows.length} registros</p>
             </div>
 
             {rows.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm text-ink">
+                <table className="min-w-full border-y border-white/10 text-sm text-ink">
                   <thead>
-                    <tr className="border-b border-white/8 text-left text-[10px] uppercase tracking-[0.22em] text-steel">
-                      <th className="px-3 py-3">Pos</th>
-                      <th className="px-3 py-3">Jugador</th>
-                      <th className="px-3 py-3 text-center">{VALUE_LABELS[activeConsolidatedTab]}</th>
-                      <th className="px-3 py-3">Detalle</th>
+                    <tr className="border-b border-white/10 text-left text-xs uppercase tracking-[0.18em] text-steel">
+                      <th className="py-4">Pos</th>
+                      <th className="py-4">Jugador</th>
+                      <th className="py-4 text-center">{VALUE_LABELS[activeConsolidatedTab]}</th>
+                      <th className="py-4">Detalle</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((entry, index) => (
-                      <tr key={`${activeConsolidatedTab}-${entry.profile_id}`} className="border-t border-white/8">
-                        <td className="px-3 py-3 font-semibold text-coral">#{index + 1}</td>
-                        <td className="px-3 py-3 font-medium">{entry.display_name}</td>
-                        <td className="px-3 py-3 text-center">{entry.value}</td>
-                        <td className="px-3 py-3 text-steel">{entry.detail ?? "-"}</td>
+                      <tr key={`${activeConsolidatedTab}-${entry.profile_id}`} className="border-t border-white/10">
+                        <td className="py-4 font-semibold text-[#4f7df3]">#{index + 1}</td>
+                        <td className="py-4 font-medium">{entry.display_name}</td>
+                        <td className="py-4 text-center">{entry.value}</td>
+                        <td className="py-4 text-steel">{entry.detail ?? "-"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-steel">Todavia no hay datos historicos para esta categoria.</p>
+              <p className="border-y border-white/10 py-5 text-sm text-steel">No hay datos históricos para esta categoría.</p>
             )}
           </section>
         </>

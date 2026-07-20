@@ -17,7 +17,6 @@ type RankingEntry = Pick<
 type RankingBoardOption = {
   value: string;
   label: string;
-  helper: string;
 };
 
 type LeaderboardState = {
@@ -231,12 +230,10 @@ export function LeaderboardPageContent() {
       ...liveSeasons.map((season) => ({
         value: `season:${season.id}`,
         label: `Torneo regular · ${season.name}`,
-        helper: "Ranking general de la temporada",
       })),
       ...approvedVipCompetitions.map((vip) => ({
         value: `vip:${vip.id}`,
         label: vip.name,
-        helper: `VIP · ${vip.season_name}`,
       })),
     ];
   }, [approvedVipCompetitions, liveSeasons]);
@@ -263,18 +260,13 @@ export function LeaderboardPageContent() {
           : [],
     [selectedRegularSeason, selectedVipCompetition, state.overallBySeasonId],
   );
-  const activeTitle = selectedVipCompetition ? selectedVipCompetition.name : selectedRegularSeason?.name ?? "Torneo regular";
-  const activeSubtitle = selectedVipCompetition
-    ? `Ranking VIP de ${selectedVipCompetition.season_name}`
-    : selectedRegularSeason
-      ? `Tabla general de ${selectedRegularSeason.name}`
-      : "Tabla general del torneo";
   const activeSectionLabel = selectedVipCompetition ? "Tabla VIP" : "Tabla general";
   const activeParticipantsCount = selectedVipCompetition
     ? selectedVipCompetition.approved_members_count
     : selectedRegularSeason
       ? state.participantCountBySeasonId[selectedRegularSeason.id] ?? activeEntries.length
       : activeEntries.length;
+  const myActiveEntry = activeEntries.find((entry) => entry.profile_id === state.me?.id) ?? null;
   const isLoadingActiveVipBoard = Boolean(selectedVipCompetition && loadingVipBoardId === selectedVipCompetition.id);
   const hasSeasonParticipantsWithoutStandings = Boolean(
     selectedRegularSeason && activeEntries.length === 0 && activeParticipantsCount > 0,
@@ -338,7 +330,7 @@ export function LeaderboardPageContent() {
   if (boardOptions.length === 0) {
     return (
       <div className="space-y-3">
-        <h1 className="text-xl font-semibold text-ink">Ranking</h1>
+        <h1 className="page-title">Ranking</h1>
         <p className="text-sm text-steel">
           Todavia no tienes torneos activos con ranking disponible. Cuando admin te active en una temporada o VIP,
           aparecera aqui.
@@ -349,15 +341,14 @@ export function LeaderboardPageContent() {
 
   return (
     <div className="space-y-6">
-      <section className="space-y-5">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-end">
+      <header className="page-header">
+        <div className="space-y-3">
           <div className="min-w-0 max-w-3xl">
-            <h1 className="text-xl font-semibold text-ink">Ranking</h1>
-            <p className="mt-1 text-sm text-steel">{activeSubtitle}</p>
+            <h1 className="page-title">Ranking</h1>
           </div>
-          <div className="flex w-full flex-col gap-3 xl:justify-self-end">
-            <label className="space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.24em] text-steel">Torneo</span>
+          <div className="max-w-md">
+            <label className="page-context-label">
+              <span>Torneo</span>
               <select
                 value={selectedBoardId}
                 onChange={(event) => {
@@ -377,7 +368,7 @@ export function LeaderboardPageContent() {
                     }
                   }
                 }}
-                className="field-control h-10 rounded-[8px] border-white/[0.08] bg-transparent px-3 text-sm"
+                className="page-context-select"
               >
                 {boardOptions.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -386,14 +377,6 @@ export function LeaderboardPageContent() {
                 ))}
               </select>
             </label>
-            <button
-              type="button"
-              onClick={() => void loadLeaderboard()}
-              disabled={loading}
-              className="app-pill h-10 px-4 text-xs font-semibold disabled:opacity-60 xl:hidden"
-            >
-              {loading ? "Actualizando..." : "Actualizar tabla"}
-            </button>
           </div>
         </div>
 
@@ -419,28 +402,24 @@ export function LeaderboardPageContent() {
             <p className="mt-2 text-sm font-semibold text-ink">{activeParticipantsCount}</p>
           </div>
         </div>
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-4">
+        <div className="mt-5 grid gap-4 border-t border-white/[0.08] pt-4 sm:grid-cols-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,0.8fr)]">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">{activeSectionLabel}</p>
-            <p className="mt-1 text-xs text-steel">
-              {boardOptions.find((option) => option.value === selectedBoardId)?.helper ?? activeTitle}
-            </p>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-steel">Tu posición</p>
+            <p className="mt-1 truncate text-sm font-semibold text-ink">{myActiveEntry?.display_name ?? state.me?.display_name ?? "Sin posición"}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <p className="text-xs text-steel">{activeParticipantsCount} participantes</p>
-            <button
-              type="button"
-              onClick={() => void loadLeaderboard()}
-              disabled={loading}
-              className="app-pill hidden h-9 px-4 text-xs font-semibold disabled:opacity-60 xl:inline-flex"
-            >
-              {loading ? "Actualizando..." : "Actualizar tabla"}
-            </button>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Puntos</p>
+            <p className="mt-1 text-sm font-semibold text-ink">{myActiveEntry ? `${myActiveEntry.total_points} pts` : "—"}</p>
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Lugar</p>
+            <p className="mt-1 text-sm font-semibold text-ink">{myActiveEntry ? `#${myActiveEntry.rank_position}` : "—"}</p>
           </div>
         </div>
+      </header>
+
+      <section className="space-y-3">
+        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">{activeSectionLabel}</p>
 
         <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <table className="min-w-[720px] w-full table-fixed text-left text-[11px] text-ink sm:text-sm">
@@ -462,8 +441,8 @@ export function LeaderboardPageContent() {
             </thead>
             <tbody>
               {activeEntries.map((entry) => (
-                <tr key={entry.profile_id} className="app-table-row border-b last:border-b-0">
-                  <td className="px-3 py-3 font-semibold text-ink">{entry.rank_position}</td>
+                <tr key={entry.profile_id} className={`app-table-row border-b last:border-b-0 ${entry.profile_id === state.me?.id ? "font-semibold text-[#4f7df3] [&>td]:text-[#4f7df3]" : ""}`}>
+                  <td className="px-3 py-3 font-semibold">{entry.rank_position}</td>
                   <td className="px-3 py-3 font-medium">
                     <span className="block truncate">{entry.display_name}</span>
                   </td>

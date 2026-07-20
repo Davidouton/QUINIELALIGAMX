@@ -101,6 +101,7 @@ const SEASON_SCOPED_WIDGET_IDS: DashboardWidgetId[] = [
   "prize_summary",
   "upcoming",
   "survivor_summary",
+  "ranking",
 ];
 const DASHBOARD_WIDGET_OPTIONS: Array<{
   id: DashboardWidgetId;
@@ -115,6 +116,7 @@ const DASHBOARD_WIDGET_OPTIONS: Array<{
   { id: "upcoming", label: "Proximos juegos", description: "Vista compacta de la siguiente jornada disponible." },
   { id: "memberships", label: "Membresias", description: "Estado regular, survivor y acceso VIP." },
   { id: "survivor_summary", label: "Survivor", description: "Vidas, pick actual e historial reciente del survivor por temporada." },
+  { id: "ranking", label: "Ranking", description: "Primeras posiciones y tu lugar actual en el torneo." },
 ];
 const DASHBOARD_WIDGET_PRESETS: Array<{
   id: "standard" | "competition" | "memberships" | "express";
@@ -226,8 +228,26 @@ function formatCompactSeasonName(value: string | null | undefined) {
   return `${season.slice(0, 3)} ${year}`;
 }
 
-function formatSurvivorLivesLabel(remainingLives: number, maxLives: number) {
-  return `${remainingLives}/${maxLives} vidas`;
+function renderDashboardLives(remainingLives: number, maxLives: number) {
+  return (
+    <span className="inline-flex items-center gap-1" aria-label={`${remainingLives} de ${maxLives} vidas`}>
+      {Array.from({ length: maxLives }, (_, index) => (
+        <svg key={index} viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill={index < remainingLives ? "#ef4444" : "#541f2a"}>
+          <path d="M12 21s-7.2-4.35-9.55-8.36C.3 8.96 2.18 4.5 6.5 4.5c2.22 0 3.68 1.24 4.5 2.42.82-1.18 2.28-2.42 4.5-2.42 4.32 0 6.2 4.46 4.05 8.14C19.2 16.65 12 21 12 21Z" />
+        </svg>
+      ))}
+    </span>
+  );
+}
+
+function renderDashboardTeamCrest(name: string, shortName: string, crestUrl: string | null, className: string) {
+  return crestUrl ? (
+    <img src={crestUrl} alt={name} title={name} className={`${className} object-contain`} />
+  ) : (
+    <span className={`inline-flex items-center justify-center text-[10px] font-semibold text-steel ${className}`} title={name}>
+      {shortName.slice(0, 3)}
+    </span>
+  );
 }
 
 function getSurvivorResultLabel(resultStatus: "pending" | "won" | "lost" | "draw") {
@@ -1485,7 +1505,7 @@ export function DashboardHome() {
     }
     return (
       <div className="mb-3 flex items-center gap-2">
-        <span className="app-pill-active px-3 text-[10px] uppercase tracking-[0.16em]">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ink">
           {season.competition_name ?? "Torneo"}
         </span>
         <span className="text-xs text-steel">{season.name}</span>
@@ -1507,10 +1527,11 @@ export function DashboardHome() {
     const survivorName = season?.survivor_name ?? board?.season.survivor_name ?? "Survivor";
     const currentPick = board?.my_membership?.current_pick ?? board?.my_picks?.[0] ?? null;
     const recentPicks = (board?.my_picks ?? []).slice().sort((left, right) => right.matchday_number - left.matchday_number).slice(0, 3);
+    const aliveEntries = (board?.leaderboard ?? []).filter((entry) => entry.alive && entry.remaining_lives > 0).length;
 
     if (!season || !isSurvivorAvailableForSeason(season)) {
       return (
-        <section key={sectionKey} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+        <section key={sectionKey} className="border-y border-white/[0.08] py-5">
           {seasonBadge}
           <p className="text-sm text-steel">Esta temporada no tiene survivor disponible.</p>
         </section>
@@ -1518,14 +1539,13 @@ export function DashboardHome() {
     }
 
     return (
-      <section key={sectionKey} className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-5">
+      <section key={sectionKey} className="border-y border-white/[0.08] py-5">
         {seasonBadge}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-steel">Survivor</p>
-            <h2 className="mt-2 text-lg font-semibold text-ink">{survivorName}</h2>
+            <h2 className="text-lg font-semibold text-ink">{survivorName}</h2>
           </div>
-          <Link href={buildHrefWithSeason("/dashboard/survivor", season.id)} className="app-pill px-4 text-xs">
+          <Link href={buildHrefWithSeason("/dashboard/survivor", season.id)} className="text-xs font-semibold text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3]">
             Ver tablero
           </Link>
         </div>
@@ -1534,33 +1554,39 @@ export function DashboardHome() {
           <p className="mt-4 text-sm text-steel">Todavia no estas inscrito en este survivor.</p>
         ) : (
           <>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+            <div className="mt-4 grid border-y border-white/[0.08] md:grid-cols-3">
+              <div className="px-4 py-4">
                 <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Estado</p>
                 <p className="mt-2 text-lg font-semibold text-ink">
                   {getSurvivorLifeStateLabel(board.my_membership.alive, board.my_membership.remaining_lives)}
                 </p>
               </div>
-              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <div className="border-white/[0.08] px-4 py-4 md:border-l">
                 <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Vidas</p>
-                <p className="mt-2 text-lg font-semibold text-ink">
-                  {formatSurvivorLivesLabel(board.my_membership.remaining_lives, board.my_membership.max_lives)}
-                </p>
+                <div className="mt-2">{renderDashboardLives(board.my_membership.remaining_lives, board.my_membership.max_lives)}</div>
               </div>
-              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
-                <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Entradas</p>
-                <p className="mt-2 text-lg font-semibold text-ink">{board.season.total_entries}</p>
+              <div className="border-white/[0.08] px-4 py-4 md:border-l">
+                <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Siguen vivos</p>
+                <p className="mt-2 text-lg font-semibold text-ink">{aliveEntries} <span className="text-sm font-normal text-steel">de {board.season.total_entries}</span></p>
               </div>
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <div className="border-b border-white/[0.08] py-4 lg:border-b-0 lg:border-r lg:pr-6">
                 <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Pick actual</p>
                 {currentPick ? (
                   <>
-                    <p className="mt-2 text-base font-semibold text-ink">
-                      {currentPick.team_short_name} vs {currentPick.opponent_team_short_name}
-                    </p>
+                    <div className="mt-4 flex items-center gap-5">
+                      <div className="flex flex-col items-center gap-1">
+                        {renderDashboardTeamCrest(currentPick.team_name, currentPick.team_short_name, currentPick.team_crest_url, "h-16 w-16 drop-shadow-[0_0_8px_rgba(74,222,128,0.35)]")}
+                        <span className="text-xs font-semibold text-ink">{currentPick.team_short_name}</span>
+                      </div>
+                      <span className="text-xs text-steel">vs</span>
+                      <div className="flex flex-col items-center gap-1 opacity-70">
+                        {renderDashboardTeamCrest(currentPick.opponent_team_name, currentPick.opponent_team_short_name, currentPick.opponent_team_crest_url, "h-11 w-11")}
+                        <span className="text-[10px] text-steel">{currentPick.opponent_team_short_name}</span>
+                      </div>
+                    </div>
                     <p className="mt-1 text-xs text-steel">{currentPick.matchday_name}</p>
                     <p className="mt-1 text-xs text-steel">{formatMexicoCityDateTime(currentPick.kickoff_at)}</p>
                     <p className={`mt-2 text-sm font-semibold ${getSurvivorResultTone(currentPick.result_status)}`}>
@@ -1572,19 +1598,22 @@ export function DashboardHome() {
                 )}
               </div>
 
-              <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <div className="py-4 lg:pl-6">
                 <p className="text-[10px] uppercase tracking-[0.14em] text-steel">Historial reciente</p>
                 {recentPicks.length > 0 ? (
                   <div className="mt-3 space-y-2">
                     {recentPicks.map((pick) => (
-                      <div key={pick.id} className="flex items-center justify-between gap-3 rounded-[14px] border border-white/[0.06] px-3 py-2">
-                        <div className="min-w-0">
+                      <div key={pick.id} className="flex items-center justify-between gap-3 border-b border-white/[0.06] py-2 last:border-b-0">
+                        <div className="flex min-w-0 items-center gap-3">
+                          {renderDashboardTeamCrest(pick.team_name, pick.team_short_name, pick.team_crest_url, "h-9 w-9")}
+                          <div className="min-w-0">
                           <p className="text-sm font-semibold text-ink">
                             J{pick.matchday_number} · {pick.team_short_name}
                           </p>
                           <p className="mt-1 truncate text-[11px] text-steel">
                             vs {pick.opponent_team_short_name}
                           </p>
+                          </div>
                         </div>
                         <p className={`text-xs font-semibold ${getSurvivorResultTone(pick.result_status)}`}>
                           {getSurvivorResultLabel(pick.result_status)}
@@ -1598,6 +1627,47 @@ export function DashboardHome() {
               </div>
             </div>
           </>
+        )}
+      </section>
+    );
+  }
+
+  function renderRankingSection({
+    sectionKey,
+    rows,
+    seasonBadge,
+  }: {
+    sectionKey: string;
+    rows: Array<{ profile_id: string; display_name: string; total_points: number; exact_scores: number; rank_position: number }>;
+    seasonBadge?: ReactNode;
+  }) {
+    const topRows = rows.slice(0, 5);
+    const myRow = rows.find((row) => row.profile_id === state.me?.id) ?? null;
+    const visibleRows = myRow && !topRows.some((row) => row.profile_id === myRow.profile_id) ? [...topRows, myRow] : topRows;
+    return (
+      <section key={sectionKey} className="border-y border-white/[0.08] py-5">
+        {seasonBadge}
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-semibold text-ink">Ranking</h2>
+          <Link href={buildHrefWithSeason("/dashboard/leaderboard")} className="text-xs font-semibold text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3]">Ver completo</Link>
+        </div>
+        {visibleRows.length > 0 ? (
+          <div className="mt-4">
+            {visibleRows.map((row, index) => {
+              const isMe = row.profile_id === state.me?.id;
+              const separated = index >= 5;
+              return (
+                <div key={row.profile_id} className={`grid grid-cols-[42px_minmax(0,1fr)_70px_54px] items-center gap-3 border-b border-white/[0.07] py-3 text-sm ${separated ? "mt-3 border-t" : ""}`}>
+                  <span className={isMe ? "font-bold text-[#4f7df3]" : "text-steel"}>#{row.rank_position}</span>
+                  <span className={`truncate font-semibold ${isMe ? "text-[#4f7df3]" : "text-ink"}`}>{row.display_name}</span>
+                  <span className="text-right font-semibold text-ink">{row.total_points} pts</span>
+                  <span className="text-right text-xs text-steel">{row.exact_scores} E</span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-steel">El ranking aparecerá cuando existan puntos publicados.</p>
         )}
       </section>
     );
@@ -1827,6 +1897,14 @@ export function DashboardHome() {
         sectionKey: widget.id,
         season,
         board: widgetSurvivorBoard,
+        seasonBadge: renderWidgetSeasonBadge(widget, season),
+      });
+    }
+
+    if (widget.widget_id === "ranking") {
+      return renderRankingSection({
+        sectionKey: widget.id,
+        rows: bundle?.leaderboard ?? [],
         seasonBadge: renderWidgetSeasonBadge(widget, season),
       });
     }
@@ -2085,16 +2163,27 @@ export function DashboardHome() {
       );
     }
 
+    if (widgetId === "ranking") {
+      return (
+        <DashboardRuntimeBoundary key={widgetId} title="Ranking">
+          {renderRankingSection({
+            sectionKey: widgetId,
+            rows: isVipDashboardContext ? selectedVipLeaderboard : state.leaderboard,
+          })}
+        </DashboardRuntimeBoundary>
+      );
+    }
+
     return null;
   }
 
   return (
     <div className="space-y-6 sm:space-y-8">
       <section className="relative px-1 py-2 sm:px-0 sm:py-1">
-        <div className="flex items-center justify-between gap-2 sm:gap-3 lg:items-center">
-          <div className="min-w-0 flex-1">
+        <div>
+          <div className="min-w-0">
             <div className="flex min-w-0 items-center">
-              <h1 className="truncate text-base font-semibold leading-tight text-ink sm:text-3xl">
+              <h1 className="text-base font-semibold leading-tight text-ink sm:text-3xl">
                 {state.me ? `Hola, ${state.me.display_name}` : "Dashboard"}
               </h1>
             </div>
@@ -2120,9 +2209,9 @@ export function DashboardHome() {
             ) : null}
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+          <div className="mt-5 flex w-full items-end gap-2 sm:gap-6">
             {computedLeagueOptions.length > 1 ? (
-              <label className="hidden min-w-[180px] space-y-1 text-xs sm:block">
+              <label className="hidden min-w-[180px] flex-1 space-y-1 text-xs sm:block">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
                   Liga
                 </span>
@@ -2141,7 +2230,7 @@ export function DashboardHome() {
             ) : null}
 
             {selectableLeagueSeasons.length > 1 ? (
-              <label className="hidden min-w-[220px] space-y-1 text-xs sm:block">
+              <label className="hidden min-w-[220px] flex-1 space-y-1 text-xs sm:block">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
                   Torneo
                 </span>
@@ -2166,7 +2255,7 @@ export function DashboardHome() {
             ) : null}
 
             {dashboardDefaultOptions.length > 1 ? (
-              <label className="hidden min-w-[180px] space-y-1 text-xs sm:block">
+              <label className="hidden min-w-[180px] flex-1 space-y-1 text-xs sm:block">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">
                   Vista dashboard
                 </span>
@@ -2184,7 +2273,16 @@ export function DashboardHome() {
               </label>
             ) : null}
 
-            <div className="shrink-0">
+            <div className="flex shrink-0 flex-col items-center gap-2">
+              {resolvedActiveTab === "general" ? (
+                <button
+                  type="button"
+                  onClick={() => setIsWidgetEditorOpen((current) => !current)}
+                  className={`text-[10px] font-semibold transition hover:text-[#4f7df3] active:text-[#4f7df3] sm:text-xs ${isWidgetEditorOpen ? "text-[#4f7df3]" : "text-ink"}`}
+                >
+                  {isWidgetEditorOpen ? "Cerrar" : "Personalizar"}
+                </button>
+              ) : null}
               {headerLogoUrl ? (
                 <img
                   src={headerLogoUrl}
@@ -2283,7 +2381,7 @@ export function DashboardHome() {
           </div>
 
           {isTabMenuOpen ? (
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-1">
               {computedDashboardTabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -2294,8 +2392,8 @@ export function DashboardHome() {
                   }}
                   className={
                     resolvedActiveTab === tab.id
-                      ? "app-pill-active h-10 px-3 text-center text-xs"
-                      : "app-pill-ghost h-10 px-3 text-center text-xs"
+                      ? "tab-control tab-control-active"
+                      : "tab-control"
                   }
                 >
                   {tab.label}
@@ -2305,7 +2403,7 @@ export function DashboardHome() {
           ) : null}
         </div>
 
-        <div className="hidden flex-wrap gap-2 sm:flex">
+        <div className="tab-list hidden sm:flex">
           {computedDashboardTabs.map((tab) => (
             <button
               key={tab.id}
@@ -2313,8 +2411,8 @@ export function DashboardHome() {
               onClick={() => setActiveTab(tab.id)}
               className={
                 resolvedActiveTab === tab.id
-                  ? "app-pill-active px-4 text-sm"
-                  : "app-pill-ghost px-4 text-sm"
+                  ? "tab-control tab-control-active"
+                  : "tab-control"
               }
             >
               {tab.label}
@@ -2588,26 +2686,10 @@ export function DashboardHome() {
         </section>
       ) : resolvedActiveTab === "general" ? (
         <>
-          <section className="rounded-[24px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-steel">Dashboard configurable</p>
-                <p className="mt-2 text-sm text-steel">
-                  Empiezas con un layout estandar, pero aqui decides que widgets ver y en que orden dejarlos.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsWidgetEditorOpen((current) => !current)}
-                className={isWidgetEditorOpen ? "app-pill-active px-4 text-sm" : "app-pill px-4 text-sm"}
-              >
-                {isWidgetEditorOpen ? "Cerrar personalizacion" : "Personalizar dashboard"}
-              </button>
-            </div>
-
+          <section className={isWidgetEditorOpen ? "border-t border-white/[0.08] pt-5" : "hidden"}>
             {isWidgetEditorOpen ? (
-              <div className="mt-4 space-y-3">
-                <div className="grid gap-3 xl:grid-cols-4">
+              <div className="space-y-3">
+                <div className="grid border-y border-white/[0.08] sm:grid-cols-2 xl:grid-cols-4">
                   {DASHBOARD_WIDGET_PRESETS.map((preset) => {
                     const isActivePreset = activePresetId === preset.id;
                     return (
@@ -2617,46 +2699,37 @@ export function DashboardHome() {
                         onClick={() => handleApplyDashboardPreset(preset.widgetIds)}
                         className={
                           isActivePreset
-                            ? "rounded-[18px] border border-coral/40 bg-coral/10 p-4 text-left transition"
-                            : "rounded-[18px] border border-white/[0.06] bg-night/20 p-4 text-left transition hover:border-white/[0.12] hover:bg-white/[0.04]"
+                            ? "border-b-2 border-[#4f7df3] px-4 py-4 text-left text-[#4f7df3]"
+                            : "border-b-2 border-transparent px-4 py-4 text-left text-ink transition hover:text-[#7196f7]"
                         }
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-ink">{preset.label}</p>
-                          <span className={isActivePreset ? "app-pill-active px-3 text-[10px]" : "app-pill px-3 text-[10px]"}>
-                            {isActivePreset ? "Activo" : "Aplicar"}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-xs text-steel">{preset.description}</p>
+                        <p className="text-sm font-semibold">{preset.label}</p>
                       </button>
                     );
                   })}
                 </div>
 
-                <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
+                <div className="border-b border-white/[0.08] px-4 py-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Preview del layout</p>
-                      <p className="mt-1 text-sm text-ink">
-                        {dashboardWidgetDraft.length} widgets activos en el orden que se renderizaran.
-                      </p>
+                      <p className="text-sm font-semibold text-ink">{dashboardWidgetDraft.length} widgets activos</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleApplyDashboardPreset(DEFAULT_DASHBOARD_WIDGET_IDS)}
-                      className="app-pill px-4 text-xs"
+                      className="text-xs font-semibold text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3]"
                     >
                       Reset estandar
                     </button>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
                     {dashboardWidgetDraft.map((widget) => {
                       const widgetOption = DASHBOARD_WIDGET_OPTIONS.find((option) => option.id === widget.widget_id);
                       const season = widget.season_id
                         ? state.seasons.find((seasonRow) => seasonRow.id === widget.season_id) ?? null
                         : null;
                       return (
-                        <span key={widget.id} className="app-pill-active px-3 text-[11px]">
+                        <span key={widget.id} className="text-[11px] font-semibold text-ink">
                           {widgetOption?.label ?? widget.widget_id}
                           {season ? ` · ${season.competition_name ?? season.name}` : ""}
                         </span>
@@ -2670,11 +2743,10 @@ export function DashboardHome() {
                   return (
                     <div
                       key={widget.id}
-                      className="flex flex-col gap-3 rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4 md:flex-row md:items-center md:justify-between"
+                      className="flex flex-col gap-4 border-b border-white/[0.08] px-4 py-5 md:grid md:grid-cols-[minmax(180px,0.65fr)_minmax(0,1.35fr)] md:items-center"
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-ink">{widgetOption?.label ?? widget.widget_id}</p>
-                        <p className="mt-1 text-xs text-steel">{widgetOption?.description ?? "Widget configurable."}</p>
                       </div>
                       <div className="flex flex-1 flex-wrap items-center gap-2 md:justify-end">
                         <select
@@ -2687,7 +2759,7 @@ export function DashboardHome() {
                                 : null,
                             })
                           }
-                          className="field-control min-w-[180px] text-xs"
+                          className="min-w-[180px] border-b border-white/[0.12] bg-transparent px-2 py-3 text-xs text-ink outline-none focus:border-[#4f7df3]"
                         >
                           {DASHBOARD_WIDGET_OPTIONS.map((option) => (
                             <option key={option.id} value={option.id}>
@@ -2703,7 +2775,7 @@ export function DashboardHome() {
                                 season_id: event.target.value || null,
                               })
                             }
-                            className="field-control min-w-[180px] text-xs"
+                            className="min-w-[180px] border-b border-white/[0.12] bg-transparent px-2 py-3 text-xs text-ink outline-none focus:border-[#4f7df3]"
                           >
                             {state.seasons.map((season) => (
                               <option key={season.id} value={season.id}>
@@ -2716,7 +2788,7 @@ export function DashboardHome() {
                           type="button"
                           onClick={() => handleMoveDashboardWidget(widget.id, -1)}
                           disabled={currentIndex <= 0}
-                          className="app-pill px-3 text-xs disabled:opacity-40"
+                          className="px-2 py-2 text-xs font-semibold text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3] disabled:opacity-30"
                         >
                           Subir
                         </button>
@@ -2724,7 +2796,7 @@ export function DashboardHome() {
                           type="button"
                           onClick={() => handleMoveDashboardWidget(widget.id, 1)}
                           disabled={currentIndex >= dashboardWidgetDraft.length - 1}
-                          className="app-pill px-3 text-xs disabled:opacity-40"
+                          className="px-2 py-2 text-xs font-semibold text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3] disabled:opacity-30"
                         >
                           Bajar
                         </button>
@@ -2732,7 +2804,7 @@ export function DashboardHome() {
                           type="button"
                           onClick={() => handleRemoveDashboardWidget(widget.id)}
                           disabled={dashboardWidgetDraft.length <= 1}
-                          className="app-pill px-3 text-xs disabled:opacity-40"
+                          className="px-2 py-2 text-xs font-semibold text-steel transition hover:text-coral disabled:opacity-30"
                         >
                           Quitar
                         </button>
@@ -2744,7 +2816,7 @@ export function DashboardHome() {
                   <button
                     type="button"
                     onClick={() => handleAddDashboardWidget()}
-                    className="app-pill px-4 text-sm"
+                    className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3]"
                   >
                     Agregar widget
                   </button>
@@ -2752,7 +2824,7 @@ export function DashboardHome() {
                     type="button"
                     onClick={() => void handleSaveDashboardWidgets()}
                     disabled={dashboardConfigSaving || !hasDashboardWidgetChanges}
-                    className="secondary-button disabled:opacity-60"
+                    className={`text-sm font-semibold transition hover:text-[#4f7df3] active:text-[#4f7df3] disabled:text-steel/45 ${dashboardConfigSaving ? "text-[#4f7df3]" : "text-ink"}`}
                   >
                     {dashboardConfigSaving ? "Guardando..." : hasDashboardWidgetChanges ? "Guardar configuracion" : "Sin cambios"}
                   </button>
@@ -2762,7 +2834,7 @@ export function DashboardHome() {
                       setDashboardWidgetDraft(effectiveDashboardWidgets);
                       setIsWidgetEditorOpen(false);
                     }}
-                    className="app-pill px-4 text-sm"
+                    className="text-sm font-semibold text-steel transition hover:text-ink"
                   >
                     Cancelar
                   </button>

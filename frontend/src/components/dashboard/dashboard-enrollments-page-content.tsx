@@ -7,6 +7,7 @@ import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { isSeasonLive, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { VipStatusIcon } from "@/components/vip/vip-page-content";
 import type { AppBootstrap, Me, RegisteredUserOption, Season, SurvivorBoard, VipCompetition } from "@/types/api";
 
 type EnrollmentState = {
@@ -31,9 +32,7 @@ type MembershipRow = {
   id: string;
   name: string;
   availability: "Abierto" | "Cerrado";
-  availabilityPillClassName: string;
   enrollmentStatus: string;
-  enrollmentPillClassName: string;
   detail: string;
   meta: string | null;
   action: ReactNode;
@@ -125,55 +124,11 @@ function vipStatusCopy(vip: VipCompetition) {
   };
 }
 
-function seasonStatusCopy({
-  hasActiveLigaMxMembership,
-  isPrePagoPendingApproval,
-}: {
-  hasActiveLigaMxMembership: boolean;
-  isPrePagoPendingApproval: boolean;
-}) {
-  if (hasActiveLigaMxMembership) {
-    return {
-      label: "Activo",
-      tone: "text-mint",
-      pillClassName: "app-pill-active px-3 text-[10px] text-ink",
-    };
-  }
-  if (isPrePagoPendingApproval) {
-    return {
-      label: "Pendiente",
-      tone: "text-gold",
-      pillClassName: "app-pill px-3 text-[10px] text-gold",
-    };
-  }
-  return {
-    label: "Disponible",
-    tone: "text-ink",
-    pillClassName: "app-pill px-3 text-[10px]",
-  };
-}
-
 function getSeasonDisplayName(season: Season) {
   if (season.tournament_format === "world_cup") {
     return season.competition_name ?? "Mundial";
   }
   return season.competition_name ?? "Liga MX";
-}
-
-function getAvailabilityPillClassName({
-  isOpen,
-  closedByAdmin,
-}: {
-  isOpen: boolean;
-  closedByAdmin: boolean;
-}) {
-  if (isOpen) {
-    return "app-pill px-3 text-[10px] text-mint";
-  }
-  if (closedByAdmin) {
-    return "app-pill px-3 text-[10px] text-coral";
-  }
-  return "app-pill px-3 text-[10px] text-steel";
 }
 
 export function DashboardEnrollmentsPageContent() {
@@ -251,19 +206,8 @@ export function DashboardEnrollmentsPageContent() {
     () => resolveRegularEnrollmentSeason(state.seasons, state.selectedSeason),
     [state.seasons, state.selectedSeason],
   );
-  const selectedSeasonMembership = useMemo(
-    () =>
-      state.me && regularEnrollmentSeason
-        ? state.me.season_memberships.find((membership) => membership.season_id === regularEnrollmentSeason.id) ?? null
-        : null,
-    [regularEnrollmentSeason, state.me],
-  );
   const isLigaMxSeason = regularEnrollmentSeason?.tournament_format === "standard";
   const isAvalMode = state.me?.modality === "aval";
-  const hasActiveLigaMxMembership = Boolean(selectedSeasonMembership?.is_active);
-  const isPrePagoPendingApproval = Boolean(
-    selectedSeasonMembership && !selectedSeasonMembership.is_active && state.me?.modality === "pre_pago",
-  );
   const canShowSurvivorCard = Boolean(isLigaMxSeason && isSurvivorAvailableForSeason(regularEnrollmentSeason));
   const survivorMembership = state.survivorBoard?.my_membership ?? null;
   const visibleSeasonRows = useMemo(
@@ -311,25 +255,15 @@ export function DashboardEnrollmentsPageContent() {
       const seasonClosed = registrationClosedByAdmin || windowClosed;
       const isLigaMxRegular = season.tournament_format === "standard";
       const seasonTitle = isLigaMxRegular ? "Liga MX" : getSeasonDisplayName(season);
-      const membershipStatus = seasonStatusCopy({
-        hasActiveLigaMxMembership: hasActiveMembership,
-        isPrePagoPendingApproval: isPendingApproval,
-      });
-
       rows.push({
         id: `season-${season.id}`,
         name: seasonTitle,
         availability: seasonClosed ? "Cerrado" : "Abierto",
-        availabilityPillClassName: getAvailabilityPillClassName({
-          isOpen: !seasonClosed,
-          closedByAdmin: registrationClosedByAdmin,
-        }),
         enrollmentStatus: hasActiveMembership
           ? "Activo"
           : isPendingApproval
             ? "Pendiente"
             : "No inscrito",
-        enrollmentPillClassName: membershipStatus.pillClassName,
         detail: hasActiveMembership
           ? "Tu membresia ya esta activa y puedes entrar al dashboard, picks, scores y ranking."
           : registrationClosedByAdmin
@@ -341,7 +275,7 @@ export function DashboardEnrollmentsPageContent() {
           ? `${season.name} · Registro cerrado manualmente`
           : season.name,
         action: hasActiveMembership ? (
-          <Link href={buildHrefWithSeason("/dashboard", season.id, season.competition_id ?? "")} className="secondary-button">
+          <Link href={buildHrefWithSeason("/dashboard", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Ir al dashboard
           </Link>
         ) : (
@@ -349,7 +283,7 @@ export function DashboardEnrollmentsPageContent() {
             type="button"
             onClick={() => void handleJoinSeason(season)}
             disabled={actionLoading === `season:${season.id}` || seasonClosed}
-            className="secondary-button disabled:opacity-60"
+            className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] disabled:opacity-50"
           >
             {actionLoading === `season:${season.id}`
               ? "Procesando..."
@@ -370,14 +304,7 @@ export function DashboardEnrollmentsPageContent() {
         id: "survivor-liga-mx",
         name: "Survivor Liga MX",
         availability: survivorWindowClosed ? "Cerrado" : "Abierto",
-        availabilityPillClassName: getAvailabilityPillClassName({
-          isOpen: !survivorWindowClosed,
-          closedByAdmin: survivorClosedByAdmin,
-        }),
         enrollmentStatus: survivorEnrollmentStatus,
-        enrollmentPillClassName: survivorMembership
-          ? "app-pill-active px-3 text-[10px] text-ink"
-          : "app-pill px-3 text-[10px]",
         detail: survivorMembership
           ? `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
           : survivorClosedByAdmin
@@ -391,7 +318,7 @@ export function DashboardEnrollmentsPageContent() {
                 ? `Cierre ${formatMexicoDateTime(regularEnrollmentSeason.survivor_registration_lock_at) ?? "Por definir"}`
                 : null,
         action: survivorMembership ? (
-          <Link href={buildHrefWithSeason("/dashboard/survivor")} className="secondary-button">
+          <Link href={buildHrefWithSeason("/dashboard/survivor")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Abrir Survivor
           </Link>
         ) : (
@@ -399,7 +326,7 @@ export function DashboardEnrollmentsPageContent() {
             type="button"
             onClick={() => void handleJoinSurvivor()}
             disabled={actionLoading === "survivor" || survivorWindowClosed}
-            className="secondary-button disabled:opacity-60"
+            className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] disabled:opacity-50"
           >
             {actionLoading === "survivor"
               ? "Procesando..."
@@ -417,23 +344,11 @@ export function DashboardEnrollmentsPageContent() {
         id: `vip-${vip.id}`,
         name: vip.name,
         availability: vip.join_locked ? "Cerrado" : "Abierto",
-        availabilityPillClassName: getAvailabilityPillClassName({
-          isOpen: !vip.join_locked,
-          closedByAdmin: false,
-        }),
         enrollmentStatus: vip.my_membership
           ? status.label
           : vip.join_locked
             ? "No inscrito"
             : "Disponible",
-        enrollmentPillClassName:
-          status.label === "Activo"
-            ? "app-pill-active px-3 text-[10px] text-ink"
-            : status.label === "Pendiente"
-              ? "app-pill px-3 text-[10px] text-gold"
-              : status.label === "Rechazado"
-                ? "app-pill px-3 text-[10px] text-coral"
-                : "app-pill px-3 text-[10px]",
         detail: status.description,
         meta:
           vip.season_name || vip.join_lock_at || vip.matchdays.length
@@ -442,9 +357,9 @@ export function DashboardEnrollmentsPageContent() {
         action: (
           <Link
             href={buildHrefWithSeason("/dashboard/vip", vip.season_id)}
-            className="secondary-button"
+            className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]"
           >
-            {vip.my_membership ? "Administrar VIP" : "Abrir VIP"}
+            {vip.my_membership ? "Ir a VIP" : "Ver VIP"}
           </Link>
         ),
       });
@@ -455,7 +370,6 @@ export function DashboardEnrollmentsPageContent() {
     actionLoading,
     buildHrefWithSeason,
     canShowSurvivorCard,
-    hasActiveLigaMxMembership,
     isAvalMode,
     state.survivorBoard,
     state.me,
@@ -470,9 +384,34 @@ export function DashboardEnrollmentsPageContent() {
     [membershipRows],
   );
   const availableMembershipRows = useMemo(
-    () => membershipRows.filter((row) => row.enrollmentStatus !== "Activo"),
+    () => membershipRows.filter((row) => row.enrollmentStatus !== "Activo" && row.enrollmentStatus !== "Rechazado"),
     [membershipRows],
   );
+  const inactiveMembershipRows = useMemo(() => {
+    const seasonRows = (state.me?.season_memberships ?? []).flatMap((membership) => {
+      const season = state.seasons.find((item) => item.id === membership.season_id) ?? null;
+      if (season && season.visibility_status !== "archived") {
+        return [];
+      }
+      return [{
+        id: `inactive-season-${membership.season_id}`,
+        name: season ? getSeasonDisplayName(season) : membership.competition_name ?? membership.season_name,
+        meta: season?.name ?? membership.season_name,
+        status: "Inactiva",
+      }];
+    });
+    const vipRows = state.vipCompetitions.flatMap((vip) =>
+      vip.my_membership?.status === "rejected"
+        ? [{
+            id: `inactive-vip-${vip.id}`,
+            name: vip.name,
+            meta: vip.season_name,
+            status: "Rechazada",
+          }]
+        : [],
+    );
+    return [...seasonRows, ...vipRows];
+  }, [state.me?.season_memberships, state.seasons, state.vipCompetitions]);
 
   useEffect(() => {
     if (!availableMembershipRows.length) {
@@ -550,103 +489,97 @@ export function DashboardEnrollmentsPageContent() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="overflow-hidden rounded-[30px] border border-white/[0.06] bg-white/[0.03]">
-        <div className="px-5 py-5 sm:px-6 sm:py-6">
-          <p className="text-xs uppercase tracking-[0.28em] text-steel">Inscripciones</p>
-          <h1 className="mt-2 text-2xl font-semibold text-ink sm:text-3xl">Altas abiertas para tu cuenta</h1>
+    <div className="space-y-12">
+      <header className="page-header">
+        <h1 className="page-title">Inscripciones</h1>
+      </header>
 
-          <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
-            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Modalidad</p>
-              <p className="mt-2 text-lg font-semibold text-ink">{isAvalMode ? "Aval" : "Pre-pago"}</p>
-              <p className="mt-1 text-xs text-steel">
-                {isAvalMode ? "Alta automatica en Liga MX." : "Requiere autorizacion admin."}
-              </p>
-            </div>
-            <div className="rounded-[18px] border border-white/[0.06] bg-night/20 px-4 py-4">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Aval</p>
-              <p className="mt-2 text-lg font-semibold text-ink">
-                {state.avalDisplayName ?? (state.me?.aval_profile_id ? "Aval asignado" : "No aplica")}
-              </p>
-              <p className="mt-1 text-xs text-steel">
-                {state.me?.aval_profile_id ? "Configurado por admin para tu cuenta." : "Sin aval ligado a esta cuenta."}
-              </p>
-            </div>
-          </div>
+      <section className="grid gap-x-12 gap-y-5 border-y border-white/10 py-5 sm:grid-cols-2">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-steel">Modalidad</p>
+          <p className="mt-2 text-base font-semibold text-ink">{isAvalMode ? "Aval" : "Pre-pago"}</p>
         </div>
-        {message ? (
-          <div className="border-t border-white/[0.06] bg-mint/10 px-5 py-3 text-sm text-mint sm:px-6">
-            {message}
-          </div>
-        ) : null}
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-steel">Aval</p>
+          <p className="mt-2 text-base font-semibold text-ink">
+            {state.avalDisplayName ?? (state.me?.aval_profile_id ? "Aval asignado" : "No aplica")}
+          </p>
+        </div>
       </section>
 
-      <section className="rounded-[28px] border border-white/[0.06] bg-white/[0.03] px-5 py-5 sm:px-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-steel">Jugando</p>
-            <h2 className="mt-2 text-xl font-semibold text-ink">Lo que ya tienes inscrito</h2>
-          </div>
-        </div>
+      {message ? <p className="text-sm text-mint">{message}</p> : null}
+
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Inscripciones activas</h2>
 
         {activeMembershipRows.length > 0 ? (
-          <div className="mt-5 overflow-hidden rounded-[20px] border border-white/[0.06]">
-            <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_180px_140px] gap-3 border-b border-white/[0.06] bg-white/[0.03] px-4 py-3 text-[10px] uppercase tracking-[0.16em] text-steel md:grid">
+          <div className="mt-5 border-y border-white/10">
+            <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_140px_140px] gap-6 border-b border-white/10 py-4 text-xs uppercase tracking-[0.18em] text-steel md:grid">
               <span>Membresia</span>
-              <span>Detalle</span>
-              <span>Dashboard</span>
-              <span>Estatus</span>
+              <span>Temporada</span>
+              <span>Estado</span>
+              <span className="text-right">Accion</span>
             </div>
-            <div className="divide-y divide-white/[0.06]">
+            <div className="divide-y divide-white/10">
               {activeMembershipRows.map((row) => (
                 <div
                   key={row.id}
-                  className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_180px_140px] md:items-center"
+                  className="grid gap-3 py-5 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_140px_140px] md:items-center md:gap-6"
                 >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-ink">{row.name}</p>
-                    {row.meta ? <p className="mt-1 text-xs text-steel">{row.meta}</p> : null}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm text-steel">{row.detail}</p>
-                  </div>
-                  <div className="min-w-0">
-                    {row.action ? <div className="flex flex-wrap gap-3">{row.action}</div> : null}
-                  </div>
-                  <div className="flex justify-start md:justify-end">
-                    <span className={row.enrollmentPillClassName}>{row.enrollmentStatus}</span>
-                  </div>
+                  <p className="text-sm font-semibold text-ink">{row.name}</p>
+                  <p className="text-sm text-steel">{row.meta ?? "—"}</p>
+                  <p className="text-sm font-semibold text-mint">{row.enrollmentStatus}</p>
+                  <div className="flex md:justify-end">{row.action}</div>
                 </div>
               ))}
             </div>
           </div>
         ) : (
-          <div className="mt-5 rounded-[22px] border border-white/[0.06] bg-night/20 px-4 py-4">
-            <p className="text-sm text-steel">Aun no tienes membresias activas para jugar.</p>
-          </div>
+          <p className="mt-5 border-y border-white/10 py-5 text-sm text-steel">No tienes inscripciones activas.</p>
         )}
       </section>
 
-      <section className="rounded-[28px] border border-white/[0.06] bg-white/[0.03] px-5 py-5 sm:px-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-steel">Membresias</p>
-            <h2 className="mt-2 text-xl font-semibold text-ink">Disponibles para inscripcion</h2>
+      {inactiveMembershipRows.length > 0 ? (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Inactivas</h2>
+          <div className="mt-5 border-y border-white/10">
+            <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_140px] gap-6 border-b border-white/10 py-4 text-xs uppercase tracking-[0.18em] text-steel md:grid">
+              <span>Membresia</span>
+              <span>Temporada</span>
+              <span>Estado</span>
+            </div>
+            <div className="divide-y divide-white/10">
+              {inactiveMembershipRows.map((row) => (
+                <div
+                  key={row.id}
+                  className="grid gap-3 py-5 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_140px] md:items-center md:gap-6"
+                >
+                  <p className="text-sm font-semibold text-ink">{row.name}</p>
+                  <p className="text-sm text-steel">{row.meta || "—"}</p>
+                  <span className="flex items-center gap-3 text-sm font-semibold text-coral" title="Inscripcion cerrada">
+                    <VipStatusIcon type="closed" />
+                    {row.status}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="text-xs text-steel">Puedes inscribirte directo desde la lista o abrir el detalle abajo.</div>
-        </div>
+        </section>
+      ) : null}
+
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Disponibles</h2>
 
         {availableMembershipRows.length > 0 ? (
           <>
-            <div className="mt-5 overflow-hidden rounded-[20px] border border-white/[0.06]">
-              <div className="hidden grid-cols-[minmax(0,1.5fr)_120px_140px_180px] gap-3 border-b border-white/[0.06] bg-white/[0.03] px-4 py-3 text-[10px] uppercase tracking-[0.16em] text-steel md:grid">
+            <div className="mt-5 border-y border-white/10">
+              <div className="hidden grid-cols-[minmax(0,1.5fr)_120px_140px_180px] gap-6 border-b border-white/10 py-4 text-xs uppercase tracking-[0.18em] text-steel md:grid">
                 <span>Membresia</span>
+                <span>Registro</span>
                 <span>Estado</span>
-                <span>Inscripcion</span>
                 <span className="text-right">Accion</span>
               </div>
-              <div className="divide-y divide-white/[0.06]">
+              <div className="divide-y divide-white/10">
                 {availableMembershipRows.map((row) => (
                   <div
                     key={row.id}
@@ -660,8 +593,8 @@ export function DashboardEnrollmentsPageContent() {
                     role="button"
                     tabIndex={0}
                     className={cn(
-                      "grid w-full cursor-pointer gap-3 bg-transparent px-4 py-4 text-left transition hover:bg-white/[0.03] md:grid-cols-[minmax(0,1.5fr)_120px_140px_180px] md:items-center",
-                      expandedMembershipId === row.id && "bg-white/[0.03]",
+                      "grid w-full cursor-pointer gap-3 border-l-2 border-transparent bg-transparent py-5 pl-4 text-left transition hover:text-[#4f7df3] md:grid-cols-[minmax(0,1.5fr)_120px_140px_180px] md:items-center md:gap-6",
+                      expandedMembershipId === row.id && "border-[#4f7df3] text-[#4f7df3]",
                     )}
                   >
                     <div>
@@ -669,11 +602,13 @@ export function DashboardEnrollmentsPageContent() {
                       {row.meta ? <p className="mt-1 text-xs text-steel">{row.meta}</p> : null}
                     </div>
                     <span
-                      className={row.availabilityPillClassName}
+                      className="flex items-center"
+                      title={`Registro ${row.availability.toLowerCase()}`}
+                      aria-label={`Registro ${row.availability.toLowerCase()}`}
                     >
-                      {row.availability}
+                      <VipStatusIcon type={row.availability === "Abierto" ? "open" : "closed"} />
                     </span>
-                    <span className="text-xs font-semibold uppercase tracking-[0.14em] text-sand/90">
+                    <span className="text-sm font-semibold text-ink">
                       {row.enrollmentStatus}
                     </span>
                     <div
@@ -689,7 +624,7 @@ export function DashboardEnrollmentsPageContent() {
             </div>
 
             {expandedMembership ? (
-              <div className="mt-4 rounded-[22px] border border-white/[0.06] bg-night/20 px-4 py-4">
+              <div className="mt-6 border-b border-white/10 pb-6">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-lg font-semibold text-ink">{expandedMembership.name}</p>
@@ -698,9 +633,14 @@ export function DashboardEnrollmentsPageContent() {
                       <p className="mt-2 text-xs text-steel">{expandedMembership.meta}</p>
                     ) : null}
                   </div>
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    <span className={expandedMembership.availabilityPillClassName}>{expandedMembership.availability}</span>
-                    <span className={expandedMembership.enrollmentPillClassName}>{expandedMembership.enrollmentStatus}</span>
+                  <div className="flex shrink-0 flex-wrap items-center gap-5 text-sm font-semibold">
+                    <span
+                      title={`Registro ${expandedMembership.availability.toLowerCase()}`}
+                      aria-label={`Registro ${expandedMembership.availability.toLowerCase()}`}
+                    >
+                      <VipStatusIcon type={expandedMembership.availability === "Abierto" ? "open" : "closed"} />
+                    </span>
+                    <span className="text-ink">{expandedMembership.enrollmentStatus}</span>
                   </div>
                 </div>
                 {expandedMembership.action ? <div className="mt-4 flex flex-wrap gap-3">{expandedMembership.action}</div> : null}
@@ -708,11 +648,7 @@ export function DashboardEnrollmentsPageContent() {
             ) : null}
           </>
         ) : (
-          <div className="mt-5 rounded-[22px] border border-white/[0.06] bg-night/20 px-4 py-4">
-            <p className="text-sm text-steel">
-              No encontramos nuevas membresias abiertas para inscripcion en este momento.
-            </p>
-          </div>
+          <p className="mt-5 border-y border-white/10 py-5 text-sm text-steel">No hay nuevas inscripciones disponibles.</p>
         )}
       </section>
 

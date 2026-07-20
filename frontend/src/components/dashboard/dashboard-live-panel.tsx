@@ -53,11 +53,11 @@ function TeamLiveBadge({ crestUrl, teamName }: { crestUrl: string | null; teamNa
   return (
     <div className="flex min-w-0 items-center gap-2">
       {crestUrl ? (
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.05]">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full">
           <img src={crestUrl} alt={teamName} className="h-full w-full object-cover" />
         </div>
       ) : (
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[10px] font-semibold uppercase text-steel">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center text-[10px] font-semibold uppercase text-steel">
           {teamName.slice(0, 3)}
         </div>
       )}
@@ -146,12 +146,8 @@ export function DashboardLivePanel({ season, vipId = null }: DashboardLivePanelP
 
   if (!season.live_dashboard_enabled) {
     return (
-      <div className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5">
-        <p className="text-xs uppercase tracking-[0.28em] text-steel">Live</p>
-        <h2 className="mt-2 text-lg font-semibold text-ink">Vista live apagada</h2>
-        <p className="mt-2 text-sm text-steel">
-          Admin todavia no habilita la quiniela al momento para {season.name}.
-        </p>
+      <div className="border-y border-white/[0.08] py-5">
+        <p className="text-sm text-steel">Live no disponible para {season.name}.</p>
       </div>
     );
   }
@@ -166,32 +162,23 @@ export function DashboardLivePanel({ season, vipId = null }: DashboardLivePanelP
 
   return (
     <section className="space-y-5">
-      <div className="rounded-[24px] border border-white/10 bg-white/[0.02] p-4">
-        <div className="flex flex-col gap-2">
-          <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-steel">Marcadores del dia</p>
-            <p className="mt-1 text-sm text-steel">
-              {state.matchday_name ? `Actualizando juegos de ${state.matchday_name}.` : "Marcadores del corte actual."}
-            </p>
-          </div>
+      <div>
+        <div className="flex items-baseline justify-between gap-4 border-b border-white/[0.08] pb-3">
+          <h2 className="text-base font-semibold text-ink">Marcadores del día</h2>
+          {state.matchday_name ? <p className="text-xs text-steel/70">{state.matchday_name}</p> : null}
         </div>
 
-        <div className="mt-4 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <div className="flex min-w-max gap-3">
+        <div className="grid md:grid-cols-2">
             {state.matches.map((match) => (
               <article
                 key={match.match_id}
-                className="min-w-[240px] rounded-[18px] border border-white/8 bg-white/[0.03] px-4 py-3"
+                className="border-b border-white/[0.08] py-5 md:odd:pr-6 md:even:pl-6 md:even:border-l"
               >
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[10px] uppercase tracking-[0.18em] text-steel">
                     {formatMexicoCityDateTime(match.kickoff_at)}
                   </p>
-                  <span
-                    className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
-                      match.is_official ? "border-emerald-400/30 text-emerald-300" : "border-white/10 text-[#ff7b9a]"
-                    }`}
-                  >
+                  <span className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${match.is_official ? "text-emerald-300" : "text-[#ff7b9a]"}`}>
                     {match.is_official ? "Oficial" : "Live"}
                   </span>
                 </div>
@@ -204,17 +191,14 @@ export function DashboardLivePanel({ season, vipId = null }: DashboardLivePanelP
                 </div>
               </article>
             ))}
-            {state.matches.length === 0 ? (
-              <p className="text-sm text-steel">Aun no hay partidos disponibles para esta vista live.</p>
-            ) : null}
-          </div>
+          {state.matches.length === 0 ? <p className="py-5 text-sm text-steel">Sin partidos disponibles.</p> : null}
         </div>
       </div>
 
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-steel">Ranking provisional</p>
+            <h2 className="text-base font-semibold text-ink">Ranking provisional</h2>
           </div>
           {error ? <p className="text-xs text-coral">{error}</p> : null}
         </div>
@@ -236,7 +220,7 @@ export function DashboardLivePanel({ season, vipId = null }: DashboardLivePanelP
                 <th className="px-3 py-3">Jugador</th>
                 <th className="px-3 py-3">Movimiento</th>
                 <th className="px-3 py-3">Pts</th>
-                <th className="px-3 py-3">+ Jornada</th>
+                <th className="px-3 py-3">+ En vivo</th>
                 <th className="px-3 py-3">Oficial</th>
                 <th className="px-3 py-3">Exactos</th>
               </tr>
@@ -250,12 +234,12 @@ export function DashboardLivePanel({ season, vipId = null }: DashboardLivePanelP
                   </td>
                   <td className="px-3 py-3">
                     <span
-                      className={`inline-flex min-w-[76px] items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                      className={`text-xs font-semibold ${
                         entry.rank_delta > 0
-                          ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-300"
+                          ? "text-emerald-300"
                           : entry.rank_delta < 0
-                            ? "border-[#ff5f8740] bg-[#ff5f8710] text-coral"
-                            : "border-white/10 bg-white/[0.03] text-steel"
+                            ? "text-coral"
+                            : "text-steel"
                       }`}
                     >
                       {formatMovementLabel(entry.rank_delta)}

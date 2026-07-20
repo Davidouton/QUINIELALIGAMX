@@ -67,6 +67,7 @@ class ProfileService:
         "upcoming",
         "memberships",
         "survivor_summary",
+        "ranking",
     }
     SEASON_SCOPED_WIDGET_IDS = {
         "summary",
@@ -76,6 +77,7 @@ class ProfileService:
         "prize_summary",
         "upcoming",
         "survivor_summary",
+        "ranking",
     }
 
     def ensure_profile(self, db: Session, auth_user: AuthUser) -> Profile:

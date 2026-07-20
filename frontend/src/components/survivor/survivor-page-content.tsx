@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { isSurvivorAvailableForSeason, resolveSurvivorSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
@@ -28,8 +28,29 @@ const initialBoard: SurvivorBoard = {
   leaderboard: [],
 };
 
-function formatLivesLabel(remainingLives: number, maxLives: number) {
-  return `${remainingLives}/${maxLives} vidas`;
+function renderLives(remainingLives: number, maxLives: number, compact = false) {
+  return (
+    <span
+      className="inline-flex items-center gap-1"
+      title={`${remainingLives} de ${maxLives} vidas disponibles`}
+      aria-label={`${remainingLives} de ${maxLives} vidas disponibles`}
+    >
+      {Array.from({ length: maxLives }, (_, index) => {
+        const active = index < remainingLives;
+        return (
+          <svg
+            key={index}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className={compact ? "h-4 w-4" : "h-6 w-6"}
+            fill={active ? "#ef4444" : "#541f2a"}
+          >
+            <path d="M12 21s-7.2-4.35-9.55-8.36C.3 8.96 2.18 4.5 6.5 4.5c2.22 0 3.68 1.24 4.5 2.42.82-1.18 2.28-2.42 4.5-2.42 4.32 0 6.2 4.46 4.05 8.14C19.2 16.65 12 21 12 21Z" />
+          </svg>
+        );
+      })}
+    </span>
+  );
 }
 
 function getSurvivorResultLabel(resultStatus: "pending" | "won" | "lost" | "draw") {
@@ -92,17 +113,21 @@ function renderTeamLogo(
   sizeClassName = "h-14 w-14",
 ) {
   if (teamCrestUrl) {
+    const crestScale = /cruz azul/i.test(teamName) ? 1.38 : 1;
     return (
-      <img
-        src={teamCrestUrl}
-        alt={teamName}
-        className={`${sizeClassName} rounded-full border border-white/10 bg-white object-cover`}
-      />
+      <span className={`relative inline-flex shrink-0 ${sizeClassName}`}>
+        <img
+          src={teamCrestUrl}
+          alt={teamName}
+          className="absolute inset-0 h-full w-full object-contain"
+          style={{ transform: `scale(${crestScale})` }}
+        />
+      </span>
     );
   }
   return (
     <span
-      className={`inline-flex ${sizeClassName} items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-sm font-semibold text-ink`}
+      className={`inline-flex ${sizeClassName} items-center justify-center text-sm font-semibold text-ink`}
     >
       {teamShortName.slice(0, 3).toUpperCase()}
     </span>
@@ -134,6 +159,8 @@ export function SurvivorPageContent() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [journeyScroll, setJourneyScroll] = useState(0);
+  const leaderboardScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -270,6 +297,21 @@ export function SurvivorPageContent() {
     }
   }
 
+  function handleJourneySlider(value: number) {
+    setJourneyScroll(value);
+    const container = leaderboardScrollRef.current;
+    if (!container) return;
+    const maxScroll = container.scrollWidth - container.clientWidth;
+    container.scrollLeft = maxScroll * (value / 100);
+  }
+
+  function syncJourneySlider() {
+    const container = leaderboardScrollRef.current;
+    if (!container) return;
+    const maxScroll = container.scrollWidth - container.clientWidth;
+    setJourneyScroll(maxScroll > 0 ? (container.scrollLeft / maxScroll) * 100 : 0);
+  }
+
   if (loading) {
     return <p className="text-sm text-ink/60">Cargando survivor...</p>;
   }
@@ -314,29 +356,27 @@ export function SurvivorPageContent() {
         </section>
       ) : null}
 
-      <section className="surface-card-strong overflow-hidden px-6 py-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <section>
+        <header className="page-header">
+          <h1 className="page-title">
+            {board.season.survivor_name || selectedSeason?.survivor_name || "Survivor"}
+          </h1>
+          <div className="max-w-md">
+            <p className="text-xs text-steel">Torneo</p>
+            <p className="mt-1 border-b border-white/[0.12] pb-2 text-sm font-medium text-ink">
+              {board.season.season_name || selectedSeason?.name || board.season.competition_name || "Liga MX"}
+            </p>
+          </div>
+        </header>
+        <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.26em] text-steel">
-              {board.season.competition_name ?? selectedSeason?.competition_name ?? "Liga MX"}
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold text-ink">
-              {board.season.survivor_name || selectedSeason?.survivor_name || "Survivor"}
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-steel">
-              Escoge un equipo por jornada. No puedes repetirlo durante la temporada y solo pierdes vida cuando ese equipo cae.
-            </p>
+            {renderLives(board.my_membership?.remaining_lives ?? board.season.survivor_max_lives, board.season.survivor_max_lives)}
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <div className="app-pill-active px-4 text-sm text-ink">
-              {formatLivesLabel(
-                board.my_membership?.remaining_lives ?? board.season.survivor_max_lives,
-                board.season.survivor_max_lives,
-              )}
-            </div>
-            <div className="app-pill px-4 text-sm">
-              {board.season.total_entries} participantes
+            <div className="text-sm font-semibold text-ink">
+              {board.leaderboard.filter((entry) => entry.alive && entry.remaining_lives > 0).length}
+              <span className="font-normal text-steel"> de {board.season.total_entries} vivos</span>
             </div>
             {board.current_matchday ? (
               <div className="app-pill px-4 text-sm">
@@ -381,9 +421,7 @@ export function SurvivorPageContent() {
       <section className="surface-card overflow-hidden px-5 py-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-steel">Tablero Survivor</p>
-            <h2 className="mt-2 text-lg font-semibold text-ink">Participantes por jornada</h2>
-            <p className="mt-1 text-sm text-steel">Escudo: pick capturado · círculo oscuro: pendiente u oculto.</p>
+            <h2 className="text-lg font-semibold text-ink">Participantes por jornada</h2>
           </div>
           <div className="flex flex-wrap gap-3 text-[10px] uppercase tracking-wide text-steel">
             <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-emerald-400" /> Ganó</span>
@@ -391,26 +429,52 @@ export function SurvivorPageContent() {
             <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-gold" /> Empate</span>
           </div>
         </div>
-        <div className="no-scrollbar mt-5 overflow-x-auto touch-pan-x">
+        {board.leaderboard.length > 0 ? (
+          <div className="mt-5 flex items-center gap-3 text-xs font-semibold text-steel">
+            <span>J1</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={journeyScroll}
+              onChange={(event) => handleJourneySlider(Number(event.target.value))}
+              aria-label="Navegar entre jornadas"
+              className="h-1.5 min-w-0 flex-1 cursor-ew-resize accent-[#4f7df3]"
+            />
+            <span>J17</span>
+          </div>
+        ) : null}
+        <div
+          ref={leaderboardScrollRef}
+          onScroll={syncJourneySlider}
+          className="no-scrollbar mt-3 overflow-x-auto scroll-smooth touch-pan-x"
+        >
           {board.leaderboard.length === 0 ? <p className="text-sm text-steel">Aún no hay participantes inscritos.</p> : (
-            <table className="min-w-[1330px] border-separate border-spacing-0 text-center text-[11px]">
+            <table className="min-w-[1240px] border-separate border-spacing-0 text-center text-[11px]">
               <thead><tr className="text-[10px] uppercase tracking-wider text-steel">
-                <th className="sticky left-0 z-20 min-w-[210px] border-b border-white/10 bg-[#0c1727] px-3 py-3 text-left">Participante</th>
+                <th className="sticky left-0 z-20 min-w-[250px] border-b border-white/10 bg-[#0c1727] px-3 py-3 text-left">Participante</th>
                 {Array.from({ length: 17 }, (_, index) => <th key={index} className={`w-[58px] border-b border-white/10 px-1 py-3 ${board.current_matchday?.number === index + 1 ? "text-coral" : ""}`}>J{index + 1}</th>)}
-                <th className="w-[70px] border-b border-white/10 px-2 py-3">Vidas</th>
-                <th className="w-[80px] border-b border-white/10 px-2 py-3">Estado</th>
               </tr></thead>
               <tbody>{board.leaderboard.map((entry, index) => {
                 const picksByJourney = new Map((entry.picks ?? []).map((pick) => [pick.matchday_number, pick]));
                 return <tr key={entry.profile_id} className="group">
                   <td className="sticky left-0 z-10 border-b border-white/[0.07] bg-[#0c1727] px-3 py-3 text-left group-hover:bg-[#101d30]">
-                    <p className="font-semibold text-ink">{index + 1}. {entry.display_name}</p>
-                    <p className="mt-0.5 text-[10px] text-steel">{entry.total_picks} picks</p>
+                    <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] items-center gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-ink">{index + 1}. {entry.display_name}</p>
+                        <p className="mt-0.5 text-[10px] text-steel">{entry.total_picks} picks</p>
+                      </div>
+                      <span className="justify-self-start">{renderLives(entry.remaining_lives, board.season.survivor_max_lives, true)}</span>
+                      <span className={`justify-self-start text-[10px] font-semibold ${entry.alive && entry.remaining_lives > 0 ? "text-ink" : "text-coral"}`}>
+                        {getSurvivorLifeStateLabel(entry.alive, entry.remaining_lives)}
+                      </span>
+                    </div>
                   </td>
                   {Array.from({ length: 17 }, (_, journeyIndex) => {
                     const pick = picksByJourney.get(journeyIndex + 1);
                     const visiblePick = pick && (pick.is_revealed || board.my_picks.some((myPick) => myPick.id === pick.id)) ? pick : null;
-                    const stateClass = visiblePick?.result_status === "won" ? "ring-2 ring-emerald-400/70" : visiblePick?.result_status === "lost" ? "ring-2 ring-coral/70" : visiblePick?.result_status === "draw" ? "ring-2 ring-gold/70" : visiblePick ? "ring-1 ring-white/20" : "";
+                    const stateClass = visiblePick?.result_status === "won" ? "drop-shadow-[0_0_5px_rgba(52,211,153,0.75)]" : visiblePick?.result_status === "lost" ? "drop-shadow-[0_0_5px_rgba(255,107,107,0.7)]" : visiblePick?.result_status === "draw" ? "drop-shadow-[0_0_5px_rgba(255,228,92,0.7)]" : "";
                     return <td key={journeyIndex} className={`border-b border-white/[0.07] px-1 py-2 ${board.current_matchday?.number === journeyIndex + 1 ? "bg-coral/[0.035]" : ""}`}>
                       {visiblePick ? <span className="relative inline-flex" title={`J${journeyIndex + 1}: ${visiblePick.team_name} · ${getSurvivorResultLabel(visiblePick.result_status)}`}>
                         {renderTeamLogo(visiblePick.team_name, visiblePick.team_short_name, visiblePick.team_crest_url, `h-9 w-9 ${stateClass}`)}
@@ -418,8 +482,6 @@ export function SurvivorPageContent() {
                       </span> : <span className="inline-flex h-9 w-9 rounded-full border border-white/[0.07] bg-black/55" title={pick ? "Pick oculto hasta el cierre" : `J${journeyIndex + 1}: pendiente`} />}
                     </td>;
                   })}
-                  <td className="border-b border-white/[0.07] px-2 font-semibold text-ink">{entry.remaining_lives}</td>
-                  <td className="border-b border-white/[0.07] px-2"><span className={getSurvivorLifeStatePillClassName(entry.alive, entry.remaining_lives)}>{getSurvivorLifeStateLabel(entry.alive, entry.remaining_lives)}</span></td>
                 </tr>;
               })}</tbody>
             </table>
@@ -443,12 +505,7 @@ export function SurvivorPageContent() {
                   Pick actual: {board.my_membership.current_pick.team_short_name}
                 </span>
               ) : null}
-              <span className="app-pill px-3 text-[10px]">
-                Vidas: {board.my_membership.remaining_lives}/{board.my_membership.max_lives}
-              </span>
-              <span className="app-pill px-3 text-[10px]">
-                Gastadas: {board.my_membership.lives_spent}
-              </span>
+              {renderLives(board.my_membership.remaining_lives, board.my_membership.max_lives)}
               <span className="app-pill px-3 text-[10px]">
                 Usados: {board.my_membership.used_team_names.length}
               </span>
@@ -477,7 +534,6 @@ export function SurvivorPageContent() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-steel">Pick Center Survivor</p>
-                  <p className="mt-1 text-sm text-steel">Elige un equipo tocando su escudo dentro del partido.</p>
                 </div>
                 <div className="app-pill px-3 text-[10px]">
                   Jornada {board.current_matchday?.number ?? "-"}
@@ -508,8 +564,8 @@ export function SurvivorPageContent() {
                     <button type="button" onClick={() => team.option && void handlePick(team.option.team_id)}
                       disabled={!team.option || team.option.is_locked || Boolean(submitting)} aria-pressed={Boolean(team.option?.is_current_pick)}
                       aria-label={`Seleccionar ${team.name}`} title={!team.option ? `${team.name} ya fue utilizado` : `Seleccionar ${team.name}`}
-                      className={`mx-auto flex min-w-0 max-w-[74px] flex-col items-center justify-start gap-1 self-start rounded-full border-2 px-2 py-1 text-center transition disabled:cursor-default ${team.option?.is_current_pick ? "border-mint bg-mint/15 text-mint shadow-[0_0_0_1px_rgba(74,222,128,0.25)]" : team.option ? "border-transparent hover:border-mint/50 hover:bg-mint/10" : "border-transparent opacity-35"}`}>
-                      {renderTeamLogo(team.name, team.shortName, team.crestUrl, "h-7 w-7")}
+                      className={`relative mx-auto flex min-w-0 max-w-[74px] flex-col items-center justify-start gap-1 self-start px-2 py-1 text-center transition disabled:cursor-default ${team.option?.is_current_pick ? "text-mint" : team.option ? "hover:scale-105" : "opacity-35"}`}>
+                      {renderTeamLogo(team.name, team.shortName, team.crestUrl, `${team.option?.is_current_pick ? "h-9 w-9 drop-shadow-[0_0_8px_rgba(74,222,128,0.45)]" : "h-8 w-8"}`)}
                       <span className={`min-h-[20px] max-w-[58px] text-[8px] leading-tight ${team.option?.is_current_pick ? "text-mint" : "text-steel"}`}>{team.shortName}</span>
                       <span className="sr-only">{side}</span>
                     </button>
@@ -521,7 +577,7 @@ export function SurvivorPageContent() {
                       </div>
                       <div className="text-center"><p className="text-[6px] uppercase text-steel/80 md:hidden">Inicio</p><p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityDateTime(match.kickoffAt)}</p></div>
                       <div className="hidden text-center md:block"><p className="text-[9px] text-ink">{board.current_matchday ? formatMexicoCityDateTime(board.current_matchday.ends_at) : "-"}</p></div>
-                      <div className="text-center">{selected ? <span className="app-pill-success px-3 text-[9px]">{submitting ? "Guardando" : selected.team_short_name}</span> : <span className="app-pill px-3 text-[9px]">Elegir</span>}</div>
+                      <div className="text-center">{selected ? <span className="text-[10px] font-semibold text-[#3ff28a]">{submitting ? "Guardando" : <><span className="sm:hidden">G</span><span className="hidden sm:inline">Guardado</span></>}</span> : <span className="text-[10px] text-steel">Elegir</span>}</div>
                     </div>
                   </div>;
                 })}

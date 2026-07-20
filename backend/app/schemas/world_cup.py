@@ -85,6 +85,7 @@ class WorldCupOfficialResultOut(BaseModel):
 class WorldCupBoardOut(BaseModel):
     season_id: str
     season_name: str
+    league_standings: list[WorldCupGroupStandingOut] = []
     groups: list[WorldCupGroupOut] = []
     official_results: list[WorldCupOfficialResultOut] = []
     round_of_32: list[WorldCupBracketMatchOut] = []

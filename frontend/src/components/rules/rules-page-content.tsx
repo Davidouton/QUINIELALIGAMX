@@ -128,22 +128,18 @@ export function RulesPageContent() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <header className="page-header">
+        <div className="space-y-3">
           <div>
-            <h1 className="text-xl font-semibold text-ink">{rulePage?.title || "Reglamento"}</h1>
-            <p className="mt-1 text-sm text-steel">
-              {rulePage?.season_name ?? selectedSeason?.name ?? "Reglamento general"}
-              {rulePage?.page_kind === "survivor" ? ` · ${selectedSeason?.survivor_name ?? "Survivor"}` : ""}
-            </p>
+            <h1 className="page-title">Reglamento</h1>
           </div>
           {ruleSheetOptions.length > 1 ? (
-            <label className="w-full max-w-[360px] space-y-2 text-left text-sm">
+            <label className="page-context-label">
               <span className="text-steel">Hoja</span>
               <select
                 value={selectedRuleSheetKey}
                 onChange={(event) => void handleRuleSheetChange(event.target.value)}
-                className="field-control"
+                className="page-context-select"
                 disabled={loading}
               >
                 {ruleSheetOptions.map((option) => (
@@ -162,7 +158,7 @@ export function RulesPageContent() {
             </span>
           </div>
         ) : null}
-      </section>
+      </header>
 
       <section className="px-1 py-1 sm:px-3">
         {rulePage?.content_markdown?.trim() ? (

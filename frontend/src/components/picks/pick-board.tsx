@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
@@ -61,9 +60,9 @@ const AUTO_SAVE_DELAY_MS = 2000;
 const compactPickControlClass =
   "field-control compact-table-control h-8 min-w-0 rounded-md border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-semibold";
 const pickBoardButtonClass =
-  "app-pill min-w-[10rem] px-3 disabled:cursor-not-allowed disabled:opacity-50";
+  "tab-control disabled:cursor-not-allowed disabled:opacity-50";
 const pickBoardButtonActiveClass =
-  "app-pill-active min-w-[10rem] px-3 disabled:cursor-not-allowed disabled:opacity-50";
+  "tab-control tab-control-active disabled:cursor-not-allowed disabled:opacity-50";
 
 const initialState: PickBoardState = {
   me: null,
@@ -77,13 +76,6 @@ const initialState: PickBoardState = {
   vipCompetitions: [],
   error: null,
 };
-
-function getSeasonTag(season: Season | null) {
-  if (!season) {
-    return "SIN TORNEO";
-  }
-  return season.slug?.toUpperCase() || season.name.toUpperCase();
-}
 
 function buildFormFromPick(pick?: Pick): PickFormState {
   return {
@@ -1126,15 +1118,8 @@ export function PickBoard() {
     return <p className="text-sm text-ink/60">Cargando jornada de picks...</p>;
   }
 
-  const seasonTag = getSeasonTag(state.selectedSeason);
   const survivorSeason = resolveSurvivorSeason(state.seasons, seasonIdParam, competitionId);
   const canShowSurvivorTab = Boolean(survivorSeason && isSurvivorAvailableForSeason(survivorSeason));
-  const picksHeader =
-    activeTab === "survivor"
-      ? `Picks Center · Survivor`
-      : state.selectedMatchday
-        ? `Jornada ${state.selectedMatchday.number} - ${seasonTag}`
-        : "Sin jornada seleccionada";
   const selectedSeasonId = state.selectedSeason?.id;
   const seasonMatchdays = selectedSeasonId
     ? state.matchdays
@@ -1155,12 +1140,10 @@ export function PickBoard() {
     matchScope === "today"
       ? state.globalPickBoard?.matches.filter((match) => visibleMatchIds.has(match.match_id)) ?? []
       : state.globalPickBoard?.matches ?? [];
-  const hasAdvancingTeamPicks = visibleMatches.some((match) => requiresAdvancingTeam(match, state.selectedSeason));
-
   return (
     <div className="space-y-6">
       <div className="space-y-4 px-1 py-1">
-        <h1 className="text-sm font-semibold text-ink sm:text-3xl">{picksHeader}</h1>
+        <h1 className="page-title">Pick Center</h1>
         {activeTab !== "survivor" && approvedVipForSelectedMatchday && !selectedSeasonMembership?.can_participate ? (
           <div className="mt-4 rounded-2xl border border-mint/30 bg-mint/10 px-4 py-3 text-sm text-mint">
             Estas capturando picks para {approvedVipForSelectedMatchday.name}. No cuentan para el ranking general.
@@ -1168,12 +1151,12 @@ export function PickBoard() {
         ) : null}
         {activeTab !== "survivor" ? (
           <div className="grid gap-2 lg:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto] lg:items-end">
-            <label className="space-y-1.5 text-xs">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Temporada</span>
+            <label className="page-context-label">
+              <span>Torneo</span>
               <select
                 value={state.selectedSeason?.id ?? ""}
                 onChange={(event) => void handleSeasonChange(event.target.value)}
-                className="field-control text-xs"
+                className="page-context-select"
               >
                 <option value="">Selecciona temporada</option>
                 {visibleSeasons.map((season) => (
@@ -1183,12 +1166,12 @@ export function PickBoard() {
                 ))}
               </select>
             </label>
-            <label className="space-y-1.5 text-xs">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-steel">Jornada</span>
+            <label className="page-context-label">
+              <span>Jornada</span>
               <select
                 value={state.selectedMatchday?.id ?? ""}
                 onChange={(event) => void loadSelectedMatchday(event.target.value)}
-                className="field-control text-xs"
+                className="page-context-select"
               >
                 <option value="">Selecciona jornada</option>
                 {seasonMatchdays.map((matchday) => (
@@ -1243,13 +1226,6 @@ export function PickBoard() {
               Survivor
             </button>
           ) : null}
-          <Link
-            href="/dashboard/vip"
-            prefetch={false}
-            className={pickBoardButtonClass}
-          >
-            VIP
-          </Link>
         </div>
         {activeTab !== "survivor" ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -1286,16 +1262,7 @@ export function PickBoard() {
 
       {activeTab === "mine" && visibleMatches.length > 0 ? (
         <section className="space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            {hasAdvancingTeamPicks ? (
-              <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-steel">
-                <span className="text-mint">Escoge el equipo que califica</span>
-                <span className="text-steel">Resultado oficial: 90 mins + TE</span>
-              </div>
-            ) : <span />}
-            <p className="text-[10px] text-steel">Se guarda automatico 2 segundos despues del ultimo cambio.</p>
-          </div>
-          <div className="hidden grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] gap-2 border-b border-white/10 pb-2 text-[10px] uppercase tracking-[0.14em] text-steel/80 md:grid">
+          <div className="hidden grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] gap-2 border-b border-white/10 pb-3 text-[11px] font-medium uppercase tracking-[0.12em] text-steel md:grid">
             <p>Partido</p>
             <p className="text-center">Inicio</p>
             <p className="text-center">Cierre</p>

@@ -1006,7 +1006,7 @@ export function AdminUsersPanel() {
               La temporada del selector define el alta, pago, Survivor y puntaje que ves y editas en la tabla.
               {!selectedSeasonSupportsSurvivor ? " Survivor esta deshabilitado para este torneo." : ""}
             </div>
-            <table className="min-w-[1360px] table-fixed text-center text-[11px] text-steel">
+            <table className="admin-users-table min-w-[1360px] table-fixed text-center text-[11px] text-steel">
               <colgroup>
                 <col className="w-[220px]" />
                 <col className="w-[92px]" />
@@ -1059,7 +1059,7 @@ export function AdminUsersPanel() {
                     .sort((left, right) => left.display_name.localeCompare(right.display_name));
 
                   return (
-                    <tr key={user.id}>
+                    <tr key={user.id} className="border-t border-white/10">
                       <td className="sticky left-0 z-10 bg-[rgba(9,20,37,0.68)] px-2 py-2 text-left align-top backdrop-blur-[1px]">
                         <p className="truncate font-medium text-ink">{user.display_name}</p>
                         <p className="mt-1 truncate text-[10px] text-steel">{user.email ?? "Sin correo"}</p>

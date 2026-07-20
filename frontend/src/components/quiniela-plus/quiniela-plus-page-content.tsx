@@ -6,6 +6,7 @@ import { backendFetch } from "@/lib/api/backend";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { DevOnly } from "@/components/layout/dev-mode-provider";
 import type {
   Me,
   QuinielaPlusAdvancedStats,
@@ -43,6 +44,14 @@ function formatProbability(value: number) {
     style: "percent",
     maximumFractionDigits: 1,
   }).format(value);
+}
+
+function getScoreResultColor(scoreLabel: string, homeColor: string, awayColor: string) {
+  const [homeScore, awayScore] = scoreLabel.split("-").map(Number);
+  if (!Number.isFinite(homeScore) || !Number.isFinite(awayScore)) return "#7f8a9d";
+  if (homeScore > awayScore) return homeColor;
+  if (awayScore > homeScore) return awayColor;
+  return "#7f8a9d";
 }
 
 function formatWholePercent(value: number) {
@@ -176,27 +185,36 @@ function getTeamInitials(name: string) {
     .slice(0, 3);
 }
 
-function TeamBubble({ name, shortName, crestUrl }: { name: string; shortName: string; crestUrl: string | null }) {
+function TeamBubble({ name, shortName, crestUrl, prominent = false }: { name: string; shortName: string; crestUrl: string | null; prominent?: boolean }) {
   const fallback = shortName || getTeamInitials(name);
+  const sizeClassName = prominent ? "h-16 w-16" : "h-6 w-6";
   if (crestUrl) {
     return (
-      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06]">
+      <span className={`inline-flex ${sizeClassName} shrink-0 items-center justify-center overflow-hidden rounded-full`}>
         <img src={crestUrl} alt={name} className="h-full w-full object-cover" />
       </span>
     );
   }
 
   return (
-    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[8px] font-semibold text-ink">
+    <span className={`inline-flex ${sizeClassName} shrink-0 items-center justify-center rounded-full bg-white/[0.04] text-[10px] font-semibold text-ink`}>
       {fallback.slice(0, 2)}
     </span>
   );
 }
 
-function TeamInline({ name, shortName, crestUrl }: { name: string; shortName: string; crestUrl: string | null }) {
+function TeamInline({ name, shortName, crestUrl, prominent = false }: { name: string; shortName: string; crestUrl: string | null; prominent?: boolean }) {
+  if (prominent) {
+    return (
+      <span className="flex min-w-0 flex-col items-center gap-2 text-center">
+        <TeamBubble name={name} shortName={shortName} crestUrl={crestUrl} prominent />
+        <span className="max-w-[120px] truncate text-xs font-medium text-steel">{name}</span>
+      </span>
+    );
+  }
   return (
     <span className="flex min-w-0 items-center gap-2">
-      <TeamBubble name={name} shortName={shortName} crestUrl={crestUrl} />
+      <TeamBubble name={name} shortName={shortName} crestUrl={crestUrl} prominent={prominent} />
       <span className="truncate font-semibold text-ink">{name}</span>
     </span>
   );
@@ -776,36 +794,34 @@ export function QuinielaPlusPageContent() {
 
   return (
     <div className="space-y-6">
-      <section className="space-y-2">
-        <p className="text-[11px] uppercase tracking-[0.28em] text-steel">Quiniela +</p>
-        <h1 className="text-2xl font-semibold text-ink">
-          {activeTab === "probabilities"
-            ? "Probabilidades sin vig"
-            : activeTab === "value-lab"
-              ? "Value Lab"
-              : activeTab === "advanced-stats"
-                ? "Estadisticas avanzadas"
-                : "Distribucion de usuarios"}
-        </h1>
-        <p className="max-w-3xl text-sm text-steel">
-          {activeTab === "probabilities"
-            ? "Probabilidad implicita justa por partido, normalizada para quitar el margen de la casa."
-            : activeTab === "value-lab"
-              ? "Recomendaciones paper: compara AI Quinielón contra mercado real para detectar edge antes de arriesgar dinero."
-              : activeTab === "advanced-stats"
-                ? "Modelo avanzado por partido: xG, marcador probable, goles esperados, over/under y mapa de marcadores."
-                : "Picks agregados en vivo: porcentaje Local, Empate, Visitante y marcadores mas repetidos."}
-        </p>
-      </section>
+      <header className="page-header">
+        <h1 className="page-title">Quiniela+</h1>
+        {distributionContextOptions.length > 0 ? (
+          <label className="page-context-label">
+            <span className="text-xs text-steel">Torneo</span>
+            <select
+              value={selectedDistributionContext}
+              onChange={(event) => setSelectedDistributionContext(event.target.value)}
+              className="page-context-select"
+            >
+              {distributionContextOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </header>
 
-      <section className="flex flex-wrap gap-2">
+      <section className="tab-list">
         <button
           type="button"
           onClick={() => {
             setActiveTab("user-distribution");
             setOddsScope((current) => (current === "locked" ? "today" : current));
           }}
-          className={activeTab === "user-distribution" ? "app-pill-active min-w-[12rem] px-3" : "app-pill min-w-[12rem] px-3"}
+          className={activeTab === "user-distribution" ? "tab-control tab-control-active" : "tab-control"}
         >
           Distribucion de usuarios
         </button>
@@ -815,21 +831,21 @@ export function QuinielaPlusPageContent() {
             setActiveTab("probabilities");
             setOddsScope((current) => (current === "locked" ? "today" : current));
           }}
-          className={activeTab === "probabilities" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+          className={activeTab === "probabilities" ? "tab-control tab-control-active" : "tab-control"}
         >
           Probabilidades
         </button>
         <button
           type="button"
           disabled
-          className="app-pill min-w-[12rem] cursor-not-allowed px-3 opacity-50"
+          className="tab-control cursor-not-allowed opacity-50"
         >
           Value Lab · Próximamente
         </button>
         <button
           type="button"
           disabled
-          className="app-pill min-w-[15rem] cursor-not-allowed px-3 opacity-50"
+          className="tab-control cursor-not-allowed opacity-50"
         >
           Estadisticas avanzadas · Próximamente
         </button>
@@ -837,25 +853,25 @@ export function QuinielaPlusPageContent() {
 
       {activeTab !== "advanced-stats" && activeTab !== "value-lab" ? (
       <section className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
+        <div className="tab-list">
           <button
             type="button"
             onClick={() => setOddsScope("today")}
-            className={oddsScope === "today" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+            className={oddsScope === "today" ? "tab-control tab-control-active" : "tab-control"}
           >
             Partidos de hoy
           </button>
           <button
             type="button"
             onClick={() => setOddsScope("tomorrow")}
-            className={oddsScope === "tomorrow" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+            className={oddsScope === "tomorrow" ? "tab-control tab-control-active" : "tab-control"}
           >
             Mañana
           </button>
           <button
             type="button"
             onClick={() => setOddsScope("matchday")}
-            className={oddsScope === "matchday" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+            className={oddsScope === "matchday" ? "tab-control tab-control-active" : "tab-control"}
           >
             Por jornada
           </button>
@@ -863,7 +879,7 @@ export function QuinielaPlusPageContent() {
             <button
               type="button"
               onClick={() => setOddsScope("locked")}
-              className={oddsScope === "locked" ? "app-pill-active min-w-[10rem] px-3" : "app-pill min-w-[10rem] px-3"}
+              className={oddsScope === "locked" ? "tab-control tab-control-active" : "tab-control"}
             >
               Cerrados
             </button>
@@ -898,22 +914,6 @@ export function QuinielaPlusPageContent() {
                 {matchdayOptions.map((matchday) => (
                   <option key={matchday.id} value={matchday.id}>
                     {matchday.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {activeTab === "user-distribution" && distributionContextOptions.length > 0 ? (
-            <label className="w-full max-w-[360px] space-y-2 text-sm sm:w-auto">
-              <span className="text-steel">Contexto</span>
-              <select
-                value={selectedDistributionContext}
-                onChange={(event) => setSelectedDistributionContext(event.target.value)}
-                className="field-control"
-              >
-                {distributionContextOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
                   </option>
                 ))}
               </select>
@@ -997,98 +997,101 @@ export function QuinielaPlusPageContent() {
         <section className="grid gap-3">
           {visibleDistributionMatches.map((match) => {
             const distribution = match.selection_distribution;
-            const percentages: [number, number, number] = [
-              distribution.home_percentage,
-              distribution.draw_percentage,
-              distribution.away_percentage,
-            ];
             const scoreTotal = match.score_distribution.reduce((total, score) => total + score.count, 0);
+            const topScorePercentage = Math.max(...match.score_distribution.map((score) => score.percentage), 0.01);
+            const homeColor = match.home_team_primary_color || "#4f7df3";
+            const awayColor = match.away_team_primary_color || "#8b9bb5";
             return (
               <article
                 key={match.match_id}
-                className="rounded-[12px] border border-white/[0.06] bg-white/[0.025] p-3 transition hover:bg-white/[0.035] md:p-4"
+                className="border-b border-white/[0.08] py-6 first:border-t"
               >
-                <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.1fr)_minmax(240px,0.9fr)_minmax(280px,1.15fr)] lg:items-start">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-steel">
+                <div className="grid gap-7 xl:grid-cols-[minmax(280px,0.9fr)_minmax(320px,1fr)_minmax(360px,1.15fr)] xl:items-start">
+                  <div className="min-w-0 space-y-4">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-steel">
                       <span>{buildMatchdayLabel(match)}</span>
-                      <span className="h-1 w-1 rounded-full bg-steel/50" />
+                      <span>·</span>
                       <span>{formatMexicoCityDateTime(match.kickoff_at)}</span>
-                      <span
-                        className={`rounded-full border px-2 py-0.5 font-semibold ${
-                          match.is_locked
-                            ? "border-[#3ff28a]/25 bg-[#3ff28a]/10 text-[#3ff28a]"
-                            : "border-[#ffe45c]/25 bg-[#ffe45c]/10 text-[#ffe45c]"
-                        }`}
-                      >
+                      <span className={match.is_locked ? "text-mint" : "text-gold"}>
                         {match.is_locked ? "Cerrado" : "Abierto"}
                       </span>
                     </div>
-                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
                       <TeamInline
                         name={match.home_team_name}
                         shortName={match.home_team_short_name}
                         crestUrl={match.home_team_crest_url}
+                        prominent
                       />
-                      <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-steel">vs</span>
+                      <span className="text-xs text-steel">vs</span>
                       <TeamInline
                         name={match.away_team_name}
                         shortName={match.away_team_short_name}
                         crestUrl={match.away_team_crest_url}
+                        prominent
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-1.5 text-center text-[11px] sm:gap-2">
-                    {[
-                      { label: "Local", value: distribution.home_percentage },
-                      { label: "Empate", value: distribution.draw_percentage },
-                      { label: "Visitante", value: distribution.away_percentage },
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
-                        <p className="text-[9px] uppercase tracking-[0.12em] text-steel">{item.label}</p>
-                        <p className={`mt-1 font-semibold ${getProbabilityTone(item.value, percentages)}`}>
-                          {formatProbability(item.value)}
-                        </p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <h3 className="text-sm font-semibold text-ink">Distribución</h3>
+                      <span className="text-xs text-steel">{match.total_picks} picks</span>
+                    </div>
+                    <div className="flex h-2 w-full overflow-hidden rounded-full bg-white/[0.05]">
+                      <div style={{ width: `${distribution.home_percentage * 100}%`, backgroundColor: homeColor }} />
+                      <div className="bg-[#7f8a9d]" style={{ width: `${distribution.draw_percentage * 100}%` }} />
+                      <div style={{ width: `${distribution.away_percentage * 100}%`, backgroundColor: awayColor }} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <p className="text-xs text-steel">Local</p>
+                        <p className="mt-1 font-semibold" style={{ color: homeColor }}>{formatProbability(distribution.home_percentage)}</p>
                       </div>
-                    ))}
-                    <div className="rounded-[8px] border border-white/[0.06] bg-white/[0.025] px-2 py-2">
-                      <p className="text-[9px] uppercase tracking-[0.12em] text-steel">Picks</p>
-                      <p className="mt-1 font-semibold text-ink">{match.total_picks}</p>
+                      <div className="text-center">
+                        <p className="text-xs text-steel">Empate</p>
+                        <p className="mt-1 font-semibold text-[#aab3c2]">{formatProbability(distribution.draw_percentage)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-steel">Visitante</p>
+                        <p className="mt-1 font-semibold" style={{ color: awayColor }}>{formatProbability(distribution.away_percentage)}</p>
+                      </div>
                     </div>
                   </div>
 
                   <div className="min-w-0">
                     <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-steel">Marcadores</p>
+                      <h3 className="text-sm font-semibold text-ink">Marcadores</h3>
                       {scoreTotal > 0 ? (
-                        <span className="text-[10px] text-steel">{scoreTotal} con marcador</span>
+                        <span className="text-xs text-steel">{scoreTotal} con marcador</span>
                       ) : null}
                     </div>
                     {match.score_distribution.length > 0 ? (
-                      <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-1.5">
-                        {match.score_distribution.slice(0, 6).map((score, index) => (
-                          <div
-                            key={score.score_label}
-                            className={`rounded-[7px] border px-2 py-1.5 ${
-                              index === 0
-                                ? "border-[#ffe45c]/25 bg-[#ffe45c]/10"
-                                : "border-white/[0.06] bg-white/[0.025]"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
+                      <div className="space-y-2">
+                        {match.score_distribution.slice(0, 6).map((score) => {
+                          const resultColor = getScoreResultColor(score.score_label, homeColor, awayColor);
+                          return (
+                            <div
+                              key={score.score_label}
+                              className="grid grid-cols-[42px_minmax(80px,1fr)_58px_58px] items-center gap-3 text-sm"
+                            >
                               <span className="font-semibold text-ink">{score.score_label}</span>
-                              <span className="font-semibold text-[#ffe45c]">{formatProbability(score.percentage)}</span>
+                              <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                                <div
+                                  className="h-full rounded-full"
+                                  style={{
+                                    width: `${Math.min((score.percentage / topScorePercentage) * 100, 100)}%`,
+                                    backgroundColor: resultColor,
+                                  }}
+                                />
+                              </div>
+                              <span className="text-right font-medium" style={{ color: resultColor }}>
+                                {formatProbability(score.percentage)}
+                              </span>
+                              <span className="text-right text-xs text-steel">{score.count}</span>
                             </div>
-                            <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.06]">
-                              <div
-                                className="h-full rounded-full bg-[#ffe45c]"
-                                style={{ width: `${Math.min(Math.max(score.percentage * 100, 0), 100)}%` }}
-                              />
-                            </div>
-                            <p className="mt-1 text-right text-[10px] text-steel">{score.count} picks</p>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <span className="text-[10px] text-steel">Sin marcadores capturados</span>
@@ -1360,16 +1363,25 @@ export function QuinielaPlusPageContent() {
         (activeTab === "value-lab" && valueRecommendations.length === 0) ||
         (activeTab === "advanced-stats" && visibleAdvancedStatsMatches.length === 0) ||
         (activeTab === "user-distribution" && visibleDistributionMatches.length === 0)) ? (
-        <section className="rounded-[16px] border border-white/[0.06] bg-white/[0.03] p-4">
+        <section className="border-y border-white/[0.08] py-4">
           <p className="text-sm text-steel">
             {activeTab === "probabilities"
-              ? "No hay odds mundialistas sincronizados para este filtro. Baja odds con `THE_ODDS_API_SPORT=soccer_fifa_world_cup` y luego sincroniza el snapshot contra los partidos del Mundial."
+              ? "No hay probabilidades disponibles para este filtro."
               : activeTab === "value-lab"
-                ? "No hay recomendaciones todavia. Actualiza AI Quinielón y odds para generar el Value Lab."
+                ? "Value Lab estará disponible próximamente."
                 : activeTab === "advanced-stats"
-                  ? "No hay estadisticas avanzadas cargadas para Quiniela +."
-                  : "No hay distribucion de usuarios para este filtro. Los datos aparecen cuando haya picks guardados."}
+                  ? "Estadísticas avanzadas estarán disponibles próximamente."
+                  : "No hay distribución de usuarios para este filtro."}
           </p>
+          <DevOnly>
+            <p className="mt-2 text-xs text-[#4f7df3]">
+              {activeTab === "probabilities"
+                ? "Dev: sincroniza THE_ODDS_API_SPORT=soccer_fifa_world_cup y genera el snapshot contra los partidos del torneo."
+                : activeTab === "user-distribution"
+                  ? "Dev: la distribución aparecerá cuando existan picks guardados para este contexto."
+                  : "Dev: módulo sin dataset generado."}
+            </p>
+          </DevOnly>
         </section>
       ) : null}
     </div>

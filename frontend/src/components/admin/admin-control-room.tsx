@@ -1112,12 +1112,7 @@ export function AdminControlRoom() {
   return (
     <div className="space-y-6">
       <section className="space-y-2">
-        <p className="text-[10px] uppercase tracking-[0.3em] text-steel">Admin Room</p>
-        <h1 className="text-xl font-semibold text-ink">Calendario y operacion</h1>
-        <p className="mt-3 max-w-2xl text-sm text-steel">
-          Crea la temporada, alta de equipos, arma la jornada y ajusta los partidos sin romper su
-          identidad interna.
-        </p>
+        <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Calendario y operación</h2>
       </section>
 
       {message ? <p className="text-sm text-moss">{message}</p> : null}

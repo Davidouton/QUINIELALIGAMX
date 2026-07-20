@@ -163,16 +163,13 @@ export function PrizesPageContent() {
   }
 
   return (
-    <div className="space-y-6">
-      <section>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-ink">Premios</h1>
-            <p className="mt-1 text-sm text-steel">{summary.season_name ?? selectedSeason?.name ?? "Sin torneo activo"}</p>
-          </div>
+    <div className="space-y-12">
+      <header className="page-header">
+        <div className="space-y-5">
+          <h1 className="page-title">Premios</h1>
           {availableSeasons.length > 0 ? (
-            <label className="w-full max-w-[360px] space-y-2 text-left text-sm">
-              <span className="text-steel">Temporada</span>
+            <label className="page-context-label">
+              <span>Torneo</span>
               <select
                 value={selectedSeason?.id ?? ""}
                 onChange={(event) => {
@@ -185,7 +182,7 @@ export function PrizesPageContent() {
                   setPaymentError(null);
                   setSeasonId(nextSeason.id, "");
                 }}
-                className="field-control"
+                className="page-context-select"
                 disabled={loading}
               >
                 {availableSeasons.map((season) => (
@@ -198,15 +195,15 @@ export function PrizesPageContent() {
           ) : null}
         </div>
         {summary.season_id ? (
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-5 flex min-h-8 flex-wrap items-center gap-5">
             {activeSeasonMembership?.is_paid ? (
-              <span className="app-pill-active px-4 text-sm text-ink">Temporada pagada</span>
+              <span className="text-sm font-semibold text-mint">Temporada pagada</span>
             ) : pricing ? (
               <button
                 type="button"
                 onClick={() => void handleSeasonCheckout()}
                 disabled={paying}
-                className="secondary-button disabled:opacity-60"
+                className={`text-sm font-semibold transition disabled:opacity-50 ${paying ? "text-[#4f7df3]" : "text-ink hover:text-[#4f7df3]"}`}
               >
                 {paying ? "Abriendo checkout..." : `Pagar Liga + Liguilla · ${formatMoney(pricing.amount)}`}
               </button>
@@ -214,29 +211,26 @@ export function PrizesPageContent() {
           </div>
         ) : null}
         {paymentError ? <p className="mt-3 text-sm text-coral">{paymentError}</p> : null}
-      </section>
+      </header>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Bolsa y reparto</p>
-          <p className="text-xs text-steel">{summary.confirmed_participants} participantes</p>
-        </div>
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Bolsa y reparto</h2>
 
-        <div className="overflow-x-auto">
-          <div className="app-table-head grid min-w-[720px] grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)] gap-3 px-3 py-3">
+        <div className="mt-5 overflow-x-auto border-y border-white/10">
+          <div className="grid min-w-[720px] grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)] gap-6 border-b border-white/10 py-4 text-xs uppercase tracking-[0.18em] text-steel">
             <span>Concepto</span>
-            <span>Valor</span>
-            <span>Detalle</span>
+            <span className="text-right">Valor</span>
+            <span className="text-right">Detalle</span>
           </div>
-          <div className="min-w-[720px]">
+          <div className="min-w-[720px] divide-y divide-white/10">
             {rows.map(([label, value, detail]) => (
               <div
                 key={label}
-                className="app-table-row grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)] gap-3 px-3 py-3 text-sm text-ink"
+                className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.9fr)] items-center gap-6 py-4 text-sm text-ink"
               >
                 <span>{label}</span>
-                <span className="font-medium">{value}</span>
-                <span className="text-steel">{detail}</span>
+                <span className="text-right font-semibold">{value}</span>
+                <span className="text-right text-steel">{detail}</span>
               </div>
             ))}
           </div>
