@@ -19,6 +19,7 @@ class WorldCupGroupStandingOut(BaseModel):
     goals_against: int = 0
     goal_difference: int = 0
     points: int = 0
+    recent_form: list[str] = []
 
 
 class WorldCupGroupOut(BaseModel):

@@ -470,7 +470,7 @@ export function WorldCupPageContent() {
                 <p className="mt-4 text-sm text-steel">La tabla aparecerá cuando existan equipos en esta temporada.</p>
               ) : (
                 <div className="mt-4 overflow-x-auto border-t border-white/[0.1]">
-                  <table className="min-w-[720px] w-full text-sm">
+                  <table className="min-w-[820px] w-full text-sm">
                     <thead>
                       <tr className="border-b border-white/[0.1] text-[10px] uppercase tracking-[0.14em] text-steel">
                         <th className="w-10 px-2 py-3 text-center">#</th>
@@ -482,6 +482,7 @@ export function WorldCupPageContent() {
                         <th className="px-2 py-3 text-right">GF</th>
                         <th className="px-2 py-3 text-right">GC</th>
                         <th className="px-2 py-3 text-right">DG</th>
+                        <th className="px-2 py-3 text-center">Últimos 5</th>
                         <th className="px-2 py-3 text-right">PTS</th>
                       </tr>
                     </thead>
@@ -509,6 +510,27 @@ export function WorldCupPageContent() {
                           <td className="px-2 py-3 text-right text-steel">{team.goals_for}</td>
                           <td className="px-2 py-3 text-right text-steel">{team.goals_against}</td>
                           <td className="px-2 py-3 text-right text-steel">{team.goal_difference > 0 ? `+${team.goal_difference}` : team.goal_difference}</td>
+                          <td className="px-2 py-3">
+                            <div className="flex min-w-24 items-center justify-center gap-1.5" aria-label="Resultados de los últimos cinco partidos">
+                              {(team.recent_form ?? []).map((result, resultIndex) => {
+                                const label = result === "win" ? "Ganado" : result === "loss" ? "Perdido" : "Empatado";
+                                const color = result === "win"
+                                  ? "bg-emerald-500"
+                                  : result === "loss"
+                                    ? "bg-rose-500"
+                                    : "border border-white/20 bg-black";
+                                return (
+                                  <span
+                                    key={`${team.team_id}-${resultIndex}`}
+                                    title={label}
+                                    aria-label={label}
+                                    className={`h-3 w-3 shrink-0 rounded-full ${color}`}
+                                  />
+                                );
+                              })}
+                              {(team.recent_form ?? []).length === 0 ? <span className="text-steel">—</span> : null}
+                            </div>
+                          </td>
                           <td className="px-2 py-3 text-right text-base font-bold text-[#4f7df3]">{team.points}</td>
                         </tr>
                       ))}
