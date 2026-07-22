@@ -108,6 +108,13 @@ class PaymentStatus(str, Enum):
     FAILED = "failed"
 
 
+class SettlementStatus(str, Enum):
+    PENDING_PROOF = "pending_proof"
+    PROOF_SUBMITTED = "proof_submitted"
+    CONFIRMED = "confirmed"
+    REJECTED = "rejected"
+
+
 class QuinielaPlusBillingPeriod(str, Enum):
     WEEKLY = "weekly"
     MONTHLY = "monthly"
@@ -1063,6 +1070,104 @@ class Payment(Base):
     checkout_url: Mapped[str | None] = mapped_column(Text)
     metadata_json: Mapped[str | None] = mapped_column(Text)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class SettlementConfig(Base):
+    __tablename__ = "settlement_configs"
+    __table_args__ = (UniqueConstraint("scope_type", "scope_id", name="uq_settlement_configs_scope"),)
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    scope_type: Mapped[PaymentScopeType] = mapped_column(
+        SqlEnum(PaymentScopeType, native_enum=False, values_callable=enum_values),
+        nullable=False,
+        index=True,
+    )
+    scope_id: Mapped[str] = mapped_column(UUID_SQL, nullable=False, index=True)
+    max_payment_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
+    confirmation_window_hours: Mapped[int] = mapped_column(Integer, default=24, nullable=False)
+    created_by_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class SettlementAssignment(Base):
+    __tablename__ = "settlement_assignments"
+    __table_args__ = (
+        Index("idx_settlement_assignments_scope_status", "scope_type", "scope_id", "status"),
+        Index("idx_settlement_assignments_payer_status", "payer_profile_id", "status"),
+        Index("idx_settlement_assignments_payee_status", "payee_profile_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    scope_type: Mapped[PaymentScopeType] = mapped_column(
+        SqlEnum(PaymentScopeType, native_enum=False, values_callable=enum_values),
+        nullable=False,
+        index=True,
+    )
+    scope_id: Mapped[str] = mapped_column(UUID_SQL, nullable=False, index=True)
+    payer_profile_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    payee_profile_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="mxn", nullable=False)
+    status: Mapped[SettlementStatus] = mapped_column(
+        SqlEnum(SettlementStatus, native_enum=False, values_callable=enum_values),
+        default=SettlementStatus.PENDING_PROOF,
+        nullable=False,
+        index=True,
+    )
+    proof_image_url: Mapped[str | None] = mapped_column(Text)
+    proof_note: Mapped[str | None] = mapped_column(Text)
+    proof_uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_payer_notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_payer_notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    payer_notification_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    first_payee_notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_payee_notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    payee_notification_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    auto_confirm_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    confirmed_automatically: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    confirmed_by_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejected_by_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+    created_by_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

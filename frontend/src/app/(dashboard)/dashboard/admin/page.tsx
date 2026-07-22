@@ -10,7 +10,7 @@ const groups = [
   },
   {
     title: "Usuarios y juego",
-    paths: ["users", "user-info", "final-ranking", "picks", "survivor", "vip", "prizes", "trophies"],
+    paths: ["users", "user-info", "final-ranking", "payments", "picks", "survivor", "vip", "prizes", "trophies"],
   },
   {
     title: "Mundial y producto",

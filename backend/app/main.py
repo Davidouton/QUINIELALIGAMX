@@ -521,6 +521,143 @@ def run_startup_migrations() -> None:
                 )
             )
 
+        if "settlement_configs" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS settlement_configs (
+                      id UUID PRIMARY KEY,
+                      scope_type VARCHAR(32) NOT NULL,
+                      scope_id UUID NOT NULL,
+                      max_payment_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                      confirmation_window_hours INTEGER NOT NULL DEFAULT 24,
+                      created_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_settlement_configs_scope UNIQUE (scope_type, scope_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_settlement_configs_scope_type "
+                    "ON settlement_configs(scope_type)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_settlement_configs_scope_id "
+                    "ON settlement_configs(scope_id)"
+                )
+            )
+
+        if "settlement_assignments" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS settlement_assignments (
+                      id UUID PRIMARY KEY,
+                      scope_type VARCHAR(32) NOT NULL,
+                      scope_id UUID NOT NULL,
+                      payer_profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      payee_profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+                      currency VARCHAR(8) NOT NULL DEFAULT 'mxn',
+                      status VARCHAR(32) NOT NULL DEFAULT 'pending_proof',
+                      proof_image_url TEXT,
+                      proof_note TEXT,
+                      proof_uploaded_at TIMESTAMP WITH TIME ZONE,
+                      first_payer_notification_sent_at TIMESTAMP WITH TIME ZONE,
+                      last_payer_notification_sent_at TIMESTAMP WITH TIME ZONE,
+                      payer_notification_count INTEGER NOT NULL DEFAULT 0,
+                      first_payee_notification_sent_at TIMESTAMP WITH TIME ZONE,
+                      last_payee_notification_sent_at TIMESTAMP WITH TIME ZONE,
+                      payee_notification_count INTEGER NOT NULL DEFAULT 0,
+                      auto_confirm_at TIMESTAMP WITH TIME ZONE,
+                      confirmed_automatically BOOLEAN NOT NULL DEFAULT FALSE,
+                      confirmed_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      confirmed_at TIMESTAMP WITH TIME ZONE,
+                      rejected_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      rejected_at TIMESTAMP WITH TIME ZONE,
+                      rejection_reason TEXT,
+                      created_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_settlement_assignments_scope_status "
+                    "ON settlement_assignments(scope_type, scope_id, status)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_settlement_assignments_payer_status "
+                    "ON settlement_assignments(payer_profile_id, status)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_settlement_assignments_payee_status "
+                    "ON settlement_assignments(payee_profile_id, status)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_settlement_assignments_auto_confirm_at "
+                    "ON settlement_assignments(auto_confirm_at)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_settlement_assignments_last_payer_notification "
+                    "ON settlement_assignments(last_payer_notification_sent_at)"
+                )
+            )
+        else:
+            settlement_assignment_column_names = {
+                column["name"] for column in inspector.get_columns("settlement_assignments")
+            }
+            missing_settlement_assignment_columns = {
+                "first_payer_notification_sent_at": (
+                    "ALTER TABLE settlement_assignments "
+                    "ADD COLUMN first_payer_notification_sent_at TIMESTAMP WITH TIME ZONE"
+                ),
+                "last_payer_notification_sent_at": (
+                    "ALTER TABLE settlement_assignments "
+                    "ADD COLUMN last_payer_notification_sent_at TIMESTAMP WITH TIME ZONE"
+                ),
+                "payer_notification_count": (
+                    "ALTER TABLE settlement_assignments "
+                    "ADD COLUMN payer_notification_count INTEGER NOT NULL DEFAULT 0"
+                ),
+                "first_payee_notification_sent_at": (
+                    "ALTER TABLE settlement_assignments "
+                    "ADD COLUMN first_payee_notification_sent_at TIMESTAMP WITH TIME ZONE"
+                ),
+                "last_payee_notification_sent_at": (
+                    "ALTER TABLE settlement_assignments "
+                    "ADD COLUMN last_payee_notification_sent_at TIMESTAMP WITH TIME ZONE"
+                ),
+                "payee_notification_count": (
+                    "ALTER TABLE settlement_assignments "
+                    "ADD COLUMN payee_notification_count INTEGER NOT NULL DEFAULT 0"
+                ),
+            }
+            for column_name, statement in missing_settlement_assignment_columns.items():
+                if column_name not in settlement_assignment_column_names:
+                    connection.execute(text(statement))
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_settlement_assignments_last_payer_notification "
+                    "ON settlement_assignments(last_payer_notification_sent_at)"
+                )
+            )
+
         if "survivor_picks" not in table_names:
             connection.execute(
                 text(

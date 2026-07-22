@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from app.core.database import SessionLocal
 from app.core.datetime import ensure_utc
 from app.services.reminder_service import ReminderService
+from app.services.settlement_service import SettlementService
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,23 +32,25 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     now = ensure_utc(datetime.fromisoformat(args.now)) if args.now else datetime.now(UTC)
-    service = ReminderService()
+    reminder_service = ReminderService()
+    settlement_service = SettlementService()
 
     db = SessionLocal()
     try:
-        results = service.send_due_push_reminders(
+        reminder_results = reminder_service.send_due_push_reminders(
             db,
             now_utc=now,
             window_minutes=args.window_minutes,
             dry_run=args.dry_run,
         )
+        settlement_results = [] if args.dry_run else settlement_service.send_due_payment_push_reminders(db, now_utc=now)
     finally:
         db.close()
 
     summary = {
         "dry_run": args.dry_run,
         "now_utc": now.isoformat(),
-        "results": [
+        "pick_reminders": [
             {
                 "dedupe_key": row.dedupe_key,
                 "profile_id": row.profile_id,
@@ -56,7 +59,17 @@ def main() -> int:
                 "status": row.status,
                 "provider_message_id": row.provider_message_id,
             }
-            for row in results
+            for row in reminder_results
+        ],
+        "settlement_reminders": [
+            {
+                "dedupe_key": row.dedupe_key,
+                "profile_id": row.profile_id,
+                "title": row.title,
+                "status": row.status,
+                "provider_message_id": row.provider_message_id,
+            }
+            for row in settlement_results
         ],
     }
     print(json.dumps(summary, ensure_ascii=True, indent=2))

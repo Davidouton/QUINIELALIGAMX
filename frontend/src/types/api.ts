@@ -22,6 +22,7 @@ export type PaymentStatus =
   | "expired"
   | "cancelled"
   | "failed";
+export type SettlementStatus = "pending_proof" | "proof_submitted" | "confirmed" | "rejected";
 export type VipMembershipStatus = "pending" | "approved" | "rejected";
 export type PickReminderHoursBefore = 1 | 3;
 export type DashboardWidgetId =
@@ -515,6 +516,86 @@ export interface PaymentRecord {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SettlementConfig {
+  scope_type: PaymentScopeType;
+  scope_id: string;
+  max_payment_amount: number;
+  confirmation_window_hours: number;
+  created_by_profile_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface SettlementParticipant {
+  profile_id: string;
+  display_name: string;
+  rank_position: number | null;
+  total_points: number;
+  prize_amount: number;
+  pending_entry_amount: number;
+  net_amount: number;
+  is_payer_candidate: boolean;
+  is_selected_payer: boolean;
+  contact_phone: string | null;
+  bank_name: string | null;
+  deposit_account: string | null;
+  modality: string | null;
+  aval_display_name: string | null;
+}
+
+export interface SettlementAssignment {
+  id: string;
+  scope_type: PaymentScopeType;
+  scope_id: string;
+  scope_label: string | null;
+  payer_profile_id: string;
+  payer_display_name: string;
+  payer_contact_phone: string | null;
+  payee_profile_id: string;
+  payee_display_name: string;
+  payee_contact_phone: string | null;
+  payee_bank_name: string | null;
+  payee_deposit_account: string | null;
+  amount: number;
+  currency: string;
+  status: SettlementStatus;
+  proof_image_url: string | null;
+  proof_note: string | null;
+  proof_uploaded_at: string | null;
+  auto_confirm_at: string | null;
+  confirmed_automatically: boolean;
+  confirmed_by_profile_id: string | null;
+  confirmed_by_display_name: string | null;
+  confirmed_at: string | null;
+  rejected_by_profile_id: string | null;
+  rejected_by_display_name: string | null;
+  rejected_at: string | null;
+  rejection_reason: string | null;
+  created_by_profile_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SettlementScopeSummary {
+  scope_type: PaymentScopeType;
+  scope_id: string;
+  scope_label: string;
+  config: SettlementConfig;
+  participants: SettlementParticipant[];
+  assignments: SettlementAssignment[];
+  selected_payer_profile_ids: string[];
+  total_receivable_amount: number;
+  total_selected_payable_amount: number;
+  total_assigned_amount: number;
+  uncovered_receiver_amount: number;
+  unallocated_payer_amount: number;
+}
+
+export interface MySettlementsResponse {
+  outgoing: SettlementAssignment[];
+  incoming: SettlementAssignment[];
 }
 
 export interface QuinielaPlusLeague {

@@ -13,6 +13,7 @@ export const ADMIN_LINKS = [
   { href: "/dashboard/admin/vip", label: "VIP" },
   { href: "/dashboard/admin/user-info", label: "Info usuarios" },
   { href: "/dashboard/admin/final-ranking", label: "Ranking final" },
+  { href: "/dashboard/admin/payments", label: "Pagos" },
   { href: "/dashboard/admin/seasons", label: "Temporadas" },
   { href: "/dashboard/admin/matchdays", label: "Jornadas" },
   { href: "/dashboard/admin/odds", label: "Probabilidades" },

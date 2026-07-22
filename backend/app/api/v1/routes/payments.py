@@ -7,15 +7,25 @@ from app.schemas.payments import (
     CheckoutSessionRequest,
     CheckoutSessionResponse,
     EffectivePricingResponse,
+    MySettlementsResponse,
     PaymentOut,
     PricingRuleOut,
     PricingRuleUpsertRequest,
+    SettlementAssignmentOut,
+    SettlementConfigOut,
+    SettlementConfigUpdateRequest,
+    SettlementGenerateRequest,
+    SettlementProofSubmitRequest,
+    SettlementRejectRequest,
+    SettlementScopeSummaryOut,
     WebhookAckResponse,
 )
 from app.services.payment_service import PaymentService
+from app.services.settlement_service import SettlementService
 
 router = APIRouter()
 service = PaymentService()
+settlement_service = SettlementService()
 
 
 @router.get("/payments/pricing-rules", response_model=list[PricingRuleOut])
@@ -85,3 +95,68 @@ async def stripe_webhook(
     payload = await request.body()
     event_type = service.handle_webhook(db, payload, stripe_signature)
     return WebhookAckResponse(received=True, event_type=event_type)
+
+
+@router.get("/payments/settlements/admin/summary", response_model=SettlementScopeSummaryOut)
+def get_admin_settlement_summary(
+    scope_type: str,
+    scope_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SettlementScopeSummaryOut:
+    return settlement_service.get_scope_summary(db, scope_type, scope_id)
+
+
+@router.put("/payments/settlements/admin/config", response_model=SettlementConfigOut)
+def upsert_admin_settlement_config(
+    payload: SettlementConfigUpdateRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SettlementConfigOut:
+    return settlement_service.update_config(db, payload, current_profile)
+
+
+@router.post("/payments/settlements/admin/generate", response_model=SettlementScopeSummaryOut)
+def generate_admin_settlement_split(
+    payload: SettlementGenerateRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SettlementScopeSummaryOut:
+    return settlement_service.generate_assignments(db, payload, current_profile)
+
+
+@router.get("/payments/settlements/mine", response_model=MySettlementsResponse)
+def list_my_settlements(
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> MySettlementsResponse:
+    return settlement_service.list_my_settlements(db, current_profile)
+
+
+@router.put("/payments/settlements/{settlement_id}/proof", response_model=SettlementAssignmentOut)
+def submit_settlement_proof(
+    settlement_id: str,
+    payload: SettlementProofSubmitRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> SettlementAssignmentOut:
+    return settlement_service.submit_proof(db, settlement_id, current_profile, payload)
+
+
+@router.post("/payments/settlements/{settlement_id}/confirm", response_model=SettlementAssignmentOut)
+def confirm_settlement(
+    settlement_id: str,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> SettlementAssignmentOut:
+    return settlement_service.confirm_assignment(db, settlement_id, current_profile)
+
+
+@router.post("/payments/settlements/{settlement_id}/reject", response_model=SettlementAssignmentOut)
+def reject_settlement(
+    settlement_id: str,
+    payload: SettlementRejectRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> SettlementAssignmentOut:
+    return settlement_service.reject_assignment(db, settlement_id, current_profile, payload)

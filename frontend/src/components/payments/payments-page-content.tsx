@@ -1,0 +1,364 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+import { backendFetch } from "@/lib/api/backend";
+import { env } from "@/lib/env";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { getBrowserAccessToken } from "@/lib/supabase/session";
+import type { MySettlementsResponse, SettlementAssignment } from "@/types/api";
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function statusLabel(status: SettlementAssignment["status"]) {
+  if (status === "pending_proof") return "Pendiente de pago";
+  if (status === "proof_submitted") return "Esperando validación";
+  if (status === "confirmed") return "Confirmado";
+  return "Rechazado";
+}
+
+export function PaymentsPageContent() {
+  const [data, setData] = useState<MySettlementsResponse>({ outgoing: [], incoming: [] });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [uploadingIds, setUploadingIds] = useState<string[]>([]);
+  const [confirmingIds, setConfirmingIds] = useState<string[]>([]);
+  const [rejectingIds, setRejectingIds] = useState<string[]>([]);
+  const [proofNotes, setProofNotes] = useState<Record<string, string>>({});
+  const [proofFiles, setProofFiles] = useState<Record<string, File | null>>({});
+  const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
+
+  async function loadData() {
+    setLoading(true);
+    setError(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const response = await backendFetch<MySettlementsResponse>("/payments/settlements/mine", accessToken);
+      setData(response);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar tu panel de pagos.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  const pendingOutgoing = useMemo(
+    () => data.outgoing.filter((assignment) => assignment.status !== "confirmed"),
+    [data.outgoing],
+  );
+  const pendingIncoming = useMemo(
+    () => data.incoming.filter((assignment) => assignment.status === "proof_submitted"),
+    [data.incoming],
+  );
+
+  async function uploadProofImage(file: File, assignmentId: string) {
+    if (!env.supabaseUrl || !env.supabaseAnonKey) {
+      throw new Error("Faltan las variables públicas de Supabase para subir fichas.");
+    }
+    const supabase = createSupabaseBrowserClient();
+    const extension = file.name.split(".").pop()?.toLowerCase() ?? "png";
+    const path = `settlements/${assignmentId}/${crypto.randomUUID()}.${extension}`;
+    const { data: uploadRow, error: uploadError } = await supabase.storage
+      .from(env.paymentProofsBucket)
+      .upload(path, file, {
+        contentType: file.type || "image/png",
+        upsert: true,
+      });
+    if (uploadError) {
+      throw new Error(uploadError.message);
+    }
+    const { data: publicData } = supabase.storage.from(env.paymentProofsBucket).getPublicUrl(uploadRow.path);
+    if (!publicData.publicUrl) {
+      throw new Error("No se pudo obtener la URL pública de la ficha.");
+    }
+    return publicData.publicUrl;
+  }
+
+  async function handleSubmitProof(assignmentId: string) {
+    const file = proofFiles[assignmentId];
+    if (!file) {
+      setError("Selecciona una imagen antes de enviar la ficha.");
+      return;
+    }
+
+    setUploadingIds((current) => [...current, assignmentId]);
+    setError(null);
+    setMessage(null);
+    try {
+      const proofImageUrl = await uploadProofImage(file, assignmentId);
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(
+        `/payments/settlements/${assignmentId}/proof`,
+        accessToken,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            proof_image_url: proofImageUrl,
+            proof_note: proofNotes[assignmentId] ?? "",
+          }),
+        },
+      );
+      setMessage("Ficha enviada.");
+      setProofFiles((current) => ({ ...current, [assignmentId]: null }));
+      await loadData();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo enviar la ficha.");
+    } finally {
+      setUploadingIds((current) => current.filter((id) => id !== assignmentId));
+    }
+  }
+
+  async function handleConfirm(assignmentId: string) {
+    setConfirmingIds((current) => [...current, assignmentId]);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/payments/settlements/${assignmentId}/confirm`, accessToken, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      setMessage("Pago confirmado.");
+      await loadData();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo confirmar el pago.");
+    } finally {
+      setConfirmingIds((current) => current.filter((id) => id !== assignmentId));
+    }
+  }
+
+  async function handleReject(assignmentId: string) {
+    setRejectingIds((current) => [...current, assignmentId]);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/payments/settlements/${assignmentId}/reject`, accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          rejection_reason: rejectReasons[assignmentId] ?? "",
+        }),
+      });
+      setMessage("Pago rechazado.");
+      await loadData();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo rechazar el pago.");
+    } finally {
+      setRejectingIds((current) => current.filter((id) => id !== assignmentId));
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-2">
+        <p className="text-[11px] uppercase tracking-[0.28em] text-steel">Pagos</p>
+        <h1 className="text-2xl font-semibold text-ink">Tus pagos entre jugadores</h1>
+        <p className="max-w-3xl text-sm text-steel">
+          Aquí ves a quién le tienes que pagar, subes tu ficha y también validas los depósitos que te llegan.
+        </p>
+      </section>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <article className="rounded-[16px] border border-white/[0.08] bg-white/[0.03] p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-steel">Pagos salientes</p>
+          <p className="mt-2 text-2xl font-semibold text-ink">{data.outgoing.length}</p>
+        </article>
+        <article className="rounded-[16px] border border-white/[0.08] bg-white/[0.03] p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-steel">Pendientes por subir</p>
+          <p className="mt-2 text-2xl font-semibold text-coral">{pendingOutgoing.length}</p>
+        </article>
+        <article className="rounded-[16px] border border-white/[0.08] bg-white/[0.03] p-4">
+          <p className="text-xs uppercase tracking-[0.2em] text-steel">Pendientes por validar</p>
+          <p className="mt-2 text-2xl font-semibold text-gold">{pendingIncoming.length}</p>
+        </article>
+      </div>
+
+      {loading ? <p className="text-sm text-steel">Cargando pagos...</p> : null}
+      {error ? <p className="text-sm text-coral">{error}</p> : null}
+      {message ? <p className="text-sm text-moss">{message}</p> : null}
+
+      <section className="space-y-4 rounded-[20px] border border-white/[0.08] bg-white/[0.02] p-5">
+        <div>
+          <h2 className="text-lg font-semibold text-ink">Tú pagas</h2>
+          <p className="mt-1 text-sm text-steel">Sube la ficha del depósito para que el receptor la valide.</p>
+        </div>
+        <div className="space-y-4">
+          {data.outgoing.map((assignment) => (
+            <article key={assignment.id} className="rounded-[16px] border border-white/[0.08] bg-black/10 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.24em] text-steel">{assignment.scope_label ?? "Competencia"}</p>
+                  <h3 className="mt-1 text-lg font-semibold text-ink">{assignment.payee_display_name}</h3>
+                  <p className="mt-1 text-sm text-steel">Monto: {formatMoney(assignment.amount)}</p>
+                  <p className="mt-1 text-sm text-steel">Status: {statusLabel(assignment.status)}</p>
+                </div>
+                <div className="text-sm text-steel">
+                  <p>Banco: {assignment.payee_bank_name ?? "-"}</p>
+                  <p className="mt-1">Cuenta: {assignment.payee_deposit_account ?? "-"}</p>
+                  <p className="mt-1">Contacto: {assignment.payee_contact_phone ?? "-"}</p>
+                </div>
+              </div>
+
+              {assignment.proof_image_url ? (
+                <div className="mt-4 rounded-[14px] border border-white/[0.08] bg-white/[0.02] p-3 text-sm text-steel">
+                  <a href={assignment.proof_image_url} target="_blank" rel="noreferrer" className="text-[#4f7df3] underline-offset-4 hover:underline">
+                    Ver ficha enviada
+                  </a>
+                  <p className="mt-2">Enviada: {formatDateTime(assignment.proof_uploaded_at)}</p>
+                  {assignment.auto_confirm_at ? <p className="mt-1">Auto confirmación: {formatDateTime(assignment.auto_confirm_at)}</p> : null}
+                  {assignment.proof_note ? <p className="mt-2">{assignment.proof_note}</p> : null}
+                </div>
+              ) : null}
+
+              {assignment.status !== "confirmed" ? (
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                  <label className="block space-y-2 text-sm">
+                    <span className="text-steel">Imagen del depósito</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) =>
+                        setProofFiles((current) => ({
+                          ...current,
+                          [assignment.id]: event.target.files?.[0] ?? null,
+                        }))
+                      }
+                      className="field-control file:mr-3 file:border-0 file:bg-transparent file:text-sm file:font-semibold"
+                    />
+                  </label>
+                  <label className="block space-y-2 text-sm">
+                    <span className="text-steel">Nota opcional</span>
+                    <input
+                      type="text"
+                      value={proofNotes[assignment.id] ?? ""}
+                      onChange={(event) =>
+                        setProofNotes((current) => ({ ...current, [assignment.id]: event.target.value }))
+                      }
+                      className="field-control"
+                      placeholder="Referencia, banco origen, etc."
+                    />
+                  </label>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleSubmitProof(assignment.id)}
+                      disabled={uploadingIds.includes(assignment.id)}
+                      className="secondary-button w-full lg:w-auto"
+                    >
+                      {uploadingIds.includes(assignment.id) ? "Enviando..." : "Enviar ficha"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </article>
+          ))}
+          {!loading && data.outgoing.length === 0 ? (
+            <p className="text-sm text-steel">No tienes pagos salientes asignados en este momento.</p>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-[20px] border border-white/[0.08] bg-white/[0.02] p-5">
+        <div>
+          <h2 className="text-lg font-semibold text-ink">Tú recibes</h2>
+          <p className="mt-1 text-sm text-steel">Valida o rechaza la ficha. Si no rechazas dentro de la ventana, se confirma sola.</p>
+        </div>
+        <div className="space-y-4">
+          {data.incoming.map((assignment) => (
+            <article key={assignment.id} className="rounded-[16px] border border-white/[0.08] bg-black/10 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.24em] text-steel">{assignment.scope_label ?? "Competencia"}</p>
+                  <h3 className="mt-1 text-lg font-semibold text-ink">{assignment.payer_display_name}</h3>
+                  <p className="mt-1 text-sm text-steel">Monto: {formatMoney(assignment.amount)}</p>
+                  <p className="mt-1 text-sm text-steel">Status: {statusLabel(assignment.status)}</p>
+                </div>
+                <div className="text-sm text-steel">
+                  <p>Subida: {formatDateTime(assignment.proof_uploaded_at)}</p>
+                  <p className="mt-1">Auto confirmación: {formatDateTime(assignment.auto_confirm_at)}</p>
+                  <p className="mt-1">Contacto: {assignment.payer_contact_phone ?? "-"}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[14px] border border-white/[0.08] bg-white/[0.02] p-3">
+                {assignment.proof_image_url ? (
+                  <a href={assignment.proof_image_url} target="_blank" rel="noreferrer" className="text-sm text-[#4f7df3] underline-offset-4 hover:underline">
+                    Ver ficha de depósito
+                  </a>
+                ) : (
+                  <p className="text-sm text-steel">Todavía no han subido una ficha.</p>
+                )}
+                {assignment.proof_note ? <p className="mt-2 text-sm text-steel">{assignment.proof_note}</p> : null}
+                {assignment.rejection_reason ? <p className="mt-2 text-sm text-coral">{assignment.rejection_reason}</p> : null}
+                {assignment.confirmed_at ? (
+                  <p className="mt-2 text-sm text-moss">
+                    Confirmado {assignment.confirmed_automatically ? "automáticamente" : "por ti"} el {formatDateTime(assignment.confirmed_at)}.
+                  </p>
+                ) : null}
+              </div>
+
+              {assignment.status === "proof_submitted" ? (
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_auto]">
+                  <label className="block space-y-2 text-sm">
+                    <span className="text-steel">Motivo de rechazo</span>
+                    <input
+                      type="text"
+                      value={rejectReasons[assignment.id] ?? ""}
+                      onChange={(event) =>
+                        setRejectReasons((current) => ({ ...current, [assignment.id]: event.target.value }))
+                      }
+                      className="field-control"
+                      placeholder="Opcional si algo no cuadra"
+                    />
+                  </label>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleConfirm(assignment.id)}
+                      disabled={confirmingIds.includes(assignment.id)}
+                      className="secondary-button w-full lg:w-auto"
+                    >
+                      {confirmingIds.includes(assignment.id) ? "Confirmando..." : "Confirmar"}
+                    </button>
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => void handleReject(assignment.id)}
+                      disabled={rejectingIds.includes(assignment.id)}
+                      className="app-pill w-full px-4 text-sm text-coral lg:w-auto"
+                    >
+                      {rejectingIds.includes(assignment.id) ? "Rechazando..." : "Rechazar"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </article>
+          ))}
+          {!loading && data.incoming.length === 0 ? (
+            <p className="text-sm text-steel">No tienes pagos por validar en este momento.</p>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
+}

@@ -20,6 +20,7 @@ const primaryLinks = [
   { href: "/dashboard/survivor", label: "Survivor", shortLabel: "Sur" },
   { href: "/dashboard/world-cup", label: "Tournament Stats", shortLabel: "Stats" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard/payments", label: "Pagos" },
   { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks Center" },
   { href: "/dashboard/leaderboard", label: "Ranking" },
@@ -40,6 +41,7 @@ const mobileHubLink = { href: "/dashboard/enrollments", label: "Hub" };
 const primaryMobileLinks = [
   { href: "/dashboard/leaderboard", label: "Ranking" },
   { href: "/dashboard", label: "Inicio" },
+  { href: "/dashboard/payments", label: "Pagos" },
   { href: "/dashboard/survivor", label: "Surv" },
   mobileHubLink,
   { href: "/dashboard/vip", label: "VIP" },

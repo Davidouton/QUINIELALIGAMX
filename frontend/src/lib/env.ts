@@ -14,6 +14,7 @@ export const env = {
   whatsappConversationUrl: process.env.NEXT_PUBLIC_WHATSAPP_CONVERSATION_URL ?? "",
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+  paymentProofsBucket: process.env.NEXT_PUBLIC_PAYMENT_PROOFS_BUCKET ?? "payment-proofs",
   siteUrl: rawSiteUrl.replace(/\/+$/, ""),
   oneSignalAppId: process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID ?? "6b197620-d40e-4007-aeeb-a846c66ccaeb",
 };
