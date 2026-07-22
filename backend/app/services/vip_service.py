@@ -130,6 +130,7 @@ class VipService:
                     id=vip.id,
                     season_id=vip.season_id,
                     season_name=bundle["season_names"].get(vip.season_id, "Temporada"),
+                    season_visibility_status=bundle["season_visibility_statuses"].get(vip.season_id, "live"),
                     competition_kind=vip.competition_kind,
                     name=vip.name,
                     entry_fee_amount=float(vip.entry_fee_amount),
@@ -1400,9 +1401,11 @@ class VipService:
             ]
             profile_names.update(self._profile_names(db, vip_creator_ids))
 
-        season_names = {
-            season.id: season.name
-            for season in db.scalars(select(Season).where(Season.id.in_(season_ids))).all()
+        seasons = list(db.scalars(select(Season).where(Season.id.in_(season_ids))).all())
+        season_names = {season.id: season.name for season in seasons}
+        season_visibility_statuses = {
+            season.id: season.visibility_status.value
+            for season in seasons
         }
 
         return {
@@ -1418,6 +1421,7 @@ class VipService:
             "question_pool_responses_by_question_profile": question_pool_responses_by_question_profile,
             "profile_names": profile_names,
             "season_names": season_names,
+            "season_visibility_statuses": season_visibility_statuses,
         }
 
     def _join_lock_for_vip(self, db: Session, vip_id: str) -> dict[str, object]:

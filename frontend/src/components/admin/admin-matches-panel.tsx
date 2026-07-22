@@ -110,14 +110,12 @@ export function AdminMatchesPanel() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [selectedMatchdayId, setSelectedMatchdayId] = useState("");
-  const [bulkMatchdayId, setBulkMatchdayId] = useState("");
   const [createForm, setCreateForm] = useState<MatchFormState>(initialMatchForm);
   const [drafts, setDrafts] = useState<Record<string, MatchFormState>>({});
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
-  const [bulkSaving, setBulkSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -190,7 +188,6 @@ export function AdminMatchesPanel() {
     setTeams(teamRows);
     setMatchdays(matchdayRows);
     setSelectedSeasonId((current) => current || defaultSeasonId);
-    setBulkMatchdayId((current) => current || defaultMatchdayId);
     setCreateForm((current) => ({ ...current, matchday_id: current.matchday_id || defaultMatchdayId }));
     await loadMatches(selectedMatchdayId, accessToken, defaultSeasonId, matchdayRows);
   }
@@ -350,47 +347,6 @@ export function AdminMatchesPanel() {
     }
   }
 
-  async function handleBulkMove() {
-    if (!bulkMatchdayId || matches.length === 0) {
-      return;
-    }
-
-    setBulkSaving(true);
-    setError(null);
-    setMessage(null);
-
-    try {
-      const accessToken = await getBrowserAccessToken();
-      for (const match of matches) {
-        const currentDraft = drafts[match.id] ?? buildFormFromMatch(match);
-        await backendFetch(`/admin/matches/${match.id}`, accessToken, {
-          method: "PUT",
-          body: JSON.stringify({
-            ...currentDraft,
-            matchday_id: bulkMatchdayId,
-            home_team_id: currentDraft.home_team_id || null,
-            away_team_id: currentDraft.away_team_id || null,
-            group_label: currentDraft.group_label || null,
-            bracket_slot: currentDraft.bracket_slot || null,
-            home_placeholder: currentDraft.home_placeholder || null,
-            away_placeholder: currentDraft.away_placeholder || null,
-            picks_lock_at: getAutoLockValue(currentDraft.kickoff_at, bulkMatchdayId) || currentDraft.kickoff_at,
-            venue: currentDraft.venue || null,
-            external_id: currentDraft.external_id || null,
-          }),
-        });
-      }
-      await refreshMatches(accessToken);
-      setMessage(
-        `${matches.length} partido${matches.length === 1 ? "" : "s"} movido${matches.length === 1 ? "" : "s"} a ${matchdayById[bulkMatchdayId]?.name ?? "la jornada seleccionada"}.`,
-      );
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron mover los partidos");
-    } finally {
-      setBulkSaving(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <section className="space-y-5">
@@ -404,7 +360,7 @@ export function AdminMatchesPanel() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <label className="space-y-2 text-sm">
             <span className="text-steel">Filtrar por torneo</span>
             <select
@@ -414,14 +370,8 @@ export function AdminMatchesPanel() {
                 const nextMatchdayId =
                   matchdays.find((matchday) => matchday.season_id === nextSeasonId && matchday.id === selectedMatchdayId)?.id ||
                   "";
-                const nextBulkMatchdayId =
-                  matchdays.find((matchday) => matchday.season_id === nextSeasonId && matchday.id === bulkMatchdayId)?.id ||
-                  matchdays.find((matchday) => matchday.season_id === nextSeasonId)?.id ||
-                  "";
-
                 setSelectedSeasonId(nextSeasonId);
                 setSelectedMatchdayId(nextMatchdayId);
-                setBulkMatchdayId(nextBulkMatchdayId);
                 setCreateForm((current) => ({
                   ...current,
                   home_team_id: "",
@@ -472,30 +422,6 @@ export function AdminMatchesPanel() {
             </select>
           </label>
 
-          <label className="space-y-2 text-sm">
-            <span className="text-steel">Mover lista visible a</span>
-            <select
-              value={bulkMatchdayId}
-              onChange={(event) => setBulkMatchdayId(event.target.value)}
-              className="field-control"
-            >
-              <option value="">Selecciona jornada destino</option>
-              {visibleMatchdays.map((matchday) => (
-                <option key={matchday.id} value={matchday.id}>
-                  {(seasonById[matchday.season_id]?.name ?? "Torneo")} · {matchday.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button
-            type="button"
-            onClick={() => void handleBulkMove()}
-            disabled={bulkSaving || !bulkMatchdayId || matches.length === 0}
-            className="app-pill-active px-4 disabled:opacity-60"
-          >
-            {bulkSaving ? "Moviendo..." : "Mover visibles"}
-          </button>
         </div>
 
         {message ? <p className="mt-4 text-sm text-moss">{message}</p> : null}

@@ -1,8 +1,10 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, Field, field_serializer
 
 from app.core.datetime import ensure_utc
+from app.models.entities import CompetitionStructureFormat
 
 
 class CompetitionOut(BaseModel):
@@ -11,6 +13,8 @@ class CompetitionOut(BaseModel):
     name: str
     slug: str
     provider_league_id: str | None = None
+    structure_format: CompetitionStructureFormat = CompetitionStructureFormat.LEAGUE_TABLE
+    structure_config: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
     sort_order: int = 100
     created_at: datetime

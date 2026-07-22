@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
-import { isSeasonLive, useDashboardSeasonParam } from "@/lib/dashboard-season";
+import { hasGroupStage, isSeasonLive, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
@@ -270,7 +270,7 @@ export function WorldCupPageContent() {
         const nextSeasonId = nextSeason.id;
         const nextCompetitionId = nextSeason.competition_id ?? "";
         setSelectedSeasonId(nextSeasonId);
-        setActiveSection(nextSeason.tournament_format === "world_cup" ? "groups" : "standings");
+        setActiveSection(hasGroupStage(nextSeason) ? "groups" : "standings");
         if (seasonIdParam !== nextSeasonId || competitionId !== nextCompetitionId) {
           setSeasonId(nextSeasonId, nextCompetitionId);
         }
@@ -307,7 +307,7 @@ export function WorldCupPageContent() {
         statsSeasons.find((season) => season.is_active) ??
         statsSeasons[0];
       setSelectedSeasonId(nextSeason.id);
-      setActiveSection(nextSeason.tournament_format === "world_cup" ? "groups" : "standings");
+      setActiveSection(hasGroupStage(nextSeason) ? "groups" : "standings");
       const boardState = await loadBoardForSeason(nextSeason.id);
       setBoard(boardState.board);
       setError(boardState.error);
@@ -367,7 +367,7 @@ export function WorldCupPageContent() {
     setLoading(true);
     try {
       const selectedSeason = seasons.find((season) => season.id === seasonId);
-      setActiveSection(selectedSeason?.tournament_format === "world_cup" ? "groups" : "standings");
+      setActiveSection(hasGroupStage(selectedSeason) ? "groups" : "standings");
       setSeasonId(seasonId, selectedSeason?.competition_id ?? "");
       const boardState = await loadBoardForSeason(seasonId);
       setBoard(boardState.board);
@@ -443,7 +443,7 @@ export function WorldCupPageContent() {
             >
               Resultados oficiales
             </button>
-            {selectedSeason?.tournament_format === "world_cup" ? (
+            {hasGroupStage(selectedSeason) ? (
               <button
                 type="button"
                 onClick={() => setActiveSection("groups")}

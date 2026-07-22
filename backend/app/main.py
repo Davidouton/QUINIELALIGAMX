@@ -139,6 +139,23 @@ def run_startup_migrations() -> None:
                 text("CREATE INDEX IF NOT EXISTS idx_competitions_is_active ON competitions(is_active)")
             )
 
+        if "competitions" in inspect(connection).get_table_names():
+            competition_column_names = {column["name"] for column in inspect(connection).get_columns("competitions")}
+            if "structure_format" not in competition_column_names:
+                connection.execute(
+                    text(
+                        "ALTER TABLE competitions ADD COLUMN structure_format "
+                        "VARCHAR(32) NOT NULL DEFAULT 'league_table'"
+                    )
+                )
+            if "structure_config" not in competition_column_names:
+                connection.execute(
+                    text("ALTER TABLE competitions ADD COLUMN structure_config JSON NOT NULL DEFAULT '{}'")
+                )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_competitions_structure_format ON competitions(structure_format)")
+            )
+
         if "seasons" in table_names:
             season_column_names = {column["name"] for column in inspector.get_columns("seasons")}
             missing_season_columns = {
@@ -148,6 +165,12 @@ def run_startup_migrations() -> None:
                 ),
                 "tournament_format": (
                     "ALTER TABLE seasons ADD COLUMN tournament_format VARCHAR(24) NOT NULL DEFAULT 'standard'"
+                ),
+                "structure_format": (
+                    "ALTER TABLE seasons ADD COLUMN structure_format VARCHAR(32) NOT NULL DEFAULT 'league_table'"
+                ),
+                "structure_config": (
+                    "ALTER TABLE seasons ADD COLUMN structure_config JSON NOT NULL DEFAULT '{}'"
                 ),
                 "visibility_status": (
                     "ALTER TABLE seasons ADD COLUMN visibility_status VARCHAR(24) NOT NULL DEFAULT 'live'"
@@ -207,6 +230,23 @@ def run_startup_migrations() -> None:
                     connection.execute(text(statement))
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS idx_seasons_tournament_format ON seasons(tournament_format)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_seasons_structure_format ON seasons(structure_format)")
+            )
+            connection.execute(
+                text(
+                    "UPDATE seasons SET structure_format = 'groups_playoff' "
+                    "WHERE tournament_format = 'world_cup' AND structure_format = 'league_table'"
+                )
+            )
+            connection.execute(
+                text(
+                    "UPDATE competitions SET structure_format = 'groups_playoff' "
+                    "WHERE structure_format = 'league_table' AND id IN ("
+                    "SELECT competition_id FROM seasons "
+                    "WHERE tournament_format = 'world_cup' AND competition_id IS NOT NULL)"
+                )
             )
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS idx_seasons_visibility_status ON seasons(visibility_status)")

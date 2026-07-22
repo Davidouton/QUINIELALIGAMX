@@ -1,9 +1,11 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.core.datetime import mexico_city_to_utc
 from app.models.entities import (
+    CompetitionStructureFormat,
     MatchdayStatus,
     MatchStageType,
     MatchStatus,
@@ -386,10 +388,9 @@ class OddsUnmatchedResponse(BaseModel):
 class SeasonCreateRequest(BaseModel):
     name: str
     slug: str
-    competition_id: str | None = None
+    competition_id: str
     tournament_format: TournamentFormat = TournamentFormat.STANDARD
     visibility_status: SeasonVisibilityStatus = SeasonVisibilityStatus.LIVE
-    live_dashboard_enabled: bool = False
     is_active: bool = False
     registration_closed: bool = False
     survivor_enabled: bool = False
@@ -425,6 +426,8 @@ class CompetitionCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     slug: str = Field(min_length=2, max_length=120)
     provider_league_id: str | None = Field(default=None, max_length=120)
+    structure_format: CompetitionStructureFormat = CompetitionStructureFormat.LEAGUE_TABLE
+    structure_config: dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
     sort_order: int = Field(default=100, ge=0, le=100000)
 

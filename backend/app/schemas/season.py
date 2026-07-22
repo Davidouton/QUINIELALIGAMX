@@ -1,9 +1,10 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, Field, field_serializer
 
 from app.core.datetime import ensure_utc
-from app.models.entities import SeasonVisibilityStatus, TournamentFormat
+from app.models.entities import CompetitionStructureFormat, SeasonVisibilityStatus, TournamentFormat
 
 
 class SeasonOut(BaseModel):
@@ -14,6 +15,8 @@ class SeasonOut(BaseModel):
     competition_name: str | None = None
     competition_sport_name: str | None = None
     tournament_format: TournamentFormat = TournamentFormat.STANDARD
+    structure_format: CompetitionStructureFormat = CompetitionStructureFormat.LEAGUE_TABLE
+    structure_config: dict[str, Any] = Field(default_factory=dict)
     visibility_status: SeasonVisibilityStatus = SeasonVisibilityStatus.LIVE
     live_dashboard_enabled: bool = False
     is_active: bool

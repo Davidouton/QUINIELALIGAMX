@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { Season, Team, WorldCupAdminGroup } from "@/types/api";
+import { hasGroupStage } from "@/lib/dashboard-season";
 
 type GroupFormState = {
   group_label: string;
@@ -33,7 +34,7 @@ export function AdminWorldCupGroupsPanel() {
   const [message, setMessage] = useState<string | null>(null);
 
   const worldCupSeasons = useMemo(
-    () => seasons.filter((season) => season.tournament_format === "world_cup"),
+    () => seasons.filter(hasGroupStage),
     [seasons],
   );
 
@@ -53,7 +54,7 @@ export function AdminWorldCupGroupsPanel() {
       backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Team[]>("/teams"),
     ]);
-    const nextWorldCupSeasons = seasonRows.filter((season) => season.tournament_format === "world_cup");
+    const nextWorldCupSeasons = seasonRows.filter(hasGroupStage);
     const nextSeasonId = nextWorldCupSeasons.find((season) => season.is_active)?.id ?? nextWorldCupSeasons[0]?.id ?? "";
     setSeasons(seasonRows);
     setTeams(teamRows);
@@ -83,7 +84,7 @@ export function AdminWorldCupGroupsPanel() {
         const seasonId = await loadBase();
         await loadGroups(seasonId);
       } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los grupos mundialistas");
+        setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los grupos");
       } finally {
         setLoading(false);
       }
@@ -108,7 +109,7 @@ export function AdminWorldCupGroupsPanel() {
   async function handleSaveGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedSeasonId) {
-      setError("Selecciona una temporada mundialista.");
+      setError("Selecciona una temporada con grupos.");
       return;
     }
     setSaving("group");
@@ -139,7 +140,7 @@ export function AdminWorldCupGroupsPanel() {
   }
 
   async function handleDeleteGroup(groupId: string) {
-    const confirmed = window.confirm("Vas a borrar este grupo mundialista. Continuar?");
+    const confirmed = window.confirm("Vas a borrar este grupo. Continuar?");
     if (!confirmed) {
       return;
     }
@@ -205,7 +206,7 @@ export function AdminWorldCupGroupsPanel() {
     <div className="space-y-6">
       <section className="space-y-4">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Grupos mundialistas</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Grupos</h2>
           <p className="mt-2 text-sm text-steel">
             Aqui defines los grupos y sus equipos. La tabla publica toma esta estructura como base para armar stats.
           </p>
@@ -217,7 +218,7 @@ export function AdminWorldCupGroupsPanel() {
             onChange={(event) => void handleSeasonChange(event.target.value)}
             className="field-control"
           >
-            <option value="">Selecciona temporada mundialista</option>
+            <option value="">Selecciona temporada con grupos</option>
             {worldCupSeasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {season.name}

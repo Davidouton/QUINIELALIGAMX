@@ -14,6 +14,7 @@ from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
+    CompetitionStructureFormat,
     Match,
     MatchResult,
     MatchStageType,
@@ -456,7 +457,12 @@ class WorldCupService:
             query = query.where(Season.id == season_id)
         else:
             query = query.where(
-                Season.tournament_format == TournamentFormat.WORLD_CUP,
+                Season.structure_format.in_([
+                    CompetitionStructureFormat.LEAGUE_PLAYOFF,
+                    CompetitionStructureFormat.GROUPS_PLAYOFF,
+                    CompetitionStructureFormat.CONFERENCES_PLAYOFF,
+                    CompetitionStructureFormat.KNOCKOUT,
+                ]),
                 Season.visibility_status == SeasonVisibilityStatus.LIVE,
             )
         season = db.scalar(query.order_by(visibility_rank.asc(), Season.is_active.desc(), Season.created_at.desc()))
@@ -464,7 +470,7 @@ class WorldCupService:
             return season
         if season_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada no encontrada")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No hay una temporada mundialista en estado live")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No hay una temporada con playoff en estado live")
 
     def list_news(self, category: str = "all") -> WorldCupNewsFeedOut:
         normalized_category = category if category in NEWS_FEED_QUERIES else "all"

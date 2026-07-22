@@ -101,6 +101,7 @@ export function AdminMatchdaysPanel() {
       const payload = {
         ...matchdayForm,
         number: Number(matchdayForm.number),
+        name: matchdayForm.name.trim() || `Jornada ${Number(matchdayForm.number)}`,
         default_lock_offset_minutes: Number(matchdayForm.default_lock_offset_minutes),
       };
       const path = editingMatchdayId ? `/admin/matchdays/${editingMatchdayId}` : "/admin/matchdays";
@@ -242,22 +243,38 @@ export function AdminMatchdaysPanel() {
               </option>
             ))}
           </select>
-          <div className="grid gap-4 md:grid-cols-3">
+          <label className="block max-w-sm space-y-2">
+            <span className="text-sm text-steel">Número de jornada</span>
             <input
+              type="number"
+              min={1}
               value={matchdayForm.number}
               onChange={(event) => setMatchdayForm((current) => ({ ...current, number: event.target.value }))}
-              placeholder="Numero"
-              className="field-control"
+              placeholder="12"
+              className="field-control w-full"
               required
             />
-            <input
-              value={matchdayForm.name}
-              onChange={(event) => setMatchdayForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Jornada 12"
-              className="field-control md:col-span-2"
-              required
-            />
-          </div>
+            {matchdayForm.number ? (
+              <span className="block text-xs text-steel">Se mostrará como Jornada {matchdayForm.number}.</span>
+            ) : null}
+          </label>
+          <details
+            key={`${editingMatchdayId ?? "new"}-${Boolean(matchdayForm.name)}`}
+            className="border-y border-white/[0.06] py-3"
+          >
+            <summary className="cursor-pointer text-sm font-semibold text-steel">
+              {matchdayForm.name ? `Nombre especial: ${matchdayForm.name}` : "Usar nombre especial"}
+            </summary>
+            <label className="mt-4 block max-w-xl space-y-2">
+              <span className="text-sm text-steel">Nombre personalizado</span>
+              <input
+                value={matchdayForm.name}
+                onChange={(event) => setMatchdayForm((current) => ({ ...current, name: event.target.value }))}
+                placeholder="Wild Card, Semifinal, Final..."
+                className="field-control w-full"
+              />
+            </label>
+          </details>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <span className="text-sm text-steel">Minutos de cierre picks</span>
@@ -392,7 +409,7 @@ export function AdminMatchdaysPanel() {
                         setMatchdayForm({
                           season_id: matchday.season_id,
                           number: String(matchday.number),
-                          name: matchday.name,
+                          name: matchday.name === `Jornada ${matchday.number}` ? "" : matchday.name,
                           default_lock_offset_minutes: String(matchday.default_lock_offset_minutes),
                           status: matchday.status,
                           starts_at: toMexicoCityInputValue(matchday.starts_at),

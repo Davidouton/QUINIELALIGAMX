@@ -1,6 +1,25 @@
 export type MatchdayStatus = "draft" | "active" | "closed" | "published";
 export type MatchStatus = "scheduled" | "final" | "postponed" | "cancelled";
 export type TournamentFormat = "standard" | "world_cup";
+export type CompetitionStructureFormat =
+  | "league_table"
+  | "league_playoff"
+  | "groups_playoff"
+  | "conferences_playoff"
+  | "knockout";
+
+export interface CompetitionConferenceConfig {
+  name: string;
+  divisions: string[];
+}
+
+export interface CompetitionStructureConfig {
+  groups?: string[];
+  conferences?: CompetitionConferenceConfig[];
+  playoff_seed_count?: number;
+  playoff_rounds?: string[];
+  reseed_after_each_round?: boolean;
+}
 export type SeasonVisibilityStatus = "live" | "testing" | "closed" | "archived";
 export type MatchStageType =
   | "regular"
@@ -393,6 +412,7 @@ export interface VipCompetition {
   id: string;
   season_id: string;
   season_name: string;
+  season_visibility_status: SeasonVisibilityStatus;
   competition_kind: VipCompetitionKind;
   name: string;
   entry_fee_amount: number;
@@ -1387,6 +1407,8 @@ export interface Competition {
   name: string;
   slug: string;
   provider_league_id: string | null;
+  structure_format: CompetitionStructureFormat;
+  structure_config: CompetitionStructureConfig;
   is_active: boolean;
   sort_order: number;
   created_at: string;
@@ -1401,6 +1423,8 @@ export interface Season {
   competition_name: string | null;
   competition_sport_name: string | null;
   tournament_format: TournamentFormat;
+  structure_format: CompetitionStructureFormat;
+  structure_config: CompetitionStructureConfig;
   visibility_status: SeasonVisibilityStatus;
   live_dashboard_enabled: boolean;
   is_active: boolean;

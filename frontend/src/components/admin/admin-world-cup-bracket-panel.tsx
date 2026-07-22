@@ -10,6 +10,7 @@ import {
 } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { Match, MatchStageType, Matchday, Season, Team } from "@/types/api";
+import { hasPlayoffStage } from "@/lib/dashboard-season";
 
 type BracketFormState = {
   matchday_id: string;
@@ -102,7 +103,7 @@ export function AdminWorldCupBracketPanel() {
   const [message, setMessage] = useState<string | null>(null);
 
   const worldCupSeasons = useMemo(
-    () => seasons.filter((season) => season.tournament_format === "world_cup"),
+    () => seasons.filter(hasPlayoffStage),
     [seasons],
   );
 
@@ -174,7 +175,7 @@ export function AdminWorldCupBracketPanel() {
           backendFetch<Team[]>("/teams"),
           backendFetch<Matchday[]>("/matchdays", accessToken),
         ]);
-        const nextWorldCupSeasons = seasonRows.filter((season) => season.tournament_format === "world_cup");
+        const nextWorldCupSeasons = seasonRows.filter(hasPlayoffStage);
         const nextSeasonId =
           nextWorldCupSeasons.find((season) => season.is_active)?.id ?? nextWorldCupSeasons[0]?.id ?? "";
         const defaultMatchdayId = getDefaultMatchdayId(nextSeasonId, matchdayRows);
@@ -186,7 +187,7 @@ export function AdminWorldCupBracketPanel() {
         setCreateForm((current) => ({ ...current, matchday_id: defaultMatchdayId }));
         await loadBracket(nextSeasonId);
       } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el bracket mundialista");
+        setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el playoff");
       } finally {
         setLoading(false);
       }
@@ -224,7 +225,7 @@ export function AdminWorldCupBracketPanel() {
   async function handleCreateMatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedSeasonId) {
-      setError("Selecciona una temporada mundialista.");
+      setError("Selecciona una temporada con playoff.");
       return;
     }
     setCreating(true);
@@ -329,7 +330,7 @@ export function AdminWorldCupBracketPanel() {
     <div className="space-y-6">
       <section className="space-y-4">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Bracket mundialista</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Playoffs</h2>
           <p className="mt-2 text-sm text-steel">
             Aqui siembras y editas las llaves. Puedes dejar cruces con placeholders tipo `1A`, `2B` o marcarlos
             manualmente si vienen por sorteo.
@@ -342,7 +343,7 @@ export function AdminWorldCupBracketPanel() {
             onChange={(event) => void handleSeasonChange(event.target.value)}
             className="field-control"
           >
-            <option value="">Selecciona temporada mundialista</option>
+            <option value="">Selecciona temporada con playoff</option>
             {worldCupSeasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {season.name}

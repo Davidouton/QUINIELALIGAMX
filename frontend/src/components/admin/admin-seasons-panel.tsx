@@ -12,7 +12,6 @@ type SeasonFormState = {
   competition_id: string;
   tournament_format: TournamentFormat;
   visibility_status: SeasonVisibilityStatus;
-  live_dashboard_enabled: boolean;
   is_active: boolean;
   registration_closed: boolean;
   survivor_enabled: boolean;
@@ -28,7 +27,6 @@ const initialSeasonForm: SeasonFormState = {
   competition_id: "",
   tournament_format: "standard",
   visibility_status: "live",
-  live_dashboard_enabled: false,
   is_active: false,
   registration_closed: false,
   survivor_enabled: false,
@@ -37,6 +35,14 @@ const initialSeasonForm: SeasonFormState = {
   survivor_registration_closed: false,
   survivor_registration_lock_at: "",
 };
+
+function getStructureLabel(competition: Competition | null | undefined) {
+  if (competition?.structure_format === "league_playoff") return "Tabla general + playoff";
+  if (competition?.structure_format === "groups_playoff") return "Grupos + playoff";
+  if (competition?.structure_format === "conferences_playoff") return "Conferencias/divisiones + playoff";
+  if (competition?.structure_format === "knockout") return "Eliminación directa";
+  return "Tabla general";
+}
 
 export function AdminSeasonsPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -52,6 +58,10 @@ export function AdminSeasonsPanel() {
   const visibleSeasons = useMemo(
     () => seasons.filter((season) => (selectedCompetitionId ? season.competition_id === selectedCompetitionId : true)),
     [selectedCompetitionId, seasons],
+  );
+  const selectedFormCompetition = useMemo(
+    () => competitions.find((competition) => competition.id === seasonForm.competition_id) ?? null,
+    [competitions, seasonForm.competition_id],
   );
 
   async function loadSeasons() {
@@ -94,7 +104,7 @@ export function AdminSeasonsPanel() {
         method,
         body: JSON.stringify({
           ...seasonForm,
-          competition_id: seasonForm.competition_id || null,
+          competition_id: seasonForm.competition_id,
           survivor_name: seasonForm.survivor_name || null,
           survivor_max_lives: Number(seasonForm.survivor_max_lives || 1),
           survivor_registration_lock_at: seasonForm.survivor_registration_lock_at || null,
@@ -126,7 +136,6 @@ export function AdminSeasonsPanel() {
           competition_id: season.competition_id,
           tournament_format: season.tournament_format,
           visibility_status: season.visibility_status,
-          live_dashboard_enabled: season.live_dashboard_enabled,
           is_active: true,
           registration_closed: season.registration_closed,
           survivor_enabled: season.survivor_enabled,
@@ -161,7 +170,6 @@ export function AdminSeasonsPanel() {
           competition_id: season.competition_id,
           tournament_format: season.tournament_format,
           visibility_status: season.visibility_status,
-          live_dashboard_enabled: season.live_dashboard_enabled,
           is_active: season.is_active,
           registration_closed: target === "season" ? !season.registration_closed : season.registration_closed,
           survivor_enabled: season.survivor_enabled,
@@ -207,7 +215,6 @@ export function AdminSeasonsPanel() {
           competition_id: season.competition_id,
           tournament_format: season.tournament_format,
           visibility_status: "archived",
-          live_dashboard_enabled: false,
           is_active: false,
           registration_closed: true,
           survivor_enabled: season.survivor_enabled,
@@ -249,48 +256,69 @@ export function AdminSeasonsPanel() {
           ) : null}
         </div>
 
-        <form onSubmit={handleSaveSeason} className="space-y-4">
-          <input
-            value={seasonForm.name}
-            onChange={(event) => setSeasonForm((current) => ({ ...current, name: event.target.value }))}
-            placeholder="Clausura 2026"
-            className="field-control"
-            required
-          />
-          <input
-            value={seasonForm.slug}
-            onChange={(event) => setSeasonForm((current) => ({ ...current, slug: event.target.value }))}
-            placeholder="cl26"
-            className="field-control"
-            required
-          />
-          <select
-            value={seasonForm.competition_id}
-            onChange={(event) =>
-              setSeasonForm((current) => ({ ...current, competition_id: event.target.value }))
-            }
-            className="field-control"
-          >
-            <option value="">Sin competencia base</option>
-            {competitions.map((competition) => (
-              <option key={competition.id} value={competition.id}>
-                {competition.sport_name} · {competition.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={seasonForm.tournament_format}
-            onChange={(event) =>
-              setSeasonForm((current) => ({
-                ...current,
-                tournament_format: event.target.value as TournamentFormat,
-              }))
-            }
-            className="field-control"
-          >
-            <option value="standard">Liga / torneo normal</option>
-            <option value="world_cup">Mundial</option>
-          </select>
+        <form onSubmit={handleSaveSeason} className="space-y-7">
+          <section className="space-y-4 border-y border-white/[0.08] py-5">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-steel">Identidad y competencia</h3>
+              <p className="mt-2 text-sm text-steel">La estructura se hereda de la competencia y queda congelada en este torneo.</p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
+                Competencia
+                <select
+                  value={seasonForm.competition_id}
+                  onChange={(event) => {
+                    const competition = competitions.find((row) => row.id === event.target.value);
+                    setSeasonForm((current) => ({
+                      ...current,
+                      competition_id: event.target.value,
+                      tournament_format: competition?.structure_format === "groups_playoff" ? "world_cup" : "standard",
+                    }));
+                  }}
+                  className="field-control mt-2 w-full normal-case tracking-normal"
+                  required
+                >
+                  <option value="" disabled>Selecciona una competencia</option>
+                  {competitions
+                    .filter((competition) => competition.is_active || competition.id === seasonForm.competition_id)
+                    .map((competition) => (
+                    <option key={competition.id} value={competition.id}>
+                      {competition.sport_name} · {competition.name}
+                    </option>
+                    ))}
+                </select>
+              </label>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-steel">Estructura heredada</p>
+                <div className="field-control flex items-center text-sm text-ink">
+                  {selectedFormCompetition ? getStructureLabel(selectedFormCompetition) : "Selecciona una competencia"}
+                </div>
+              </div>
+              <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
+                Nombre del torneo
+                <input
+                  value={seasonForm.name}
+                  onChange={(event) => setSeasonForm((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Temporada 2026"
+                  className="field-control mt-2 w-full normal-case tracking-normal"
+                  required
+                />
+              </label>
+              <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
+                Identificador
+                <input
+                  value={seasonForm.slug}
+                  onChange={(event) => setSeasonForm((current) => ({ ...current, slug: event.target.value }))}
+                  placeholder="temporada-2026"
+                  className="field-control mt-2 w-full normal-case tracking-normal"
+                  required
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="space-y-4 border-b border-white/[0.08] pb-5">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-steel">Estado y registro</h3>
           <select
             value={seasonForm.visibility_status}
             onChange={(event) =>
@@ -302,21 +330,11 @@ export function AdminSeasonsPanel() {
             }
             className="field-control"
           >
-            <option value="live">Live</option>
+            <option value="live">Operativa</option>
             <option value="testing">Pruebas · solo usuarios asignados</option>
-            <option value="closed">Closed</option>
-            <option value="archived">Archived</option>
+            <option value="closed">Cerrada</option>
+            <option value="archived">Archivada</option>
           </select>
-          <label className="flex items-center gap-3 text-sm text-ink">
-            <input
-              type="checkbox"
-              checked={seasonForm.live_dashboard_enabled}
-              onChange={(event) =>
-                setSeasonForm((current) => ({ ...current, live_dashboard_enabled: event.target.checked }))
-              }
-            />
-            Mostrar en tab Live
-          </label>
           <label className="flex items-center gap-3 text-sm text-ink">
             <input
               type="checkbox"
@@ -340,7 +358,13 @@ export function AdminSeasonsPanel() {
             />
             Cerrar registro de la liga
           </label>
-          <div className="rounded-[18px] border border-white/6 bg-white/[0.03] p-4">
+          </section>
+
+          <section className="space-y-4 border-b border-white/[0.08] pb-5">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-steel">Survivor</h3>
+              <p className="mt-2 text-sm text-steel">Módulo opcional asociado a este torneo.</p>
+            </div>
             <label className="flex items-center gap-3 text-sm text-ink">
               <input
                 type="checkbox"
@@ -351,7 +375,7 @@ export function AdminSeasonsPanel() {
               />
               Habilitar survivor en esta temporada
             </label>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {seasonForm.survivor_enabled ? <div className="grid gap-4 md:grid-cols-2">
               <input
                 value={seasonForm.survivor_name}
                 onChange={(event) => setSeasonForm((current) => ({ ...current, survivor_name: event.target.value }))}
@@ -390,8 +414,8 @@ export function AdminSeasonsPanel() {
                 className="field-control"
                 disabled={!seasonForm.survivor_enabled}
               />
-            </div>
-          </div>
+            </div> : null}
+          </section>
           <button type="submit" disabled={saving === "season"} className="app-pill-active px-4 disabled:opacity-60">
             {saving === "season"
               ? "Guardando..."
@@ -423,7 +447,7 @@ export function AdminSeasonsPanel() {
           </select>
         </div>
         <div className="no-scrollbar overflow-x-auto touch-pan-x">
-          <table className="min-w-[1180px] table-fixed text-left text-sm text-ink">
+          <table className="min-w-[1080px] table-fixed text-left text-sm text-ink">
             <colgroup>
               <col className="w-[180px]" />
               <col className="w-[200px]" />
@@ -444,7 +468,6 @@ export function AdminSeasonsPanel() {
                 <th className="px-3 py-3">Survivor</th>
                 <th className="px-3 py-3">Registro</th>
                 <th className="px-3 py-3">Visibilidad</th>
-                <th className="px-3 py-3">Tab Live</th>
                 <th className="px-3 py-3">Default</th>
                 <th className="px-3 py-3">Acciones</th>
               </tr>
@@ -458,7 +481,15 @@ export function AdminSeasonsPanel() {
                   <td className="truncate px-3 py-3 font-medium text-ink">{season.name}</td>
                   <td className="px-3 py-3 text-steel">{season.slug}</td>
                   <td className="px-3 py-3 text-steel">
-                    {season.tournament_format === "world_cup" ? "Mundial" : "Standard"}
+                    {season.structure_format === "league_playoff"
+                      ? "Tabla + playoff"
+                      : season.structure_format === "groups_playoff"
+                        ? "Grupos + playoff"
+                        : season.structure_format === "conferences_playoff"
+                          ? "Conferencias + playoff"
+                          : season.structure_format === "knockout"
+                            ? "Eliminación directa"
+                            : "Tabla general"}
                   </td>
                   <td className="px-3 py-3 text-steel">
                     {season.survivor_enabled ? `${season.survivor_name ?? "Survivor"} · ${season.survivor_max_lives} vidas` : "Off"}
@@ -477,14 +508,13 @@ export function AdminSeasonsPanel() {
                   </td>
                   <td className="px-3 py-3 text-steel">
                     {season.visibility_status === "live"
-                      ? "Live"
+                      ? "Operativa"
                       : season.visibility_status === "testing"
                         ? "Pruebas"
                       : season.visibility_status === "closed"
-                        ? "Closed"
-                        : "Archived"}
+                        ? "Cerrada"
+                        : "Archivada"}
                   </td>
-                  <td className="px-3 py-3 text-steel">{season.live_dashboard_enabled ? "Si" : "No"}</td>
                   <td className="px-3 py-3 text-steel">{season.is_active ? "Si" : "No"}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2 whitespace-nowrap">
@@ -498,7 +528,6 @@ export function AdminSeasonsPanel() {
                             competition_id: season.competition_id ?? "",
                             tournament_format: season.tournament_format,
                             visibility_status: season.visibility_status,
-                            live_dashboard_enabled: season.live_dashboard_enabled,
                             is_active: season.is_active,
                             registration_closed: season.registration_closed,
                             survivor_enabled: season.survivor_enabled,

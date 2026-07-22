@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, Uuid, func
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -43,6 +43,14 @@ class MatchStatus(str, Enum):
 class TournamentFormat(str, Enum):
     STANDARD = "standard"
     WORLD_CUP = "world_cup"
+
+
+class CompetitionStructureFormat(str, Enum):
+    LEAGUE_TABLE = "league_table"
+    LEAGUE_PLAYOFF = "league_playoff"
+    GROUPS_PLAYOFF = "groups_playoff"
+    CONFERENCES_PLAYOFF = "conferences_playoff"
+    KNOCKOUT = "knockout"
 
 
 class SeasonVisibilityStatus(str, Enum):
@@ -184,6 +192,13 @@ class Competition(Base):
     name: Mapped[str] = mapped_column(String(120))
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     provider_league_id: Mapped[str | None] = mapped_column(String(120), index=True)
+    structure_format: Mapped[CompetitionStructureFormat] = mapped_column(
+        SqlEnum(CompetitionStructureFormat, native_enum=False, values_callable=enum_values),
+        default=CompetitionStructureFormat.LEAGUE_TABLE,
+        nullable=False,
+        index=True,
+    )
+    structure_config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -212,6 +227,13 @@ class Season(Base):
         nullable=False,
         index=True,
     )
+    structure_format: Mapped[CompetitionStructureFormat] = mapped_column(
+        SqlEnum(CompetitionStructureFormat, native_enum=False, values_callable=enum_values),
+        default=CompetitionStructureFormat.LEAGUE_TABLE,
+        nullable=False,
+        index=True,
+    )
+    structure_config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     visibility_status: Mapped[SeasonVisibilityStatus] = mapped_column(
         SqlEnum(SeasonVisibilityStatus, native_enum=False, values_callable=enum_values),
         default=SeasonVisibilityStatus.LIVE,

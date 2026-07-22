@@ -13,7 +13,7 @@ const groups = [
     paths: ["users", "user-info", "final-ranking", "payments", "picks", "survivor", "vip", "prizes", "trophies"],
   },
   {
-    title: "Mundial y producto",
+    title: "Estructuras y producto",
     paths: ["world-cup-groups", "world-cup-bracket", "quiniela-plus", "odds", "hall-of-fame"],
   },
   {

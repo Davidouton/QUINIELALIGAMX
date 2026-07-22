@@ -21,6 +21,7 @@ from app.core.database import SessionLocal, engine, get_db
 from app.core.datetime import MEXICO_CITY_TZ
 from app.models.entities import (
     Competition,
+    CompetitionStructureFormat,
     CommerceSettings,
     HistoricalChampion,
     LiveMatchScore,
@@ -1081,6 +1082,8 @@ def build_season_out(row: Season, competition: Competition | None = None) -> Sea
         competition_name=competition.name if competition is not None else None,
         competition_sport_name=competition.sport_name if competition is not None else None,
         tournament_format=row.tournament_format,
+        structure_format=row.structure_format,
+        structure_config=row.structure_config or {},
         visibility_status=row.visibility_status,
         live_dashboard_enabled=row.live_dashboard_enabled,
         is_active=row.is_active,
@@ -2163,8 +2166,18 @@ def create_season(
             slug=normalize_slug(payload.slug),
             competition_id=competition.id if competition is not None else None,
             tournament_format=payload.tournament_format,
+            structure_format=(
+                competition.structure_format
+                if competition is not None
+                else (
+                    CompetitionStructureFormat.GROUPS_PLAYOFF
+                    if payload.tournament_format == TournamentFormat.WORLD_CUP
+                    else CompetitionStructureFormat.LEAGUE_TABLE
+                )
+            ),
+            structure_config=dict(competition.structure_config or {}) if competition is not None else {},
             visibility_status=payload.visibility_status,
-            live_dashboard_enabled=payload.live_dashboard_enabled,
+            live_dashboard_enabled=False,
             is_active=payload.is_active,
             registration_closed=payload.registration_closed,
             survivor_enabled=payload.survivor_enabled,
@@ -2202,12 +2215,20 @@ def update_season(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
 
     is_archiving = payload.visibility_status == SeasonVisibilityStatus.ARCHIVED
+    competition_changed = season.competition_id != (competition.id if competition is not None else None)
     season.name = payload.name.strip()
     season.slug = normalize_slug(payload.slug)
     season.competition_id = competition.id if competition is not None else None
     season.tournament_format = payload.tournament_format
+    if competition_changed:
+        season.structure_format = (
+            competition.structure_format
+            if competition is not None
+            else CompetitionStructureFormat.LEAGUE_TABLE
+        )
+        season.structure_config = dict(competition.structure_config or {}) if competition is not None else {}
     season.visibility_status = payload.visibility_status
-    season.live_dashboard_enabled = False if is_archiving else payload.live_dashboard_enabled
+    season.live_dashboard_enabled = False
     season.is_active = False if is_archiving else payload.is_active
     season.registration_closed = True if is_archiving else payload.registration_closed
     season.survivor_enabled = payload.survivor_enabled
@@ -2245,9 +2266,11 @@ def create_competition(
 ) -> CompetitionOut:
     row = Competition(
         sport_name=payload.sport_name.strip(),
-        name=payload.name.strip(),
+        name=payload.name.strip() or f"Jornada {payload.number}",
         slug=normalize_slug(payload.slug),
         provider_league_id=normalize_optional_text(payload.provider_league_id),
+        structure_format=payload.structure_format,
+        structure_config=payload.structure_config,
         is_active=payload.is_active,
         sort_order=payload.sort_order,
     )
@@ -2272,6 +2295,8 @@ def update_competition(
     row.name = payload.name.strip()
     row.slug = normalize_slug(payload.slug)
     row.provider_league_id = normalize_optional_text(payload.provider_league_id)
+    row.structure_format = payload.structure_format
+    row.structure_config = payload.structure_config
     row.is_active = payload.is_active
     row.sort_order = payload.sort_order
     db.add(row)
@@ -2647,7 +2672,7 @@ def update_matchday(
 
     matchday.season_id = payload.season_id
     matchday.number = payload.number
-    matchday.name = payload.name.strip()
+    matchday.name = payload.name.strip() or f"Jornada {payload.number}"
     matchday.default_lock_offset_minutes = payload.default_lock_offset_minutes
     matchday.status = payload.status
     matchday.starts_at = payload.starts_at

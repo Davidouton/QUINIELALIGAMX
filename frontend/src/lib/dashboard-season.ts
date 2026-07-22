@@ -28,6 +28,20 @@ export function isSeasonArchived(season: Season) {
   return season.visibility_status === "archived";
 }
 
+export function hasGroupStage(season: Season | null | undefined) {
+  return season?.structure_format === "groups_playoff" || season?.tournament_format === "world_cup";
+}
+
+export function hasPlayoffStage(season: Season | null | undefined) {
+  return Boolean(
+    season &&
+      (season.tournament_format === "world_cup" ||
+        ["league_playoff", "groups_playoff", "conferences_playoff", "knockout"].includes(
+          season.structure_format,
+        )),
+  );
+}
+
 export function getLiveSeasons(seasons: Season[]) {
   // Testing seasons have already been authorization-filtered by the backend.
   // Treat the assigned ones as current everywhere except public enrollment.

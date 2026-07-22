@@ -123,6 +123,7 @@ class VipCompetitionOut(BaseModel):
     id: str
     season_id: str
     season_name: str
+    season_visibility_status: Literal["live", "testing", "closed", "archived"] = "live"
     competition_kind: Literal["matchday", "team_winner", "question_pool"] = "matchday"
     name: str
     entry_fee_amount: float

@@ -1,33 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useAdminVisibility } from "@/components/layout/use-admin-visibility";
 import { useDevMode } from "@/components/layout/dev-mode-provider";
-import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
-import { resolveSeasonForContext } from "@/lib/dashboard-season";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { cn } from "@/lib/utils";
-import type { AppBranding, Season } from "@/types/api";
 
 const primaryLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/picks", label: "Picks Center" },
   { href: "/dashboard/survivor", label: "Survivor", shortLabel: "Sur" },
+  { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/leaderboard", label: "Ranking" },
   { href: "/dashboard/world-cup", label: "Tournament Stats", shortLabel: "Stats" },
-  { href: "/dashboard/live", label: "Live", shortLabel: "Live" },
   { href: "/dashboard/settings", label: "Settings" },
 ];
 
 const competitionHubLinks = [
   { href: "/dashboard/payments", label: "Pagos" },
-  { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/enrollments", label: "Inscripciones", shortLabel: "Alta" },
   { href: "/dashboard/past-seasons", label: "Histórico", shortLabel: "Hist." },
   { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
@@ -43,8 +38,8 @@ const primaryMobileLinks = [
   { href: "/dashboard", label: "Inicio" },
   { href: "/dashboard/payments", label: "Pagos" },
   { href: "/dashboard/survivor", label: "Surv" },
-  mobileHubLink,
   { href: "/dashboard/vip", label: "VIP" },
+  mobileHubLink,
   { href: "/dashboard/picks", label: "Picks" },
 ];
 
@@ -71,35 +66,10 @@ export function DashboardSidebar() {
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCompetitionHubOpen, setIsCompetitionHubOpen] = useState(() => isCompetitionHubRoute(pathname));
-  const { buildHrefWithSeason, competitionId, seasonId } = useDashboardSeasonParam();
+  const { buildHrefWithSeason } = useDashboardSeasonParam();
   const canViewAdmin = useAdminVisibility();
   const { enabled: devModeEnabled, toggle: toggleDevMode } = useDevMode();
-  const [seasons, setSeasons] = useState<Season[]>([]);
-  const [showLiveTab, setShowLiveTab] = useState(true);
-
-  useEffect(() => {
-    async function loadSeasons() {
-      try {
-        const accessToken = await getBrowserAccessToken();
-        const [rows, branding] = await Promise.all([
-          backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
-          backendFetch<AppBranding>("/branding"),
-        ]);
-        setSeasons(Array.isArray(rows) ? rows : []);
-        setShowLiveTab(branding.show_live_tab ?? true);
-      } catch {
-        setSeasons([]);
-      }
-    }
-
-    void loadSeasons();
-  }, []);
-
-  const activeSeason = useMemo(
-    () => resolveSeasonForContext(seasons, seasonId, competitionId),
-    [competitionId, seasonId, seasons],
-  );
-  const visiblePrimaryLinks = primaryLinks.filter((link) => showLiveTab || link.href !== "/dashboard/live");
+  const visiblePrimaryLinks = primaryLinks;
   const visibleCompetitionHubLinks = competitionHubLinks;
   const visibleMobilePrimaryLinks = primaryMobileLinks;
   const links = canViewAdmin

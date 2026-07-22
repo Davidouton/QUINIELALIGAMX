@@ -4,13 +4,19 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Competition } from "@/types/api";
+import type { Competition, CompetitionStructureFormat } from "@/types/api";
 
 type CompetitionFormState = {
   sport_name: string;
   name: string;
   slug: string;
   provider_league_id: string;
+  structure_format: CompetitionStructureFormat;
+  groups: string;
+  conferences: string;
+  playoff_seed_count: string;
+  playoff_rounds: string;
+  reseed_after_each_round: boolean;
   is_active: boolean;
   sort_order: string;
 };
@@ -20,6 +26,12 @@ const initialCompetitionForm: CompetitionFormState = {
   name: "",
   slug: "",
   provider_league_id: "",
+  structure_format: "league_table",
+  groups: "",
+  conferences: "",
+  playoff_seed_count: "",
+  playoff_rounds: "",
+  reseed_after_each_round: false,
   is_active: true,
   sort_order: "100",
 };
@@ -65,8 +77,28 @@ export function AdminCompetitionsPanel() {
       await backendFetch(path, accessToken, {
         method,
         body: JSON.stringify({
-          ...competitionForm,
+          sport_name: competitionForm.sport_name,
+          name: competitionForm.name,
+          slug: competitionForm.slug,
           provider_league_id: competitionForm.provider_league_id || null,
+          structure_format: competitionForm.structure_format,
+          structure_config: {
+            groups: competitionForm.groups.split(",").map((value) => value.trim()).filter(Boolean),
+            conferences: competitionForm.conferences
+              .split("\n")
+              .map((line) => {
+                const [name, divisions = ""] = line.split(":", 2);
+                return {
+                  name: name.trim(),
+                  divisions: divisions.split(",").map((value) => value.trim()).filter(Boolean),
+                };
+              })
+              .filter((conference) => conference.name),
+            playoff_seed_count: Number(competitionForm.playoff_seed_count || "0"),
+            playoff_rounds: competitionForm.playoff_rounds.split(",").map((value) => value.trim()).filter(Boolean),
+            reseed_after_each_round: competitionForm.reseed_after_each_round,
+          },
+          is_active: competitionForm.is_active,
           sort_order: Number(competitionForm.sort_order || "100"),
         }),
       });
@@ -88,6 +120,16 @@ export function AdminCompetitionsPanel() {
       name: competition.name,
       slug: competition.slug,
       provider_league_id: competition.provider_league_id ?? "",
+      structure_format: competition.structure_format,
+      groups: (competition.structure_config.groups ?? []).join(", "),
+      conferences: (competition.structure_config.conferences ?? [])
+        .map((conference) => `${conference.name}: ${conference.divisions.join(", ")}`)
+        .join("\n"),
+      playoff_seed_count: competition.structure_config.playoff_seed_count
+        ? String(competition.structure_config.playoff_seed_count)
+        : "",
+      playoff_rounds: (competition.structure_config.playoff_rounds ?? []).join(", "),
+      reseed_after_each_round: Boolean(competition.structure_config.reseed_after_each_round),
       is_active: competition.is_active,
       sort_order: String(competition.sort_order),
     });
@@ -158,6 +200,76 @@ export function AdminCompetitionsPanel() {
             className="field-control"
             inputMode="numeric"
           />
+          <select
+            value={competitionForm.structure_format}
+            onChange={(event) => setCompetitionForm((current) => ({
+              ...current,
+              structure_format: event.target.value as CompetitionStructureFormat,
+            }))}
+            className="field-control"
+          >
+            <option value="league_table">Tabla general</option>
+            <option value="league_playoff">Tabla general + playoff</option>
+            <option value="groups_playoff">Grupos + playoff</option>
+            <option value="conferences_playoff">Conferencias/divisiones + playoff</option>
+            <option value="knockout">Eliminación directa</option>
+          </select>
+          {competitionForm.structure_format === "groups_playoff" ? (
+            <input
+              value={competitionForm.groups}
+              onChange={(event) => setCompetitionForm((current) => ({ ...current, groups: event.target.value }))}
+              placeholder="Grupos: A, B, C, D"
+              className="field-control md:col-span-2"
+            />
+          ) : null}
+          {competitionForm.structure_format === "conferences_playoff" ? (
+            <div className="space-y-3 md:col-span-2">
+              <button
+                type="button"
+                onClick={() => setCompetitionForm((current) => ({
+                  ...current,
+                  conferences: "AFC: East, North, South, West\nNFC: East, North, South, West",
+                  playoff_seed_count: "7",
+                  playoff_rounds: "Wild Card, Divisional, Final de Conferencia, Super Bowl",
+                  reseed_after_each_round: true,
+                }))}
+                className="app-pill px-4"
+              >
+                Cargar estructura NFL
+              </button>
+              <textarea
+                value={competitionForm.conferences}
+                onChange={(event) => setCompetitionForm((current) => ({ ...current, conferences: event.target.value }))}
+                placeholder={"AFC: East, North, South, West\nNFC: East, North, South, West"}
+                className="field-control min-h-28 w-full"
+              />
+            </div>
+          ) : null}
+          {competitionForm.structure_format !== "league_table" ? (
+            <>
+              <input
+                value={competitionForm.playoff_seed_count}
+                onChange={(event) => setCompetitionForm((current) => ({ ...current, playoff_seed_count: event.target.value }))}
+                placeholder="Seeds por conferencia/grupo (ej. 7)"
+                inputMode="numeric"
+                className="field-control"
+              />
+              <input
+                value={competitionForm.playoff_rounds}
+                onChange={(event) => setCompetitionForm((current) => ({ ...current, playoff_rounds: event.target.value }))}
+                placeholder="Wild Card, Divisional, Final, Super Bowl"
+                className="field-control"
+              />
+              <label className="flex items-center gap-3 text-sm text-ink md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={competitionForm.reseed_after_each_round}
+                  onChange={(event) => setCompetitionForm((current) => ({ ...current, reseed_after_each_round: event.target.checked }))}
+                />
+                Reacomodar cruces por seed después de cada ronda
+              </label>
+            </>
+          ) : null}
           <label className="flex items-center gap-3 text-sm text-ink">
             <input
               type="checkbox"
@@ -188,6 +300,7 @@ export function AdminCompetitionsPanel() {
               <col className="w-[140px]" />
               <col className="w-[220px]" />
               <col className="w-[120px]" />
+              <col className="w-[190px]" />
               <col className="w-[160px]" />
               <col className="w-[110px]" />
               <col className="w-[120px]" />
@@ -197,6 +310,7 @@ export function AdminCompetitionsPanel() {
                 <th className="px-3 py-3">Deporte</th>
                 <th className="px-3 py-3">Competencia</th>
                 <th className="px-3 py-3">Slug</th>
+                <th className="px-3 py-3">Estructura</th>
                 <th className="px-3 py-3">Proveedor</th>
                 <th className="px-3 py-3">Estado</th>
                 <th className="px-3 py-3">Acciones</th>
@@ -208,6 +322,17 @@ export function AdminCompetitionsPanel() {
                   <td className="px-3 py-3 text-steel">{competition.sport_name}</td>
                   <td className="px-3 py-3 font-medium text-ink">{competition.name}</td>
                   <td className="px-3 py-3 text-steel">{competition.slug}</td>
+                  <td className="px-3 py-3 text-steel">
+                    {competition.structure_format === "league_playoff"
+                      ? "Tabla + playoff"
+                      : competition.structure_format === "groups_playoff"
+                        ? "Grupos + playoff"
+                        : competition.structure_format === "conferences_playoff"
+                          ? "Conferencias + playoff"
+                          : competition.structure_format === "knockout"
+                            ? "Eliminación directa"
+                            : "Tabla general"}
+                  </td>
                   <td className="px-3 py-3 text-steel">{competition.provider_league_id ?? "N/A"}</td>
                   <td className="px-3 py-3 text-steel">{competition.is_active ? "Activa" : "Inactiva"}</td>
                   <td className="px-3 py-3">

@@ -228,6 +228,7 @@ export function DashboardEnrollmentsPageContent() {
   const visibleVipCompetitions = useMemo(
     () =>
       [...state.vipCompetitions]
+        .filter((vip) => vip.season_visibility_status !== "archived")
         .filter((vip) => Boolean(vip.my_membership) || !vip.join_locked)
         .sort((left, right) => {
           const leftRank = left.my_membership ? 0 : left.join_locked ? 2 : 1;
@@ -388,20 +389,8 @@ export function DashboardEnrollmentsPageContent() {
     [membershipRows],
   );
   const inactiveMembershipRows = useMemo(() => {
-    const seasonRows = (state.me?.season_memberships ?? []).flatMap((membership) => {
-      const season = state.seasons.find((item) => item.id === membership.season_id) ?? null;
-      if (season && season.visibility_status !== "archived") {
-        return [];
-      }
-      return [{
-        id: `inactive-season-${membership.season_id}`,
-        name: season ? getSeasonDisplayName(season) : membership.competition_name ?? membership.season_name,
-        meta: season?.name ?? membership.season_name,
-        status: "Inactiva",
-      }];
-    });
     const vipRows = state.vipCompetitions.flatMap((vip) =>
-      vip.my_membership?.status === "rejected"
+      vip.season_visibility_status !== "archived" && vip.my_membership?.status === "rejected"
         ? [{
             id: `inactive-vip-${vip.id}`,
             name: vip.name,
@@ -410,8 +399,8 @@ export function DashboardEnrollmentsPageContent() {
           }]
         : [],
     );
-    return [...seasonRows, ...vipRows];
-  }, [state.me?.season_memberships, state.seasons, state.vipCompetitions]);
+    return vipRows;
+  }, [state.vipCompetitions]);
 
   useEffect(() => {
     if (!availableMembershipRows.length) {
