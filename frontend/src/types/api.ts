@@ -1460,6 +1460,23 @@ export interface OddsPullResult {
   sync_output: string;
 }
 
+export interface AdminNflSpreadRow {
+  match_id: string;
+  matchday_id: string;
+  matchday_number: number;
+  matchday_name: string;
+  kickoff_at: string;
+  picks_lock_at: string;
+  home_team_name: string;
+  away_team_name: string;
+  spread_home_line: string | null;
+  spread_away_line: string | null;
+  provider_name: string | null;
+  published_at: string | null;
+  pick_count: number;
+  is_frozen: boolean;
+}
+
 export interface AdvancedStatsPullResult {
   status: string;
   count: number;

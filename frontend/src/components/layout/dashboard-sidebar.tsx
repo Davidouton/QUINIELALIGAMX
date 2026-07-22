@@ -258,16 +258,15 @@ export function DashboardSidebar() {
               aria-label={adminLink.label}
               title={adminLink.label}
               className={cn(
-                "mb-3 block rounded-[12px] border border-mint/20 bg-mint/10 py-3 text-sm font-semibold text-mint transition hover:border-mint/40 hover:bg-mint/15",
-                "px-4 text-left",
-                pathname.startsWith(adminLink.href) && "border-mint/50 bg-mint/15 text-ink",
+                "mb-2 block border-0 bg-transparent px-2 py-2.5 text-left text-sm font-semibold text-ink transition hover:text-[#4f7df3]",
+                pathname.startsWith(adminLink.href) && "text-[#4f7df3]",
               )}
             >
               Admin
             </Link>
           ) : null}
 
-          <div className="space-y-3">
+          <div className="space-y-0.5">
             {visiblePrimaryLinks.map((link) => (
               <Link
                 key={link.href}
@@ -276,9 +275,8 @@ export function DashboardSidebar() {
                 aria-label={link.label}
                 title={link.label}
                 className={cn(
-                  "block rounded-[12px] border border-white/[0.04] bg-transparent py-3 text-sm transition hover:border-white/[0.08] hover:bg-white/[0.04]",
-                  "px-4 text-left",
-                  pathname === link.href && "border-white/[0.06] bg-white/[0.05]",
+                  "block border-0 bg-transparent px-2 py-2.5 text-left text-sm font-semibold text-ink transition hover:text-[#4f7df3]",
+                  pathname === link.href && "text-[#4f7df3]",
                 )}
               >
                 {renderLinkLabel(link.label)}
@@ -304,9 +302,9 @@ export function DashboardSidebar() {
                   aria-label={link.label}
                   title={link.label}
                   className={cn(
-                    "block border-0 bg-transparent py-2 text-sm text-steel transition hover:text-ink",
+                    "block border-0 bg-transparent py-2 text-sm text-ink transition hover:text-[#4f7df3]",
                     "px-2 text-left",
-                    pathname === link.href && "border-white/[0.06] bg-white/[0.05]",
+                    pathname === link.href && "text-[#4f7df3]",
                   )}
                 >
                   {renderLinkLabel(link.label)}
@@ -320,7 +318,7 @@ export function DashboardSidebar() {
               <button
                 type="button"
                 onClick={toggleDevMode}
-                className={cn("mb-2 block w-full px-4 py-2 text-left text-xs transition", devModeEnabled ? "text-[#4f7df3]" : "text-steel hover:text-ink")}
+                className={cn("mb-1 block w-full px-2 py-2 text-left text-xs transition", devModeEnabled ? "text-[#4f7df3]" : "text-steel hover:text-[#4f7df3]")}
               >
                 Dev mode {devModeEnabled ? "on" : "off"}
               </button>
@@ -328,10 +326,7 @@ export function DashboardSidebar() {
             <button
               type="button"
               onClick={handleSignOut}
-              className={cn(
-                "block w-full rounded-[12px] border border-white/[0.04] bg-white/[0.02] py-3 text-sm font-semibold text-ink transition hover:border-white/[0.08] hover:text-coral",
-                "px-4 text-left",
-              )}
+              className="block w-full border-0 bg-transparent px-2 py-2.5 text-left text-sm font-semibold text-ink transition hover:text-coral"
             >
               Salir
             </button>

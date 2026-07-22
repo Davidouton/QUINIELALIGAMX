@@ -28,7 +28,9 @@ from app.models.entities import (
     MatchResult,
     Matchday,
     MatchdayStatus,
+    PickSelection,
     Profile,
+    Odds,
     ProfileTrophyAward,
     PublishedMatchday,
     RoleCode,
@@ -44,6 +46,7 @@ from app.models.entities import (
     TrophyAsset,
     VipCompetitionMatchday,
     VipMembershipStatus,
+    UserPick,
 )
 from app.providers.api_football_provider import ApiFootballProvider
 from app.providers.mock_provider import MockSportsDataProvider
@@ -59,6 +62,8 @@ from app.schemas.admin import (
     AdvancedStatsPullResponse,
     AdminLiveScoreRowOut,
     AdminLiveScoreUpdateRequest,
+    AdminNflSpreadRowOut,
+    AdminNflSpreadUpdateRequest,
     AdminPickOverrideRequest,
     AdminPickRowOut,
     AdminResultRowOut,
@@ -976,6 +981,46 @@ def run_advanced_stats_pull_pipeline(
 
 def get_provider() -> MockSportsDataProvider:
     return MockSportsDataProvider()
+
+
+def normalize_nfl_spread_line(raw_value: str | None) -> tuple[str | None, str | None]:
+    if raw_value is None or not raw_value.strip():
+        return None, None
+    normalized = raw_value.strip().upper().replace("PK", "0")
+    try:
+        home_value = Decimal(normalized)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Spread invalido") from exc
+    if abs(home_value) > Decimal("100") or home_value % Decimal("0.5") != 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Usa una linea entre -100 y +100 en incrementos de 0.5",
+        )
+
+    def render(value: Decimal) -> str:
+        if value == 0:
+            return "0"
+        rendered = format(value, "f").rstrip("0").rstrip(".")
+        return f"+{rendered}" if value > 0 else rendered
+
+    return render(home_value), render(-home_value)
+
+
+def require_nfl_season(db: Session, season_id: str) -> Season:
+    season = db.get(Season, season_id)
+    competition = db.get(Competition, season.competition_id) if season and season.competition_id else None
+    haystack = " ".join(
+        value.lower()
+        for value in [
+            competition.sport_name if competition else "",
+            competition.name if competition else "",
+            competition.slug if competition else "",
+        ]
+        if value
+    )
+    if season is None or ("nfl" not in haystack and "football" not in haystack):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selecciona una temporada NFL")
+    return season
 
 
 def get_results_provider():
@@ -3305,6 +3350,136 @@ def sync_admin_odds(
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SyncResponse:
     return SyncResponse(**sync_odds(db, get_provider()))
+
+
+@router.get("/nfl-spreads", response_model=list[AdminNflSpreadRowOut])
+def list_admin_nfl_spreads(
+    season_id: str,
+    matchday_id: str | None = None,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> list[AdminNflSpreadRowOut]:
+    require_nfl_season(db, season_id)
+    matchdays = list(
+        db.scalars(
+            select(Matchday)
+            .where(Matchday.season_id == season_id)
+            .order_by(Matchday.number.asc())
+        )
+    )
+    matchday_by_id = {row.id: row for row in matchdays}
+    matchday_ids = [row.id for row in matchdays]
+    if matchday_id:
+        if matchday_id not in matchday_by_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La jornada no pertenece a la temporada")
+        matchday_ids = [matchday_id]
+    if not matchday_ids:
+        return []
+
+    matches = list(
+        db.scalars(
+            select(Match)
+            .where(Match.matchday_id.in_(matchday_ids))
+            .order_by(Match.kickoff_at.asc())
+        )
+    )
+    match_ids = [row.id for row in matches]
+    latest_odds: dict[str, Odds] = {}
+    if match_ids:
+        for row in db.scalars(
+            select(Odds).where(Odds.match_id.in_(match_ids)).order_by(Odds.match_id.asc(), Odds.synced_at.desc(), Odds.id.desc())
+        ):
+            latest_odds.setdefault(row.match_id, row)
+    pick_counts = dict(
+        db.execute(
+            select(UserPick.match_id, func.count(UserPick.id))
+            .where(UserPick.match_id.in_(match_ids))
+            .group_by(UserPick.match_id)
+        ).all()
+    ) if match_ids else {}
+    team_ids = {team_id for match in matches for team_id in [match.home_team_id, match.away_team_id] if team_id}
+    teams = {team.id: team for team in db.scalars(select(Team).where(Team.id.in_(team_ids)))} if team_ids else {}
+
+    return [
+        AdminNflSpreadRowOut(
+            match_id=match.id,
+            matchday_id=match.matchday_id,
+            matchday_number=matchday_by_id[match.matchday_id].number,
+            matchday_name=matchday_by_id[match.matchday_id].name,
+            kickoff_at=match.kickoff_at,
+            picks_lock_at=match.picks_lock_at,
+            home_team_name=teams[match.home_team_id].name if match.home_team_id in teams else match.home_placeholder or "Local",
+            away_team_name=teams[match.away_team_id].name if match.away_team_id in teams else match.away_placeholder or "Visitante",
+            spread_home_line=latest_odds[match.id].spread_home_line if match.id in latest_odds else None,
+            spread_away_line=latest_odds[match.id].spread_away_line if match.id in latest_odds else None,
+            provider_name=latest_odds[match.id].provider_name if match.id in latest_odds else None,
+            published_at=latest_odds[match.id].synced_at if match.id in latest_odds else None,
+            pick_count=int(pick_counts.get(match.id, 0)),
+            is_frozen=bool(pick_counts.get(match.id, 0)),
+        )
+        for match in matches
+    ]
+
+
+@router.put("/nfl-spreads/{match_id}", response_model=AdminNflSpreadRowOut)
+def update_admin_nfl_spread(
+    match_id: str,
+    payload: AdminNflSpreadUpdateRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminNflSpreadRowOut:
+    match = db.get(Match, match_id)
+    matchday = db.get(Matchday, match.matchday_id) if match else None
+    if match is None or matchday is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partido no encontrado")
+    require_nfl_season(db, matchday.season_id)
+    pick_count = int(db.scalar(select(func.count(UserPick.id)).where(UserPick.match_id == match.id)) or 0)
+    if pick_count and not payload.force:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"La linea esta congelada porque ya existen {pick_count} picks. Usa correccion administrativa.",
+        )
+    home_line, away_line = normalize_nfl_spread_line(payload.home_line)
+    if pick_count and home_line is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes retirar la linea cuando ya existen picks; publica una correccion.",
+        )
+    odds = Odds(
+        match_id=match.id,
+        provider_name="admin_nfl",
+        spread_home_line=home_line,
+        spread_away_line=away_line,
+    )
+    db.add(odds)
+    if pick_count and payload.force and home_line is not None:
+        picks = list(db.scalars(select(UserPick).where(UserPick.match_id == match.id)))
+        for pick in picks:
+            pick.spread_line_value = home_line if pick.spread_selection == PickSelection.HOME else away_line
+            db.add(pick)
+        db.flush()
+        ScoringService().recalculate_season(db, matchday.season_id)
+        recalculate_vips_for_matchday(db, matchday.id)
+    db.commit()
+    db.refresh(odds)
+    home_team = db.get(Team, match.home_team_id) if match.home_team_id else None
+    away_team = db.get(Team, match.away_team_id) if match.away_team_id else None
+    return AdminNflSpreadRowOut(
+        match_id=match.id,
+        matchday_id=matchday.id,
+        matchday_number=matchday.number,
+        matchday_name=matchday.name,
+        kickoff_at=match.kickoff_at,
+        picks_lock_at=match.picks_lock_at,
+        home_team_name=home_team.name if home_team else match.home_placeholder or "Local",
+        away_team_name=away_team.name if away_team else match.away_placeholder or "Visitante",
+        spread_home_line=home_line,
+        spread_away_line=away_line,
+        provider_name=odds.provider_name,
+        published_at=odds.synced_at,
+        pick_count=pick_count,
+        is_frozen=pick_count > 0,
+    )
 
 
 @router.post("/odds/pull", response_model=OddsPullResponse)

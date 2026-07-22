@@ -135,6 +135,28 @@ class AdminLiveScoreUpdateRequest(BaseModel):
     away_score: int = Field(ge=0)
 
 
+class AdminNflSpreadRowOut(BaseModel):
+    match_id: str
+    matchday_id: str
+    matchday_number: int
+    matchday_name: str
+    kickoff_at: datetime
+    picks_lock_at: datetime
+    home_team_name: str
+    away_team_name: str
+    spread_home_line: str | None = None
+    spread_away_line: str | None = None
+    provider_name: str | None = None
+    published_at: datetime | None = None
+    pick_count: int = 0
+    is_frozen: bool = False
+
+
+class AdminNflSpreadUpdateRequest(BaseModel):
+    home_line: str | None = Field(default=None, max_length=24)
+    force: bool = False
+
+
 class AdminPickOverrideRequest(BaseModel):
     profile_id: str
     match_id: str
