@@ -231,6 +231,19 @@ body::after {
     background-color: rgba(12, 24, 42, 0.96);
   }
 
+  .survivor-sticky-cell {
+    transition: background-color 160ms ease;
+  }
+
+  tr:hover > .survivor-sticky-cell {
+    background-color: rgba(16, 29, 48, 0.98);
+  }
+
+  .survivor-pending-slot {
+    border-color: var(--app-border-soft);
+    background-color: rgba(0, 0, 0, 0.45);
+  }
+
   .official-result-badge {
     border-color: rgba(52, 211, 153, 0.3);
     background-color: rgba(52, 211, 153, 0.1);
@@ -368,6 +381,15 @@ html[data-app-surface="light"] .field-control {
 html[data-app-surface="light"] .app-table-sticky-cell {
   background-color: #f7f9fc;
   backdrop-filter: none;
+}
+
+html[data-app-surface="light"] tr:hover > .survivor-sticky-cell {
+  background-color: #eef2f7;
+}
+
+html[data-app-surface="light"] .survivor-pending-slot {
+  border-color: rgba(36, 55, 82, 0.16);
+  background-color: #e5ebf3;
 }
 
 html[data-app-surface="light"] .app-table-head {

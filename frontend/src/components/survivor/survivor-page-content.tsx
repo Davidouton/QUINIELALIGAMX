@@ -453,13 +453,13 @@ export function SurvivorPageContent() {
           {board.leaderboard.length === 0 ? <p className="text-sm text-steel">Aún no hay participantes inscritos.</p> : (
             <table className="min-w-[1240px] border-separate border-spacing-0 text-center text-[11px]">
               <thead><tr className="text-[10px] uppercase tracking-wider text-steel">
-                <th className="sticky left-0 z-20 min-w-[250px] border-b border-white/10 bg-[#0c1727] px-3 py-3 text-left">Participante</th>
+                <th className="app-table-sticky-cell sticky left-0 z-20 min-w-[250px] border-b border-white/10 px-3 py-3 text-left">Participante</th>
                 {Array.from({ length: 17 }, (_, index) => <th key={index} className={`w-[58px] border-b border-white/10 px-1 py-3 ${board.current_matchday?.number === index + 1 ? "text-coral" : ""}`}>J{index + 1}</th>)}
               </tr></thead>
               <tbody>{board.leaderboard.map((entry, index) => {
                 const picksByJourney = new Map((entry.picks ?? []).map((pick) => [pick.matchday_number, pick]));
                 return <tr key={entry.profile_id} className="group">
-                  <td className="sticky left-0 z-10 border-b border-white/[0.07] bg-[#0c1727] px-3 py-3 text-left group-hover:bg-[#101d30]">
+                  <td className="app-table-sticky-cell survivor-sticky-cell sticky left-0 z-10 border-b border-white/[0.07] px-3 py-3 text-left">
                     <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] items-center gap-2">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-ink">{index + 1}. {entry.display_name}</p>
@@ -475,11 +475,11 @@ export function SurvivorPageContent() {
                     const pick = picksByJourney.get(journeyIndex + 1);
                     const visiblePick = pick && (pick.is_revealed || board.my_picks.some((myPick) => myPick.id === pick.id)) ? pick : null;
                     const stateClass = visiblePick?.result_status === "won" ? "drop-shadow-[0_0_5px_rgba(52,211,153,0.75)]" : visiblePick?.result_status === "lost" ? "drop-shadow-[0_0_5px_rgba(255,107,107,0.7)]" : visiblePick?.result_status === "draw" ? "drop-shadow-[0_0_5px_rgba(255,228,92,0.7)]" : "";
-                    return <td key={journeyIndex} className={`border-b border-white/[0.07] px-1 py-2 ${board.current_matchday?.number === journeyIndex + 1 ? "bg-coral/[0.035]" : ""}`}>
+                    return <td key={journeyIndex} className={`border-b border-white/[0.07] px-1 py-2 ${board.current_matchday?.number === journeyIndex + 1 ? "bg-[rgba(var(--app-selection-rgb),0.05)]" : ""}`}>
                       {visiblePick ? <span className="relative inline-flex" title={`J${journeyIndex + 1}: ${visiblePick.team_name} · ${getSurvivorResultLabel(visiblePick.result_status)}`}>
                         {renderTeamLogo(visiblePick.team_name, visiblePick.team_short_name, visiblePick.team_crest_url, `h-9 w-9 ${stateClass}`)}
                         {visiblePick.is_admin_override ? <i className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-[#0c1727] bg-violet-400" title="Override administrativo" /> : null}
-                      </span> : <span className="inline-flex h-9 w-9 rounded-full border border-white/[0.07] bg-black/55" title={pick ? "Pick oculto hasta el cierre" : `J${journeyIndex + 1}: pendiente`} />}
+                      </span> : <span className="survivor-pending-slot inline-flex h-9 w-9 rounded-full border" title={pick ? "Pick oculto hasta el cierre" : `J${journeyIndex + 1}: pendiente`} />}
                     </td>;
                   })}
                 </tr>;
