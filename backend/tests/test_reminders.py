@@ -1,9 +1,9 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from conftest import MATCHDAY_ID, PROFILE_USER_ID, SessionLocal
-from app.models.entities import Match, Matchday, MatchdayStatus, PickReminderEmailEvent, PickReminderKind, Profile, StandingsMatchday
+from conftest import MATCHDAY_ID, MATCH_ONE_ID, PROFILE_USER_ID, SessionLocal
+from app.models.entities import Match, MatchResult, Matchday, MatchdayStatus, PickPoint, PickReminderEmailEvent, PickReminderKind, PickSelection, Profile, PushNotificationEvent, StandingsMatchday, UserPick
 from app.services.reminder_service import ReminderService
 
 
@@ -174,5 +174,116 @@ def test_send_matchday_summary_notifications_records_event(monkeypatch):
         ).all()
         assert len(saved) == 1
         assert saved[0].reminder_kind == PickReminderKind.MATCHDAY_SUMMARY
+    finally:
+        db.close()
+
+
+def _prepare_match_result_notification(db):
+    profile = db.get(Profile, PROFILE_USER_ID)
+    match = db.get(Match, MATCH_ONE_ID)
+    assert profile is not None
+    assert match is not None
+    profile.pick_reminder_email_enabled = True
+    profile.match_result_notification_enabled = True
+    pick = UserPick(
+        profile_id=profile.id,
+        match_id=match.id,
+        selection=PickSelection.HOME,
+        predicted_home_score=2,
+        predicted_away_score=1,
+    )
+    db.add_all(
+        [
+            profile,
+            pick,
+            MatchResult(
+                match_id=match.id,
+                home_score=2,
+                away_score=1,
+                is_official=True,
+                last_synced_at=datetime.now(UTC),
+            ),
+        ]
+    )
+    db.flush()
+    db.add(
+        PickPoint(
+            pick_id=pick.id,
+            profile_id=profile.id,
+            match_id=match.id,
+            matchday_id=MATCHDAY_ID,
+            result_points=3,
+            exact_score_points=2,
+            total_points=5,
+        )
+    )
+    db.commit()
+
+
+def test_match_result_notification_is_audited_and_deduplicated(monkeypatch):
+    service = ReminderService()
+    db = SessionLocal()
+    try:
+        _prepare_match_result_notification(db)
+        monkeypatch.setattr(service.push_service, "is_configured", lambda: True)
+        sent_calls = []
+
+        def fake_send(**kwargs):
+            sent_calls.append(kwargs)
+            return "result_msg_123"
+
+        monkeypatch.setattr(service.push_service, "send_to_external_id", fake_send)
+        first_results = service.send_match_scoring_notifications(db, matchday_id=MATCHDAY_ID, match_id=MATCH_ONE_ID)
+        second_results = service.send_match_scoring_notifications(db, matchday_id=MATCHDAY_ID, match_id=MATCH_ONE_ID)
+
+        assert len(first_results) == 1
+        assert first_results[0].status == "sent"
+        assert second_results == []
+        assert len(sent_calls) == 1
+        event = db.scalar(select(PushNotificationEvent))
+        assert event is not None
+        assert event.delivery_status == "sent"
+        assert event.attempt_count == 1
+        assert event.provider_message_id == "result_msg_123"
+        assert event.match_id == MATCH_ONE_ID
+    finally:
+        db.close()
+
+
+def test_failed_match_result_notification_can_retry(monkeypatch):
+    service = ReminderService()
+    db = SessionLocal()
+    try:
+        _prepare_match_result_notification(db)
+        monkeypatch.setattr(service.push_service, "is_configured", lambda: True)
+
+        def fail_send(**_kwargs):
+            raise RuntimeError("OneSignal temporal")
+
+        monkeypatch.setattr(service.push_service, "send_to_external_id", fail_send)
+        failed_results = service.send_match_scoring_notifications(db, matchday_id=MATCHDAY_ID, match_id=MATCH_ONE_ID)
+        assert failed_results[0].status == "failed"
+        db.expire_all()
+        failed_event = db.scalar(select(PushNotificationEvent))
+        assert failed_event is not None
+        assert failed_event.delivery_status == "failed"
+        assert failed_event.attempt_count == 1
+        assert failed_event.last_error == "OneSignal temporal"
+
+        monkeypatch.setattr(service.push_service, "send_to_external_id", lambda **_: "retry_msg_456")
+        retry_results = service.send_match_scoring_notifications(
+            db,
+            lookback_minutes=24 * 60,
+            max_attempts=3,
+            failed_only=True,
+        )
+        assert retry_results[0].status == "sent"
+        db.expire_all()
+        retried_event = db.scalar(select(PushNotificationEvent))
+        assert retried_event is not None
+        assert retried_event.delivery_status == "sent"
+        assert retried_event.attempt_count == 2
+        assert retried_event.last_error is None
+        assert retried_event.provider_message_id == "retry_msg_456"
     finally:
         db.close()

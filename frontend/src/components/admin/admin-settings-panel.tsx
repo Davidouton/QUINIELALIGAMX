@@ -19,6 +19,7 @@ type PricingScopeType = Exclude<PaymentScopeType, "quiniela_plus">;
 type SettingsFormState = {
   active_season_id: string;
   app_icon_url: string;
+  show_live_tab: boolean;
   start_matchday_id: string;
   end_matchday_id: string;
   result_correct_points: string;
@@ -43,6 +44,7 @@ type PricingFormState = {
 const initialForm: SettingsFormState = {
   active_season_id: "",
   app_icon_url: "",
+  show_live_tab: true,
   start_matchday_id: "",
   end_matchday_id: "",
   result_correct_points: "3",
@@ -116,6 +118,7 @@ export function AdminSettingsPanel() {
     setForm({
       active_season_id: fallbackSeasonId,
       app_icon_url: settingsResponse.app_icon_url ?? "",
+      show_live_tab: settingsResponse.show_live_tab ?? true,
       start_matchday_id: settingsResponse.start_matchday_id ?? "",
       end_matchday_id: settingsResponse.end_matchday_id ?? "",
       result_correct_points: String(settingsResponse.result_correct_points),
@@ -151,6 +154,7 @@ export function AdminSettingsPanel() {
         body: JSON.stringify({
           active_season_id: form.active_season_id,
           app_icon_url: form.app_icon_url.trim() || null,
+          show_live_tab: form.show_live_tab,
           start_matchday_id: form.start_matchday_id || null,
           end_matchday_id: form.end_matchday_id || null,
           entry_fee_amount: settings?.entry_fee_amount ?? 0,
@@ -317,6 +321,19 @@ export function AdminSettingsPanel() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="flex items-center justify-between gap-6 border-y border-white/[0.08] py-5 md:col-span-2">
+            <span>
+              <span className="block text-sm font-semibold text-ink">Mostrar Live</span>
+              <span className="mt-1 block text-xs text-steel">Publica u oculta el tab Live para todos los usuarios.</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={form.show_live_tab}
+              onChange={(event) => setForm((current) => ({ ...current, show_live_tab: event.target.checked }))}
+              className="h-5 w-5 accent-[#4f7df3]"
+            />
           </label>
 
           <div className="space-y-4 border-y border-white/[0.08] py-5 md:col-span-2">

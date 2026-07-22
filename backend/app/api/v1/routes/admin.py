@@ -134,6 +134,7 @@ from app.services.scoring_service import ScoringService
 from app.services.season_eligibility_service import SeasonEligibilityService
 from app.services.supabase_admin_service import SupabaseAdminError, SupabaseAdminService
 from app.services.survivor_service import SurvivorService
+from app.services.username_service import assign_profile_username
 from app.services.sync_matches import sync_matches
 from app.services.sync_odds import sync_odds
 from app.services.sync_results import sync_results
@@ -1204,6 +1205,7 @@ def get_admin_settings_payload(
         selected_season_name=target_season.name if target_season is not None else None,
         selected_tournament_format=target_season.tournament_format if target_season is not None else None,
         app_icon_url=commerce_settings.app_icon_url,
+        show_live_tab=commerce_settings.show_live_tab,
         start_matchday_id=target_season.start_matchday_id if target_season is not None else None,
         end_matchday_id=target_season.end_matchday_id if target_season is not None else None,
         participants_lock_at=participants_lock_at,
@@ -1351,6 +1353,7 @@ def build_admin_user_out_from_maps(
         auth_user_id=profile.auth_user_id,
         email=profile.email,
         display_name=profile.display_name,
+        username=profile.username,
         favorite_team_name=favorite_team.name if favorite_team is not None else None,
         contact_phone=profile.contact_phone,
         bank_name=profile.bank_name,
@@ -1491,7 +1494,8 @@ def export_users(
         [
             "temporada",
             "usuario_id",
-            "usuario",
+            "nombre",
+            "username",
             "correo",
             "rol",
             "app",
@@ -1516,6 +1520,7 @@ def export_users(
                 season.name,
                 user.id,
                 user.display_name,
+                user.username or "",
                 user.email or "",
                 user.role_code,
                 _format_csv_bool(user.is_active, "Activa", "Bloqueada"),
@@ -1573,6 +1578,7 @@ def _bulk_payload_from_row(
 ) -> AdminUserCreateRequest:
     email = _get_csv_value(row, "email", "correo", "mail")
     display_name = _get_csv_value(row, "display_name", "nombre", "name", "usuario")
+    username = _get_csv_value(row, "username", "nickname", "nick")
     password = _get_csv_value(row, "password", "clave", "contrasena", "contraseña")
     if not email:
         raise ValueError("Falta email")
@@ -1584,6 +1590,7 @@ def _bulk_payload_from_row(
     return AdminUserCreateRequest(
         email=email or "",
         display_name=display_name or "",
+        username=username,
         password=password,
         season_id=season_id,
         is_active=True,
@@ -1660,6 +1667,10 @@ def create_or_update_admin_user(
 
     profile.email = email
     profile.display_name = display_name
+    try:
+        assign_profile_username(db, profile, payload.username)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     profile.modality = modality
     profile.aval_profile_id = aval_profile_id if modality == "aval" else None
     profile.is_active = payload.is_active
@@ -2048,6 +2059,7 @@ def update_admin_settings(
     season.second_place_pct = Decimal(str(payload.second_place_pct))
     season.third_place_pct = Decimal(str(payload.third_place_pct))
     commerce_settings.app_icon_url = payload.app_icon_url
+    commerce_settings.show_live_tab = payload.show_live_tab
 
     stored_rule_values = {
         rule.rule_key: rule.points

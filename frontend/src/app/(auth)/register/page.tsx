@@ -11,6 +11,7 @@ import { getBrowserSession } from "@/lib/supabase/session";
 export default function RegisterPage() {
   const router = useRouter();
   const [displayName, setDisplayName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export default function RegisterPage() {
         emailRedirectTo: `${env.siteUrl}/auth/confirm`,
         data: {
           display_name: displayName,
+          username,
         },
       },
     });
@@ -83,6 +85,17 @@ export default function RegisterPage() {
             onChange={(event) => setDisplayName(event.target.value)}
             type="text"
             placeholder="Nombre visible"
+            className="field-control"
+            required
+          />
+          <input
+            value={username}
+            onChange={(event) => setUsername(event.target.value.toLowerCase())}
+            type="text"
+            placeholder="Usuario unico (ej. david.outon)"
+            pattern="[a-z0-9._]{3,24}"
+            minLength={3}
+            maxLength={24}
             className="field-control"
             required
           />

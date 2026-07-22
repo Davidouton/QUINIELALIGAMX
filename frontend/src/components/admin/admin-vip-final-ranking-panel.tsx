@@ -99,7 +99,7 @@ export function AdminVipFinalRankingPanel() {
   function downloadRanking() {
     if (!selectedVip) return;
     const headers = [
-      "posicion", "jugador", "puntos", "resultados_correctos", "marcadores_exactos", "tipo_membresia",
+      "posicion", "jugador", "username", "profile_id", "puntos", "resultados_correctos", "marcadores_exactos", "tipo_membresia",
       "aval", "costo_entrada", "estado_pago", "saldo_por_pagar", "premio_final", "pago_neto", "telefono",
       "banco", "numero_cuenta",
     ];
@@ -107,7 +107,8 @@ export function AdminVipFinalRankingPanel() {
       const pendingBalance = getPendingBalance(row);
       const prize = getPrize(row.rank_position);
       return [
-        row.rank_position, row.display_name, row.total_points, row.correct_results, row.exact_scores,
+        row.rank_position, row.display_name, row.username ?? row.user?.username ?? "", row.profile_id,
+        row.total_points, row.correct_results, row.exact_scores,
         getModalityLabel(row.user?.modality), row.user?.aval_display_name ?? "", selectedVip.entry_fee_amount,
         row.membership?.is_paid ? "Pagado" : "Pendiente", pendingBalance, prize, prize - pendingBalance,
         row.user?.contact_phone ?? "", row.user?.bank_name ?? "", row.user?.deposit_account ?? "",
@@ -165,7 +166,10 @@ export function AdminVipFinalRankingPanel() {
                 return (
                   <tr key={row.profile_id} className="app-table-row border-b last:border-b-0">
                     <td className="px-3 py-3 font-semibold">#{row.rank_position}</td>
-                    <td className="px-3 py-3 font-medium">{row.display_name}</td>
+                    <td className="px-3 py-3 font-medium">
+                      <span className="block">{row.display_name}</span>
+                      {(row.username ?? row.user?.username) ? <span className="text-xs font-normal text-steel">@{row.username ?? row.user?.username}</span> : null}
+                    </td>
                     <td className="px-3 py-3 font-semibold">{row.total_points}</td>
                     <td className="px-3 py-3 text-steel">{getModalityLabel(row.user?.modality)}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.aval_display_name ?? "-"}</td>

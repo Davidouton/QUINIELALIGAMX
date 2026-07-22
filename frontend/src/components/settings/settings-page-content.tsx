@@ -24,6 +24,7 @@ import type {
 
 type SettingsFormState = {
   display_name: string;
+  username: string;
   email: string;
   favorite_team_id: string;
   contact_phone: string;
@@ -41,6 +42,7 @@ type SettingsFormState = {
 
 const initialForm: SettingsFormState = {
   display_name: "",
+  username: "",
   email: "",
   favorite_team_id: "",
   contact_phone: "",
@@ -59,6 +61,7 @@ const initialForm: SettingsFormState = {
 function buildFormFromMe(me: Me): SettingsFormState {
   return {
     display_name: me.display_name ?? "",
+    username: me.username ?? "",
     email: me.email ?? "",
     favorite_team_id: me.favorite_team_id ?? "",
     contact_phone: me.contact_phone ?? "",
@@ -204,6 +207,7 @@ export function SettingsPageContent() {
         method: "PUT",
         body: JSON.stringify({
           display_name: form.display_name.trim(),
+          username: form.username.trim(),
           email: normalizeOptionalValue(form.email),
           favorite_team_id: normalizeOptionalValue(form.favorite_team_id),
           contact_phone: normalizeOptionalValue(form.contact_phone),
@@ -291,6 +295,19 @@ export function SettingsPageContent() {
                   }
                   className="h-14 w-full border-0 border-b border-white/15 bg-transparent px-0 text-ink outline-none transition focus:border-[#4f7df3]"
                   placeholder="Tu nickname"
+                />
+              </label>
+              <label className="space-y-2 text-sm">
+                <span className="text-steel">Usuario unico</span>
+                <input
+                  value={form.username}
+                  onChange={(event) => setForm((current) => ({ ...current, username: event.target.value.toLowerCase() }))}
+                  className="h-14 w-full border-0 border-b border-white/15 bg-transparent px-0 text-ink outline-none transition focus:border-[#4f7df3]"
+                  placeholder="usuario"
+                  pattern="[a-z0-9._]{3,24}"
+                  minLength={3}
+                  maxLength={24}
+                  required
                 />
               </label>
               <label className="space-y-2 text-sm">

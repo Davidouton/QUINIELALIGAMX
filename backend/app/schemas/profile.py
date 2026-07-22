@@ -30,6 +30,7 @@ class ProfileOut(BaseModel):
     auth_user_id: str
     email: str | None
     display_name: str
+    username: str | None = None
     role_code: RoleCode
     is_active: bool
     created_at: datetime
@@ -80,6 +81,7 @@ class MeResponse(ProfileOut):
 class RegisteredUserOption(BaseModel):
     id: str
     display_name: str
+    username: str | None = None
 
 
 class PrizeSummaryResponse(BaseModel):
@@ -157,6 +159,7 @@ class PersonalTrophyOut(BaseModel):
 
 class MeUpdateRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
+    username: str | None = Field(default=None, min_length=3, max_length=24)
     email: str | None = Field(default=None, max_length=255)
     favorite_team_id: str | None = None
     contact_phone: str | None = Field(default=None, max_length=32)

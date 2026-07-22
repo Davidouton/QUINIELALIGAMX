@@ -16,6 +16,7 @@ class VipMatchdayOut(BaseModel):
 class VipLeaderboardEntryOut(BaseModel):
     profile_id: str
     display_name: str
+    username: str | None = None
     total_points: int
     correct_results: int
     exact_scores: int
@@ -108,6 +109,7 @@ class VipMembershipOut(BaseModel):
     id: str
     profile_id: str
     display_name: str
+    username: str | None = None
     status: VipMembershipStatus
     is_paid: bool = False
     requested_at: datetime

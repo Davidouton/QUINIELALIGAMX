@@ -12,22 +12,22 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { cn } from "@/lib/utils";
-import type { Season } from "@/types/api";
+import type { AppBranding, Season } from "@/types/api";
 
 const primaryLinks = [
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
-  { href: "/dashboard/live", label: "Live", shortLabel: "Live" },
-  { href: "/dashboard/survivor", label: "Survivor", shortLabel: "Sur" },
-  { href: "/dashboard/world-cup", label: "Tournament Stats", shortLabel: "Stats" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/dashboard/payments", label: "Pagos" },
-  { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/picks", label: "Picks Center" },
+  { href: "/dashboard/survivor", label: "Survivor", shortLabel: "Sur" },
   { href: "/dashboard/leaderboard", label: "Ranking" },
+  { href: "/dashboard/world-cup", label: "Tournament Stats", shortLabel: "Stats" },
+  { href: "/dashboard/live", label: "Live", shortLabel: "Live" },
   { href: "/dashboard/settings", label: "Settings" },
 ];
 
 const competitionHubLinks = [
+  { href: "/dashboard/payments", label: "Pagos" },
+  { href: "/dashboard/vip", label: "VIP" },
   { href: "/dashboard/enrollments", label: "Inscripciones", shortLabel: "Alta" },
   { href: "/dashboard/past-seasons", label: "Histórico", shortLabel: "Hist." },
   { href: "/dashboard/prizes", label: "Premios", shortLabel: "Pre" },
@@ -48,7 +48,7 @@ const primaryMobileLinks = [
   { href: "/dashboard/picks", label: "Picks" },
 ];
 
-const appVersionLabel = "v 2.0 local";
+const appVersionLabel = "v 2.0";
 
 function renderLinkLabel(label: string) {
   if (label !== "Quiniela +") {
@@ -70,17 +70,23 @@ export function DashboardSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCompetitionHubOpen, setIsCompetitionHubOpen] = useState(() => isCompetitionHubRoute(pathname));
   const { buildHrefWithSeason, competitionId, seasonId } = useDashboardSeasonParam();
   const canViewAdmin = useAdminVisibility();
   const { enabled: devModeEnabled, toggle: toggleDevMode } = useDevMode();
   const [seasons, setSeasons] = useState<Season[]>([]);
+  const [showLiveTab, setShowLiveTab] = useState(true);
 
   useEffect(() => {
     async function loadSeasons() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const rows = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        const [rows, branding] = await Promise.all([
+          backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
+          backendFetch<AppBranding>("/branding"),
+        ]);
         setSeasons(Array.isArray(rows) ? rows : []);
+        setShowLiveTab(branding.show_live_tab ?? true);
       } catch {
         setSeasons([]);
       }
@@ -93,7 +99,7 @@ export function DashboardSidebar() {
     () => resolveSeasonForContext(seasons, seasonId, competitionId),
     [competitionId, seasonId, seasons],
   );
-  const visiblePrimaryLinks = primaryLinks;
+  const visiblePrimaryLinks = primaryLinks.filter((link) => showLiveTab || link.href !== "/dashboard/live");
   const visibleCompetitionHubLinks = competitionHubLinks;
   const visibleMobilePrimaryLinks = primaryMobileLinks;
   const links = canViewAdmin
@@ -180,8 +186,15 @@ export function DashboardSidebar() {
                 ))}
               </div>
               <div className="pt-2">
-                <p className="mb-2 px-1 text-[11px] uppercase tracking-[0.28em] text-steel">Hub de Competencia</p>
-                <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCompetitionHubOpen((current) => !current)}
+                  className="mb-2 flex w-full items-center justify-between px-1 py-2 text-left text-[11px] uppercase tracking-[0.28em] text-steel"
+                >
+                  <span>Hub de Competencia</span>
+                  <span aria-hidden="true">{isCompetitionHubOpen ? "−" : "+"}</span>
+                </button>
+                {isCompetitionHubOpen ? <div className="grid grid-cols-2 gap-2">
                   {visibleCompetitionHubLinks.map((link) => (
                     <Link
                       key={link.href}
@@ -196,7 +209,7 @@ export function DashboardSidebar() {
                       {renderLinkLabel(link.label)}
                     </Link>
                   ))}
-                </div>
+                </div> : null}
               </div>
             </div>
           ) : null}
@@ -273,9 +286,16 @@ export function DashboardSidebar() {
             ))}
           </div>
 
-          <div className="mt-6">
-            <p className="mb-3 px-1 text-[11px] uppercase tracking-[0.32em] text-steel">Hub de Competencia</p>
-            <div className="space-y-3">
+          <div className="mt-5 border-t border-white/[0.06] pt-3">
+            <button
+              type="button"
+              onClick={() => setIsCompetitionHubOpen((current) => !current)}
+              className="flex w-full items-center justify-between px-1 py-2 text-left text-[11px] uppercase tracking-[0.24em] text-steel transition hover:text-ink"
+            >
+              <span>Hub de Competencia</span>
+              <span className="text-base leading-none" aria-hidden="true">{isCompetitionHubOpen ? "−" : "+"}</span>
+            </button>
+            {isCompetitionHubOpen ? <div className="mt-2 space-y-1">
               {visibleCompetitionHubLinks.map((link) => (
                 <Link
                   key={link.href}
@@ -284,15 +304,15 @@ export function DashboardSidebar() {
                   aria-label={link.label}
                   title={link.label}
                   className={cn(
-                    "block rounded-[12px] border border-white/[0.04] bg-transparent py-3 text-sm transition hover:border-white/[0.08] hover:bg-white/[0.04]",
-                    "px-4 text-left",
+                    "block border-0 bg-transparent py-2 text-sm text-steel transition hover:text-ink",
+                    "px-2 text-left",
                     pathname === link.href && "border-white/[0.06] bg-white/[0.05]",
                   )}
                 >
                   {renderLinkLabel(link.label)}
                 </Link>
               ))}
-            </div>
+            </div> : null}
           </div>
 
           <div className="mt-6 pt-2">

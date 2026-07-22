@@ -133,6 +133,8 @@ export function AdminFinalRankingPanel() {
     const headers = [
       "posicion",
       "jugador",
+      "username",
+      "profile_id",
       "puntos",
       "resultados_correctos",
       "marcadores_exactos",
@@ -150,6 +152,8 @@ export function AdminFinalRankingPanel() {
     const csvRows = rows.map((row) => [
       row.rank_position,
       row.display_name,
+      row.username ?? row.user?.username ?? "",
+      row.profile_id,
       row.total_points,
       row.correct_results,
       row.exact_scores,
@@ -256,7 +260,10 @@ export function AdminFinalRankingPanel() {
                 {rows.map((row) => (
                   <tr key={row.profile_id} className="app-table-row border-b last:border-b-0">
                     <td className="px-3 py-3 font-semibold text-ink">#{row.rank_position}</td>
-                    <td className="px-3 py-3 font-medium text-ink">{row.display_name}</td>
+                    <td className="px-3 py-3 font-medium text-ink">
+                      <span className="block">{row.display_name}</span>
+                      {(row.username ?? row.user?.username) ? <span className="text-xs font-normal text-steel">@{row.username ?? row.user?.username}</span> : null}
+                    </td>
                     <td className="px-3 py-3 font-semibold text-ink">{row.total_points}</td>
                     <td className="px-3 py-3 text-steel">{getModalityLabel(row.user?.modality)}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.aval_display_name ?? "-"}</td>

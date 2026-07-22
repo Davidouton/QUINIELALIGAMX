@@ -112,6 +112,7 @@ class SurvivorMembershipOut(BaseModel):
 class SurvivorLeaderboardEntryOut(BaseModel):
     profile_id: str
     display_name: str
+    username: str | None = None
     remaining_lives: int = 0
     lives_spent: int = 0
     total_picks: int = 0

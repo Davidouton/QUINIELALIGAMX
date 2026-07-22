@@ -384,6 +384,7 @@ class SurvivorService:
                 display_name=profiles_by_id.get(membership.profile_id).display_name
                 if profiles_by_id.get(membership.profile_id) is not None
                 else "Participante",
+                username=(profiles_by_id.get(membership.profile_id).username if profiles_by_id.get(membership.profile_id) else None),
                 remaining_lives=membership_out.remaining_lives,
                 lives_spent=membership_out.lives_spent,
                 total_picks=len(pick_views_by_profile.get(membership.profile_id, [])),

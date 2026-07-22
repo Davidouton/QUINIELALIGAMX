@@ -30,6 +30,7 @@ class AdminUserBillingUpdateRequest(BaseModel):
 class AdminUserCreateRequest(BaseModel):
     email: EmailStr
     display_name: str
+    username: str | None = Field(default=None, min_length=3, max_length=24)
     password: str | None = Field(default=None, min_length=6, max_length=72)
     season_id: str
     is_active: bool = True
@@ -196,6 +197,7 @@ class AdminSettingsOut(BaseModel):
     selected_season_name: str | None = None
     selected_tournament_format: TournamentFormat | None = None
     app_icon_url: str | None = None
+    show_live_tab: bool = True
     start_matchday_id: str | None = None
     end_matchday_id: str | None = None
     participants_lock_at: datetime | None = None
@@ -232,6 +234,7 @@ class AdminSettingsOut(BaseModel):
 class AdminSettingsUpdateRequest(BaseModel):
     active_season_id: str
     app_icon_url: str | None = Field(default=None, max_length=2000)
+    show_live_tab: bool = True
     start_matchday_id: str | None = None
     end_matchday_id: str | None = None
     entry_fee_amount: float = Field(default=0, ge=0, le=1000000)
@@ -281,6 +284,7 @@ class AdminUserOut(BaseModel):
     auth_user_id: str
     email: str | None
     display_name: str
+    username: str | None = None
     favorite_team_name: str | None = None
     contact_phone: str | None = None
     bank_name: str | None = None

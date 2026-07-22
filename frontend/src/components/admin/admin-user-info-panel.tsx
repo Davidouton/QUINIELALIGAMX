@@ -113,7 +113,10 @@ export function AdminUserInfoPanel() {
               <tbody>
                 {filteredUsers.map((user) => (
                   <tr key={user.id} className="app-table-row border-b last:border-b-0">
-                    <td className="px-3 py-3 font-medium text-ink">{user.display_name}</td>
+                    <td className="px-3 py-3 font-medium text-ink">
+                      <span className="block">{user.display_name}</span>
+                      {user.username ? <span className="text-xs font-normal text-steel">@{user.username}</span> : null}
+                    </td>
                     <td className="px-3 py-3 text-steel">{user.email ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{user.contact_phone ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{getModalityLabel(user.modality)}</td>

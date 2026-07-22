@@ -11,7 +11,7 @@ import type { AppBootstrap, LeaderboardEntry, Matchday, Me, PrizeSummary, Season
 
 type RankingEntry = Pick<
   LeaderboardEntry,
-  "profile_id" | "display_name" | "total_points" | "correct_results" | "exact_scores" | "rank_position"
+  "profile_id" | "display_name" | "username" | "total_points" | "correct_results" | "exact_scores" | "rank_position"
 >;
 
 type RankingBoardOption = {

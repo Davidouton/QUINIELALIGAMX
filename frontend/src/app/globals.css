@@ -227,6 +227,16 @@ body::after {
     border-color: var(--app-border-soft);
   }
 
+  .app-table-sticky-cell {
+    background-color: rgba(12, 24, 42, 0.96);
+  }
+
+  .official-result-badge {
+    border-color: rgba(52, 211, 153, 0.3);
+    background-color: rgba(52, 211, 153, 0.1);
+    color: rgb(187, 247, 208);
+  }
+
   .compact-datetime-control {
     text-align: center;
     font-variant-numeric: tabular-nums;
@@ -343,5 +353,34 @@ html[data-app-surface="light"] [class*="border-white/["] {
 }
 
 html[data-app-surface="light"] [class*="bg-white/["] {
-  background-color: rgba(255, 255, 255, 0.78) !important;
+  background-color: rgba(238, 242, 247, 0.9) !important;
+}
+
+html[data-app-surface="light"] .surface-card,
+html[data-app-surface="light"] .surface-card-strong,
+html[data-app-surface="light"] .primary-button,
+html[data-app-surface="light"] .secondary-button,
+html[data-app-surface="light"] .field-control {
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-app-surface="light"] .app-table-sticky-cell {
+  background-color: #f7f9fc;
+  backdrop-filter: none;
+}
+
+html[data-app-surface="light"] .app-table-head {
+  color: rgba(49, 69, 97, 0.86);
+}
+
+html[data-app-surface="light"] .official-result-badge {
+  border-color: rgba(5, 120, 87, 0.28);
+  background-color: rgba(5, 150, 105, 0.1);
+  color: #065f46;
+}
+
+html[data-app-surface="light"] [class*="text-emerald-100"],
+html[data-app-surface="light"] [class*="text-mint"] {
+  color: #067647 !important;
 }

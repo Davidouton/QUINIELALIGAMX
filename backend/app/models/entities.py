@@ -136,6 +136,9 @@ class Profile(Base):
     auth_user_id: Mapped[str] = mapped_column(UUID_SQL, unique=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), index=True)
     display_name: Mapped[str] = mapped_column(String(120))
+    username: Mapped[str | None] = mapped_column(String(24), unique=True, index=True)
+    username_normalized: Mapped[str | None] = mapped_column(String(24), unique=True, index=True)
+    username_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     favorite_team_id: Mapped[str | None] = mapped_column(
         UUID_SQL,
         ForeignKey("teams.id", ondelete="SET NULL"),
@@ -660,6 +663,32 @@ class PickReminderEmailEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class PushNotificationEvent(Base):
+    __tablename__ = "push_notification_events"
+    __table_args__ = (
+        UniqueConstraint("dedupe_key", name="uq_push_notification_events_dedupe"),
+        Index("idx_push_notification_events_status_attempt", "delivery_status", "last_attempt_at"),
+        Index("idx_push_notification_events_profile_created", "profile_id", "created_at"),
+        Index("idx_push_notification_events_match", "match_id"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    dedupe_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    notification_kind: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    profile_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    matchday_id: Mapped[str | None] = mapped_column(UUID_SQL, ForeignKey("matchdays.id", ondelete="CASCADE"), nullable=True)
+    match_id: Mapped[str | None] = mapped_column(UUID_SQL, ForeignKey("matches.id", ondelete="CASCADE"), nullable=True)
+    provider_name: Mapped[str] = mapped_column(String(80), default="onesignal", nullable=False)
+    provider_message_id: Mapped[str | None] = mapped_column(String(160), index=True)
+    delivery_status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False, index=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class VipCompetition(Base):
     __tablename__ = "vip_competitions"
 
@@ -1000,6 +1029,7 @@ class CommerceSettings(Base):
     quiniela_plus_checkout_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     quiniela_plus_checkout_message: Mapped[str | None] = mapped_column(Text)
     app_icon_url: Mapped[str | None] = mapped_column(Text)
+    show_live_tab: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

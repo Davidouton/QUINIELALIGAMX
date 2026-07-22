@@ -9,6 +9,7 @@ from sqlalchemy import inspect, text
 from app.core.database import engine
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.username import unique_username
 from app.models import Base
 
 settings = get_settings()
@@ -22,6 +23,9 @@ def run_startup_migrations() -> None:
         if "profiles" in table_names:
             profile_column_names = {column["name"] for column in inspector.get_columns("profiles")}
             missing_profile_columns = {
+                "username": "ALTER TABLE profiles ADD COLUMN username VARCHAR(24)",
+                "username_normalized": "ALTER TABLE profiles ADD COLUMN username_normalized VARCHAR(24)",
+                "username_changed_at": "ALTER TABLE profiles ADD COLUMN username_changed_at TIMESTAMP WITH TIME ZONE",
                 "favorite_team_id": (
                     "ALTER TABLE profiles "
                     "ADD COLUMN favorite_team_id UUID REFERENCES teams(id) ON DELETE SET NULL"
@@ -70,6 +74,15 @@ def run_startup_migrations() -> None:
             for column_name, statement in missing_profile_columns.items():
                 if column_name not in profile_column_names:
                     connection.execute(text(statement))
+            profile_rows = connection.execute(text("SELECT id, display_name, username, username_normalized FROM profiles ORDER BY created_at, id")).mappings().all()
+            used_usernames: set[str] = set()
+            for profile_row in profile_rows:
+                candidate = unique_username(profile_row["username"] or profile_row["display_name"], used_usernames)
+                connection.execute(
+                    text("UPDATE profiles SET username = :username, username_normalized = :username WHERE id = :profile_id"),
+                    {"username": candidate, "profile_id": profile_row["id"]},
+                )
+            connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_profiles_username_normalized ON profiles(username_normalized)"))
             if (
                 "matchday_start_notification_enabled" not in profile_column_names
                 and "pick_reminder_opening_enabled" in profile_column_names
@@ -779,6 +792,35 @@ def run_startup_migrations() -> None:
                 )
             )
 
+        if "push_notification_events" not in table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS push_notification_events (
+                      id UUID PRIMARY KEY,
+                      dedupe_key VARCHAR(255) NOT NULL,
+                      notification_kind VARCHAR(40) NOT NULL,
+                      profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                      matchday_id UUID REFERENCES matchdays(id) ON DELETE CASCADE,
+                      match_id UUID REFERENCES matches(id) ON DELETE CASCADE,
+                      provider_name VARCHAR(80) NOT NULL DEFAULT 'onesignal',
+                      provider_message_id VARCHAR(160),
+                      delivery_status VARCHAR(24) NOT NULL DEFAULT 'pending',
+                      attempt_count INTEGER NOT NULL DEFAULT 0,
+                      last_error TEXT,
+                      last_attempt_at TIMESTAMP WITH TIME ZONE,
+                      sent_at TIMESTAMP WITH TIME ZONE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_push_notification_events_dedupe UNIQUE (dedupe_key)
+                    )
+                    """
+                )
+            )
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_push_notification_events_status_attempt ON push_notification_events(delivery_status, last_attempt_at)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_push_notification_events_profile_created ON push_notification_events(profile_id, created_at DESC)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_push_notification_events_match ON push_notification_events(match_id)"))
+
         if "vip_competitions" not in table_names:
             connection.execute(
                 text(
@@ -1145,6 +1187,10 @@ def run_startup_migrations() -> None:
             }
             if "app_icon_url" not in commerce_settings_column_names:
                 connection.execute(text("ALTER TABLE commerce_settings ADD COLUMN app_icon_url TEXT"))
+            if "show_live_tab" not in commerce_settings_column_names:
+                connection.execute(
+                    text("ALTER TABLE commerce_settings ADD COLUMN show_live_tab BOOLEAN NOT NULL DEFAULT TRUE")
+                )
 
         if "quiniela_plus_leagues" not in table_names:
             connection.execute(

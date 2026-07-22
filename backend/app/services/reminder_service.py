@@ -19,6 +19,7 @@ from app.models.entities import (
     PickReminderEmailEvent,
     PickReminderKind,
     Profile,
+    PushNotificationEvent,
     Season,
     SeasonMembership,
     StandingsMatchday,
@@ -169,8 +170,11 @@ class ReminderService:
         self,
         db: Session,
         *,
-        matchday_id: str,
+        matchday_id: str | None = None,
         match_id: str | None = None,
+        lookback_minutes: int = 10,
+        max_attempts: int = 3,
+        failed_only: bool = False,
     ) -> list[ReminderDispatchResult]:
         if not self.push_service.is_configured():
             return []
@@ -178,8 +182,9 @@ class ReminderService:
         dashboard_url = f"{settings.frontend_site_url.rstrip('/')}/dashboard/leaderboard"
         home_team_alias = aliased(Team)
         away_team_alias = aliased(Team)
-        recent_result_cutoff = datetime.now(UTC) - timedelta(minutes=10)
-        recent_match_cutoff = datetime.now(UTC) - timedelta(hours=12)
+        now = datetime.now(UTC)
+        recent_result_cutoff = now - timedelta(minutes=max(lookback_minutes, 1))
+        recent_match_cutoff = now - timedelta(hours=max(12, (lookback_minutes // 60) + 12))
         match_query = (
             select(Match, MatchResult, Matchday, home_team_alias, away_team_alias)
             .join(MatchResult, MatchResult.match_id == Match.id)
@@ -187,12 +192,13 @@ class ReminderService:
             .join(home_team_alias, home_team_alias.id == Match.home_team_id)
             .join(away_team_alias, away_team_alias.id == Match.away_team_id)
             .where(
-                Match.matchday_id == matchday_id,
                 MatchResult.is_official.is_(True),
                 MatchResult.last_synced_at >= recent_result_cutoff,
                 Match.kickoff_at >= recent_match_cutoff,
             )
         )
+        if matchday_id is not None:
+            match_query = match_query.where(Match.matchday_id == matchday_id)
         if match_id is not None:
             match_query = match_query.where(Match.id == match_id)
 
@@ -223,6 +229,31 @@ class ReminderService:
                 message = f"Sumaste {point.total_points} pts. Llevas {total_points} pts{rank_label} en el ranking."
                 dedupe_key = f"score:{match.id}:{match_result.home_score}:{match_result.away_score}:{profile.id}"
 
+                event = db.scalar(
+                    select(PushNotificationEvent).where(PushNotificationEvent.dedupe_key == dedupe_key)
+                )
+                if event is not None and event.delivery_status == "sent":
+                    continue
+                if event is not None and event.attempt_count >= max(max_attempts, 1):
+                    continue
+                if event is None and failed_only:
+                    continue
+                if event is None:
+                    event = PushNotificationEvent(
+                        dedupe_key=dedupe_key,
+                        notification_kind="match_result",
+                        profile_id=profile.id,
+                        matchday_id=matchday.id,
+                        match_id=match.id,
+                        delivery_status="pending",
+                        attempt_count=0,
+                    )
+
+                event.attempt_count += 1
+                event.last_attempt_at = now
+                event.delivery_status = "pending"
+                event.last_error = None
+
                 try:
                     provider_message_id = self.push_service.send_to_external_id(
                         external_id=profile.auth_user_id,
@@ -231,7 +262,10 @@ class ReminderService:
                         url=dashboard_url,
                         dedupe_key=dedupe_key,
                     )
-                except Exception:
+                except Exception as error:
+                    event.delivery_status = "failed"
+                    event.last_error = str(error)[:1000]
+                    db.add(event)
                     results.append(
                         ReminderDispatchResult(
                             dedupe_key=dedupe_key,
@@ -243,6 +277,10 @@ class ReminderService:
                     )
                     continue
 
+                event.delivery_status = "sent"
+                event.provider_message_id = provider_message_id
+                event.sent_at = now
+                db.add(event)
                 results.append(
                     ReminderDispatchResult(
                         dedupe_key=dedupe_key,
@@ -254,6 +292,8 @@ class ReminderService:
                     )
                 )
 
+        if results:
+            db.commit()
         return results
 
     def collect_matchday_summary_reminders(

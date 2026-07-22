@@ -40,6 +40,7 @@ from app.schemas.profile import (
     RegisteredUserOption,
 )
 from app.services.season_eligibility_service import SeasonEligibilityService
+from app.services.username_service import assign_profile_username
 
 settings = get_settings()
 
@@ -96,6 +97,13 @@ class ProfileService:
                 auth_user,
                 role_code=RoleCode.MASTER_ADMIN if can_bootstrap_admin else RoleCode.USER,
             )
+            requested_username = (auth_user.raw_claims.get("user_metadata") or {}).get("username")
+            try:
+                assign_profile_username(db, profile, requested_username)
+            except ValueError:
+                # An account may have been confirmed after another person claimed
+                # the same username. Keep signup usable and allocate a safe suffix.
+                assign_profile_username(db, profile)
             db.commit()
             db.refresh(profile)
             return profile
@@ -116,6 +124,10 @@ class ProfileService:
         profile: Profile,
         payload: MeUpdateRequest,
     ) -> Profile:
+        try:
+            assign_profile_username(db, profile, payload.username)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
         updated = self.repo.update_settings(
             db,
             profile,
@@ -200,6 +212,7 @@ class ProfileService:
             auth_user_id=profile.auth_user_id,
             email=profile.email,
             display_name=profile.display_name,
+            username=profile.username,
             role_code=profile.role_code,
             is_active=profile.is_active,
             created_at=profile.created_at,
@@ -278,7 +291,7 @@ class ProfileService:
 
     def list_registered_user_options(self, db: Session, current_profile: Profile) -> list[RegisteredUserOption]:
         return [
-            RegisteredUserOption(id=profile.id, display_name=profile.display_name)
+            RegisteredUserOption(id=profile.id, display_name=profile.display_name, username=profile.username)
             for profile in self.repo.list_registered_options(db, exclude_profile_id=current_profile.id)
         ]
 

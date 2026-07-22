@@ -1523,7 +1523,7 @@ class VipService:
 
         cached_rows = self._cached_leaderboard(vip_id, approved_profile_ids, profile_name_map, db)
         if cached_rows is not None:
-            return cached_rows
+            return self._with_leaderboard_usernames(db, cached_rows)
 
         vip = db.get(VipCompetition, vip_id)
         if vip is None:
@@ -1535,7 +1535,16 @@ class VipService:
                 return []
             totals = self._calculate_leaderboard_totals(db, [matchday.id for matchday in matchdays], approved_profile_ids)
         ranked_rows = self._rank_leaderboard_totals(totals, profile_name_map)
-        return self._leaderboard_outs(ranked_rows, profile_name_map)
+        return self._with_leaderboard_usernames(db, self._leaderboard_outs(ranked_rows, profile_name_map))
+
+    def _with_leaderboard_usernames(
+        self, db: Session, rows: list[VipLeaderboardEntryOut]
+    ) -> list[VipLeaderboardEntryOut]:
+        usernames = {
+            profile.id: profile.username
+            for profile in db.scalars(select(Profile).where(Profile.id.in_([row.profile_id for row in rows]))).all()
+        } if rows else {}
+        return [row.model_copy(update={"username": usernames.get(row.profile_id)}) for row in rows]
 
     def _build_member_dashboard(
         self,

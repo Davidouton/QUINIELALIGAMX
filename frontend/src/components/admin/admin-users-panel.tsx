@@ -34,6 +34,7 @@ type BulkImportResponse = {
 type NewUserDraft = {
   email: string;
   display_name: string;
+  username: string;
   password: string;
   season_membership_active: boolean;
   is_paid: boolean;
@@ -45,6 +46,7 @@ type NewUserDraft = {
 const initialNewUserDraft: NewUserDraft = {
   email: "",
   display_name: "",
+  username: "",
   password: "",
   season_membership_active: false,
   is_paid: false,
@@ -399,8 +401,8 @@ export function AdminUsersPanel() {
       setError("Selecciona un torneo primero.");
       return;
     }
-    if (!newUserDraft.email.trim() || !newUserDraft.display_name.trim()) {
-      setError("Captura nombre y correo del usuario.");
+    if (!newUserDraft.email.trim() || !newUserDraft.display_name.trim() || !newUserDraft.username.trim()) {
+      setError("Captura nombre, usuario y correo.");
       return;
     }
     if (newUserDraft.modality === "aval" && !newUserDraft.aval_profile_id) {
@@ -418,6 +420,7 @@ export function AdminUsersPanel() {
         body: JSON.stringify({
           email: newUserDraft.email.trim(),
           display_name: newUserDraft.display_name.trim(),
+          username: newUserDraft.username.trim(),
           password: newUserDraft.password.trim() || null,
           season_id: selectedSeasonId,
           is_active: true,
@@ -798,13 +801,25 @@ export function AdminUsersPanel() {
       </div>
 
       <section className="space-y-4">
-        <div className="grid gap-3 px-2 py-3 lg:grid-cols-[1fr_1fr_180px_150px_170px_1fr_auto] lg:items-end">
+        <div className="grid gap-3 px-2 py-3 lg:grid-cols-[1fr_1fr_1fr_180px_150px_170px_1fr_auto] lg:items-end">
           <label className="space-y-2 text-left text-sm">
             <span className="text-steel">Nombre</span>
             <input
               value={newUserDraft.display_name}
               onChange={(event) => updateNewUserDraft({ display_name: event.target.value })}
               placeholder="Nombre visible"
+              className="field-control"
+            />
+          </label>
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Usuario unico</span>
+            <input
+              value={newUserDraft.username}
+              onChange={(event) => updateNewUserDraft({ username: event.target.value.toLowerCase() })}
+              placeholder="usuario"
+              pattern="[a-z0-9._]{3,24}"
+              minLength={3}
+              maxLength={24}
               className="field-control"
             />
           </label>
@@ -1062,6 +1077,7 @@ export function AdminUsersPanel() {
                     <tr key={user.id} className="border-t border-white/10">
                       <td className="sticky left-0 z-10 bg-[rgba(9,20,37,0.68)] px-2 py-2 text-left align-top backdrop-blur-[1px]">
                         <p className="truncate font-medium text-ink">{user.display_name}</p>
+                        {user.username ? <p className="truncate text-xs text-steel">@{user.username}</p> : null}
                         <p className="mt-1 truncate text-[10px] text-steel">{user.email ?? "Sin correo"}</p>
                       </td>
                       <td className="px-1 py-2 align-top">

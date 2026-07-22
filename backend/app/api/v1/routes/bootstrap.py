@@ -18,7 +18,10 @@ profile_service = ProfileService()
 @router.get("/branding", response_model=AppBrandingOut)
 def get_app_branding(db: Session = Depends(get_db)) -> AppBrandingOut:
     settings_row = db.scalar(select(CommerceSettings).order_by(CommerceSettings.created_at.asc()))
-    return AppBrandingOut(app_icon_url=settings_row.app_icon_url if settings_row is not None else None)
+    return AppBrandingOut(
+        app_icon_url=settings_row.app_icon_url if settings_row is not None else None,
+        show_live_tab=settings_row.show_live_tab if settings_row is not None else True,
+    )
 
 
 @router.get("/bootstrap", response_model=AppBootstrapOut)

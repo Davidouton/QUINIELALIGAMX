@@ -43,6 +43,12 @@ def main() -> int:
             window_minutes=args.window_minutes,
             dry_run=args.dry_run,
         )
+        result_retry_results = [] if args.dry_run else reminder_service.send_match_scoring_notifications(
+            db,
+            lookback_minutes=24 * 60,
+            max_attempts=3,
+            failed_only=True,
+        )
         settlement_results = [] if args.dry_run else settlement_service.send_due_payment_push_reminders(db, now_utc=now)
     finally:
         db.close()
@@ -70,6 +76,16 @@ def main() -> int:
                 "provider_message_id": row.provider_message_id,
             }
             for row in settlement_results
+        ],
+        "match_result_retries": [
+            {
+                "dedupe_key": row.dedupe_key,
+                "profile_id": row.profile_id,
+                "title": row.title,
+                "status": row.status,
+                "provider_message_id": row.provider_message_id,
+            }
+            for row in result_retry_results
         ],
     }
     print(json.dumps(summary, ensure_ascii=True, indent=2))

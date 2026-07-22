@@ -297,6 +297,7 @@ class LeaderboardService:
                 WeeklyPrizeWinner(
                     profile_id=profile.id,
                     display_name=profile.display_name,
+                    username=profile.username,
                     rank_position=standing.rank_position,
                     total_points=standing.total_points,
                     exact_scores=standing.exact_scores,
@@ -721,6 +722,7 @@ class LeaderboardService:
                 LiveLeaderboardEntry(
                     profile_id=profile_id,
                     display_name=profile.display_name,
+                    username=profile.username,
                     role_code=profile.role_code.value,
                     total_points=values["total_points"],
                     correct_results=values["correct_results"],
@@ -912,6 +914,7 @@ class LeaderboardService:
                 LiveLeaderboardEntry(
                     profile_id=profile_id,
                     display_name=profile.display_name,
+                    username=profile.username,
                     role_code=profile.role_code.value,
                     total_points=values["total_points"],
                     correct_results=values["correct_results"],
@@ -991,6 +994,7 @@ class LeaderboardService:
                 LeaderboardEntry(
                     profile_id=profile.id,
                     display_name=profile.display_name,
+                    username=profile.username,
                     role_code=profile.role_code.value,
                     total_points=standing.total_points,
                     correct_results=standing.correct_results,
@@ -1020,6 +1024,7 @@ class LeaderboardService:
                 LeaderboardEntry(
                     profile_id=profile.id,
                     display_name=profile.display_name,
+                    username=profile.username,
                     role_code=profile.role_code.value,
                     total_points=standing.total_points,
                     correct_results=standing.correct_results,

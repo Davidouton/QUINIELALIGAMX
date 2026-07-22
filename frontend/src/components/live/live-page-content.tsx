@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { DashboardLivePanel } from "@/components/dashboard/dashboard-live-panel";
 import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { getLiveSeasons, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Season, VipCompetition } from "@/types/api";
+import type { AppBranding, Season, VipCompetition } from "@/types/api";
 
 function sortSeasons(seasons: Season[]) {
   return seasons.slice().sort((left, right) => {
@@ -19,6 +20,7 @@ function sortSeasons(seasons: Season[]) {
 }
 
 export function LivePageContent() {
+  const router = useRouter();
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [vips, setVips] = useState<VipCompetition[]>([]);
@@ -31,10 +33,15 @@ export function LivePageContent() {
       try {
         setLoading(true);
         const accessToken = await getBrowserAccessToken();
-        const [rows, vipRows] = await Promise.all([
+        const [branding, rows, vipRows] = await Promise.all([
+          backendFetch<AppBranding>("/branding"),
           backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
           backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS }),
         ]);
+        if (branding.show_live_tab === false) {
+          router.replace("/dashboard");
+          return;
+        }
         const nextSeasons = Array.isArray(rows) ? rows : [];
         const nextVips = Array.isArray(vipRows) ? vipRows : [];
         setSeasons(nextSeasons);
@@ -50,7 +57,7 @@ export function LivePageContent() {
     }
 
     void loadSeasons();
-  }, []);
+  }, [router]);
 
   const liveEnabledSeasons = useMemo(
     () => sortSeasons(getLiveSeasons(seasons).filter((season) => season.live_dashboard_enabled)),

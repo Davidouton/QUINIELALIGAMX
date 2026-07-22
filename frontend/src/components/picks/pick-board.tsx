@@ -1571,7 +1571,7 @@ export function PickBoard() {
                 </colgroup>
                 <thead className="app-table-head">
                   <tr>
-                    <th className="sticky left-0 z-10 bg-[rgba(12,24,42,0.72)] px-3 py-2 text-left backdrop-blur-sm">Jugador</th>
+                    <th className="app-table-sticky-cell sticky left-0 z-10 px-3 py-2 text-left">Jugador</th>
                     {visibleGlobalMatches.map((match) => (
                       <th key={match.match_id} className="px-3 py-2 text-center">
                         <div className="space-y-1">
@@ -1604,7 +1604,7 @@ export function PickBoard() {
                 </thead>
                 <tbody>
                   <tr className="border-b border-white/[0.06] bg-white/[0.025]">
-                    <td className="sticky left-0 z-10 bg-[rgba(12,24,42,0.82)] px-3 py-2 text-left backdrop-blur-sm">
+                    <td className="app-table-sticky-cell sticky left-0 z-10 px-3 py-2 text-left">
                       <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-steel">
                         Resultado oficial
                       </p>
@@ -1612,7 +1612,7 @@ export function PickBoard() {
                     {visibleGlobalMatches.map((match) => (
                       <td key={match.match_id} className="px-3 py-2 text-center">
                         {match.is_official && match.home_score !== null && match.away_score !== null ? (
-                          <span className="inline-flex min-w-14 justify-center rounded-md border border-emerald-300/30 bg-emerald-400/10 px-2 py-1 text-[11px] font-semibold text-emerald-100">
+                          <span className="official-result-badge inline-flex min-w-14 justify-center rounded-md border px-2 py-1 text-[11px] font-semibold">
                             <ScorePair
                               homeScore={match.home_score}
                               awayScore={match.away_score}
@@ -1630,7 +1630,7 @@ export function PickBoard() {
                   </tr>
                   {state.globalPickBoard.players.map((player) => (
                     <tr key={player.profile_id} className="app-table-row border-b last:border-b-0">
-                      <td className="sticky left-0 z-10 bg-[rgba(12,24,42,0.72)] px-3 py-2 text-left backdrop-blur-sm">
+                      <td className="app-table-sticky-cell sticky left-0 z-10 px-3 py-2 text-left">
                         <p className="truncate font-medium text-ink">{player.display_name}</p>
                       </td>
                       {visibleGlobalMatches.map((match) => {

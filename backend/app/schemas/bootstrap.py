@@ -16,3 +16,4 @@ class AppBootstrapOut(BaseModel):
 
 class AppBrandingOut(BaseModel):
     app_icon_url: str | None = None
+    show_live_tab: bool = True

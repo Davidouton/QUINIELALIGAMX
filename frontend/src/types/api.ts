@@ -303,6 +303,7 @@ export interface GlobalPickBoard {
 export interface LeaderboardEntry {
   profile_id: string;
   display_name: string;
+  username: string | null;
   role_code: string;
   total_points: number;
   correct_results: number;
@@ -322,6 +323,7 @@ export type VipCompetitionKind = "matchday" | "team_winner" | "question_pool";
 export interface VipLeaderboardEntry {
   profile_id: string;
   display_name: string;
+  username: string | null;
   total_points: number;
   correct_results: number;
   exact_scores: number;
@@ -377,6 +379,7 @@ export interface VipMembership {
   id: string;
   profile_id: string;
   display_name: string;
+  username: string | null;
   status: VipMembershipStatus;
   is_paid: boolean;
   requested_at: string;
@@ -989,6 +992,7 @@ export interface Me {
   id: string;
   email: string | null;
   display_name: string;
+  username: string | null;
   favorite_team_id: string | null;
   contact_phone: string | null;
   bank_name: string | null;
@@ -1028,6 +1032,7 @@ export interface AppBootstrap {
 
 export interface AppBranding {
   app_icon_url: string | null;
+  show_live_tab: boolean;
 }
 
 export interface SurvivorCurrentMatchday {
@@ -1105,6 +1110,7 @@ export interface SurvivorAvailableTeam {
 export interface SurvivorLeaderboardEntry {
   profile_id: string;
   display_name: string;
+  username: string | null;
   remaining_lives: number;
   lives_spent: number;
   total_picks: number;
@@ -1153,6 +1159,7 @@ export interface UserSeasonMembership {
 export interface RegisteredUserOption {
   id: string;
   display_name: string;
+  username: string | null;
 }
 
 export interface PrizeSummary {
@@ -1257,6 +1264,7 @@ export interface DashboardHomeBundle {
 export interface LiveLeaderboardEntry {
   profile_id: string;
   display_name: string;
+  username: string | null;
   role_code: string;
   total_points: number;
   correct_results: number;
@@ -1493,6 +1501,7 @@ export interface AdminSettings {
   selected_season_name: string | null;
   selected_tournament_format: TournamentFormat | null;
   app_icon_url: string | null;
+  show_live_tab: boolean;
   start_matchday_id: string | null;
   end_matchday_id: string | null;
   participants_lock_at: string | null;
@@ -1549,6 +1558,7 @@ export interface AdminUser {
   auth_user_id: string;
   email: string | null;
   display_name: string;
+  username: string | null;
   favorite_team_name: string | null;
   contact_phone: string | null;
   bank_name: string | null;

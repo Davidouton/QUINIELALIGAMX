@@ -8,6 +8,7 @@ from app.core.datetime import ensure_utc
 class LeaderboardEntry(BaseModel):
     profile_id: str
     display_name: str
+    username: str | None = None
     role_code: str
     total_points: int
     correct_results: int
@@ -31,6 +32,7 @@ class MyMatchdayPointsEntry(BaseModel):
 class WeeklyPrizeWinner(BaseModel):
     profile_id: str
     display_name: str
+    username: str | None = None
     rank_position: int
     total_points: int
     exact_scores: int
@@ -97,6 +99,7 @@ class HallOfFameResponse(BaseModel):
 class LiveLeaderboardEntry(BaseModel):
     profile_id: str
     display_name: str
+    username: str | None = None
     role_code: str
     total_points: int
     correct_results: int
