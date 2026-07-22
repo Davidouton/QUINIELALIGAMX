@@ -2201,18 +2201,19 @@ def update_season(
     if payload.competition_id and competition is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
 
+    is_archiving = payload.visibility_status == SeasonVisibilityStatus.ARCHIVED
     season.name = payload.name.strip()
     season.slug = normalize_slug(payload.slug)
     season.competition_id = competition.id if competition is not None else None
     season.tournament_format = payload.tournament_format
     season.visibility_status = payload.visibility_status
-    season.live_dashboard_enabled = payload.live_dashboard_enabled
-    season.is_active = payload.is_active
-    season.registration_closed = payload.registration_closed
+    season.live_dashboard_enabled = False if is_archiving else payload.live_dashboard_enabled
+    season.is_active = False if is_archiving else payload.is_active
+    season.registration_closed = True if is_archiving else payload.registration_closed
     season.survivor_enabled = payload.survivor_enabled
     season.survivor_name = normalize_optional_text(payload.survivor_name)
     season.survivor_max_lives = payload.survivor_max_lives
-    season.survivor_registration_closed = payload.survivor_registration_closed
+    season.survivor_registration_closed = True if is_archiving else payload.survivor_registration_closed
     season.survivor_registration_lock_at = payload.survivor_registration_lock_at
     season_repo.save(db, season)
     if payload.is_active:

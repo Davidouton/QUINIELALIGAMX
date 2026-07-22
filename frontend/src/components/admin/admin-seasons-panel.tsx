@@ -189,6 +189,43 @@ export function AdminSeasonsPanel() {
     }
   }
 
+  async function handleArchiveSeason(season: Season) {
+    if (!window.confirm(`Archivar ${season.name}? Sus resultados, picks y rankings se conservaran en Historico.`)) {
+      return;
+    }
+    setSaving(`archive:${season.id}`);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/admin/seasons/${season.id}`, accessToken, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: season.name,
+          slug: season.slug,
+          competition_id: season.competition_id,
+          tournament_format: season.tournament_format,
+          visibility_status: "archived",
+          live_dashboard_enabled: false,
+          is_active: false,
+          registration_closed: true,
+          survivor_enabled: season.survivor_enabled,
+          survivor_name: season.survivor_name,
+          survivor_max_lives: season.survivor_max_lives,
+          survivor_registration_closed: true,
+          survivor_registration_lock_at: season.survivor_registration_lock_at,
+        }),
+      });
+      await loadSeasons();
+      setMessage(`Temporada archivada: ${season.name}.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo archivar la temporada");
+    } finally {
+      setSaving(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="space-y-4">
@@ -511,6 +548,16 @@ export function AdminSeasonsPanel() {
                             : season.survivor_registration_closed
                               ? "Abrir survivor"
                               : "Cerrar survivor"}
+                          </button>
+                      ) : null}
+                      {season.visibility_status === "closed" ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleArchiveSeason(season)}
+                          disabled={Boolean(saving)}
+                          className="app-pill h-9 min-w-[90px] px-3 text-[11px]"
+                        >
+                          {saving === `archive:${season.id}` ? "..." : "Archivar"}
                         </button>
                       ) : null}
                     </div>
