@@ -804,9 +804,25 @@ class WorldCupService:
 
     def create_admin_group(self, db: Session, payload: WorldCupAdminGroupUpsertRequest) -> WorldCupAdminGroupOut:
         season = self._resolve_season(db, payload.season_id)
+        normalized_group_label = payload.group_label.strip().upper()
+        if normalized_group_label in {"MLS", "LIGA MX"}:
+            season.structure_format = CompetitionStructureFormat.LEAGUES_CUP
+            season.structure_config = {
+                **dict(season.structure_config or {}),
+                "leagues": ["MLS", "LIGA MX"],
+                "phase_one_matches_per_team": 3,
+                "regulation_win_points": 3,
+                "shootout_win_points": 2,
+                "shootout_loss_points": 1,
+                "qualifiers_per_league": 4,
+                "playoff_seed_count": 8,
+                "playoff_rounds": ["Cuartos de final", "Semifinales", "Final", "Tercer lugar"],
+                "reseed_after_each_round": False,
+            }
+            db.add(season)
         row = WorldCupGroup(
             season_id=season.id,
-            group_label=payload.group_label.strip().upper(),
+            group_label=normalized_group_label,
             display_name=(payload.display_name.strip() if payload.display_name else None),
             sort_order=payload.sort_order,
         )

@@ -19,6 +19,11 @@ const initialGroupForm: GroupFormState = {
   sort_order: "100",
 };
 
+function looksLikeLeaguesCup(season: Season | null | undefined) {
+  const label = `${season?.name ?? ""} ${season?.competition_name ?? ""}`.toLocaleLowerCase("es-MX");
+  return season?.structure_format === "leagues_cup" || (label.includes("league") && label.includes("cup"));
+}
+
 export function AdminWorldCupGroupsPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -39,14 +44,22 @@ export function AdminWorldCupGroupsPanel() {
   );
 
   const selectedSeason = availableSeasons.find((season) => season.id === selectedSeasonId) ?? null;
-  const isLeaguesCup = selectedSeason?.structure_format === "leagues_cup";
+  const isLeaguesCup = looksLikeLeaguesCup(selectedSeason);
 
   const eligibleTeams = useMemo(
     () =>
-      teams.filter((team) =>
-        selectedSeason?.competition_id ? team.competition_ids.includes(selectedSeason.competition_id) : true,
-      ),
-    [selectedSeason?.competition_id, teams],
+      teams.filter((team) => {
+        if (isLeaguesCup) {
+          const labels = team.competition_names.join(" ").toLocaleLowerCase("es-MX");
+          return (
+            labels.includes("mls")
+            || (labels.includes("liga") && labels.includes("mx"))
+            || Boolean(selectedSeason?.competition_id && team.competition_ids.includes(selectedSeason.competition_id))
+          );
+        }
+        return selectedSeason?.competition_id ? team.competition_ids.includes(selectedSeason.competition_id) : true;
+      }),
+    [isLeaguesCup, selectedSeason?.competition_id, teams],
   );
 
   async function loadBase() {
@@ -63,7 +76,7 @@ export function AdminWorldCupGroupsPanel() {
     return nextSeasonId;
   }
 
-  async function loadGroups(seasonId: string) {
+  async function loadGroups(seasonId: string, season?: Season | null) {
     if (!seasonId) {
       setGroups([]);
       setDraftTeamsByGroupId({});
@@ -71,7 +84,26 @@ export function AdminWorldCupGroupsPanel() {
       return;
     }
     const accessToken = await getBrowserAccessToken();
-    const rows = await backendFetch<WorldCupAdminGroup[]>(`/admin/world-cup/groups?season_id=${seasonId}`, accessToken);
+    let rows = await backendFetch<WorldCupAdminGroup[]>(`/admin/world-cup/groups?season_id=${seasonId}`, accessToken);
+    if (looksLikeLeaguesCup(season)) {
+      const existingLabels = new Set(rows.map((group) => group.group_label.toUpperCase()));
+      const missingTables = [
+        { group_label: "LIGA MX", display_name: "Tabla LIGA MX", sort_order: 10 },
+        { group_label: "MLS", display_name: "Tabla MLS", sort_order: 20 },
+      ].filter((table) => !existingLabels.has(table.group_label));
+      for (const table of missingTables) {
+        await backendFetch("/admin/world-cup/groups", accessToken, {
+          method: "POST",
+          body: JSON.stringify({ season_id: seasonId, ...table }),
+        });
+      }
+      if (missingTables.length) {
+        rows = await backendFetch<WorldCupAdminGroup[]>(
+          `/admin/world-cup/groups?season_id=${seasonId}`,
+          accessToken,
+        );
+      }
+    }
     setGroups(rows);
     setDraftTeamsByGroupId(
       Object.fromEntries(rows.map((group) => [group.id, group.teams.map((team) => team.team_id)])),
@@ -83,7 +115,8 @@ export function AdminWorldCupGroupsPanel() {
     async function load() {
       try {
         const seasonId = await loadBase();
-        await loadGroups(seasonId);
+        const seasonRows = await backendFetch<Season[]>("/seasons", await getBrowserAccessToken());
+        await loadGroups(seasonId, seasonRows.find((season) => season.id === seasonId));
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los grupos");
       } finally {
@@ -99,7 +132,7 @@ export function AdminWorldCupGroupsPanel() {
     setError(null);
     setMessage(null);
     try {
-      await loadGroups(seasonId);
+      await loadGroups(seasonId, availableSeasons.find((season) => season.id === seasonId));
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los grupos");
     } finally {
@@ -294,16 +327,7 @@ export function AdminWorldCupGroupsPanel() {
           >
             {saving === "set-leagues-cup" ? "Configurando..." : "Usar formato Leagues Cup"}
           </button>
-        ) : isLeaguesCup ? (
-          <button
-            type="button"
-            onClick={() => void handlePrepareLeaguesCupTables()}
-            disabled={saving === "prepare-leagues-cup"}
-            className="app-pill-active px-4 disabled:opacity-60"
-          >
-            {saving === "prepare-leagues-cup" ? "Preparando..." : "Preparar tablas MLS y LIGA MX"}
-          </button>
-        ) : (
+        ) : isLeaguesCup ? null : (
         <form onSubmit={handleSaveGroup} className="grid gap-4 md:grid-cols-3">
           <input
             value={groupForm.group_label}
