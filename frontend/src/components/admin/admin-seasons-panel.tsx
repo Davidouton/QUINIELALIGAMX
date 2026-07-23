@@ -26,7 +26,7 @@ const initialSeasonForm: SeasonFormState = {
   slug: "",
   competition_id: "",
   tournament_format: "standard",
-  visibility_status: "live",
+  visibility_status: "testing",
   is_active: false,
   registration_closed: false,
   survivor_enabled: false,
@@ -42,6 +42,13 @@ function getStructureLabel(competition: Competition | null | undefined) {
   if (competition?.structure_format === "conferences_playoff") return "Conferencias/divisiones + playoff";
   if (competition?.structure_format === "knockout") return "Eliminación directa";
   return "Tabla general";
+}
+
+function getSeasonStatusPresentation(status: SeasonVisibilityStatus) {
+  if (status === "testing") return { label: "Draft", dotClass: "bg-gold" };
+  if (status === "live") return { label: "Live", dotClass: "bg-moss" };
+  if (status === "closed") return { label: "Cerrada", dotClass: "bg-coral" };
+  return { label: "Archivada", dotClass: "bg-steel" };
 }
 
 export function AdminSeasonsPanel() {
@@ -319,22 +326,25 @@ export function AdminSeasonsPanel() {
 
           <section className="space-y-4 border-b border-white/[0.08] pb-5">
             <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-steel">Estado y registro</h3>
-          <select
-            value={seasonForm.visibility_status}
-            onChange={(event) =>
-              setSeasonForm((current) => ({
-                ...current,
-                visibility_status: event.target.value as SeasonVisibilityStatus,
-                is_active: event.target.value === "testing" || event.target.value === "archived" ? false : current.is_active,
-              }))
-            }
-            className="field-control"
-          >
-            <option value="live">Operativa</option>
-            <option value="testing">Pruebas · solo usuarios asignados</option>
-            <option value="closed">Cerrada</option>
-            <option value="archived">Archivada</option>
-          </select>
+          <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
+            Estado de la temporada
+            <select
+              value={seasonForm.visibility_status}
+              onChange={(event) =>
+                setSeasonForm((current) => ({
+                  ...current,
+                  visibility_status: event.target.value as SeasonVisibilityStatus,
+                  is_active: event.target.value === "testing" || event.target.value === "archived" ? false : current.is_active,
+                }))
+              }
+              className="field-control mt-2 normal-case tracking-normal"
+            >
+              <option value="testing">Draft</option>
+              <option value="live">Live</option>
+              <option value="closed">Cerrada</option>
+              <option value="archived">Archivada</option>
+            </select>
+          </label>
           <label className="flex items-center gap-3 text-sm text-ink">
             <input
               type="checkbox"
@@ -345,7 +355,7 @@ export function AdminSeasonsPanel() {
               }
             />
             {seasonForm.visibility_status === "testing"
-              ? "Los torneos de prueba no pueden ser temporada default"
+              ? "Las temporadas Draft no pueden ser la temporada default"
               : "Usar como temporada default del admin"}
           </label>
           <label className="flex items-center gap-3 text-sm text-ink">
@@ -507,13 +517,10 @@ export function AdminSeasonsPanel() {
                     </div>
                   </td>
                   <td className="px-3 py-3 text-steel">
-                    {season.visibility_status === "live"
-                      ? "Operativa"
-                      : season.visibility_status === "testing"
-                        ? "Pruebas"
-                      : season.visibility_status === "closed"
-                        ? "Cerrada"
-                        : "Archivada"}
+                    <span className="inline-flex items-center gap-2 font-semibold text-ink">
+                      <i className={`h-2 w-2 rounded-full ${getSeasonStatusPresentation(season.visibility_status).dotClass}`} />
+                      {getSeasonStatusPresentation(season.visibility_status).label}
+                    </span>
                   </td>
                   <td className="px-3 py-3 text-steel">{season.is_active ? "Si" : "No"}</td>
                   <td className="px-3 py-3">
