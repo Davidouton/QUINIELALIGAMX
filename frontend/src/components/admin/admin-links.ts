@@ -3,7 +3,7 @@ export const ADMIN_LINKS = [
   { href: "/dashboard/admin/stats", label: "Stats" },
   { href: "/dashboard/admin/settings", label: "Configuración" },
   { href: "/dashboard/admin/competitions", label: "Competencias" },
-  { href: "/dashboard/admin/world-cup-groups", label: "Estructura · Grupos" },
+  { href: "/dashboard/admin/world-cup-groups", label: "Estructura · Tablas/Grupos" },
   { href: "/dashboard/admin/world-cup-bracket", label: "Estructura · Playoffs" },
   { href: "/dashboard/admin/quiniela-plus", label: "Quiniela +" },
   { href: "/dashboard/admin/prizes", label: "Premios" },

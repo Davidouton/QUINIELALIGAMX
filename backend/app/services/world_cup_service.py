@@ -161,6 +161,7 @@ class WorldCupService:
                     season_team_links,
                     competition_names_by_id,
                     competition_memberships_by_team_id,
+                    group_label_by_team_id,
                 )
                 if season.structure_format == CompetitionStructureFormat.LEAGUES_CUP
                 else []
@@ -183,8 +184,10 @@ class WorldCupService:
         season_team_links: list[SeasonTeam],
         competition_names_by_id: dict[str, str],
         competition_memberships_by_team_id: dict[str, list[str]] | None = None,
+        explicit_league_by_team_id: dict[str, str] | None = None,
     ) -> list[WorldCupLeagueTableOut]:
         competition_memberships_by_team_id = competition_memberships_by_team_id or {}
+        explicit_league_by_team_id = explicit_league_by_team_id or {}
 
         def infer_league(team_id: str, team: Team | None) -> str:
             candidates = list(competition_memberships_by_team_id.get(team_id, []))
@@ -202,7 +205,12 @@ class WorldCupService:
         for link in season_team_links:
             team = teams_by_id.get(link.team_id)
             fallback_league = infer_league(link.team_id, team)
-            league_by_team_id[link.team_id] = (link.division_name or fallback_league or "Sin liga").strip()
+            league_by_team_id[link.team_id] = (
+                explicit_league_by_team_id.get(link.team_id)
+                or link.division_name
+                or fallback_league
+                or "Sin liga"
+            ).strip()
 
         table_rows: dict[str, dict[str, dict[str, object]]] = defaultdict(dict)
 
@@ -845,6 +853,23 @@ class WorldCupService:
         missing_ids = [team_id for team_id in normalized_ids if team_id not in found_ids]
         if missing_ids:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Uno o mas equipos no existen")
+
+        duplicate_team_ids = set(
+            db.scalars(
+                select(WorldCupGroupTeam.team_id)
+                .join(WorldCupGroup, WorldCupGroup.id == WorldCupGroupTeam.group_id)
+                .where(
+                    WorldCupGroup.season_id == group.season_id,
+                    WorldCupGroup.id != group.id,
+                    WorldCupGroupTeam.team_id.in_(normalized_ids),
+                )
+            )
+        ) if normalized_ids else set()
+        if duplicate_team_ids:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Un equipo solo puede pertenecer a una tabla o grupo dentro de la temporada",
+            )
 
         current_links = list(db.scalars(select(WorldCupGroupTeam).where(WorldCupGroupTeam.group_id == group.id)))
         for link in current_links:

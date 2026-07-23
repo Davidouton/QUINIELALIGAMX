@@ -33,12 +33,13 @@ export function AdminWorldCupGroupsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const worldCupSeasons = useMemo(
-    () => seasons.filter(hasGroupStage),
+  const structureSeasons = useMemo(
+    () => seasons.filter((season) => hasGroupStage(season) || season.structure_format === "leagues_cup"),
     [seasons],
   );
 
-  const selectedSeason = worldCupSeasons.find((season) => season.id === selectedSeasonId) ?? null;
+  const selectedSeason = structureSeasons.find((season) => season.id === selectedSeasonId) ?? null;
+  const isLeaguesCup = selectedSeason?.structure_format === "leagues_cup";
 
   const eligibleTeams = useMemo(
     () =>
@@ -54,8 +55,10 @@ export function AdminWorldCupGroupsPanel() {
       backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Team[]>("/teams"),
     ]);
-    const nextWorldCupSeasons = seasonRows.filter(hasGroupStage);
-    const nextSeasonId = nextWorldCupSeasons.find((season) => season.is_active)?.id ?? nextWorldCupSeasons[0]?.id ?? "";
+    const nextStructureSeasons = seasonRows.filter(
+      (season) => hasGroupStage(season) || season.structure_format === "leagues_cup",
+    );
+    const nextSeasonId = nextStructureSeasons.find((season) => season.is_active)?.id ?? nextStructureSeasons[0]?.id ?? "";
     setSeasons(seasonRows);
     setTeams(teamRows);
     setSelectedSeasonId((current) => current || nextSeasonId);
@@ -139,6 +142,33 @@ export function AdminWorldCupGroupsPanel() {
     }
   }
 
+  async function handlePrepareLeaguesCupTables() {
+    if (!selectedSeasonId) return;
+    setSaving("prepare-leagues-cup");
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const existingLabels = new Set(groups.map((group) => group.group_label.toUpperCase()));
+      const missingTables = [
+        { group_label: "MLS", display_name: "MLS", sort_order: 10 },
+        { group_label: "LIGA MX", display_name: "LIGA MX", sort_order: 20 },
+      ].filter((table) => !existingLabels.has(table.group_label));
+      for (const table of missingTables) {
+        await backendFetch("/admin/world-cup/groups", accessToken, {
+          method: "POST",
+          body: JSON.stringify({ season_id: selectedSeasonId, ...table }),
+        });
+      }
+      await loadGroups(selectedSeasonId);
+      setMessage(missingTables.length ? "Tablas MLS y LIGA MX preparadas." : "Las dos tablas ya estaban creadas.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron preparar las tablas");
+    } finally {
+      setSaving(null);
+    }
+  }
+
   async function handleDeleteGroup(groupId: string) {
     const confirmed = window.confirm("Vas a borrar este grupo. Continuar?");
     if (!confirmed) {
@@ -206,9 +236,13 @@ export function AdminWorldCupGroupsPanel() {
     <div className="space-y-6">
       <section className="space-y-4">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Grupos</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">
+            {isLeaguesCup ? "Tablas de Fase Uno" : "Grupos"}
+          </h2>
           <p className="mt-2 text-sm text-steel">
-            Aqui defines los grupos y sus equipos. La tabla publica toma esta estructura como base para armar stats.
+            {isLeaguesCup
+              ? "Asigna cada club a MLS o LIGA MX. Estas dos listas alimentan directamente Tournament Stats."
+              : "Aqui defines los grupos y sus equipos. La tabla publica toma esta estructura como base para armar stats."}
           </p>
         </div>
 
@@ -218,8 +252,8 @@ export function AdminWorldCupGroupsPanel() {
             onChange={(event) => void handleSeasonChange(event.target.value)}
             className="field-control"
           >
-            <option value="">Selecciona temporada con grupos</option>
-            {worldCupSeasons.map((season) => (
+            <option value="">Selecciona temporada</option>
+            {structureSeasons.map((season) => (
               <option key={season.id} value={season.id}>
                 {season.name}
               </option>
@@ -227,6 +261,16 @@ export function AdminWorldCupGroupsPanel() {
           </select>
         </div>
 
+        {isLeaguesCup ? (
+          <button
+            type="button"
+            onClick={() => void handlePrepareLeaguesCupTables()}
+            disabled={saving === "prepare-leagues-cup"}
+            className="app-pill-active px-4 disabled:opacity-60"
+          >
+            {saving === "prepare-leagues-cup" ? "Preparando..." : "Preparar tablas MLS y LIGA MX"}
+          </button>
+        ) : (
         <form onSubmit={handleSaveGroup} className="grid gap-4 md:grid-cols-3">
           <input
             value={groupForm.group_label}
@@ -266,6 +310,7 @@ export function AdminWorldCupGroupsPanel() {
             ) : null}
           </div>
         </form>
+        )}
 
         {message ? <p className="text-sm text-moss">{message}</p> : null}
         {error ? <p className="text-sm text-coral">{error}</p> : null}
@@ -280,6 +325,11 @@ export function AdminWorldCupGroupsPanel() {
         <div className="grid gap-4 xl:grid-cols-2">
           {groups.map((group) => {
             const selectedTeamIds = draftTeamsByGroupId[group.id] ?? [];
+            const teamIdsAssignedElsewhere = new Set(
+              Object.entries(draftTeamsByGroupId)
+                .filter(([groupId]) => groupId !== group.id)
+                .flatMap(([, teamIds]) => teamIds),
+            );
             return (
               <div key={group.id} className="rounded-[18px] border border-white/[0.06] bg-white/[0.03] p-4">
                 <div className="flex items-center justify-between gap-3">
@@ -327,7 +377,7 @@ export function AdminWorldCupGroupsPanel() {
                     >
                       <option value="">Selecciona un equipo</option>
                       {eligibleTeams
-                        .filter((team) => !selectedTeamIds.includes(team.id))
+                        .filter((team) => !selectedTeamIds.includes(team.id) && !teamIdsAssignedElsewhere.has(team.id))
                         .map((team) => (
                           <option key={team.id} value={team.id}>
                             {team.short_name} · {team.name}
