@@ -408,6 +408,10 @@ class SeasonUpdateRequest(SeasonCreateRequest):
     pass
 
 
+class SeasonStructureUpdateRequest(BaseModel):
+    structure_format: CompetitionStructureFormat
+
+
 class TeamCreateRequest(BaseModel):
     competition_id: str | None = None
     competition_ids: list[str] = Field(default_factory=list)

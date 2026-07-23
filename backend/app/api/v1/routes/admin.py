@@ -100,6 +100,7 @@ from app.schemas.admin import (
     OddsUnmatchedTeamOut,
     RoleUpdateRequest,
     SeasonCreateRequest,
+    SeasonStructureUpdateRequest,
     SeasonUpdateRequest,
     SyncResponse,
     TeamCreateRequest,
@@ -2297,6 +2298,37 @@ def update_season(
         set_active_season(db, season)
     db.commit()
     db.refresh(season)
+    return build_season_out(season, competition)
+
+
+@router.patch("/seasons/{season_id}/structure", response_model=SeasonOut)
+def update_season_structure(
+    season_id: str,
+    payload: SeasonStructureUpdateRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SeasonOut:
+    season = season_repo.get_by_id(db, season_id)
+    if season is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+    season.structure_format = payload.structure_format
+    if payload.structure_format == CompetitionStructureFormat.LEAGUES_CUP:
+        season.structure_config = {
+            **dict(season.structure_config or {}),
+            "leagues": ["MLS", "LIGA MX"],
+            "phase_one_matches_per_team": 3,
+            "regulation_win_points": 3,
+            "shootout_win_points": 2,
+            "shootout_loss_points": 1,
+            "qualifiers_per_league": 4,
+            "playoff_seed_count": 8,
+            "playoff_rounds": ["Cuartos de final", "Semifinales", "Final", "Tercer lugar"],
+            "reseed_after_each_round": False,
+        }
+    db.add(season)
+    db.commit()
+    db.refresh(season)
+    competition = db.get(Competition, season.competition_id) if season.competition_id else None
     return build_season_out(season, competition)
 
 
