@@ -39,7 +39,11 @@ export function AdminWorldCupGroupsPanel() {
   const [message, setMessage] = useState<string | null>(null);
 
   const availableSeasons = useMemo(
-    () => seasons.filter((season) => season.visibility_status !== "archived"),
+    () => seasons.filter(
+      (season) =>
+        season.visibility_status !== "archived"
+        && (hasGroupStage(season) || looksLikeLeaguesCup(season)),
+    ),
     [seasons],
   );
 
@@ -173,59 +177,6 @@ export function AdminWorldCupGroupsPanel() {
     }
   }
 
-  async function handlePrepareLeaguesCupTables() {
-    if (!selectedSeasonId) return;
-    setSaving("prepare-leagues-cup");
-    setError(null);
-    setMessage(null);
-    try {
-      const accessToken = await getBrowserAccessToken();
-      const existingLabels = new Set(groups.map((group) => group.group_label.toUpperCase()));
-      const missingTables = [
-        { group_label: "MLS", display_name: "MLS", sort_order: 10 },
-        { group_label: "LIGA MX", display_name: "LIGA MX", sort_order: 20 },
-      ].filter((table) => !existingLabels.has(table.group_label));
-      for (const table of missingTables) {
-        await backendFetch("/admin/world-cup/groups", accessToken, {
-          method: "POST",
-          body: JSON.stringify({ season_id: selectedSeasonId, ...table }),
-        });
-      }
-      await loadGroups(selectedSeasonId);
-      setMessage(missingTables.length ? "Tablas MLS y LIGA MX preparadas." : "Las dos tablas ya estaban creadas.");
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron preparar las tablas");
-    } finally {
-      setSaving(null);
-    }
-  }
-
-  async function handleUseLeaguesCupStructure() {
-    if (!selectedSeasonId || !selectedSeason) return;
-    const confirmed = window.confirm(
-      `Cambiar la estructura de "${selectedSeason.name}" a Leagues Cup con tablas MLS y LIGA MX?`,
-    );
-    if (!confirmed) return;
-    setSaving("set-leagues-cup");
-    setError(null);
-    setMessage(null);
-    try {
-      const accessToken = await getBrowserAccessToken();
-      await backendFetch(`/admin/seasons/${selectedSeasonId}/structure`, accessToken, {
-        method: "PATCH",
-        body: JSON.stringify({ structure_format: "leagues_cup" }),
-      });
-      const seasonRows = await backendFetch<Season[]>("/seasons", accessToken);
-      setSeasons(seasonRows);
-      await loadGroups(selectedSeasonId);
-      setMessage("La temporada ya usa el formato Leagues Cup. Ahora prepara sus dos tablas.");
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "No se pudo cambiar la estructura");
-    } finally {
-      setSaving(null);
-    }
-  }
-
   async function handleDeleteGroup(groupId: string) {
     const confirmed = window.confirm("Vas a borrar este grupo. Continuar?");
     if (!confirmed) {
@@ -318,16 +269,7 @@ export function AdminWorldCupGroupsPanel() {
           </select>
         </div>
 
-        {selectedSeason && !hasGroupStage(selectedSeason) && !isLeaguesCup ? (
-          <button
-            type="button"
-            onClick={() => void handleUseLeaguesCupStructure()}
-            disabled={saving === "set-leagues-cup"}
-            className="app-pill-active px-4 disabled:opacity-60"
-          >
-            {saving === "set-leagues-cup" ? "Configurando..." : "Usar formato Leagues Cup"}
-          </button>
-        ) : isLeaguesCup ? null : (
+        {isLeaguesCup ? null : (
         <form onSubmit={handleSaveGroup} className="grid gap-4 md:grid-cols-3">
           <input
             value={groupForm.group_label}

@@ -755,6 +755,31 @@ class WorldCupService:
 
     def list_admin_groups(self, db: Session, season_id: str) -> list[WorldCupAdminGroupOut]:
         season = self._resolve_season(db, season_id)
+        if season.structure_format == CompetitionStructureFormat.LEAGUES_CUP:
+            existing_labels = set(
+                db.scalars(
+                    select(WorldCupGroup.group_label).where(WorldCupGroup.season_id == season.id)
+                )
+            )
+            required_tables = (
+                ("LIGA MX", "Tabla LIGA MX", 10),
+                ("MLS", "Tabla MLS", 20),
+            )
+            created_default_table = False
+            for group_label, display_name, sort_order in required_tables:
+                if group_label in existing_labels:
+                    continue
+                db.add(
+                    WorldCupGroup(
+                        season_id=season.id,
+                        group_label=group_label,
+                        display_name=display_name,
+                        sort_order=sort_order,
+                    )
+                )
+                created_default_table = True
+            if created_default_table:
+                db.commit()
         groups = list(
             db.scalars(
                 select(WorldCupGroup)

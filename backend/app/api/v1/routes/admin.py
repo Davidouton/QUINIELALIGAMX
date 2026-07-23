@@ -50,6 +50,7 @@ from app.models.entities import (
     TrophyAsset,
     VipCompetitionMatchday,
     VipMembershipStatus,
+    WorldCupGroup,
     UserPick,
 )
 from app.providers.api_football_provider import ApiFootballProvider
@@ -2233,6 +2234,23 @@ def create_season(
         ),
     )
     db.flush()
+    if season.structure_format == CompetitionStructureFormat.LEAGUES_CUP:
+        db.add_all(
+            [
+                WorldCupGroup(
+                    season_id=season.id,
+                    group_label="LIGA MX",
+                    display_name="Tabla LIGA MX",
+                    sort_order=10,
+                ),
+                WorldCupGroup(
+                    season_id=season.id,
+                    group_label="MLS",
+                    display_name="Tabla MLS",
+                    sort_order=20,
+                ),
+            ]
+        )
     if competition is not None:
         for team_id in db.scalars(
             select(CompetitionTeam.team_id).where(CompetitionTeam.competition_id == competition.id)
