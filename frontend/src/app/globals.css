@@ -48,6 +48,17 @@ body {
   overflow-x: hidden;
 }
 
+/* iOS amplía automáticamente la página al enfocar controles con texto menor a
+   16px y conserva ese zoom después de navegar. Mantener los controles móviles
+   en 16px evita el salto sin deshabilitar el zoom manual del usuario. */
+@media (max-width: 767px) and (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 h1,
 h2,
 h3,
