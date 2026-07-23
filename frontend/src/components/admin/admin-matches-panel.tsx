@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 
 import { AdminNflSpreadsPanel } from "@/components/admin/admin-nfl-spreads-panel";
@@ -117,6 +117,8 @@ export function AdminMatchesPanel() {
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [importingTemplate, setImportingTemplate] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -290,6 +292,176 @@ export function AdminMatchesPanel() {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo generar la plantilla.");
     } finally {
       setDownloadingTemplate(false);
+    }
+  }
+
+  function workbookCellText(value: unknown) {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "object" && "text" in value) {
+      return String((value as { text: unknown }).text ?? "").trim();
+    }
+    if (typeof value === "object" && "result" in value) {
+      return String((value as { result: unknown }).result ?? "").trim();
+    }
+    return String(value).trim();
+  }
+
+  function workbookDateTime(value: unknown) {
+    if (value instanceof Date) {
+      const pad = (part: number) => String(part).padStart(2, "0");
+      return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+    }
+    const normalized = workbookCellText(value).replace(" ", "T");
+    return normalized.length === 16 ? normalized : normalized.slice(0, 16);
+  }
+
+  async function handleImportBulkTemplate(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const season = seasonById[selectedSeasonId];
+    if (!season) {
+      setError("Selecciona la temporada correspondiente antes de importar.");
+      return;
+    }
+
+    setImportingTemplate(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const ExcelJS = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(await file.arrayBuffer());
+      const calendar = workbook.getWorksheet("Calendario");
+      if (!calendar) throw new Error("El archivo no contiene la hoja Calendario.");
+
+      const headers = new Map<string, number>();
+      calendar.getRow(1).eachCell((cell, columnNumber) => {
+        headers.set(workbookCellText(cell.value), columnNumber);
+      });
+      const requiredHeaders = [
+        "matchday_number",
+        "matchday_name",
+        "stage_type",
+        "kickoff_at",
+        "home_slug",
+        "away_slug",
+      ];
+      const missingHeaders = requiredHeaders.filter((header) => !headers.has(header));
+      if (missingHeaders.length) {
+        throw new Error(`Faltan columnas requeridas: ${missingHeaders.join(", ")}.`);
+      }
+
+      const rows: Array<Record<string, string>> = [];
+      calendar.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        const value = (header: string) => workbookCellText(row.getCell(headers.get(header) ?? 0).value);
+        const kickoffAt = workbookDateTime(row.getCell(headers.get("kickoff_at") ?? 0).value);
+        if (!value("matchday_number") && !kickoffAt && !value("home_slug") && !value("away_slug")) return;
+        rows.push({
+          row_number: String(rowNumber),
+          external_id: value("external_id"),
+          matchday_number: value("matchday_number"),
+          matchday_name: value("matchday_name"),
+          stage_type: value("stage_type") || "regular",
+          kickoff_at: kickoffAt,
+          picks_lock_at: workbookDateTime(row.getCell(headers.get("picks_lock_at") ?? 0).value),
+          home_slug: value("home_slug"),
+          away_slug: value("away_slug"),
+          venue: value("venue"),
+          bracket_slot: value("bracket_slot"),
+        });
+      });
+      if (!rows.length) throw new Error("La hoja Calendario no contiene partidos.");
+
+      const validStages = new Set(Object.keys(stageLabels));
+      const teamBySlug = new Map(getTemplateTeams(season.id).map((team) => [team.slug, team]));
+      const validationErrors: string[] = [];
+      for (const row of rows) {
+        const number = Number(row.matchday_number);
+        if (!Number.isInteger(number) || number < 1) validationErrors.push(`Fila ${row.row_number}: jornada inválida`);
+        if (!row.kickoff_at) validationErrors.push(`Fila ${row.row_number}: falta fecha de inicio`);
+        if (!validStages.has(row.stage_type)) validationErrors.push(`Fila ${row.row_number}: fase inválida`);
+        if (!teamBySlug.has(row.home_slug)) validationErrors.push(`Fila ${row.row_number}: local no existe`);
+        if (!teamBySlug.has(row.away_slug)) validationErrors.push(`Fila ${row.row_number}: visitante no existe`);
+        if (row.home_slug === row.away_slug) validationErrors.push(`Fila ${row.row_number}: los equipos son iguales`);
+      }
+      if (validationErrors.length) {
+        throw new Error(`${validationErrors.slice(0, 8).join(". ")}${validationErrors.length > 8 ? ` y ${validationErrors.length - 8} errores más` : ""}.`);
+      }
+
+      const accessToken = await getBrowserAccessToken();
+      const seasonMatchdays = matchdays.filter((matchday) => matchday.season_id === season.id);
+      const matchdayMap = new Map(seasonMatchdays.map((matchday) => [matchday.number, matchday]));
+      const rowsByMatchday = new Map<number, typeof rows>();
+      for (const row of rows) {
+        const number = Number(row.matchday_number);
+        rowsByMatchday.set(number, [...(rowsByMatchday.get(number) ?? []), row]);
+      }
+      for (const [number, matchdayRows] of rowsByMatchday) {
+        if (matchdayMap.has(number)) continue;
+        const kickoffs = matchdayRows.map((row) => new Date(row.kickoff_at));
+        const startsAt = new Date(Math.min(...kickoffs.map((date) => date.getTime())));
+        const endsAt = new Date(Math.max(...kickoffs.map((date) => date.getTime())) + 3 * 60 * 60 * 1000);
+        const created = await backendFetch<Matchday>("/admin/matchdays", accessToken, {
+          method: "POST",
+          body: JSON.stringify({
+            season_id: season.id,
+            number,
+            name: matchdayRows[0]?.matchday_name || `Jornada ${number}`,
+            default_lock_offset_minutes: 10,
+            status: "draft",
+            starts_at: startsAt.toISOString(),
+            ends_at: endsAt.toISOString(),
+          }),
+        });
+        matchdayMap.set(number, created);
+      }
+
+      const allMatches = await backendFetch<Match[]>("/matches", accessToken);
+      const seasonMatchdayIds = new Set([...matchdayMap.values()].map((matchday) => matchday.id));
+      const existingByExternalId = new Map(
+        allMatches
+          .filter((match) => seasonMatchdayIds.has(match.matchday_id) && match.external_id)
+          .map((match) => [match.external_id as string, match]),
+      );
+      let createdCount = 0;
+      let updatedCount = 0;
+      for (const row of rows) {
+        const matchday = matchdayMap.get(Number(row.matchday_number));
+        if (!matchday) throw new Error(`No se pudo resolver la jornada de la fila ${row.row_number}.`);
+        const kickoffAt = row.kickoff_at;
+        const picksLockAt =
+          row.picks_lock_at || shiftMexicoCityInputValue(kickoffAt, -matchday.default_lock_offset_minutes);
+        const existing = row.external_id ? existingByExternalId.get(row.external_id) : undefined;
+        await backendFetch(existing ? `/admin/matches/${existing.id}` : "/admin/matches", accessToken, {
+          method: existing ? "PUT" : "POST",
+          body: JSON.stringify({
+            matchday_id: matchday.id,
+            home_team_id: teamBySlug.get(row.home_slug)?.id,
+            away_team_id: teamBySlug.get(row.away_slug)?.id,
+            stage_type: row.stage_type,
+            group_label: null,
+            bracket_slot: row.bracket_slot || null,
+            home_placeholder: null,
+            away_placeholder: null,
+            kickoff_at: kickoffAt,
+            picks_lock_at: picksLockAt || kickoffAt,
+            venue: row.venue || null,
+            status: "scheduled",
+            external_id: row.external_id || null,
+          }),
+        });
+        if (existing) updatedCount += 1;
+        else createdCount += 1;
+      }
+
+      await loadData();
+      setMessage(`Importación completa: ${createdCount} creados y ${updatedCount} actualizados.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo importar la plantilla.");
+    } finally {
+      setImportingTemplate(false);
     }
   }
 
@@ -565,14 +737,31 @@ export function AdminMatchesPanel() {
           </label>
 
         </div>
-        <button
-          type="button"
-          onClick={() => void handleDownloadBulkTemplate()}
-          disabled={!selectedSeasonId || downloadingTemplate}
-          className="app-pill-active px-4 disabled:opacity-50"
-        >
-          {downloadingTemplate ? "Generando plantilla..." : "Descargar template XLSX"}
-        </button>
+        <div className="flex flex-wrap items-center gap-6">
+          <button
+            type="button"
+            onClick={() => void handleDownloadBulkTemplate()}
+            disabled={!selectedSeasonId || downloadingTemplate || importingTemplate}
+            className="font-semibold text-ink disabled:opacity-50"
+          >
+            {downloadingTemplate ? "Generando plantilla..." : "Descargar template XLSX"}
+          </button>
+          <button
+            type="button"
+            onClick={() => uploadInputRef.current?.click()}
+            disabled={!selectedSeasonId || downloadingTemplate || importingTemplate}
+            className="font-semibold text-ink disabled:opacity-50"
+          >
+            {importingTemplate ? "Importando calendario..." : "Subir calendario XLSX"}
+          </button>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={(event) => void handleImportBulkTemplate(event)}
+            className="hidden"
+          />
+        </div>
 
         {message ? <p className="mt-4 text-sm text-moss">{message}</p> : null}
         {error ? <p className="mt-4 text-sm text-coral">{error}</p> : null}
