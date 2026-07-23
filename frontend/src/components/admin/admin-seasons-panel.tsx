@@ -579,8 +579,8 @@ export function AdminSeasonsPanel() {
         {saving === `season:${season.id}`
                           ? "..."
                           : season.registration_closed
-                            ? "Abrir liga"
-                            : "Cerrar liga"}
+                            ? "Abrir registro"
+                            : "Cerrar registro"}
                       </button>
                       {season.survivor_enabled ? (
                         <button
