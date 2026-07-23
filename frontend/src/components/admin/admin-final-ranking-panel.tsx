@@ -222,7 +222,7 @@ export function AdminFinalRankingPanel() {
             <p className="text-xs uppercase tracking-[0.18em] text-steel">{selectedSeason?.name ?? "Torneo"}</p>
             <p className="text-sm text-steel">{rows.length} participantes</p>
           </div>
-          <div className="no-scrollbar overflow-x-auto touch-pan-x">
+          <div className="android-scroll-x">
             <table className="min-w-[1670px] w-full table-fixed text-left text-[11px] text-ink">
               <colgroup>
                 <col className="w-[80px]" />

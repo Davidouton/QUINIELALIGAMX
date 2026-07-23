@@ -406,6 +406,7 @@ class SeasonUpdateRequest(SeasonCreateRequest):
 
 class TeamCreateRequest(BaseModel):
     competition_id: str | None = None
+    competition_ids: list[str] = Field(default_factory=list)
     name: str
     short_name: str = Field(min_length=2, max_length=16)
     slug: str

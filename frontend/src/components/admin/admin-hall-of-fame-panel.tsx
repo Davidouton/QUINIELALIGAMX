@@ -263,7 +263,7 @@ export function AdminHallOfFamePanel() {
       <section className="space-y-3">
         <h3 className="text-base font-semibold text-ink">Historico cargado</h3>
         {loading ? <p className="mt-4 text-sm text-steel">Cargando historico...</p> : null}
-        <div className="no-scrollbar overflow-x-auto overscroll-x-contain touch-pan-x [WebkitOverflowScrolling:touch]">
+        <div className="android-scroll-x">
           <table className="min-w-full table-fixed text-left text-[11px] text-steel">
             <thead className="text-[10px] uppercase tracking-[0.16em] text-steel/80">
               <tr>

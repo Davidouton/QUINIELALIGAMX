@@ -84,7 +84,7 @@ export function AdminUserInfoPanel() {
 
       {!loading && !error ? (
         <section className="space-y-3">
-          <div className="no-scrollbar overflow-x-auto touch-pan-x">
+          <div className="android-scroll-x">
             <table className="min-w-[1190px] table-fixed text-left text-[11px] text-ink">
               <colgroup>
                 <col className="w-[180px]" />

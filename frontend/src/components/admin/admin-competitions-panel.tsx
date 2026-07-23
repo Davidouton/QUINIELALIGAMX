@@ -294,7 +294,7 @@ export function AdminCompetitionsPanel() {
       <section className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Competencias registradas</h3>
         {loading ? <p className="mt-4 text-sm text-steel">Cargando competencias...</p> : null}
-        <div className="no-scrollbar overflow-x-auto touch-pan-x">
+        <div className="android-scroll-x">
           <table className="min-w-[760px] table-fixed text-left text-sm text-ink">
             <colgroup>
               <col className="w-[140px]" />

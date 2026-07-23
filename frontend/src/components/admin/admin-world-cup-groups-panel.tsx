@@ -43,7 +43,7 @@ export function AdminWorldCupGroupsPanel() {
   const eligibleTeams = useMemo(
     () =>
       teams.filter((team) =>
-        selectedSeason?.competition_id ? team.competition_id === selectedSeason.competition_id : true,
+        selectedSeason?.competition_id ? team.competition_ids.includes(selectedSeason.competition_id) : true,
       ),
     [selectedSeason?.competition_id, teams],
   );

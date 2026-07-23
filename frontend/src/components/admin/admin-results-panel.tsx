@@ -532,7 +532,7 @@ export function AdminResultsPanel() {
       </div>
 
       <section>
-        <div className="no-scrollbar overflow-x-auto overscroll-x-contain touch-pan-x [WebkitOverflowScrolling:touch]">
+        <div className="android-scroll-x">
           <table className={`${showAdvancingColumn ? "min-w-[1160px]" : "min-w-[1020px]"} text-left text-[11px] text-steel`}>
             <thead className="app-table-head">
               <tr>

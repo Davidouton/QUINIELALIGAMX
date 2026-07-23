@@ -21,6 +21,7 @@ from app.core.database import SessionLocal, engine, get_db
 from app.core.datetime import MEXICO_CITY_TZ
 from app.models.entities import (
     Competition,
+    CompetitionTeam,
     CompetitionStructureFormat,
     CommerceSettings,
     HistoricalChampion,
@@ -38,6 +39,7 @@ from app.models.entities import (
     RulePage,
     ScoringRule,
     Season,
+    SeasonTeam,
     SeasonMembership,
     SeasonVisibilityStatus,
     StandingsMatchday,
@@ -1053,12 +1055,19 @@ def build_competition_out(row: Competition) -> CompetitionOut:
     return CompetitionOut.model_validate(row, from_attributes=True)
 
 
-def build_team_out(row: Team, competition: Competition | None = None) -> TeamOut:
+def build_team_out(
+    row: Team,
+    competition: Competition | None = None,
+    competition_ids: list[str] | None = None,
+    competition_names: list[str] | None = None,
+) -> TeamOut:
     return TeamOut(
         id=row.id,
         competition_id=row.competition_id,
         competition_name=competition.name if competition is not None else None,
         competition_sport_name=competition.sport_name if competition is not None else None,
+        competition_ids=competition_ids or ([row.competition_id] if row.competition_id else []),
+        competition_names=competition_names or ([competition.name] if competition is not None else []),
         external_id=row.external_id,
         name=row.name,
         short_name=row.short_name,
@@ -1071,6 +1080,21 @@ def build_team_out(row: Team, competition: Competition | None = None) -> TeamOut
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+def sync_team_competitions(db: Session, team: Team, competition_ids: list[str]) -> list[Competition]:
+    normalized_ids = list(dict.fromkeys(competition_id for competition_id in competition_ids if competition_id))
+    competitions = list(
+        db.scalars(select(Competition).where(Competition.id.in_(normalized_ids))).all()
+    ) if normalized_ids else []
+    if len(competitions) != len(normalized_ids):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
+    competition_by_id = {competition.id: competition for competition in competitions}
+    db.execute(delete(CompetitionTeam).where(CompetitionTeam.team_id == team.id))
+    for competition_id in normalized_ids:
+        db.add(CompetitionTeam(team_id=team.id, competition_id=competition_id))
+    team.competition_id = normalized_ids[0] if normalized_ids else None
+    return [competition_by_id[competition_id] for competition_id in normalized_ids]
 
 
 def build_season_out(row: Season, competition: Competition | None = None) -> SeasonOut:
@@ -2187,6 +2211,12 @@ def create_season(
             survivor_registration_lock_at=payload.survivor_registration_lock_at,
         ),
     )
+    db.flush()
+    if competition is not None:
+        for team_id in db.scalars(
+            select(CompetitionTeam.team_id).where(CompetitionTeam.competition_id == competition.id)
+        ):
+            db.add(SeasonTeam(season_id=season.id, team_id=team_id))
     if payload.is_active:
         set_active_season(db, season)
     db.commit()
@@ -2227,6 +2257,12 @@ def update_season(
             else CompetitionStructureFormat.LEAGUE_TABLE
         )
         season.structure_config = dict(competition.structure_config or {}) if competition is not None else {}
+        db.execute(delete(SeasonTeam).where(SeasonTeam.season_id == season.id))
+        if competition is not None:
+            for team_id in db.scalars(
+                select(CompetitionTeam.team_id).where(CompetitionTeam.competition_id == competition.id)
+            ):
+                db.add(SeasonTeam(season_id=season.id, team_id=team_id))
     season.visibility_status = payload.visibility_status
     season.live_dashboard_enabled = False
     season.is_active = False if is_archiving else payload.is_active
@@ -2311,13 +2347,11 @@ def create_team(
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> TeamOut:
-    competition = db.get(Competition, payload.competition_id) if payload.competition_id else None
-    if payload.competition_id and competition is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
+    requested_competition_ids = payload.competition_ids or ([payload.competition_id] if payload.competition_id else [])
     team = team_repo.create(
         db,
         Team(
-            competition_id=competition.id if competition is not None else None,
+            competition_id=requested_competition_ids[0] if requested_competition_ids else None,
             name=payload.name.strip(),
             short_name=payload.short_name.strip().upper(),
             slug=normalize_slug(payload.slug),
@@ -2329,9 +2363,16 @@ def create_team(
             accent_color=normalize_optional_text(payload.accent_color),
         ),
     )
+    db.flush()
+    competitions = sync_team_competitions(db, team, requested_competition_ids)
     db.commit()
     db.refresh(team)
-    return build_team_out(team, competition)
+    return build_team_out(
+        team,
+        competitions[0] if competitions else None,
+        [competition.id for competition in competitions],
+        [competition.name for competition in competitions],
+    )
 
 
 @router.put("/teams/{team_id}", response_model=TeamOut)
@@ -2345,11 +2386,7 @@ def update_team(
     if team is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
-    competition = db.get(Competition, payload.competition_id) if payload.competition_id else None
-    if payload.competition_id and competition is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
-
-    team.competition_id = competition.id if competition is not None else None
+    requested_competition_ids = payload.competition_ids or ([payload.competition_id] if payload.competition_id else [])
     team.name = payload.name.strip()
     team.short_name = payload.short_name.strip().upper()
     team.slug = normalize_slug(payload.slug)
@@ -2360,9 +2397,15 @@ def update_team(
     team.secondary_color = normalize_optional_text(payload.secondary_color)
     team.accent_color = normalize_optional_text(payload.accent_color)
     team_repo.save(db, team)
+    competitions = sync_team_competitions(db, team, requested_competition_ids)
     db.commit()
     db.refresh(team)
-    return build_team_out(team, competition)
+    return build_team_out(
+        team,
+        competitions[0] if competitions else None,
+        [competition.id for competition in competitions],
+        [competition.name for competition in competitions],
+    )
 
 
 @router.get("/historical-champions", response_model=list[HistoricalChampionOut])

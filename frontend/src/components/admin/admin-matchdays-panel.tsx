@@ -386,7 +386,7 @@ export function AdminMatchdaysPanel() {
           </label>
         </div>
         {loading ? <p className="mt-4 text-sm text-steel">Cargando jornadas...</p> : null}
-        <div className="no-scrollbar overflow-x-scroll overscroll-x-contain touch-pan-x [WebkitOverflowScrolling:touch]">
+        <div className="android-scroll-x">
           <table className="min-w-[1080px] table-fixed text-left text-[11px] text-steel">
             <thead className="app-table-head">
               <tr>

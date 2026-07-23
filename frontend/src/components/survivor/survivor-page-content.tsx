@@ -448,7 +448,7 @@ export function SurvivorPageContent() {
         <div
           ref={leaderboardScrollRef}
           onScroll={syncJourneySlider}
-          className="no-scrollbar mt-3 overflow-x-auto scroll-smooth touch-pan-x"
+          className="android-scroll-x mt-3 scroll-smooth"
         >
           {board.leaderboard.length === 0 ? <p className="text-sm text-steel">Aún no hay participantes inscritos.</p> : (
             <table className="min-w-[1240px] border-separate border-spacing-0 text-center text-[11px]">
@@ -674,7 +674,7 @@ export function SurvivorPageContent() {
 
       <section className="hidden surface-card px-5 py-5">
         <p className="text-xs uppercase tracking-[0.22em] text-steel">Tablero survivor</p>
-        <div className="mt-4 no-scrollbar overflow-x-auto touch-pan-x">
+        <div className="android-scroll-x mt-4">
           {board.leaderboard.length === 0 ? (
             <p className="text-sm text-steel">Aun no hay participantes inscritos.</p>
           ) : (
@@ -774,7 +774,7 @@ export function SurvivorPageContent() {
 
       <section className="hidden surface-card px-5 py-5">
         <p className="text-xs uppercase tracking-[0.22em] text-steel">Historial</p>
-        <div className="mt-4 no-scrollbar overflow-x-auto touch-pan-x">
+        <div className="android-scroll-x mt-4">
           {board.my_picks.length === 0 ? (
             <p className="text-sm text-steel">Todavia no capturas picks en survivor.</p>
           ) : (

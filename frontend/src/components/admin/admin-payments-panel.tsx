@@ -315,7 +315,7 @@ export function AdminPaymentsPanel() {
               </p>
             </div>
 
-            <div className="no-scrollbar overflow-x-auto touch-pan-x">
+            <div className="android-scroll-x">
               <table className="min-w-[1180px] w-full table-fixed text-left text-[12px] text-ink">
                 <thead className="app-table-head">
                   <tr>
@@ -377,7 +377,7 @@ export function AdminPaymentsPanel() {
               <p className="text-sm text-steel">{summary.assignments.length} pagos</p>
             </div>
 
-            <div className="no-scrollbar overflow-x-auto touch-pan-x">
+            <div className="android-scroll-x">
               <table className="min-w-[1280px] w-full table-fixed text-left text-[12px] text-ink">
                 <thead className="app-table-head">
                   <tr>

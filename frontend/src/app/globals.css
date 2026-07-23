@@ -359,6 +359,31 @@ body::after {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  .android-scroll-x {
+    overflow-x: auto;
+    overflow-y: visible;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: auto;
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  @media (min-width: 1024px) {
+    .android-scroll-both-desktop {
+      overflow-y: auto;
+    }
+  }
+
+  .android-scroll-x::-webkit-scrollbar {
+    height: 5px;
+  }
+
+  .android-scroll-x::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-steel) 40%, transparent);
+  }
 }
 
 html[data-app-surface="light"] [class*="border-white/["] {

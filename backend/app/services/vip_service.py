@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, aliased
 from app.core.datetime import ensure_utc
 from app.models.entities import (
     Competition,
+    CompetitionTeam,
     Match,
     MatchResult,
     Matchday,
@@ -495,7 +496,19 @@ class VipService:
         teams = list(db.scalars(select(Team).where(Team.id.in_(clean_team_ids))).all()) if clean_team_ids else []
         if len(teams) != len(clean_team_ids):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Hay equipos invalidos")
-        if any(team.competition_id and team.competition_id != self._season_competition_id(db, vip.season_id) for team in teams):
+        season_competition_id = self._season_competition_id(db, vip.season_id)
+        eligible_team_ids = set(
+            db.scalars(
+                select(CompetitionTeam.team_id).where(
+                    CompetitionTeam.competition_id == season_competition_id,
+                    CompetitionTeam.team_id.in_(clean_team_ids),
+                )
+            )
+        ) if season_competition_id and clean_team_ids else set()
+        if any(
+            team.id not in eligible_team_ids and team.competition_id != season_competition_id
+            for team in teams
+        ):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Los equipos no pertenecen a la temporada")
 
         profiles = list(db.scalars(select(Profile).where(Profile.id.in_(clean_profile_ids))).all()) if clean_profile_ids else []

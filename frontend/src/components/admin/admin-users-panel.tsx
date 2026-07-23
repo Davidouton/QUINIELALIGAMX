@@ -987,7 +987,7 @@ export function AdminUsersPanel() {
         ) : null}
 
         {users.length > 0 ? (
-          <div className="no-scrollbar overflow-x-auto touch-pan-x">
+          <div className="android-scroll-x">
             <div className="grid gap-3 px-2 py-3 lg:grid-cols-[minmax(0,300px)_minmax(0,300px)] lg:justify-between">
               <label className="space-y-2 text-left text-sm">
                 <span className="text-steel">Buscar dentro de la tabla</span>

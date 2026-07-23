@@ -123,7 +123,7 @@ def run_startup_migrations() -> None:
                       provider_league_id VARCHAR(120),
                       is_active BOOLEAN NOT NULL DEFAULT TRUE,
                       sort_order INTEGER NOT NULL DEFAULT 100,
-                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
                       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
                     )
                     """
@@ -265,6 +265,83 @@ def run_startup_migrations() -> None:
                     "ON seasons(survivor_registration_closed)"
                 )
             )
+
+        current_table_names = set(inspect(connection).get_table_names())
+        if "teams" in current_table_names and "competition_teams" not in current_table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE competition_teams (
+                      id UUID PRIMARY KEY,
+                      competition_id UUID NOT NULL REFERENCES competitions(id) ON DELETE CASCADE,
+                      team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                      CONSTRAINT uq_competition_teams_competition_team UNIQUE (competition_id, team_id)
+                    )
+                    """
+                )
+            )
+        if "teams" in current_table_names and "season_teams" not in current_table_names:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE season_teams (
+                      id UUID PRIMARY KEY,
+                      season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+                      team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                      conference_name VARCHAR(80),
+                      division_name VARCHAR(80),
+                      group_label VARCHAR(32),
+                      seed INTEGER,
+                      created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      CONSTRAINT uq_season_teams_season_team UNIQUE (season_id, team_id)
+                    )
+                    """
+                )
+            )
+        if "competition_teams" in set(inspect(connection).get_table_names()):
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_competition_teams_competition_id ON competition_teams(competition_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_competition_teams_team_id ON competition_teams(team_id)"))
+            legacy_team_rows = connection.execute(
+                text("SELECT id, competition_id FROM teams WHERE competition_id IS NOT NULL")
+            ).mappings()
+            for legacy_team in legacy_team_rows:
+                connection.execute(
+                    text(
+                        "INSERT INTO competition_teams (id, competition_id, team_id) "
+                        "VALUES (:id, :competition_id, :team_id) "
+                        "ON CONFLICT (competition_id, team_id) DO NOTHING"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "competition_id": legacy_team["competition_id"],
+                        "team_id": legacy_team["id"],
+                    },
+                )
+        if "season_teams" in set(inspect(connection).get_table_names()):
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_season_teams_season_id ON season_teams(season_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_season_teams_team_id ON season_teams(team_id)"))
+            legacy_season_team_rows = connection.execute(
+                text(
+                    "SELECT seasons.id AS season_id, competition_teams.team_id AS team_id "
+                    "FROM seasons JOIN competition_teams "
+                    "ON competition_teams.competition_id = seasons.competition_id"
+                )
+            ).mappings()
+            for legacy_membership in legacy_season_team_rows:
+                connection.execute(
+                    text(
+                        "INSERT INTO season_teams (id, season_id, team_id) "
+                        "VALUES (:id, :season_id, :team_id) "
+                        "ON CONFLICT (season_id, team_id) DO NOTHING"
+                    ),
+                    {
+                        "id": str(uuid4()),
+                        "season_id": legacy_membership["season_id"],
+                        "team_id": legacy_membership["team_id"],
+                    },
+                )
 
         if "matches" in table_names:
             match_columns = {column["name"]: column for column in inspector.get_columns("matches")}

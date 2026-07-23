@@ -140,7 +140,7 @@ export function AdminMatchesPanel() {
     if (!competitionId) {
       return teams;
     }
-    return teams.filter((team) => team.competition_id === competitionId);
+    return teams.filter((team) => team.competition_ids.includes(competitionId));
   }, [createFormSeasonId, seasonById, teams]);
 
   function getEligibleTeamsForSeasonId(seasonId: string | null | undefined) {
@@ -148,7 +148,7 @@ export function AdminMatchesPanel() {
     if (!competitionId) {
       return teams;
     }
-    return teams.filter((team) => team.competition_id === competitionId);
+    return teams.filter((team) => team.competition_ids.includes(competitionId));
   }
 
   async function loadMatches(
@@ -607,7 +607,7 @@ export function AdminMatchesPanel() {
         {loading ? <p className="mt-4 text-sm text-steel">Cargando partidos...</p> : null}
 
         {matches.length > 0 ? (
-          <div className="no-scrollbar max-h-[72vh] overflow-auto touch-pan-x [WebkitOverflowScrolling:touch]">
+          <div className="android-scroll-x android-scroll-both-desktop lg:max-h-[72vh]">
             <table className="min-w-[1620px] table-fixed text-center text-[11px] text-steel">
               <thead className="app-table-head sticky top-0 z-10 bg-night/95 backdrop-blur-xl">
                 <tr>

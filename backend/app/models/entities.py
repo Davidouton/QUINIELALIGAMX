@@ -338,6 +338,39 @@ class Team(Base):
     )
 
 
+class CompetitionTeam(Base):
+    __tablename__ = "competition_teams"
+    __table_args__ = (
+        UniqueConstraint("competition_id", "team_id", name="uq_competition_teams_competition_team"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    competition_id: Mapped[str] = mapped_column(
+        UUID_SQL,
+        ForeignKey("competitions.id", ondelete="CASCADE"),
+        index=True,
+    )
+    team_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SeasonTeam(Base):
+    __tablename__ = "season_teams"
+    __table_args__ = (UniqueConstraint("season_id", "team_id", name="uq_season_teams_season_team"),)
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    season_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("seasons.id", ondelete="CASCADE"), index=True)
+    team_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("teams.id", ondelete="CASCADE"), index=True)
+    conference_name: Mapped[str | None] = mapped_column(String(80))
+    division_name: Mapped[str | None] = mapped_column(String(80))
+    group_label: Mapped[str | None] = mapped_column(String(32))
+    seed: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class WorldCupGroupTeam(Base):
     __tablename__ = "world_cup_group_teams"
     __table_args__ = (UniqueConstraint("group_id", "team_id", name="uq_world_cup_group_teams_group_team"),)

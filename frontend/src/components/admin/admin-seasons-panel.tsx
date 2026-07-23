@@ -446,7 +446,7 @@ export function AdminSeasonsPanel() {
             ))}
           </select>
         </div>
-        <div className="no-scrollbar overflow-x-auto touch-pan-x">
+        <div className="android-scroll-x">
           <table className="min-w-[1080px] table-fixed text-left text-sm text-ink">
             <colgroup>
               <col className="w-[180px]" />

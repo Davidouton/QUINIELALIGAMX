@@ -1446,6 +1446,8 @@ export interface Team {
   competition_id: string | null;
   competition_name: string | null;
   competition_sport_name: string | null;
+  competition_ids: string[];
+  competition_names: string[];
   external_id: string | null;
   name: string;
   short_name: string;

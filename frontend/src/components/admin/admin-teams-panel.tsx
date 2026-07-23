@@ -7,7 +7,7 @@ import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { Competition, Team } from "@/types/api";
 
 type TeamFormState = {
-  competition_id: string;
+  competition_ids: string[];
   name: string;
   short_name: string;
   slug: string;
@@ -24,7 +24,7 @@ function toColorInputValue(value: string) {
 }
 
 const initialTeamForm: TeamFormState = {
-  competition_id: "",
+  competition_ids: [],
   name: "",
   short_name: "",
   slug: "",
@@ -48,7 +48,7 @@ export function AdminTeamsPanel() {
   const [message, setMessage] = useState<string | null>(null);
 
   const visibleTeams = useMemo(
-    () => teams.filter((team) => (selectedCompetitionId ? team.competition_id === selectedCompetitionId : true)),
+    () => teams.filter((team) => (selectedCompetitionId ? team.competition_ids.includes(selectedCompetitionId) : true)),
     [selectedCompetitionId, teams],
   );
 
@@ -89,7 +89,7 @@ export function AdminTeamsPanel() {
         method,
         body: JSON.stringify({
           ...teamForm,
-          competition_id: teamForm.competition_id || null,
+          competition_id: teamForm.competition_ids[0] ?? null,
           external_id: teamForm.external_id || null,
           crest_url: teamForm.crest_url || null,
           home_venue: teamForm.home_venue || null,
@@ -112,7 +112,7 @@ export function AdminTeamsPanel() {
   function beginEditTeam(team: Team) {
     setEditingTeamId(team.id);
     setTeamForm({
-      competition_id: team.competition_id ?? "",
+      competition_ids: team.competition_ids,
       name: team.name,
       short_name: team.short_name,
       slug: team.slug,
@@ -150,18 +150,27 @@ export function AdminTeamsPanel() {
           ) : null}
         </div>
         <form onSubmit={handleCreateTeam} className="mt-5 grid gap-4 md:grid-cols-2">
-          <select
-            value={teamForm.competition_id}
-            onChange={(event) => setTeamForm((current) => ({ ...current, competition_id: event.target.value }))}
-            className="field-control md:col-span-2"
-          >
-            <option value="">Sin competencia base</option>
-            {competitions.map((competition) => (
-              <option key={competition.id} value={competition.id}>
-                {competition.sport_name} · {competition.name}
-              </option>
-            ))}
-          </select>
+          <fieldset className="space-y-3 border-y border-white/[0.08] py-4 md:col-span-2">
+            <legend className="text-sm font-semibold text-ink">Competencias del equipo</legend>
+            <p className="text-xs text-steel">Selecciona todas las competencias donde puede participar este mismo equipo.</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {competitions.filter((competition) => competition.is_active).map((competition) => (
+                <label key={competition.id} className="flex items-center gap-3 text-sm text-ink">
+                  <input
+                    type="checkbox"
+                    checked={teamForm.competition_ids.includes(competition.id)}
+                    onChange={(event) => setTeamForm((current) => ({
+                      ...current,
+                      competition_ids: event.target.checked
+                        ? [...current.competition_ids, competition.id]
+                        : current.competition_ids.filter((competitionId) => competitionId !== competition.id),
+                    }))}
+                  />
+                  {competition.sport_name} · {competition.name}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <input
             value={teamForm.name}
             onChange={(event) => setTeamForm((current) => ({ ...current, name: event.target.value }))}
@@ -311,7 +320,7 @@ export function AdminTeamsPanel() {
             ))}
           </select>
         </div>
-        <div className="no-scrollbar overflow-x-auto overscroll-x-contain touch-pan-x [WebkitOverflowScrolling:touch]">
+        <div className="android-scroll-x">
           <table className="min-w-[1080px] table-fixed text-left text-[11px] text-steel">
             <thead className="app-table-head">
               <tr>
@@ -328,7 +337,7 @@ export function AdminTeamsPanel() {
           {visibleTeams.map((team) => (
             <tr key={team.id} className="app-table-row border-b last:border-b-0">
               <td className="px-3 py-3 text-steel">
-                {team.competition_name ? `${team.competition_sport_name} · ${team.competition_name}` : "Sin asignar"}
+                {team.competition_names.length ? team.competition_names.join(", ") : "Sin asignar"}
               </td>
               <td className="px-3 py-3 font-medium text-ink">{team.name}</td>
               <td className="px-3 py-3 text-steel">{team.short_name}</td>

@@ -1561,7 +1561,7 @@ export function PickBoard() {
                 : "Todavia no hay jugadores activos para mostrar en esta jornada."}
             </p>
           ) : (
-            <div className="no-scrollbar overflow-x-auto touch-pan-x">
+            <div className="android-scroll-x">
               <table className="min-w-[760px] table-fixed text-left text-[11px] text-steel">
                 <colgroup>
                   <col className="w-[180px]" />

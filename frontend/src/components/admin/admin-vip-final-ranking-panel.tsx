@@ -149,7 +149,7 @@ export function AdminVipFinalRankingPanel() {
       {loading ? <p className="text-sm text-steel">Cargando rankings VIP...</p> : null}
       {error ? <p className="text-sm text-coral">{error}</p> : null}
       {!loading && !error ? (
-        <div className="no-scrollbar overflow-x-auto touch-pan-x">
+        <div className="android-scroll-x">
           <table className="min-w-[1670px] w-full table-fixed text-left text-[11px] text-ink">
             <thead className="app-table-head">
               <tr>

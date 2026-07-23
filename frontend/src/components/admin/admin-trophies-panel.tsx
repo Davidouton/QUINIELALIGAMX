@@ -54,7 +54,7 @@ function AssetSection({
         </div>
       </div>
       {loading ? <p className="mt-4 text-sm text-steel">Cargando...</p> : null}
-      <div className="no-scrollbar overflow-x-auto overscroll-x-contain touch-pan-x [WebkitOverflowScrolling:touch]">
+      <div className="android-scroll-x">
         <table className="min-w-full table-fixed text-left text-[11px] text-steel">
           <thead className="app-table-head">
             <tr>

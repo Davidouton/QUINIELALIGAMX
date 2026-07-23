@@ -412,7 +412,7 @@ export function AdminPicksPanel() {
       ) : null}
 
       {!loading && filteredRows.length > 0 ? (
-        <div className="no-scrollbar overflow-x-auto touch-pan-x">
+        <div className="android-scroll-x">
           <table className="min-w-[1480px] table-fixed text-left text-sm text-steel">
             <colgroup>
               <col className="w-[150px]" />
