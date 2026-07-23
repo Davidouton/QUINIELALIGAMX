@@ -116,6 +116,7 @@ export function AdminMatchesPanel() {
   const [creating, setCreating] = useState(false);
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -149,6 +150,147 @@ export function AdminMatchesPanel() {
       return teams;
     }
     return teams.filter((team) => team.competition_ids.includes(competitionId));
+  }
+
+  function getTemplateTeams(seasonId: string) {
+    const season = seasonById[seasonId];
+    if (!season) return [];
+    if (season.structure_format === "leagues_cup") {
+      return teams.filter((team) => {
+        const labels = team.competition_names.join(" ").toLocaleLowerCase("es-MX");
+        return (
+          labels.includes("mls")
+          || (labels.includes("liga") && labels.includes("mx"))
+          || Boolean(season.competition_id && team.competition_ids.includes(season.competition_id))
+        );
+      });
+    }
+    return getEligibleTeamsForSeasonId(seasonId);
+  }
+
+  async function handleDownloadBulkTemplate() {
+    const season = seasonById[selectedSeasonId];
+    if (!season) {
+      setError("Selecciona una temporada antes de descargar la plantilla.");
+      return;
+    }
+    const templateTeams = getTemplateTeams(season.id).sort((left, right) => left.name.localeCompare(right.name, "es"));
+    if (!templateTeams.length) {
+      setError("La temporada no tiene equipos disponibles para construir la plantilla.");
+      return;
+    }
+    setDownloadingTemplate(true);
+    setError(null);
+    try {
+      const ExcelJS = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Quiniela Maestra";
+      workbook.created = new Date();
+
+      const instructions = workbook.addWorksheet("Instrucciones");
+      instructions.columns = [{ width: 24 }, { width: 92 }];
+      instructions.addRows([
+        ["Temporada", season.name],
+        ["Zona horaria", "America/Mexico_City"],
+        ["Formato de fecha", "AAAA-MM-DD HH:MM, por ejemplo 2026-08-04 19:00"],
+        ["Equipos", "Selecciona los slugs desde las listas desplegables. No cambies los slugs."],
+        ["Cierre de picks", "Puede dejarse vacío; el sistema usará el offset configurado en la jornada."],
+        ["external_id", "Identificador único recomendado para poder corregir y volver a importar sin duplicar."],
+      ]);
+      instructions.getRow(1).font = { bold: true };
+
+      const teamsSheet = workbook.addWorksheet("Equipos disponibles");
+      teamsSheet.columns = [
+        { header: "equipo", key: "name", width: 38 },
+        { header: "codigo", key: "short_name", width: 16 },
+        { header: "slug", key: "slug", width: 34 },
+        { header: "competencias", key: "competitions", width: 44 },
+      ];
+      templateTeams.forEach((team) => {
+        teamsSheet.addRow({
+          name: team.name,
+          short_name: team.short_name,
+          slug: team.slug,
+          competitions: team.competition_names.join(", "),
+        });
+      });
+      teamsSheet.views = [{ state: "frozen", ySplit: 1 }];
+
+      const calendar = workbook.addWorksheet("Calendario");
+      calendar.columns = [
+        { header: "external_id", key: "external_id", width: 20 },
+        { header: "matchday_number", key: "matchday_number", width: 18 },
+        { header: "matchday_name", key: "matchday_name", width: 24 },
+        { header: "stage_type", key: "stage_type", width: 18 },
+        { header: "kickoff_at", key: "kickoff_at", width: 22 },
+        { header: "picks_lock_at", key: "picks_lock_at", width: 22 },
+        { header: "home_slug", key: "home_slug", width: 30 },
+        { header: "away_slug", key: "away_slug", width: 30 },
+        { header: "venue", key: "venue", width: 34 },
+        { header: "bracket_slot", key: "bracket_slot", width: 18 },
+      ];
+      calendar.views = [{ state: "frozen", ySplit: 1 }];
+      calendar.addRow({
+        external_id: "",
+        matchday_number: 1,
+        matchday_name: "Fase Uno",
+        stage_type: "regular",
+        kickoff_at: "2026-08-04 19:00",
+        picks_lock_at: "",
+        home_slug: templateTeams[0]?.slug ?? "",
+        away_slug: templateTeams[1]?.slug ?? "",
+        venue: "",
+        bracket_slot: "",
+      });
+      const teamRange = `'Equipos disponibles'!$C$2:$C$${templateTeams.length + 1}`;
+      for (let rowNumber = 2; rowNumber <= 301; rowNumber += 1) {
+        calendar.getCell(`G${rowNumber}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [teamRange],
+          showErrorMessage: true,
+          errorTitle: "Equipo no válido",
+          error: "Selecciona un slug de la lista de equipos disponibles.",
+        };
+        calendar.getCell(`H${rowNumber}`).dataValidation = {
+          type: "list",
+          allowBlank: true,
+          formulae: [teamRange],
+          showErrorMessage: true,
+          errorTitle: "Equipo no válido",
+          error: "Selecciona un slug de la lista de equipos disponibles.",
+        };
+        calendar.getCell(`D${rowNumber}`).dataValidation = {
+          type: "list",
+          allowBlank: false,
+          formulae: ['"regular,group,round_of_32,round_of_16,quarterfinal,semifinal,third_place,final"'],
+        };
+      }
+
+      for (const sheet of [instructions, teamsSheet, calendar]) {
+        const header = sheet.getRow(1);
+        header.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF10213A" } };
+        header.alignment = { vertical: "middle" };
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob(
+        [new Uint8Array(buffer)],
+        { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+      );
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `calendario-${season.slug}.xlsx`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setMessage("Plantilla descargada con los equipos disponibles.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo generar la plantilla.");
+    } finally {
+      setDownloadingTemplate(false);
+    }
   }
 
   async function loadMatches(
@@ -423,6 +565,14 @@ export function AdminMatchesPanel() {
           </label>
 
         </div>
+        <button
+          type="button"
+          onClick={() => void handleDownloadBulkTemplate()}
+          disabled={!selectedSeasonId || downloadingTemplate}
+          className="app-pill-active px-4 disabled:opacity-50"
+        >
+          {downloadingTemplate ? "Generando plantilla..." : "Descargar template XLSX"}
+        </button>
 
         {message ? <p className="mt-4 text-sm text-moss">{message}</p> : null}
         {error ? <p className="mt-4 text-sm text-coral">{error}</p> : null}
