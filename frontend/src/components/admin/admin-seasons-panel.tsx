@@ -325,7 +325,7 @@ export function AdminSeasonsPanel() {
               setSeasonForm((current) => ({
                 ...current,
                 visibility_status: event.target.value as SeasonVisibilityStatus,
-                is_active: event.target.value === "testing" ? false : current.is_active,
+                is_active: event.target.value === "testing" || event.target.value === "archived" ? false : current.is_active,
               }))
             }
             className="field-control"
@@ -543,6 +543,16 @@ export function AdminSeasonsPanel() {
                       >
                         Editar
                       </button>
+                      {season.visibility_status !== "archived" ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleArchiveSeason(season)}
+                          disabled={Boolean(saving)}
+                          className="app-pill h-9 min-w-[90px] px-3 text-[11px]"
+                        >
+                          {saving === `archive:${season.id}` ? "..." : "Archivar"}
+                        </button>
+                      ) : null}
                       {!season.is_active && season.visibility_status === "live" ? (
                         <button
                           type="button"
@@ -578,16 +588,6 @@ export function AdminSeasonsPanel() {
                               ? "Abrir survivor"
                               : "Cerrar survivor"}
                           </button>
-                      ) : null}
-                      {season.visibility_status === "closed" ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleArchiveSeason(season)}
-                          disabled={Boolean(saving)}
-                          className="app-pill h-9 min-w-[90px] px-3 text-[11px]"
-                        >
-                          {saving === `archive:${season.id}` ? "..." : "Archivar"}
-                        </button>
                       ) : null}
                     </div>
                   </td>

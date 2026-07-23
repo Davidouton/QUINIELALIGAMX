@@ -2217,7 +2217,7 @@ def create_season(
             select(CompetitionTeam.team_id).where(CompetitionTeam.competition_id == competition.id)
         ):
             db.add(SeasonTeam(season_id=season.id, team_id=team_id))
-    if payload.is_active:
+    if season.is_active:
         set_active_season(db, season)
     db.commit()
     db.refresh(season)
@@ -2273,7 +2273,7 @@ def update_season(
     season.survivor_registration_closed = True if is_archiving else payload.survivor_registration_closed
     season.survivor_registration_lock_at = payload.survivor_registration_lock_at
     season_repo.save(db, season)
-    if payload.is_active:
+    if season.is_active:
         set_active_season(db, season)
     db.commit()
     db.refresh(season)
