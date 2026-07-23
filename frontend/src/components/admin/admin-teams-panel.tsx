@@ -19,10 +19,6 @@ type TeamFormState = {
   accent_color: string;
 };
 
-function toColorInputValue(value: string) {
-  return /^#[0-9A-F]{6}$/i.test(value) ? value : "#000000";
-}
-
 const initialTeamForm: TeamFormState = {
   competition_ids: [],
   name: "",
@@ -138,8 +134,8 @@ export function AdminTeamsPanel() {
 
   function downloadCsvTemplate() {
     const csv = [
-      "name,short_name,slug,external_id,crest_url,home_venue,primary_color,secondary_color,accent_color",
-      'Equipo Demo,DEM,equipo-demo,provider-123,https://example.com/logo.png,Estadio Demo,#001F5B,#FFFFFF,#FFD100',
+      "name,short_name,slug,external_id,crest_url,home_venue",
+      "Equipo Demo,DEM,equipo-demo,provider-123,https://example.com/logo.png,Estadio Demo",
     ].join("\n");
     const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
@@ -256,88 +252,21 @@ export function AdminTeamsPanel() {
             placeholder="Estadio local"
             className="field-control md:col-span-2"
           />
-          <input
-            value={teamForm.primary_color}
-            onChange={(event) => setTeamForm((current) => ({ ...current, primary_color: event.target.value.toUpperCase() }))}
-            placeholder="#001F5B color principal"
-            className="field-control"
-          />
-          <input
-            value={teamForm.secondary_color}
-            onChange={(event) => setTeamForm((current) => ({ ...current, secondary_color: event.target.value.toUpperCase() }))}
-            placeholder="#FFD100 color secundario"
-            className="field-control"
-          />
-          <input
-            value={teamForm.accent_color}
-            onChange={(event) => setTeamForm((current) => ({ ...current, accent_color: event.target.value.toUpperCase() }))}
-            placeholder="#E10600 color acento"
-            className="field-control md:col-span-2"
-          />
-          <div className="grid gap-4 md:col-span-2 md:grid-cols-3">
-            <label className="space-y-2 text-sm">
-              <span className="text-steel">Color principal</span>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={toColorInputValue(teamForm.primary_color)}
-                  onChange={(event) =>
-                    setTeamForm((current) => ({ ...current, primary_color: event.target.value.toUpperCase() }))
-                  }
-                  className="h-11 w-16 rounded-xl bg-transparent"
-                />
-                <input
-                  value={teamForm.primary_color}
-                  onChange={(event) =>
-                    setTeamForm((current) => ({ ...current, primary_color: event.target.value.toUpperCase() }))
-                  }
-                  placeholder="#001F5B"
-                  className="field-control"
-                />
+          <div className="border-y border-white/[0.08] py-4 md:col-span-2">
+            <p className="text-sm font-semibold text-ink">Paleta automática del escudo</p>
+            <p className="mt-1 text-xs text-steel">Los colores se calculan al guardar usando la imagen de crest_url.</p>
+            {editingTeamId && (teamForm.primary_color || teamForm.secondary_color || teamForm.accent_color) ? (
+              <div className="mt-3 flex items-center gap-3">
+                {[teamForm.primary_color, teamForm.secondary_color, teamForm.accent_color]
+                  .filter(Boolean)
+                  .map((color) => (
+                    <span key={color} className="inline-flex items-center gap-2 text-xs text-steel">
+                      <i className="h-5 w-5 rounded-full border border-white/[0.1]" style={{ backgroundColor: color }} />
+                      {color}
+                    </span>
+                  ))}
               </div>
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="text-steel">Color secundario</span>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={toColorInputValue(teamForm.secondary_color)}
-                  onChange={(event) =>
-                    setTeamForm((current) => ({ ...current, secondary_color: event.target.value.toUpperCase() }))
-                  }
-                  className="h-11 w-16 rounded-xl bg-transparent"
-                />
-                <input
-                  value={teamForm.secondary_color}
-                  onChange={(event) =>
-                    setTeamForm((current) => ({ ...current, secondary_color: event.target.value.toUpperCase() }))
-                  }
-                  placeholder="#FFD100"
-                  className="field-control"
-                />
-              </div>
-            </label>
-            <label className="space-y-2 text-sm">
-              <span className="text-steel">Color acento</span>
-              <div className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={toColorInputValue(teamForm.accent_color)}
-                  onChange={(event) =>
-                    setTeamForm((current) => ({ ...current, accent_color: event.target.value.toUpperCase() }))
-                  }
-                  className="h-11 w-16 rounded-xl bg-transparent"
-                />
-                <input
-                  value={teamForm.accent_color}
-                  onChange={(event) =>
-                    setTeamForm((current) => ({ ...current, accent_color: event.target.value.toUpperCase() }))
-                  }
-                  placeholder="#E10600"
-                  className="field-control"
-                />
-              </div>
-            </label>
+            ) : null}
           </div>
           <button type="submit" disabled={saving} className="app-pill-active w-fit px-4 disabled:opacity-60">
             {saving ? "Guardando..." : editingTeamId ? "Actualizar equipo" : "Crear equipo"}

@@ -145,6 +145,7 @@ from app.services.scoring_service import ScoringService
 from app.services.season_eligibility_service import SeasonEligibilityService
 from app.services.supabase_admin_service import SupabaseAdminError, SupabaseAdminService
 from app.services.survivor_service import SurvivorService
+from app.services.team_color_service import extract_team_palette
 from app.services.username_service import assign_profile_username
 from app.services.sync_matches import sync_matches
 from app.services.sync_odds import sync_odds
@@ -1098,6 +1099,22 @@ def sync_team_competitions(db: Session, team: Team, competition_ids: list[str]) 
         db.add(CompetitionTeam(team_id=team.id, competition_id=competition_id))
     team.competition_id = normalized_ids[0] if normalized_ids else None
     return [competition_by_id[competition_id] for competition_id in normalized_ids]
+
+
+def apply_automatic_team_palette(team: Team) -> None:
+    if not team.crest_url:
+        return
+    try:
+        primary, secondary, accent = extract_team_palette(team.crest_url)
+    except Exception as exc:
+        logger.warning("No se pudo extraer la paleta del escudo %s: %s", team.crest_url, exc)
+        return
+    if primary:
+        team.primary_color = primary
+    if secondary:
+        team.secondary_color = secondary
+    if accent:
+        team.accent_color = accent
 
 
 def build_season_out(row: Season, competition: Competition | None = None) -> SeasonOut:
@@ -2367,6 +2384,7 @@ def create_team(
         ),
     )
     db.flush()
+    apply_automatic_team_palette(team)
     competitions = sync_team_competitions(db, team, requested_competition_ids)
     db.commit()
     db.refresh(team)
@@ -2428,9 +2446,7 @@ def import_teams_csv(
                 team.external_id = normalize_optional_text(row.get("external_id"))
                 team.crest_url = normalize_optional_text(row.get("crest_url"))
                 team.home_venue = normalize_optional_text(row.get("home_venue"))
-                team.primary_color = normalize_optional_text(row.get("primary_color"))
-                team.secondary_color = normalize_optional_text(row.get("secondary_color"))
-                team.accent_color = normalize_optional_text(row.get("accent_color"))
+                apply_automatic_team_palette(team)
                 if team.competition_id is None:
                     team.competition_id = competition.id
                 membership = db.scalar(
@@ -2488,11 +2504,15 @@ def update_team(
     team.short_name = payload.short_name.strip().upper()
     team.slug = normalize_slug(payload.slug)
     team.external_id = normalize_optional_text(payload.external_id)
+    previous_crest_url = team.crest_url
     team.crest_url = normalize_optional_text(payload.crest_url)
     team.home_venue = normalize_optional_text(payload.home_venue)
     team.primary_color = normalize_optional_text(payload.primary_color)
     team.secondary_color = normalize_optional_text(payload.secondary_color)
     team.accent_color = normalize_optional_text(payload.accent_color)
+    crest_changed = previous_crest_url != team.crest_url
+    if crest_changed or not all([team.primary_color, team.secondary_color, team.accent_color]):
+        apply_automatic_team_palette(team)
     team_repo.save(db, team)
     competitions = sync_team_competitions(db, team, requested_competition_ids)
     db.commit()
