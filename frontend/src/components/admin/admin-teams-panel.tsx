@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Competition, Team } from "@/types/api";
+import type { Competition, Team, TeamBulkImportResult } from "@/types/api";
 
 type TeamFormState = {
   competition_ids: string[];
@@ -44,6 +44,8 @@ export function AdminTeamsPanel() {
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [bulkResult, setBulkResult] = useState<TeamBulkImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -132,6 +134,48 @@ export function AdminTeamsPanel() {
     setTeamForm(initialTeamForm);
     setError(null);
     setMessage(null);
+  }
+
+  function downloadCsvTemplate() {
+    const csv = [
+      "name,short_name,slug,external_id,crest_url,home_venue,primary_color,secondary_color,accent_color",
+      'Equipo Demo,DEM,equipo-demo,provider-123,https://example.com/logo.png,Estadio Demo,#001F5B,#FFFFFF,#FFD100',
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "plantilla-equipos.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importCsv(file: File | null) {
+    if (!file) return;
+    if (!selectedCompetitionId) {
+      setError("Selecciona la competencia donde se cargarán los equipos.");
+      return;
+    }
+    setImporting(true);
+    setBulkResult(null);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const result = await backendFetch<TeamBulkImportResult>("/admin/teams/import-csv", accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          competition_id: selectedCompetitionId,
+          csv_text: await file.text(),
+        }),
+      });
+      setBulkResult(result);
+      await loadTeams();
+      setMessage(`Importación terminada: ${result.created} creados, ${result.updated} actualizados${result.failed ? ` y ${result.failed} con error` : ""}.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo importar el CSV");
+    } finally {
+      setImporting(false);
+    }
   }
 
   return (
@@ -301,6 +345,53 @@ export function AdminTeamsPanel() {
         </form>
         {message ? <p className="mt-4 text-sm text-moss">{message}</p> : null}
         {error ? <p className="mt-4 text-sm text-coral">{error}</p> : null}
+      </section>
+
+      <section className="space-y-4 border-y border-white/[0.08] py-5">
+        <div>
+          <h3 className="text-base font-semibold text-ink">Carga masiva de equipos</h3>
+          <p className="mt-1 text-sm text-steel">
+            Selecciona una competencia y sube el CSV. Los equipos existentes se actualizan por slug sin perder sus otras competencias.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,320px)_auto_auto] md:items-center">
+          <select
+            value={selectedCompetitionId}
+            onChange={(event) => setSelectedCompetitionId(event.target.value)}
+            className="field-control"
+          >
+            <option value="">Selecciona una competencia</option>
+            {competitions.map((competition) => (
+              <option key={competition.id} value={competition.id}>
+                {competition.sport_name} · {competition.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={downloadCsvTemplate} className="app-pill h-10 px-4">
+            Descargar plantilla
+          </button>
+          <label className={`app-pill-active flex h-10 cursor-pointer items-center justify-center px-4 ${importing ? "pointer-events-none opacity-50" : ""}`}>
+            {importing ? "Importando..." : "Subir CSV"}
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="sr-only"
+              onChange={(event) => {
+                void importCsv(event.target.files?.[0] ?? null);
+                event.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        {bulkResult?.failed ? (
+          <div className="border-y border-coral/25 py-3 text-sm text-coral">
+            {bulkResult.rows.filter((row) => row.status === "failed").map((row) => (
+              <p key={`${row.row_number}-${row.slug ?? "row"}`}>
+                Fila {row.row_number}{row.name ? ` · ${row.name}` : ""}: {row.detail ?? "No se pudo importar"}
+              </p>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="space-y-3">

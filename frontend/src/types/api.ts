@@ -1461,6 +1461,21 @@ export interface Team {
   updated_at: string;
 }
 
+export interface TeamBulkImportRow {
+  row_number: number;
+  slug: string | null;
+  name: string | null;
+  status: "created" | "updated" | "failed";
+  detail: string | null;
+}
+
+export interface TeamBulkImportResult {
+  created: number;
+  updated: number;
+  failed: number;
+  rows: TeamBulkImportRow[];
+}
+
 export interface OddsPreviewRow {
   match_date: string;
   home_team: string;

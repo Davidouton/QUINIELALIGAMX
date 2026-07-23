@@ -102,6 +102,9 @@ from app.schemas.admin import (
     SeasonUpdateRequest,
     SyncResponse,
     TeamCreateRequest,
+    TeamBulkImportRequest,
+    TeamBulkImportResponse,
+    TeamBulkImportRowOut,
     TeamUpdateRequest,
     TrophyAssetCreateRequest,
     TrophyAssetOut,
@@ -2373,6 +2376,100 @@ def create_team(
         [competition.id for competition in competitions],
         [competition.name for competition in competitions],
     )
+
+
+@router.post("/teams/import-csv", response_model=TeamBulkImportResponse)
+def import_teams_csv(
+    payload: TeamBulkImportRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> TeamBulkImportResponse:
+    competition = db.get(Competition, payload.competition_id)
+    if competition is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
+
+    reader = csv.DictReader(io.StringIO(payload.csv_text.lstrip("\ufeff").strip()))
+    normalized_headers = {
+        (header or "").strip().lower()
+        for header in (reader.fieldnames or [])
+    }
+    required_headers = {"name", "short_name", "slug"}
+    if not required_headers.issubset(normalized_headers):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El CSV requiere las columnas name, short_name y slug",
+        )
+
+    created = 0
+    updated = 0
+    failed = 0
+    results: list[TeamBulkImportRowOut] = []
+    for row_number, raw_row in enumerate(reader, start=2):
+        row = {(key or "").strip().lower(): (value or "").strip() for key, value in raw_row.items()}
+        name = row.get("name", "")
+        short_name = row.get("short_name", "").upper()
+        slug = normalize_slug(row.get("slug", ""))
+        try:
+            if not name or not short_name or not slug:
+                raise ValueError("name, short_name y slug son obligatorios")
+            if not 2 <= len(short_name) <= 16:
+                raise ValueError("short_name debe tener entre 2 y 16 caracteres")
+
+            with db.begin_nested():
+                team = db.scalar(select(Team).where(Team.slug == slug))
+                row_status = "updated" if team is not None else "created"
+                if team is None:
+                    team = Team(name=name, short_name=short_name, slug=slug)
+                    db.add(team)
+                    db.flush()
+
+                team.name = name
+                team.short_name = short_name
+                team.external_id = normalize_optional_text(row.get("external_id"))
+                team.crest_url = normalize_optional_text(row.get("crest_url"))
+                team.home_venue = normalize_optional_text(row.get("home_venue"))
+                team.primary_color = normalize_optional_text(row.get("primary_color"))
+                team.secondary_color = normalize_optional_text(row.get("secondary_color"))
+                team.accent_color = normalize_optional_text(row.get("accent_color"))
+                if team.competition_id is None:
+                    team.competition_id = competition.id
+                membership = db.scalar(
+                    select(CompetitionTeam).where(
+                        CompetitionTeam.competition_id == competition.id,
+                        CompetitionTeam.team_id == team.id,
+                    )
+                )
+                if membership is None:
+                    db.add(CompetitionTeam(competition_id=competition.id, team_id=team.id))
+                db.add(team)
+                db.flush()
+
+            if row_status == "created":
+                created += 1
+            else:
+                updated += 1
+            results.append(
+                TeamBulkImportRowOut(
+                    row_number=row_number,
+                    slug=slug,
+                    name=name,
+                    status=row_status,
+                )
+            )
+        except Exception as exc:
+            failed += 1
+            results.append(
+                TeamBulkImportRowOut(
+                    row_number=row_number,
+                    slug=slug or None,
+                    name=name or None,
+                    status="failed",
+                    detail=str(exc),
+                )
+            )
+
+    db.commit()
+    return TeamBulkImportResponse(created=created, updated=updated, failed=failed, rows=results)
 
 
 @router.put("/teams/{team_id}", response_model=TeamOut)

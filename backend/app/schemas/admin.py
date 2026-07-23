@@ -422,6 +422,26 @@ class TeamUpdateRequest(TeamCreateRequest):
     pass
 
 
+class TeamBulkImportRequest(BaseModel):
+    competition_id: str
+    csv_text: str = Field(min_length=1)
+
+
+class TeamBulkImportRowOut(BaseModel):
+    row_number: int
+    slug: str | None = None
+    name: str | None = None
+    status: str
+    detail: str | None = None
+
+
+class TeamBulkImportResponse(BaseModel):
+    created: int = 0
+    updated: int = 0
+    failed: int = 0
+    rows: list[TeamBulkImportRowOut]
+
+
 class CompetitionCreateRequest(BaseModel):
     sport_name: str = Field(min_length=2, max_length=80)
     name: str = Field(min_length=2, max_length=120)
