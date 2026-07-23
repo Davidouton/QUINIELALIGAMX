@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -105,6 +106,7 @@ from app.schemas.admin import (
     TeamBulkImportRequest,
     TeamBulkImportResponse,
     TeamBulkImportRowOut,
+    TeamPaletteRefreshResponse,
     TeamUpdateRequest,
     TrophyAssetCreateRequest,
     TrophyAssetOut,
@@ -1101,20 +1103,18 @@ def sync_team_competitions(db: Session, team: Team, competition_ids: list[str]) 
     return [competition_by_id[competition_id] for competition_id in normalized_ids]
 
 
-def apply_automatic_team_palette(team: Team) -> None:
+def apply_automatic_team_palette(team: Team) -> bool:
     if not team.crest_url:
-        return
+        return False
     try:
         primary, secondary, accent = extract_team_palette(team.crest_url)
     except Exception as exc:
         logger.warning("No se pudo extraer la paleta del escudo %s: %s", team.crest_url, exc)
-        return
-    if primary:
-        team.primary_color = primary
-    if secondary:
-        team.secondary_color = secondary
-    if accent:
-        team.accent_color = accent
+        return False
+    team.primary_color = primary
+    team.secondary_color = secondary
+    team.accent_color = accent
+    return primary is not None
 
 
 def build_season_out(row: Season, competition: Competition | None = None) -> SeasonOut:
@@ -2486,6 +2486,56 @@ def import_teams_csv(
 
     db.commit()
     return TeamBulkImportResponse(created=created, updated=updated, failed=failed, rows=results)
+
+
+@router.post("/teams/refresh-colors", response_model=TeamPaletteRefreshResponse)
+def refresh_team_colors(
+    competition_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> TeamPaletteRefreshResponse:
+    competition = db.get(Competition, competition_id)
+    if competition is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Competition not found")
+    linked_ids = set(
+        db.scalars(
+            select(CompetitionTeam.team_id).where(CompetitionTeam.competition_id == competition_id)
+        )
+    )
+    linked_ids.update(
+        db.scalars(select(Team.id).where(Team.competition_id == competition_id))
+    )
+    teams = list(db.scalars(select(Team).where(Team.id.in_(linked_ids)))) if linked_ids else []
+    candidates = [team for team in teams if team.crest_url]
+    palettes: dict[str, tuple[str | None, str | None, str | None]] = {}
+    failed = len(teams) - len(candidates)
+
+    with ThreadPoolExecutor(max_workers=min(6, max(1, len(candidates)))) as executor:
+        futures = {
+            executor.submit(extract_team_palette, team.crest_url): team.id
+            for team in candidates
+        }
+        for future in as_completed(futures):
+            team_id = futures[future]
+            try:
+                palettes[team_id] = future.result()
+            except Exception as exc:
+                failed += 1
+                logger.warning("No se pudo recalcular la paleta de %s: %s", team_id, exc)
+
+    updated = 0
+    for team in teams:
+        palette = palettes.get(team.id)
+        if palette is None:
+            continue
+        team.primary_color, team.secondary_color, team.accent_color = palette
+        db.add(team)
+        if palette[0] is not None:
+            updated += 1
+        else:
+            failed += 1
+    db.commit()
+    return TeamPaletteRefreshResponse(processed=len(teams), updated=updated, failed=failed)
 
 
 @router.put("/teams/{team_id}", response_model=TeamOut)

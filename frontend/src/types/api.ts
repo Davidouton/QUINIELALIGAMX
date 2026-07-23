@@ -1476,6 +1476,12 @@ export interface TeamBulkImportResult {
   rows: TeamBulkImportRow[];
 }
 
+export interface TeamPaletteRefreshResult {
+  processed: number;
+  updated: number;
+  failed: number;
+}
+
 export interface OddsPreviewRow {
   match_date: string;
   home_team: string;

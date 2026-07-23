@@ -442,6 +442,12 @@ class TeamBulkImportResponse(BaseModel):
     rows: list[TeamBulkImportRowOut]
 
 
+class TeamPaletteRefreshResponse(BaseModel):
+    processed: int = 0
+    updated: int = 0
+    failed: int = 0
+
+
 class CompetitionCreateRequest(BaseModel):
     sport_name: str = Field(min_length=2, max_length=80)
     name: str = Field(min_length=2, max_length=120)

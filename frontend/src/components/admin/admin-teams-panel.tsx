@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Competition, Team, TeamBulkImportResult } from "@/types/api";
+import type { Competition, Team, TeamBulkImportResult, TeamPaletteRefreshResult } from "@/types/api";
 
 type TeamFormState = {
   competition_ids: string[];
@@ -41,6 +41,7 @@ export function AdminTeamsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [refreshingColors, setRefreshingColors] = useState(false);
   const [bulkResult, setBulkResult] = useState<TeamBulkImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -174,6 +175,30 @@ export function AdminTeamsPanel() {
     }
   }
 
+  async function refreshColors() {
+    if (!selectedCompetitionId) {
+      setError("Selecciona la competencia que quieres recalcular.");
+      return;
+    }
+    setRefreshingColors(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const result = await backendFetch<TeamPaletteRefreshResult>(
+        `/admin/teams/refresh-colors?competition_id=${encodeURIComponent(selectedCompetitionId)}`,
+        accessToken,
+        { method: "POST" },
+      );
+      await loadTeams();
+      setMessage(`Paletas recalculadas: ${result.updated} de ${result.processed}${result.failed ? `; ${result.failed} sin imagen compatible` : ""}.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron recalcular los colores");
+    } finally {
+      setRefreshingColors(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="space-y-5">
@@ -283,7 +308,7 @@ export function AdminTeamsPanel() {
             Selecciona una competencia y sube el CSV. Los equipos existentes se actualizan por slug sin perder sus otras competencias.
           </p>
         </div>
-        <div className="grid gap-3 md:grid-cols-[minmax(0,320px)_auto_auto] md:items-center">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,320px)_auto_auto_auto] md:items-center">
           <select
             value={selectedCompetitionId}
             onChange={(event) => setSelectedCompetitionId(event.target.value)}
@@ -311,6 +336,14 @@ export function AdminTeamsPanel() {
               }}
             />
           </label>
+          <button
+            type="button"
+            onClick={() => void refreshColors()}
+            disabled={refreshingColors}
+            className="app-pill h-10 px-4 disabled:opacity-50"
+          >
+            {refreshingColors ? "Calculando..." : "Recalcular colores"}
+          </button>
         </div>
         {bulkResult?.failed ? (
           <div className="border-y border-coral/25 py-3 text-sm text-coral">
