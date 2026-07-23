@@ -6,6 +6,7 @@ export type CompetitionStructureFormat =
   | "league_playoff"
   | "groups_playoff"
   | "conferences_playoff"
+  | "leagues_cup"
   | "knockout";
 
 export interface CompetitionConferenceConfig {
@@ -16,6 +17,12 @@ export interface CompetitionConferenceConfig {
 export interface CompetitionStructureConfig {
   groups?: string[];
   conferences?: CompetitionConferenceConfig[];
+  leagues?: string[];
+  phase_one_matches_per_team?: number;
+  regulation_win_points?: number;
+  shootout_win_points?: number;
+  shootout_loss_points?: number;
+  qualifiers_per_league?: number;
   playoff_seed_count?: number;
   playoff_rounds?: string[];
   reseed_after_each_round?: boolean;
@@ -855,7 +862,7 @@ export interface WorldCupGroupStanding {
   goals_against: number;
   goal_difference: number;
   points: number;
-  recent_form: Array<"win" | "draw" | "loss">;
+  recent_form: Array<"win" | "draw" | "loss" | "shootout_win" | "shootout_loss">;
 }
 
 export interface WorldCupGroup {
@@ -897,6 +904,8 @@ export interface WorldCupBracketMatch {
   kickoff_at: string;
   home_score: number | null;
   away_score: number | null;
+  home_penalty_score: number | null;
+  away_penalty_score: number | null;
   advancing_team_id: string | null;
   is_official: boolean;
   is_ready_for_picks: boolean;
@@ -923,6 +932,8 @@ export interface WorldCupOfficialResult {
   kickoff_at: string;
   home_score: number | null;
   away_score: number | null;
+  home_penalty_score: number | null;
+  away_penalty_score: number | null;
   advancing_team_id: string | null;
   is_official: boolean;
 }
@@ -931,6 +942,10 @@ export interface WorldCupBoard {
   season_id: string;
   season_name: string;
   league_standings: WorldCupGroupStanding[];
+  league_tables: Array<{
+    league_label: string;
+    standings: WorldCupGroupStanding[];
+  }>;
   groups: WorldCupGroup[];
   official_results: WorldCupOfficialResult[];
   round_of_32: WorldCupBracketMatch[];
@@ -1655,6 +1670,8 @@ export interface AdminResultRow {
   match_status: MatchStatus;
   home_score: number | null;
   away_score: number | null;
+  home_penalty_score: number | null;
+  away_penalty_score: number | null;
   advancing_team_id: string | null;
   is_official: boolean;
   is_ready_for_picks: boolean;

@@ -27,6 +27,11 @@ class WorldCupGroupOut(BaseModel):
     standings: list[WorldCupGroupStandingOut] = []
 
 
+class WorldCupLeagueTableOut(BaseModel):
+    league_label: str
+    standings: list[WorldCupGroupStandingOut] = []
+
+
 class WorldCupBracketMatchOut(BaseModel):
     match_id: str
     matchday_id: str
@@ -45,6 +50,8 @@ class WorldCupBracketMatchOut(BaseModel):
     kickoff_at: datetime
     home_score: int | None = None
     away_score: int | None = None
+    home_penalty_score: int | None = None
+    away_penalty_score: int | None = None
     advancing_team_id: str | None = None
     is_official: bool = False
     is_ready_for_picks: bool = True
@@ -75,6 +82,8 @@ class WorldCupOfficialResultOut(BaseModel):
     kickoff_at: datetime
     home_score: int | None = None
     away_score: int | None = None
+    home_penalty_score: int | None = None
+    away_penalty_score: int | None = None
     advancing_team_id: str | None = None
     is_official: bool = False
 
@@ -87,6 +96,7 @@ class WorldCupBoardOut(BaseModel):
     season_id: str
     season_name: str
     league_standings: list[WorldCupGroupStandingOut] = []
+    league_tables: list[WorldCupLeagueTableOut] = []
     groups: list[WorldCupGroupOut] = []
     official_results: list[WorldCupOfficialResultOut] = []
     round_of_32: list[WorldCupBracketMatchOut] = []

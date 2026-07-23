@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from app.models.entities import Match, MatchResult, MatchStatus, Matchday, Profile, PublishedMatchday, RawMatchResult, Season, Team, TournamentFormat
+from app.models.entities import CompetitionStructureFormat, Match, MatchResult, MatchStatus, Matchday, Profile, PublishedMatchday, RawMatchResult, Season, Team, TournamentFormat
 from app.schemas.admin import AdminResultRowOut, AdminResultUpdateRequest
 from app.schemas.result import PublishedResultOut, ResultOut
 
@@ -41,6 +41,50 @@ class ResultService:
                 detail="Si no hay empate en 90 minutos, el equipo que avanza debe coincidir con el ganador",
             )
         return advancing_team_id
+
+    def _validate_penalty_scores(
+        self,
+        db: Session,
+        match: Match,
+        home_score: int,
+        away_score: int,
+        home_penalty_score: int | None,
+        away_penalty_score: int | None,
+        advancing_team_id: str | None,
+    ) -> tuple[int | None, int | None]:
+        has_home = home_penalty_score is not None
+        has_away = away_penalty_score is not None
+        if has_home != has_away:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Captura ambos marcadores de penales",
+            )
+        if not has_home:
+            if self._is_leagues_cup_match(db, match) and home_score == away_score:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Leagues Cup exige capturar el resultado de los penales",
+                )
+            return None, None
+        if home_score != away_score:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Los penales solo aplican cuando el marcador regular termina empatado",
+            )
+        if home_penalty_score == away_penalty_score:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El resultado de penales debe tener un ganador",
+            )
+        penalty_winner = (
+            match.home_team_id if home_penalty_score > away_penalty_score else match.away_team_id
+        )
+        if advancing_team_id != penalty_winner:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El ganador en penales debe coincidir con el equipo seleccionado",
+            )
+        return home_penalty_score, away_penalty_score
 
     @staticmethod
     def _sync_match_status_with_result(match: Match, is_official: bool) -> None:
@@ -124,6 +168,15 @@ class ResultService:
             payload.home_score,
             payload.away_score,
             payload.advancing_team_id,
+        )
+        result.home_penalty_score, result.away_penalty_score = self._validate_penalty_scores(
+            db,
+            match,
+            payload.home_score,
+            payload.away_score,
+            payload.home_penalty_score,
+            payload.away_penalty_score,
+            result.advancing_team_id,
         )
         result.is_official = payload.is_official
         result.is_manual_override = True
@@ -235,6 +288,8 @@ class ResultService:
             away_team_name=self._participant_name(away_team, match.away_placeholder, "Visitante"),
             home_score=match_result.home_score,
             away_score=match_result.away_score,
+            home_penalty_score=match_result.home_penalty_score,
+            away_penalty_score=match_result.away_penalty_score,
             advancing_team_id=match_result.advancing_team_id,
             is_official=match_result.is_official,
         )
@@ -264,6 +319,8 @@ class ResultService:
             match_status=match.status,
             home_score=match_result.home_score if match_result is not None else None,
             away_score=match_result.away_score if match_result is not None else None,
+            home_penalty_score=match_result.home_penalty_score if match_result is not None else None,
+            away_penalty_score=match_result.away_penalty_score if match_result is not None else None,
             advancing_team_id=match_result.advancing_team_id if match_result is not None else None,
             is_official=match_result.is_official if match_result is not None else False,
             is_ready_for_picks=bool(match.home_team_id and match.away_team_id),
@@ -301,9 +358,20 @@ class ResultService:
         season = db.get(Season, matchday.season_id)
         return (
             season is not None
-            and season.tournament_format == TournamentFormat.WORLD_CUP
-            and match.stage_type.value not in {"regular", "group"}
+            and (
+                season.structure_format == CompetitionStructureFormat.LEAGUES_CUP
+                or (
+                    season.tournament_format == TournamentFormat.WORLD_CUP
+                    and match.stage_type.value not in {"regular", "group"}
+                )
+            )
         )
+
+    @staticmethod
+    def _is_leagues_cup_match(db: Session, match: Match) -> bool:
+        matchday = db.get(Matchday, match.matchday_id)
+        season = db.get(Season, matchday.season_id) if matchday is not None else None
+        return season is not None and season.structure_format == CompetitionStructureFormat.LEAGUES_CUP
 
     def _participant_name(self, team: Team | None, placeholder: str | None, fallback: str) -> str:
         if team is not None:

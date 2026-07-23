@@ -50,6 +50,7 @@ class CompetitionStructureFormat(str, Enum):
     LEAGUE_PLAYOFF = "league_playoff"
     GROUPS_PLAYOFF = "groups_playoff"
     CONFERENCES_PLAYOFF = "conferences_playoff"
+    LEAGUES_CUP = "leagues_cup"
     KNOCKOUT = "knockout"
 
 
@@ -538,6 +539,8 @@ class MatchResult(Base):
     )
     home_score: Mapped[int] = mapped_column(Integer)
     away_score: Mapped[int] = mapped_column(Integer)
+    home_penalty_score: Mapped[int | None] = mapped_column(Integer)
+    away_penalty_score: Mapped[int | None] = mapped_column(Integer)
     advancing_team_id: Mapped[str | None] = mapped_column(
         UUID_SQL,
         ForeignKey("teams.id", ondelete="SET NULL"),

@@ -231,6 +231,21 @@ export function WorldCupPageContent() {
     [seasons],
   );
   const selectedSeason = tournamentSeasons.find((season) => season.id === selectedSeasonId) ?? null;
+  const [selectedLeagueLabel, setSelectedLeagueLabel] = useState("");
+  const standingsTables = useMemo(
+    () => board?.league_tables?.length
+      ? board.league_tables
+      : [{ league_label: "Tabla general", standings: board?.league_standings ?? [] }],
+    [board],
+  );
+  const selectedStandingsTable =
+    standingsTables.find((table) => table.league_label === selectedLeagueLabel) ?? standingsTables[0];
+  const activeStandings = selectedStandingsTable?.standings ?? [];
+  const isLeaguesCup = selectedSeason?.structure_format === "leagues_cup";
+  const competitionLabel = `${selectedSeason?.competition_name ?? ""} ${selectedSeason?.name ?? ""}`
+    .toLocaleLowerCase("es-MX");
+  const isLigaMx = !isLeaguesCup && competitionLabel.includes("liga") && competitionLabel.includes("mx");
+  const qualificationCutoff = isLeaguesCup ? 4 : isLigaMx ? 8 : null;
   const playoffRounds = useMemo(
     () => board ? [
       ["round_of_32", board.round_of_32],
@@ -318,6 +333,15 @@ export function WorldCupPageContent() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    setSelectedLeagueLabel((current) => {
+      if (standingsTables.some((table) => table.league_label === current)) {
+        return current;
+      }
+      return standingsTables[0]?.league_label ?? "";
+    });
+  }, [standingsTables]);
 
   useEffect(() => {
     setSelectedResultsGroupKey((current) => {
@@ -431,7 +455,7 @@ export function WorldCupPageContent() {
                 onClick={() => setActiveSection("standings")}
                 className={activeSection === "standings" ? "tab-control tab-control-active" : "tab-control"}
               >
-                Tabla general
+                {selectedSeason?.structure_format === "leagues_cup" ? "Fase Uno" : "Tabla general"}
               </button>
             ) : null}
             <button
@@ -443,7 +467,7 @@ export function WorldCupPageContent() {
             >
               Resultados oficiales
             </button>
-            {hasGroupStage(selectedSeason) ? (
+            {hasGroupStage(selectedSeason) && selectedSeason?.structure_format !== "leagues_cup" ? (
               <button
                 type="button"
                 onClick={() => setActiveSection("groups")}
@@ -465,8 +489,42 @@ export function WorldCupPageContent() {
 
           {activeSection === "standings" ? (
             <section>
-              <h2 className="text-lg font-semibold text-ink">Tabla general</h2>
-              {(board.league_standings ?? []).length === 0 ? (
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-ink">
+                    {board.league_tables?.length ? `Tabla ${selectedStandingsTable?.league_label ?? ""}` : "Tabla general"}
+                  </h2>
+                  {qualificationCutoff ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-steel">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 bg-emerald-400/70" />
+                        {isLeaguesCup ? "Clasifica a cuartos" : "Zona de Liguilla"}
+                      </span>
+                      <span className="inline-flex items-center gap-2">
+                        <span className="h-2.5 w-2.5 bg-rose-400/70" />
+                        Eliminado
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+                {board.league_tables?.length ? (
+                  <div className="tab-list">
+                    {standingsTables.map((table) => (
+                      <button
+                        key={table.league_label}
+                        type="button"
+                        onClick={() => setSelectedLeagueLabel(table.league_label)}
+                        className={selectedStandingsTable?.league_label === table.league_label
+                          ? "tab-control tab-control-active"
+                          : "tab-control"}
+                      >
+                        {table.league_label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              {activeStandings.length === 0 ? (
                 <p className="mt-4 text-sm text-steel">La tabla aparecerá cuando existan equipos en esta temporada.</p>
               ) : (
                 <div className="mt-4 overflow-x-auto border-t border-white/[0.1]">
@@ -487,8 +545,17 @@ export function WorldCupPageContent() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(board.league_standings ?? []).map((team, index) => (
-                        <tr key={team.team_id} className="border-b border-white/[0.07]">
+                      {activeStandings.map((team, index) => (
+                        <tr
+                          key={team.team_id}
+                          className={`border-b border-white/[0.07] ${
+                            qualificationCutoff
+                              ? index < qualificationCutoff
+                                ? "standings-zone-qualified"
+                                : "standings-zone-eliminated"
+                              : ""
+                          }`}
+                        >
                           <td className="px-2 py-3 text-center text-steel">{index + 1}</td>
                           <td className="px-2 py-3">
                             <div className="flex items-center gap-3">
@@ -513,9 +580,21 @@ export function WorldCupPageContent() {
                           <td className="px-2 py-3">
                             <div className="flex min-w-24 items-center justify-center gap-1.5" aria-label="Resultados de los últimos cinco partidos">
                               {(team.recent_form ?? []).map((result, resultIndex) => {
-                                const label = result === "win" ? "Ganado" : result === "loss" ? "Perdido" : "Empatado";
+                                const label = result === "win"
+                                  ? "Ganado en tiempo regular"
+                                  : result === "shootout_win"
+                                    ? "Ganado en penales"
+                                    : result === "shootout_loss"
+                                      ? "Perdido en penales"
+                                      : result === "loss"
+                                        ? "Perdido"
+                                        : "Empatado";
                                 const color = result === "win"
                                   ? "bg-emerald-500"
+                                  : result === "shootout_win"
+                                    ? "border border-emerald-400 bg-emerald-500/40"
+                                    : result === "shootout_loss"
+                                      ? "border border-amber-400 bg-amber-500/35"
                                   : result === "loss"
                                     ? "bg-rose-500"
                                     : "border border-white/20 bg-black";
@@ -672,6 +751,11 @@ export function WorldCupPageContent() {
                               </div>
                               <span className="text-center text-xl font-bold tabular-nums text-ink">
                                 {result.home_score ?? "-"}-{result.away_score ?? "-"}
+                                {result.home_penalty_score !== null && result.away_penalty_score !== null ? (
+                                  <small className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.08em] text-steel">
+                                    Pen. {result.home_penalty_score}-{result.away_penalty_score}
+                                  </small>
+                                ) : null}
                               </span>
                               <div className="min-w-0 justify-self-end">
                                 <TeamMiniBadge
@@ -779,6 +863,11 @@ export function WorldCupPageContent() {
                                 <TeamCrestOnly name={match.away_team_name} shortName={match.away_team_short_name} crestUrl={match.away_team_crest_url} />
                                 <span className="text-base font-bold text-ink">{match.away_score ?? "-"}</span>
                               </div>
+                              {match.home_penalty_score !== null && match.away_penalty_score !== null ? (
+                                <p className="text-right text-[10px] font-semibold uppercase tracking-[0.08em] text-steel">
+                                  Pen. {match.home_penalty_score}-{match.away_penalty_score}
+                                </p>
+                              ) : null}
                             </div>
                           </article>
                         ))}

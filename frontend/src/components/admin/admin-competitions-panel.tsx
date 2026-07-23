@@ -97,6 +97,16 @@ export function AdminCompetitionsPanel() {
             playoff_seed_count: Number(competitionForm.playoff_seed_count || "0"),
             playoff_rounds: competitionForm.playoff_rounds.split(",").map((value) => value.trim()).filter(Boolean),
             reseed_after_each_round: competitionForm.reseed_after_each_round,
+            ...(competitionForm.structure_format === "leagues_cup"
+              ? {
+                  leagues: ["MLS", "LIGA MX"],
+                  phase_one_matches_per_team: 3,
+                  regulation_win_points: 3,
+                  shootout_win_points: 2,
+                  shootout_loss_points: 1,
+                  qualifiers_per_league: 4,
+                }
+              : {}),
           },
           is_active: competitionForm.is_active,
           sort_order: Number(competitionForm.sort_order || "100"),
@@ -212,6 +222,7 @@ export function AdminCompetitionsPanel() {
             <option value="league_playoff">Tabla general + playoff</option>
             <option value="groups_playoff">Grupos + playoff</option>
             <option value="conferences_playoff">Conferencias/divisiones + playoff</option>
+            <option value="leagues_cup">Leagues Cup · formato independiente</option>
             <option value="knockout">Eliminación directa</option>
           </select>
           {competitionForm.structure_format === "groups_playoff" ? (
@@ -245,7 +256,7 @@ export function AdminCompetitionsPanel() {
               />
             </div>
           ) : null}
-          {competitionForm.structure_format !== "league_table" ? (
+          {competitionForm.structure_format !== "league_table" && competitionForm.structure_format !== "leagues_cup" ? (
             <>
               <input
                 value={competitionForm.playoff_seed_count}
@@ -329,6 +340,8 @@ export function AdminCompetitionsPanel() {
                         ? "Grupos + playoff"
                         : competition.structure_format === "conferences_playoff"
                           ? "Conferencias + playoff"
+                          : competition.structure_format === "leagues_cup"
+                            ? "Leagues Cup"
                           : competition.structure_format === "knockout"
                             ? "Eliminación directa"
                             : "Tabla general"}

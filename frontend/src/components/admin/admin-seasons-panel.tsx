@@ -40,6 +40,7 @@ function getStructureLabel(competition: Competition | null | undefined) {
   if (competition?.structure_format === "league_playoff") return "Tabla general + playoff";
   if (competition?.structure_format === "groups_playoff") return "Grupos + playoff";
   if (competition?.structure_format === "conferences_playoff") return "Conferencias/divisiones + playoff";
+  if (competition?.structure_format === "leagues_cup") return "Leagues Cup";
   if (competition?.structure_format === "knockout") return "Eliminación directa";
   return "Tabla general";
 }
@@ -497,6 +498,8 @@ export function AdminSeasonsPanel() {
                         ? "Grupos + playoff"
                         : season.structure_format === "conferences_playoff"
                           ? "Conferencias + playoff"
+                          : season.structure_format === "leagues_cup"
+                            ? "Leagues Cup"
                           : season.structure_format === "knockout"
                             ? "Eliminación directa"
                             : "Tabla general"}

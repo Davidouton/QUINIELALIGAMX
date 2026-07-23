@@ -102,6 +102,8 @@ class AdminResultRowOut(BaseModel):
     match_status: MatchStatus
     home_score: int | None = None
     away_score: int | None = None
+    home_penalty_score: int | None = None
+    away_penalty_score: int | None = None
     advancing_team_id: str | None = None
     is_official: bool = False
     is_ready_for_picks: bool = True
@@ -113,6 +115,8 @@ class AdminResultRowOut(BaseModel):
 class AdminResultUpdateRequest(BaseModel):
     home_score: int = Field(ge=0)
     away_score: int = Field(ge=0)
+    home_penalty_score: int | None = Field(default=None, ge=0)
+    away_penalty_score: int | None = Field(default=None, ge=0)
     advancing_team_id: str | None = None
     is_official: bool = True
 

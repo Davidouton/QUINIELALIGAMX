@@ -15,14 +15,16 @@ from sqlalchemy.orm import Session
 
 from app.models.entities import (
     CompetitionStructureFormat,
+    Competition,
+    CompetitionTeam,
     Match,
     MatchResult,
     MatchStageType,
     Matchday,
     Season,
+    SeasonTeam,
     SeasonVisibilityStatus,
     Team,
-    TournamentFormat,
     WorldCupGroup,
     WorldCupGroupTeam,
 )
@@ -34,6 +36,7 @@ from app.schemas.world_cup import (
     WorldCupBoardOut,
     WorldCupBracketMatchOut,
     WorldCupGroupOut,
+    WorldCupLeagueTableOut,
     WorldCupGroupStandingOut,
     WorldCupNewsArticleOut,
     WorldCupNewsFeedOut,
@@ -104,6 +107,30 @@ class WorldCupService:
         teams_by_id = {
             team.id: team for team in db.scalars(select(Team).where(Team.id.in_(team_ids)))
         } if team_ids else {}
+        season_team_links = list(
+            db.scalars(select(SeasonTeam).where(SeasonTeam.season_id == season.id))
+        )
+        team_ids.update(link.team_id for link in season_team_links)
+        if team_ids:
+            teams_by_id.update(
+                {team.id: team for team in db.scalars(select(Team).where(Team.id.in_(team_ids)))}
+            )
+        competition_ids = {
+            team.competition_id for team in teams_by_id.values() if team.competition_id is not None
+        }
+        competition_names_by_id = {
+            competition.id: competition.name
+            for competition in db.scalars(select(Competition).where(Competition.id.in_(competition_ids)))
+        } if competition_ids else {}
+        competition_memberships_by_team_id: dict[str, list[str]] = defaultdict(list)
+        if team_ids:
+            membership_rows = db.execute(
+                select(CompetitionTeam.team_id, Competition.name)
+                .join(Competition, Competition.id == CompetitionTeam.competition_id)
+                .where(CompetitionTeam.team_id.in_(team_ids))
+            ).all()
+            for team_id, competition_name in membership_rows:
+                competition_memberships_by_team_id[team_id].append(competition_name)
 
         group_label_by_team_id = self._group_label_by_team_id(defined_groups, group_team_links)
         groups = self._build_groups(
@@ -126,6 +153,18 @@ class WorldCupService:
             season_id=season.id,
             season_name=season.name,
             league_standings=self._build_league_standings(matches, results_by_match_id, teams_by_id),
+            league_tables=(
+                self._build_leagues_cup_tables(
+                    matches,
+                    results_by_match_id,
+                    teams_by_id,
+                    season_team_links,
+                    competition_names_by_id,
+                    competition_memberships_by_team_id,
+                )
+                if season.structure_format == CompetitionStructureFormat.LEAGUES_CUP
+                else []
+            ),
             groups=groups,
             official_results=official_results,
             round_of_32=bracket[MatchStageType.ROUND_OF_32],
@@ -135,6 +174,127 @@ class WorldCupService:
             third_place=bracket[MatchStageType.THIRD_PLACE],
             final=bracket[MatchStageType.FINAL],
         )
+
+    @staticmethod
+    def _build_leagues_cup_tables(
+        matches: list[Match],
+        results_by_match_id: dict[str, MatchResult],
+        teams_by_id: dict[str, Team],
+        season_team_links: list[SeasonTeam],
+        competition_names_by_id: dict[str, str],
+        competition_memberships_by_team_id: dict[str, list[str]] | None = None,
+    ) -> list[WorldCupLeagueTableOut]:
+        competition_memberships_by_team_id = competition_memberships_by_team_id or {}
+
+        def infer_league(team_id: str, team: Team | None) -> str:
+            candidates = list(competition_memberships_by_team_id.get(team_id, []))
+            if team is not None and team.competition_id is not None:
+                candidates.append(competition_names_by_id.get(team.competition_id, ""))
+            for candidate in candidates:
+                normalized = candidate.casefold().replace(".", "")
+                if "liga mx" in normalized or "ligamx" in normalized:
+                    return "LIGA MX"
+                if "mls" in normalized or "major league soccer" in normalized:
+                    return "MLS"
+            return next((candidate for candidate in candidates if candidate), "Sin liga")
+
+        league_by_team_id: dict[str, str] = {}
+        for link in season_team_links:
+            team = teams_by_id.get(link.team_id)
+            fallback_league = infer_league(link.team_id, team)
+            league_by_team_id[link.team_id] = (link.division_name or fallback_league or "Sin liga").strip()
+
+        table_rows: dict[str, dict[str, dict[str, object]]] = defaultdict(dict)
+
+        def ensure_team(team_id: str) -> dict[str, object]:
+            team = teams_by_id.get(team_id)
+            league_label = league_by_team_id.get(team_id)
+            if not league_label:
+                league_label = infer_league(team_id, team)
+            return table_rows[league_label].setdefault(
+                team_id,
+                {
+                    "team_id": team_id,
+                    "team_name": team.name if team is not None else "Equipo",
+                    "team_short_name": team.short_name if team is not None else "EQ",
+                    "team_crest_url": team.crest_url if team is not None else None,
+                    "played": 0,
+                    "wins": 0,
+                    "draws": 0,
+                    "losses": 0,
+                    "goals_for": 0,
+                    "goals_against": 0,
+                    "goal_difference": 0,
+                    "points": 0,
+                    "recent_form": [],
+                },
+            )
+
+        for link in season_team_links:
+            ensure_team(link.team_id)
+
+        phase_one_matches = [
+            match for match in matches
+            if match.stage_type in {MatchStageType.REGULAR, MatchStageType.GROUP}
+        ]
+        for match in phase_one_matches:
+            if match.home_team_id is None or match.away_team_id is None:
+                continue
+            home = ensure_team(match.home_team_id)
+            away = ensure_team(match.away_team_id)
+            result = results_by_match_id.get(match.id)
+            if result is None or not result.is_official:
+                continue
+
+            home["played"] = int(home["played"]) + 1
+            away["played"] = int(away["played"]) + 1
+            home["goals_for"] = int(home["goals_for"]) + result.home_score
+            home["goals_against"] = int(home["goals_against"]) + result.away_score
+            away["goals_for"] = int(away["goals_for"]) + result.away_score
+            away["goals_against"] = int(away["goals_against"]) + result.home_score
+            home_form = home["recent_form"]
+            away_form = away["recent_form"]
+            assert isinstance(home_form, list) and isinstance(away_form, list)
+
+            if result.home_score > result.away_score:
+                home["wins"] = int(home["wins"]) + 1
+                home["points"] = int(home["points"]) + 3
+                away["losses"] = int(away["losses"]) + 1
+                home_form.append("win")
+                away_form.append("loss")
+            elif result.away_score > result.home_score:
+                away["wins"] = int(away["wins"]) + 1
+                away["points"] = int(away["points"]) + 3
+                home["losses"] = int(home["losses"]) + 1
+                home_form.append("loss")
+                away_form.append("win")
+            elif result.advancing_team_id == match.home_team_id:
+                home["wins"] = int(home["wins"]) + 1
+                home["points"] = int(home["points"]) + 2
+                away["losses"] = int(away["losses"]) + 1
+                away["points"] = int(away["points"]) + 1
+                home_form.append("shootout_win")
+                away_form.append("shootout_loss")
+            elif result.advancing_team_id == match.away_team_id:
+                away["wins"] = int(away["wins"]) + 1
+                away["points"] = int(away["points"]) + 2
+                home["losses"] = int(home["losses"]) + 1
+                home["points"] = int(home["points"]) + 1
+                home_form.append("shootout_loss")
+                away_form.append("shootout_win")
+
+            home["goal_difference"] = int(home["goals_for"]) - int(home["goals_against"])
+            away["goal_difference"] = int(away["goals_for"]) - int(away["goals_against"])
+
+        league_tables: list[WorldCupLeagueTableOut] = []
+        for league_label, team_map in sorted(table_rows.items(), key=lambda item: item[0].lower()):
+            rows = [
+                WorldCupGroupStandingOut(**{**row, "recent_form": row["recent_form"][-5:]})
+                for row in team_map.values()
+            ]
+            rows.sort(key=lambda row: (-row.points, -row.wins, -row.goal_difference, -row.goals_for, row.team_name.lower()))
+            league_tables.append(WorldCupLeagueTableOut(league_label=league_label, standings=rows))
+        return league_tables
 
     @staticmethod
     def _build_league_standings(
@@ -358,6 +518,8 @@ class WorldCupService:
                     kickoff_at=match.kickoff_at,
                     home_score=result.home_score if result is not None else None,
                     away_score=result.away_score if result is not None else None,
+                    home_penalty_score=result.home_penalty_score if result is not None else None,
+                    away_penalty_score=result.away_penalty_score if result is not None else None,
                     advancing_team_id=result.advancing_team_id if result is not None else None,
                     is_official=bool(result and result.is_official),
                     is_ready_for_picks=bool(match.home_team_id and match.away_team_id),
@@ -406,6 +568,8 @@ class WorldCupService:
                     kickoff_at=match.kickoff_at,
                     home_score=result.home_score,
                     away_score=result.away_score,
+                    home_penalty_score=result.home_penalty_score,
+                    away_penalty_score=result.away_penalty_score,
                     advancing_team_id=result.advancing_team_id,
                     is_official=True,
                 )
@@ -461,6 +625,7 @@ class WorldCupService:
                     CompetitionStructureFormat.LEAGUE_PLAYOFF,
                     CompetitionStructureFormat.GROUPS_PLAYOFF,
                     CompetitionStructureFormat.CONFERENCES_PLAYOFF,
+                    CompetitionStructureFormat.LEAGUES_CUP,
                     CompetitionStructureFormat.KNOCKOUT,
                 ]),
                 Season.visibility_status == SeasonVisibilityStatus.LIVE,

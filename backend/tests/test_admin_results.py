@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.api.v1.routes import admin as admin_routes
 from app.api.deps import get_current_profile
 from app.main import app
-from app.models.entities import Match, MatchResult, MatchStatus, Matchday, MatchdayStatus, Profile, RawMatchResult, RoleCode, SyncLog, SyncStatus
+from app.models.entities import CompetitionStructureFormat, Match, MatchResult, MatchStatus, Matchday, MatchdayStatus, Profile, RawMatchResult, RoleCode, Season, SyncLog, SyncStatus
 from app.providers.mock_provider import MockSportsDataProvider
 from app.services.sync_results import sync_results
 
@@ -62,6 +62,39 @@ def test_admin_can_save_result_for_match(admin_client: TestClient) -> None:
     assert result.is_manual_override is True
     assert match is not None
     assert match.status == MatchStatus.FINAL
+
+
+def test_leagues_cup_tie_saves_penalty_shootout(admin_client: TestClient) -> None:
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        match = db.get(Match, MATCH_ONE_ID)
+        assert season is not None
+        assert match is not None
+        assert match.home_team_id is not None
+        season.structure_format = CompetitionStructureFormat.LEAGUES_CUP
+        home_team_id = match.home_team_id
+        db.add(season)
+        db.commit()
+    finally:
+        db.close()
+
+    response = admin_client.put(
+        f"/api/v1/admin/results/{MATCH_ONE_ID}",
+        json={
+            "home_score": 1,
+            "away_score": 1,
+            "home_penalty_score": 5,
+            "away_penalty_score": 4,
+            "advancing_team_id": home_team_id,
+            "is_official": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["home_penalty_score"] == 5
+    assert response.json()["away_penalty_score"] == 4
 
 
 def test_admin_can_clear_result_and_match_returns_to_scheduled(admin_client: TestClient) -> None:

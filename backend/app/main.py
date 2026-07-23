@@ -389,6 +389,8 @@ def run_startup_migrations() -> None:
             match_result_column_names = {column["name"] for column in inspector.get_columns("match_results")}
             missing_match_result_columns = {
                 "advancing_team_id": "ALTER TABLE match_results ADD COLUMN advancing_team_id UUID",
+                "home_penalty_score": "ALTER TABLE match_results ADD COLUMN home_penalty_score INTEGER",
+                "away_penalty_score": "ALTER TABLE match_results ADD COLUMN away_penalty_score INTEGER",
                 "source_provider_name": "ALTER TABLE match_results ADD COLUMN source_provider_name VARCHAR(120)",
                 "source_external_id": "ALTER TABLE match_results ADD COLUMN source_external_id VARCHAR(120)",
                 "source_updated_at": "ALTER TABLE match_results ADD COLUMN source_updated_at TIMESTAMP WITH TIME ZONE",

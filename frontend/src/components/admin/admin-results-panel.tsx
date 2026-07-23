@@ -10,6 +10,8 @@ import type { AdminResultRow, Matchday, Season } from "@/types/api";
 type ResultDraft = {
   home_score: string;
   away_score: string;
+  home_penalty_score: string;
+  away_penalty_score: string;
   advancing_team_id: string;
   is_official: boolean;
 };
@@ -30,6 +32,8 @@ function buildDraft(result: AdminResultRow): ResultDraft {
   return {
     home_score: result.home_score === null ? "" : String(result.home_score),
     away_score: result.away_score === null ? "" : String(result.away_score),
+    home_penalty_score: result.home_penalty_score === null ? "" : String(result.home_penalty_score),
+    away_penalty_score: result.away_penalty_score === null ? "" : String(result.away_penalty_score),
     advancing_team_id: result.advancing_team_id ?? "",
     is_official: result.is_official,
   };
@@ -40,7 +44,8 @@ function isKnockoutResult(result: AdminResultRow) {
 }
 
 function requiresAdvancingTeam(result: AdminResultRow, season: Season | null) {
-  return season?.tournament_format === "world_cup" && isKnockoutResult(result);
+  return season?.structure_format === "leagues_cup"
+    || (season?.tournament_format === "world_cup" && isKnockoutResult(result));
 }
 
 function isResultReady(result: AdminResultRow) {
@@ -108,7 +113,8 @@ export function AdminResultsPanel() {
     [matchdays, selectedSeasonId],
   );
   const selectedSeasonForTable = selectedSeasonId ? seasonById[selectedSeasonId] ?? null : null;
-  const showAdvancingColumn = selectedSeasonForTable?.tournament_format === "world_cup";
+  const showAdvancingColumn = selectedSeasonForTable?.tournament_format === "world_cup"
+    || selectedSeasonForTable?.structure_format === "leagues_cup";
 
   async function loadResults(matchdayId: string, accessToken?: string) {
     const token = accessToken ?? (await getBrowserAccessToken());
@@ -169,7 +175,14 @@ export function AdminResultsPanel() {
     setDrafts((current) => ({
       ...current,
       [matchId]: {
-        ...(current[matchId] ?? { home_score: "", away_score: "", is_official: true }),
+        ...(current[matchId] ?? {
+          home_score: "",
+          away_score: "",
+          home_penalty_score: "",
+          away_penalty_score: "",
+          advancing_team_id: "",
+          is_official: true,
+        }),
         ...patch,
       },
     }));
@@ -199,6 +212,8 @@ export function AdminResultsPanel() {
       body: JSON.stringify({
         home_score: Number(draft.home_score),
         away_score: Number(draft.away_score),
+        home_penalty_score: draft.home_penalty_score === "" ? null : Number(draft.home_penalty_score),
+        away_penalty_score: draft.away_penalty_score === "" ? null : Number(draft.away_penalty_score),
         advancing_team_id: requiresAdvancingTeam(row, selectedSeason)
           ? draft.advancing_team_id || null
           : null,
@@ -216,7 +231,16 @@ export function AdminResultsPanel() {
     }
     const selectedSeason = seasonById[selectedSeasonId] ?? null;
     if (requiresAdvancingTeam(row, selectedSeason) && !draft.advancing_team_id) {
-      return "En eliminatoria directa tambien debes seleccionar el equipo que avanza.";
+      return selectedSeason?.structure_format === "leagues_cup"
+        ? "Leagues Cup no admite empates: selecciona al ganador del partido."
+        : "En eliminatoria directa tambien debes seleccionar el equipo que avanza.";
+    }
+    if (
+      selectedSeason?.structure_format === "leagues_cup"
+      && draft.home_score === draft.away_score
+      && (draft.home_penalty_score === "" || draft.away_penalty_score === "")
+    ) {
+      return "Captura el resultado de los penales.";
     }
     return null;
   }
@@ -599,6 +623,20 @@ export function AdminResultsPanel() {
                         className={`${compactControlClass} w-20`}
                         placeholder="-"
                       />
+                      {selectedSeasonForTable?.structure_format === "leagues_cup" ? (
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={1}
+                          aria-label="Penales local"
+                          value={draft.home_penalty_score}
+                          onChange={(event) => updateDraft(result.match_id, { home_penalty_score: event.target.value })}
+                          disabled={!result.is_ready_for_picks || draft.home_score !== draft.away_score}
+                          className={`${compactControlClass} mt-1 w-20`}
+                          placeholder="Pen."
+                        />
+                      ) : null}
                     </td>
                     <td className="px-3 py-3 align-middle">
                       <input
@@ -620,6 +658,20 @@ export function AdminResultsPanel() {
                         className={`${compactControlClass} w-20`}
                         placeholder="-"
                       />
+                      {selectedSeasonForTable?.structure_format === "leagues_cup" ? (
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          step={1}
+                          aria-label="Penales visitante"
+                          value={draft.away_penalty_score}
+                          onChange={(event) => updateDraft(result.match_id, { away_penalty_score: event.target.value })}
+                          disabled={!result.is_ready_for_picks || draft.home_score !== draft.away_score}
+                          className={`${compactControlClass} mt-1 w-20`}
+                          placeholder="Pen."
+                        />
+                      ) : null}
                     </td>
                     {showAdvancingColumn ? (
                       <td className="px-3 py-3 align-middle">
