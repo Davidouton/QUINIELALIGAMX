@@ -3,7 +3,6 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 
-import { AdminNflSpreadsPanel } from "@/components/admin/admin-nfl-spreads-panel";
 import { backendFetch } from "@/lib/api/backend";
 import {
   formatMexicoCityDateTime,
@@ -936,8 +935,6 @@ export function AdminMatchesPanel() {
           </div>
         </form>
       </section>
-
-      <AdminNflSpreadsPanel />
 
       <section className="space-y-4">
         <h3 className="text-base font-semibold text-ink">

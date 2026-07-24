@@ -478,7 +478,6 @@ export function SurvivorPageContent() {
                     return <td key={journeyIndex} className={`border-b border-white/[0.07] px-1 py-2 ${board.current_matchday?.number === journeyIndex + 1 ? "bg-[rgba(var(--app-selection-rgb),0.05)]" : ""}`}>
                       {visiblePick ? <span className="relative inline-flex" title={`J${journeyIndex + 1}: ${visiblePick.team_name} · ${getSurvivorResultLabel(visiblePick.result_status)}`}>
                         {renderTeamLogo(visiblePick.team_name, visiblePick.team_short_name, visiblePick.team_crest_url, `h-9 w-9 ${stateClass}`)}
-                        {visiblePick.is_admin_override ? <i className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-[#0c1727] bg-violet-400" title="Override administrativo" /> : null}
                       </span> : <span className="survivor-pending-slot inline-flex h-9 w-9 rounded-full border" title={pick ? "Pick oculto hasta el cierre" : `J${journeyIndex + 1}: pendiente`} />}
                     </td>;
                   })}

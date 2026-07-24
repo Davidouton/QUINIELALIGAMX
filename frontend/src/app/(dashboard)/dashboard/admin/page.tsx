@@ -6,7 +6,7 @@ import { AdminSubnav } from "@/components/admin/admin-subnav";
 const groups = [
   {
     title: "Operación",
-    paths: ["competitions", "seasons", "matchdays", "matches", "results", "live-score", "teams"],
+    paths: ["competitions", "seasons", "matchdays", "matches", "nfl-lines", "results", "live-score", "teams"],
   },
   {
     title: "Usuarios y juego",

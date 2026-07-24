@@ -18,6 +18,7 @@ export const ADMIN_LINKS = [
   { href: "/dashboard/admin/matchdays", label: "Jornadas" },
   { href: "/dashboard/admin/odds", label: "Probabilidades" },
   { href: "/dashboard/admin/matches", label: "Partidos" },
+  { href: "/dashboard/admin/nfl-lines", label: "NFL · Líneas" },
   { href: "/dashboard/admin/results", label: "Resultados" },
   { href: "/dashboard/admin/live-score", label: "Live Score" },
   { href: "/dashboard/admin/hall-of-fame", label: "Salón de la Fama" },

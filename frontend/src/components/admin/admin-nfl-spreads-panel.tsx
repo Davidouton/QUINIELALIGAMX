@@ -15,7 +15,7 @@ export function AdminNflSpreadsPanel() {
   const [rows, setRows] = useState<AdminNflSpreadRow[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState("");
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -72,34 +72,71 @@ export function AdminNflSpreadsPanel() {
     return -value > 0 ? `+${-value}` : String(-value);
   }
 
-  async function save(row: AdminNflSpreadRow) {
-    const force = row.is_frozen;
-    if (force && !window.confirm(`Ya existen ${row.pick_count} picks. La correccion actualizara la linea guardada en ellos. Continuar?`)) return;
-    setSavingId(row.match_id);
+  async function saveAll() {
+    const changedRows = rows.filter(
+      (row) => (drafts[row.match_id]?.trim() || "") !== (row.spread_home_line?.trim() || ""),
+    );
+    if (!changedRows.length) {
+      setMessage("No hay cambios por guardar.");
+      return;
+    }
+    const frozenRows = changedRows.filter((row) => row.is_frozen);
+    if (
+      frozenRows.length &&
+      !window.confirm(
+        `${frozenRows.length} partido${frozenRows.length === 1 ? "" : "s"} ya tienen picks. ` +
+          "Las líneas guardadas se corregirán también en esos picks. ¿Continuar?",
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
     setError(null);
     setMessage(null);
     try {
       const token = await getBrowserAccessToken();
-      await backendFetch(`/admin/nfl-spreads/${row.match_id}`, token, {
-        method: "PUT",
-        body: JSON.stringify({ home_line: drafts[row.match_id]?.trim() || null, force }),
-      });
+      for (const row of changedRows) {
+        await backendFetch(`/admin/nfl-spreads/${row.match_id}`, token, {
+          method: "PUT",
+          body: JSON.stringify({
+            home_line: drafts[row.match_id]?.trim() || null,
+            force: row.is_frozen,
+          }),
+        });
+      }
       await loadRows(seasonId, matchdayId || undefined);
-      setMessage(force ? "Spread corregido y picks recalculados." : "Spread publicado.");
+      setMessage(
+        `${changedRows.length} línea${changedRows.length === 1 ? "" : "s"} guardada${changedRows.length === 1 ? "" : "s"}.`,
+      );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudo guardar el spread");
+      setError(caught instanceof Error ? caught.message : "No se pudieron guardar las líneas");
     } finally {
-      setSavingId("");
+      setSaving(false);
     }
   }
 
   const seasonMatchdays = matchdays.filter((row) => row.season_id === seasonId).sort((a, b) => a.number - b.number);
+  const changedCount = rows.filter(
+    (row) => (drafts[row.match_id]?.trim() || "") !== (row.spread_home_line?.trim() || ""),
+  ).length;
 
   return (
-    <section className="space-y-5 border-t border-white/[0.08] pt-7">
-      <div>
-        <h3 className="text-lg font-semibold text-ink">Definición NFL · Spreads</h3>
-        <p className="mt-1 text-sm text-steel">Define la línea del partido junto con sus horarios y equipos.</p>
+    <section className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="page-title">NFL · Líneas</h1>
+          <p className="mt-2 max-w-2xl text-sm text-steel">
+            Captura todos los spreads de una semana y guárdalos juntos. Esta pantalla queda preparada para sincronización automática con The Odds API.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void saveAll()}
+          disabled={saving || changedCount === 0}
+          className="app-pill-active px-5 disabled:opacity-50"
+        >
+          {saving ? "Guardando..." : `Guardar líneas${changedCount ? ` (${changedCount})` : ""}`}
+        </button>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <select value={seasonId} onChange={(event) => { setSeasonId(event.target.value); setMatchdayId(""); }} className="field-control">
@@ -115,9 +152,9 @@ export function AdminNflSpreadsPanel() {
       {error ? <p className="text-sm text-coral">{error}</p> : null}
       {!loading && seasons.length === 0 ? <p className="text-sm text-steel">No existe todavía una competencia NFL.</p> : null}
       {loading ? <p className="text-sm text-steel">Cargando...</p> : rows.length ? (
-        <div className="overflow-x-auto">
+        <div className="android-scroll-x">
           <table className="min-w-full text-left text-sm">
-            <thead className="app-table-head"><tr><th className="px-3 py-3">Semana</th><th className="px-3 py-3">Partido</th><th className="px-3 py-3">Inicio</th><th className="px-3 py-3">Local</th><th className="px-3 py-3">Visitante</th><th className="px-3 py-3">Estado</th><th /></tr></thead>
+            <thead className="app-table-head"><tr><th className="px-3 py-3">Semana</th><th className="px-3 py-3">Partido</th><th className="px-3 py-3">Inicio</th><th className="px-3 py-3">Línea local</th><th className="px-3 py-3">Línea visitante</th><th className="px-3 py-3">Estado</th></tr></thead>
             <tbody>{rows.map((row) => (
               <tr key={row.match_id} className="app-table-row border-b last:border-b-0">
                 <td className="px-3 py-3 text-steel">{row.matchday_number}</td>
@@ -126,7 +163,6 @@ export function AdminNflSpreadsPanel() {
                 <td className="px-3 py-3"><input value={drafts[row.match_id] ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [row.match_id]: event.target.value }))} placeholder="-3.5 / PK" className="field-control min-w-28" /></td>
                 <td className="px-3 py-3 font-semibold text-ink">{awayLine(drafts[row.match_id] ?? "")}</td>
                 <td className="px-3 py-3 text-steel">{row.is_frozen ? `Congelado · ${row.pick_count} picks` : row.spread_home_line ? "Publicado" : "Sin publicar"}</td>
-                <td className="px-3 py-3"><button type="button" onClick={() => void save(row)} disabled={savingId === row.match_id} className="app-pill px-2 disabled:opacity-50">{savingId === row.match_id ? "Guardando" : row.is_frozen ? "Corregir" : "Publicar"}</button></td>
               </tr>
             ))}</tbody>
           </table>
