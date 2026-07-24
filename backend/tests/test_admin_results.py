@@ -97,6 +97,35 @@ def test_leagues_cup_tie_saves_penalty_shootout(admin_client: TestClient) -> Non
     assert response.json()["away_penalty_score"] == 4
 
 
+def test_leagues_cup_regulation_win_does_not_require_shootout_winner(
+    admin_client: TestClient,
+) -> None:
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        assert season is not None
+        season.structure_format = CompetitionStructureFormat.LEAGUES_CUP
+        db.add(season)
+        db.commit()
+    finally:
+        db.close()
+
+    response = admin_client.put(
+        f"/api/v1/admin/results/{MATCH_ONE_ID}",
+        json={
+            "home_score": 2,
+            "away_score": 1,
+            "is_official": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["advancing_team_id"] is None
+    assert response.json()["home_penalty_score"] is None
+    assert response.json()["away_penalty_score"] is None
+
+
 def test_admin_can_clear_result_and_match_returns_to_scheduled(admin_client: TestClient) -> None:
     admin_client.put(
         f"/api/v1/admin/results/{MATCH_ONE_ID}",

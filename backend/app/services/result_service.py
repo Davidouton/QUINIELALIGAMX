@@ -27,12 +27,22 @@ class ResultService:
         advancing_team_id: str | None,
     ) -> str | None:
         self._ensure_match_ready_for_results(match)
+        is_leagues_cup_group = (
+            self._is_leagues_cup_match(db, match)
+            and match.stage_type.value in {"regular", "group"}
+        )
+        if is_leagues_cup_group and home_score != away_score:
+            return None
         if not self._requires_advancing_team(db, match):
             return None
         if advancing_team_id not in {match.home_team_id, match.away_team_id}:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Debes seleccionar el equipo que avanza en eliminatoria directa",
+                detail=(
+                    "Debes seleccionar el ganador en penales"
+                    if is_leagues_cup_group
+                    else "Debes seleccionar el equipo que avanza en eliminatoria directa"
+                ),
             )
         winner_team_id = self._resolve_winner_team_id(match, home_score, away_score)
         if winner_team_id is not None and winner_team_id != advancing_team_id:
@@ -60,7 +70,11 @@ class ResultService:
                 detail="Captura ambos marcadores de penales",
             )
         if not has_home:
-            if self._is_leagues_cup_match(db, match) and home_score == away_score:
+            if (
+                self._is_leagues_cup_match(db, match)
+                and match.stage_type.value in {"regular", "group"}
+                and home_score == away_score
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Leagues Cup exige capturar el resultado de los penales",

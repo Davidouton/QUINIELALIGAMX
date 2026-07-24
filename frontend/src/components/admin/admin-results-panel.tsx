@@ -43,7 +43,23 @@ function isKnockoutResult(result: AdminResultRow) {
   return result.stage_type !== "regular" && result.stage_type !== "group";
 }
 
-function requiresAdvancingTeam(result: AdminResultRow, season: Season | null) {
+function isLeaguesCupGroupResult(result: AdminResultRow, season: Season | null) {
+  return season?.structure_format === "leagues_cup" && !isKnockoutResult(result);
+}
+
+function requiresAdvancingTeam(
+  result: AdminResultRow,
+  season: Season | null,
+  draft?: ResultDraft,
+) {
+  if (isLeaguesCupGroupResult(result, season)) {
+    return Boolean(
+      draft
+      && draft.home_score !== ""
+      && draft.away_score !== ""
+      && draft.home_score === draft.away_score,
+    );
+  }
   return season?.structure_format === "leagues_cup"
     || (season?.tournament_format === "world_cup" && isKnockoutResult(result));
 }
@@ -207,14 +223,21 @@ export function AdminResultsPanel() {
 
   async function saveResultRow(row: AdminResultRow, draft: ResultDraft, accessToken: string) {
     const selectedSeason = seasonById[selectedSeasonId] ?? null;
+    const usesGroupShootout = isLeaguesCupGroupResult(row, selectedSeason)
+      && draft.home_score !== ""
+      && draft.home_score === draft.away_score;
     return backendFetch<AdminResultRow>(`/admin/results/${row.match_id}`, accessToken, {
       method: "PUT",
       body: JSON.stringify({
         home_score: Number(draft.home_score),
         away_score: Number(draft.away_score),
-        home_penalty_score: draft.home_penalty_score === "" ? null : Number(draft.home_penalty_score),
-        away_penalty_score: draft.away_penalty_score === "" ? null : Number(draft.away_penalty_score),
-        advancing_team_id: requiresAdvancingTeam(row, selectedSeason)
+        home_penalty_score: usesGroupShootout && draft.home_penalty_score !== ""
+          ? Number(draft.home_penalty_score)
+          : null,
+        away_penalty_score: usesGroupShootout && draft.away_penalty_score !== ""
+          ? Number(draft.away_penalty_score)
+          : null,
+        advancing_team_id: requiresAdvancingTeam(row, selectedSeason, draft)
           ? draft.advancing_team_id || null
           : null,
         is_official: draft.is_official,
@@ -230,9 +253,9 @@ export function AdminResultsPanel() {
       return "Primero define ambos equipos antes de capturar resultado.";
     }
     const selectedSeason = seasonById[selectedSeasonId] ?? null;
-    if (requiresAdvancingTeam(row, selectedSeason) && !draft.advancing_team_id) {
-      return selectedSeason?.structure_format === "leagues_cup"
-        ? "Leagues Cup no admite empates: selecciona al ganador del partido."
+    if (requiresAdvancingTeam(row, selectedSeason, draft) && !draft.advancing_team_id) {
+      return isLeaguesCupGroupResult(row, selectedSeason)
+        ? "Selecciona al ganador de la tanda de penales."
         : "En eliminatoria directa tambien debes seleccionar el equipo que avanza.";
     }
     if (
@@ -389,6 +412,8 @@ export function AdminResultsPanel() {
       return (
         draft.home_score !== savedDraft.home_score ||
         draft.away_score !== savedDraft.away_score ||
+        draft.home_penalty_score !== savedDraft.home_penalty_score ||
+        draft.away_penalty_score !== savedDraft.away_penalty_score ||
         draft.advancing_team_id !== savedDraft.advancing_team_id ||
         draft.is_official !== savedDraft.is_official
       );
@@ -565,7 +590,7 @@ export function AdminResultsPanel() {
                 <th className="px-3 pb-1">Fase</th>
                 <th className="px-3 pb-1">Local</th>
                 <th className="px-3 pb-1">Visitante</th>
-                {showAdvancingColumn ? <th className="px-3 pb-1">Avanza</th> : null}
+                {showAdvancingColumn ? <th className="px-3 pb-1">Penales / avanza</th> : null}
                 <th className="px-3 pb-1">Oficial</th>
                 <th className="px-3 pb-1">Publicado</th>
                 <th className="px-3 pb-1">Accion</th>
@@ -623,7 +648,9 @@ export function AdminResultsPanel() {
                         className={`${compactControlClass} w-20`}
                         placeholder="-"
                       />
-                      {selectedSeasonForTable?.structure_format === "leagues_cup" ? (
+                      {isLeaguesCupGroupResult(result, selectedSeasonForTable)
+                      && draft.home_score !== ""
+                      && draft.home_score === draft.away_score ? (
                         <input
                           type="number"
                           inputMode="numeric"
@@ -632,7 +659,7 @@ export function AdminResultsPanel() {
                           aria-label="Penales local"
                           value={draft.home_penalty_score}
                           onChange={(event) => updateDraft(result.match_id, { home_penalty_score: event.target.value })}
-                          disabled={!result.is_ready_for_picks || draft.home_score !== draft.away_score}
+                          disabled={!result.is_ready_for_picks}
                           className={`${compactControlClass} mt-1 w-20`}
                           placeholder="Pen."
                         />
@@ -658,7 +685,9 @@ export function AdminResultsPanel() {
                         className={`${compactControlClass} w-20`}
                         placeholder="-"
                       />
-                      {selectedSeasonForTable?.structure_format === "leagues_cup" ? (
+                      {isLeaguesCupGroupResult(result, selectedSeasonForTable)
+                      && draft.away_score !== ""
+                      && draft.home_score === draft.away_score ? (
                         <input
                           type="number"
                           inputMode="numeric"
@@ -667,7 +696,7 @@ export function AdminResultsPanel() {
                           aria-label="Penales visitante"
                           value={draft.away_penalty_score}
                           onChange={(event) => updateDraft(result.match_id, { away_penalty_score: event.target.value })}
-                          disabled={!result.is_ready_for_picks || draft.home_score !== draft.away_score}
+                          disabled={!result.is_ready_for_picks}
                           className={`${compactControlClass} mt-1 w-20`}
                           placeholder="Pen."
                         />
@@ -675,7 +704,7 @@ export function AdminResultsPanel() {
                     </td>
                     {showAdvancingColumn ? (
                       <td className="px-3 py-3 align-middle">
-                        {requiresAdvancingTeam(result, selectedSeasonForTable) && result.is_ready_for_picks ? (
+                        {requiresAdvancingTeam(result, selectedSeasonForTable, draft) && result.is_ready_for_picks ? (
                           <select
                             value={draft.advancing_team_id}
                             onChange={(event) =>
@@ -683,11 +712,15 @@ export function AdminResultsPanel() {
                             }
                             className={`${compactControlClass} min-w-[140px]`}
                           >
-                            <option value="">Selecciona</option>
+                            <option value="">
+                              {isLeaguesCupGroupResult(result, selectedSeasonForTable)
+                                ? "Ganador en penales"
+                                : "Selecciona quién avanza"}
+                            </option>
                             {result.home_team_id ? <option value={result.home_team_id}>{result.home_team_name}</option> : null}
                             {result.away_team_id ? <option value={result.away_team_id}>{result.away_team_name}</option> : null}
                           </select>
-                        ) : requiresAdvancingTeam(result, selectedSeasonForTable) ? (
+                        ) : requiresAdvancingTeam(result, selectedSeasonForTable, draft) ? (
                           <span className="text-xs text-steel">Pendiente de definir</span>
                         ) : (
                           <span className="text-xs text-steel">No aplica</span>
