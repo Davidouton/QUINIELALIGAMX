@@ -592,21 +592,24 @@ export function QuinielaPlusPageContent() {
     async function loadInitialData() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const [meResponse, vipResponse, oddsResponse, advancedStatsResponse, valueLabResponse] = await Promise.all([
+        const [meResult, vipResult, oddsResult, advancedStatsResult, valueLabResult] = await Promise.allSettled([
           backendFetch<Me>("/me", accessToken),
           backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken),
           backendFetch<QuinielaPlusOddsSneakPeek>("/quiniela-plus/odds-sneak-peek", accessToken),
           backendFetch<QuinielaPlusAdvancedStats>("/quiniela-plus/advanced-stats", accessToken),
           backendFetch<QuinielaPlusValueLab>("/quiniela-plus/value-lab", accessToken),
         ]);
-        setMe(meResponse);
-        setVipCompetitions(vipResponse);
-        setOddsSneakPeek(oddsResponse);
-        setAdvancedStats(advancedStatsResponse);
-        setValueLab(valueLabResponse);
+        if (meResult.status === "rejected") {
+          throw meResult.reason;
+        }
+        setMe(meResult.value);
+        setVipCompetitions(vipResult.status === "fulfilled" ? vipResult.value : []);
+        setOddsSneakPeek(oddsResult.status === "fulfilled" ? oddsResult.value : null);
+        setAdvancedStats(advancedStatsResult.status === "fulfilled" ? advancedStatsResult.value : null);
+        setValueLab(valueLabResult.status === "fulfilled" ? valueLabResult.value : null);
         setError(null);
       } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar las probabilidades");
+        setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar tu contexto de competencia");
       } finally {
         setLoading(false);
       }
@@ -628,7 +631,7 @@ export function QuinielaPlusPageContent() {
     if (loading || activeTab !== "user-distribution" || !selectedDistributionContext) {
       return;
     }
-    void refreshUserDistribution({ silent: true, contextValue: selectedDistributionContext });
+    void refreshUserDistribution({ contextValue: selectedDistributionContext });
   }, [activeTab, loading, refreshUserDistribution, selectedDistributionContext]);
 
   useEffect(() => {
@@ -652,9 +655,6 @@ export function QuinielaPlusPageContent() {
       }, pollMs);
     };
 
-    if (selectedDistributionContext) {
-      void refreshUserDistribution({ silent: true, contextValue: selectedDistributionContext });
-    }
     scheduleNextRefresh();
 
     const handleVisibilityChange = () => {
