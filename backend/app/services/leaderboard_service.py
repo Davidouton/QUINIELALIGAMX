@@ -120,6 +120,23 @@ class LeaderboardService:
         }
         if any(cached_totals.get(profile_id, 0) != total for profile_id, total in point_totals.items()):
             return True
+        has_unscored_official_picks = bool(
+            db.execute(
+                select(UserPick.id)
+                .join(Match, Match.id == UserPick.match_id)
+                .join(Matchday, Matchday.id == Match.matchday_id)
+                .join(MatchResult, MatchResult.match_id == Match.id)
+                .outerjoin(PickPoint, PickPoint.pick_id == UserPick.id)
+                .where(
+                    Matchday.season_id == season.id,
+                    MatchResult.is_official.is_(True),
+                    PickPoint.id.is_(None),
+                )
+                .limit(1)
+            ).first()
+        )
+        if has_unscored_official_picks:
+            return True
         if any(
             standing.total_points or standing.correct_results or standing.exact_scores
             for standing, _profile in rows
@@ -138,21 +155,7 @@ class LeaderboardService:
         )
         if has_positive_pick_points:
             return True
-        return bool(
-            db.execute(
-                select(UserPick.id)
-                .join(Match, Match.id == UserPick.match_id)
-                .join(Matchday, Matchday.id == Match.matchday_id)
-                .join(MatchResult, MatchResult.match_id == Match.id)
-                .outerjoin(PickPoint, PickPoint.pick_id == UserPick.id)
-                .where(
-                    Matchday.season_id == season.id,
-                    MatchResult.is_official.is_(True),
-                    PickPoint.id.is_(None),
-                )
-                .limit(1)
-            ).first()
-        )
+        return False
 
     def list_matchday(self, db: Session, matchday_id: str) -> list[LeaderboardEntry]:
         matchday = db.get(Matchday, matchday_id)

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-from conftest import MATCH_ONE_ID, MATCHDAY_ID, PROFILE_LEADER_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
-from app.models.entities import MatchResult, Matchday, MatchdayStatus, Profile, RoleCode, Season, SeasonMembership, StandingsMatchday, StandingsOverall
+from conftest import MATCH_ONE_ID, MATCH_TWO_ID, MATCHDAY_ID, PROFILE_LEADER_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
+from app.models.entities import MatchResult, Matchday, MatchdayStatus, PickPoint, PickSelection, Profile, RoleCode, Season, SeasonMembership, StandingsMatchday, StandingsOverall, UserPick
 
 
 def test_first_flow(client):
@@ -47,6 +47,74 @@ def test_first_flow(client):
     leaderboard = client.get("/api/v1/leaderboard/overall")
     assert leaderboard.status_code == 200
     assert leaderboard.json()[0]["display_name"] == "Lider Semanal"
+
+
+def test_overall_leaderboard_repairs_missing_points_for_one_official_match(client):
+    db = SessionLocal()
+    try:
+        first_pick = UserPick(
+            profile_id=PROFILE_USER_ID,
+            match_id=MATCH_ONE_ID,
+            selection=PickSelection.HOME,
+            predicted_home_score=2,
+            predicted_away_score=1,
+        )
+        second_pick = UserPick(
+            profile_id=PROFILE_USER_ID,
+            match_id=MATCH_TWO_ID,
+            selection=PickSelection.AWAY,
+            predicted_home_score=0,
+            predicted_away_score=1,
+        )
+        db.add_all(
+            [
+                first_pick,
+                second_pick,
+                MatchResult(
+                    match_id=MATCH_ONE_ID,
+                    home_score=2,
+                    away_score=1,
+                    is_official=True,
+                ),
+                MatchResult(
+                    match_id=MATCH_TWO_ID,
+                    home_score=0,
+                    away_score=1,
+                    is_official=True,
+                ),
+            ]
+        )
+        db.flush()
+        db.add(
+            PickPoint(
+                pick_id=first_pick.id,
+                profile_id=PROFILE_USER_ID,
+                match_id=MATCH_ONE_ID,
+                matchday_id=MATCHDAY_ID,
+                result_points=3,
+                exact_score_points=2,
+                total_points=5,
+            )
+        )
+        db.add(
+            StandingsOverall(
+                season_id=SEASON_ID,
+                profile_id=PROFILE_USER_ID,
+                total_points=5,
+                correct_results=1,
+                exact_scores=1,
+                rank_position=2,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/v1/leaderboard/overall?season_id={SEASON_ID}")
+
+    assert response.status_code == 200
+    user_row = next(row for row in response.json() if row["profile_id"] == PROFILE_USER_ID)
+    assert user_row["total_points"] == 10
 
 
 def test_overall_leaderboard_recomputes_stale_tie_positions(client):
