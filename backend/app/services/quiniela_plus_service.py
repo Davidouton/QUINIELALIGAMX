@@ -316,9 +316,23 @@ class QuinielaPlusService:
         )
         if participant_profile_ids is not None:
             if not participant_profile_ids:
-                return QuinielaPlusUserDistributionOut(title=title)
-            selection_query = selection_query.where(UserPick.profile_id.in_(participant_profile_ids))
+                if is_admin and context_type == "season":
+                    participant_profile_ids = None
+                else:
+                    return QuinielaPlusUserDistributionOut(title=title)
+            else:
+                selection_query = selection_query.where(UserPick.profile_id.in_(participant_profile_ids))
         selection_rows = db.execute(selection_query).all()
+        use_all_season_picks = False
+        if context_type == "season" and participant_profile_ids is not None and not selection_rows:
+            # Older imports can contain valid picks whose membership snapshot was
+            # not carried over. Do not leave the distribution empty in that case.
+            selection_rows = db.execute(
+                select(UserPick.match_id, UserPick.selection, func.count(UserPick.id))
+                .where(UserPick.match_id.in_(match_ids))
+                .group_by(UserPick.match_id, UserPick.selection)
+            ).all()
+            use_all_season_picks = bool(selection_rows)
         for match_id, selection, count in selection_rows:
             if match_id in selection_counts:
                 selection_counts[match_id][selection] = int(count)
@@ -334,7 +348,7 @@ class QuinielaPlusService:
             .group_by(UserPick.match_id, UserPick.predicted_home_score, UserPick.predicted_away_score)
             .order_by(UserPick.match_id.asc(), func.count(UserPick.id).desc(), UserPick.predicted_home_score.asc(), UserPick.predicted_away_score.asc())
         )
-        if participant_profile_ids is not None:
+        if participant_profile_ids is not None and not use_all_season_picks:
             score_query = score_query.where(UserPick.profile_id.in_(participant_profile_ids))
         score_rows = db.execute(score_query).all()
         for match_id, home_score, away_score, count in score_rows:

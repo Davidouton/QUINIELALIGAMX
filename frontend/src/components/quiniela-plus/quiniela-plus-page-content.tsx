@@ -735,8 +735,9 @@ export function QuinielaPlusPageContent() {
     if (oddsScope === "locked") {
       return matches.filter((match) => match.is_locked);
     }
-    return matches.filter((match) => match.matchday_id === selectedMatchdayId);
-  }, [oddsScope, selectedMatchdayId, userDistribution?.matches]);
+    const effectiveMatchdayId = selectedMatchdayId || matchdayOptions[0]?.id || "";
+    return matches.filter((match) => match.matchday_id === effectiveMatchdayId);
+  }, [matchdayOptions, oddsScope, selectedMatchdayId, userDistribution?.matches]);
 
   const visibleAdvancedStatsMatches = advancedStats?.matches ?? [];
   const valueRecommendations = valueLab?.recommendations ?? [];
