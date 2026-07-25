@@ -355,10 +355,21 @@ class QuinielaPlusService:
             if match_id in score_counts:
                 score_counts[match_id].append((int(home_score), int(away_score), int(count)))
 
+        team_ids = {
+            team_id
+            for match, _ in match_rows
+            for team_id in (match.home_team_id, match.away_team_id)
+            if team_id is not None
+        }
+        teams_by_id = {
+            team.id: team
+            for team in db.scalars(select(Team).where(Team.id.in_(team_ids)))
+        } if team_ids else {}
+
         rows: list[QuinielaPlusUserDistributionMatchOut] = []
         for match, matchday in match_rows:
-            home_team = db.get(Team, match.home_team_id)
-            away_team = db.get(Team, match.away_team_id)
+            home_team = teams_by_id.get(match.home_team_id)
+            away_team = teams_by_id.get(match.away_team_id)
             counts = selection_counts[match.id]
             total_picks = counts[PickSelection.HOME] + counts[PickSelection.DRAW] + counts[PickSelection.AWAY]
             if total_picks <= 0:

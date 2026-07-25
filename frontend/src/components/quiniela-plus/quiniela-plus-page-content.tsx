@@ -571,6 +571,10 @@ export function QuinielaPlusPageContent() {
         const distributionResponse = await backendFetch<QuinielaPlusUserDistribution>(
           buildDistributionUrl(contextValue ?? selectedDistributionContext),
           accessToken,
+          {
+            timeoutMs: 60000,
+            cacheTtlMs: 5000,
+          },
         );
         setUserDistribution(distributionResponse);
         setDistributionUpdatedAt(new Date());
