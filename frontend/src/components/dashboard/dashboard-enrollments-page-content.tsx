@@ -15,7 +15,7 @@ type EnrollmentState = {
   me: Me | null;
   seasons: Season[];
   selectedSeason: Season | null;
-  survivorBoard: SurvivorBoard | null;
+  survivorBoards: Record<string, SurvivorBoard>;
   vipCompetitions: VipCompetition[];
   avalDisplayName: string | null;
 };
@@ -24,7 +24,7 @@ const initialState: EnrollmentState = {
   me: null,
   seasons: [],
   selectedSeason: null,
-  survivorBoard: null,
+  survivorBoards: {},
   vipCompetitions: [],
   avalDisplayName: null,
 };
@@ -41,30 +41,6 @@ type MembershipRow = {
 
 function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
-}
-
-function isLigaMxEnrollmentSeason(season: Season | null): season is Season {
-  if (!season || season.structure_format === "leagues_cup") {
-    return false;
-  }
-  const competitionLabel = `${season.competition_name ?? ""} ${season.competition_sport_name ?? ""}`.toLowerCase();
-  return season.tournament_format === "standard" && (competitionLabel.includes("liga mx") || !season.competition_name);
-}
-
-function resolveRegularEnrollmentSeason(seasons: Season[], selectedSeason: Season | null) {
-  if (isLigaMxEnrollmentSeason(selectedSeason) && isSeasonLive(selectedSeason)) {
-    return selectedSeason;
-  }
-  return (
-    seasons.find((season) => isLigaMxEnrollmentSeason(season) && isSeasonLive(season) && season.is_active) ??
-    seasons.find((season) => isLigaMxEnrollmentSeason(season) && isSeasonLive(season)) ??
-    seasons.find((season) => isLigaMxEnrollmentSeason(season)) ??
-    null
-  );
-}
-
-function isSurvivorAvailableForSeason(season: Season | null) {
-  return season?.tournament_format === "standard" || Boolean(season?.survivor_enabled);
 }
 
 function isClosedAt(value: string | null) {
@@ -163,7 +139,6 @@ export function DashboardEnrollmentsPageContent() {
           cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
         });
         const selectedSeason = resolveSeasonForContext(bootstrap.seasons, seasonId, competitionId);
-        const regularEnrollmentSeason = resolveRegularEnrollmentSeason(bootstrap.seasons, selectedSeason);
         const vipRows = accessToken
           ? await backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, {
               cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
@@ -175,16 +150,25 @@ export function DashboardEnrollmentsPageContent() {
                 cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
               }).catch(() => [])
             : [];
-        let survivorBoard: SurvivorBoard | null = null;
-        if (accessToken && regularEnrollmentSeason && isSurvivorAvailableForSeason(regularEnrollmentSeason)) {
-          try {
-            survivorBoard = await backendFetch<SurvivorBoard>(
-              `/survivor/board?season_id=${regularEnrollmentSeason.id}`,
-              accessToken,
-            );
-          } catch {
-            survivorBoard = null;
-          }
+        const survivorBoards: Record<string, SurvivorBoard> = {};
+        if (accessToken) {
+          const survivorSeasons = bootstrap.seasons.filter(
+            (season) => isSeasonLive(season) && season.survivor_enabled,
+          );
+          const boardResults = await Promise.all(
+            survivorSeasons.map(async (season) => {
+              const board = await backendFetch<SurvivorBoard>(
+                `/survivor/board?season_id=${season.id}`,
+                accessToken,
+              ).catch(() => null);
+              return [season.id, board] as const;
+            }),
+          );
+          boardResults.forEach(([targetSeasonId, board]) => {
+            if (board) {
+              survivorBoards[targetSeasonId] = board;
+            }
+          });
         }
 
         if (selectedSeason) {
@@ -198,7 +182,7 @@ export function DashboardEnrollmentsPageContent() {
           me: bootstrap.me,
           seasons: bootstrap.seasons,
           selectedSeason,
-          survivorBoard,
+          survivorBoards,
           vipCompetitions: vipRows,
           avalDisplayName:
             bootstrap.me.aval_profile_id
@@ -215,14 +199,7 @@ export function DashboardEnrollmentsPageContent() {
     void load();
   }, [competitionId, seasonId, setSeasonId]);
 
-  const regularEnrollmentSeason = useMemo(
-    () => resolveRegularEnrollmentSeason(state.seasons, state.selectedSeason),
-    [state.seasons, state.selectedSeason],
-  );
-  const isLigaMxSeason = isLigaMxEnrollmentSeason(regularEnrollmentSeason);
   const isAvalMode = state.me?.modality === "aval";
-  const canShowSurvivorCard = Boolean(isLigaMxSeason && isSurvivorAvailableForSeason(regularEnrollmentSeason));
-  const survivorMembership = state.survivorBoard?.my_membership ?? null;
   const visibleSeasonRows = useMemo(
     () =>
       state.seasons
@@ -253,10 +230,6 @@ export function DashboardEnrollmentsPageContent() {
         }),
     [state.vipCompetitions],
   );
-  const survivorWindowClosed = state.survivorBoard?.season
-    ? !state.survivorBoard.season.registration_open
-    : isClosedAt(regularEnrollmentSeason?.survivor_registration_lock_at ?? null);
-
   const membershipRows = useMemo(() => {
     const rows: MembershipRow[] = [];
 
@@ -309,21 +282,23 @@ export function DashboardEnrollmentsPageContent() {
           </button>
         ),
       });
-    });
+      if (!season.survivor_enabled) {
+        return;
+      }
 
-  if (canShowSurvivorCard) {
-      const survivorClosedByAdmin = Boolean(regularEnrollmentSeason?.survivor_registration_closed);
-      const survivorEnrollmentStatus = survivorMembership ? "Activo" : "No inscrito";
-      const survivorLockAt =
-        state.survivorBoard?.season.registration_lock_at ??
-        regularEnrollmentSeason?.survivor_registration_lock_at ??
-        null;
+      const survivorBoard = state.survivorBoards[season.id] ?? null;
+      const survivorMembership = survivorBoard?.my_membership ?? null;
+      const survivorClosedByAdmin = season.survivor_registration_closed;
+      const survivorLockAt = survivorBoard?.season.registration_lock_at ?? season.survivor_registration_lock_at;
+      const survivorWindowClosed = survivorBoard
+        ? !survivorBoard.season.registration_open
+        : survivorClosedByAdmin || isClosedAt(survivorLockAt);
       const survivorCloseLabel = formatMexicoDateTime(survivorLockAt);
       rows.push({
-        id: "survivor-liga-mx",
-        name: "Survivor Liga MX",
+        id: `survivor-${season.id}`,
+        name: season.survivor_name?.trim() || `Survivor ${getSeasonDisplayName(season)}`,
         availability: survivorWindowClosed ? "Cerrado" : "Abierto",
-        enrollmentStatus: survivorEnrollmentStatus,
+        enrollmentStatus: survivorMembership ? "Activo" : "No inscrito",
         detail: survivorMembership
           ? `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
           : survivorClosedByAdmin
@@ -335,17 +310,17 @@ export function DashboardEnrollmentsPageContent() {
             ? "Cierre manual"
             : null,
         action: survivorMembership ? (
-          <Link href={buildHrefWithSeason("/dashboard/survivor")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
+          <Link href={buildHrefWithSeason("/dashboard/survivor", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Abrir Survivor
           </Link>
         ) : (
           <button
             type="button"
-            onClick={() => void handleJoinSurvivor()}
-            disabled={actionLoading === "survivor" || survivorWindowClosed}
+            onClick={() => void handleJoinSurvivor(season)}
+            disabled={actionLoading === `survivor:${season.id}` || survivorWindowClosed}
             className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] disabled:opacity-50"
           >
-            {actionLoading === "survivor"
+            {actionLoading === `survivor:${season.id}`
               ? "Procesando..."
               : survivorClosedByAdmin
                 ? "Survivor cerrada"
@@ -353,7 +328,7 @@ export function DashboardEnrollmentsPageContent() {
           </button>
         ),
       });
-    }
+    });
 
     visibleVipCompetitions.forEach((vip) => {
       const status = vipStatusCopy(vip);
@@ -386,13 +361,10 @@ export function DashboardEnrollmentsPageContent() {
   }, [
     actionLoading,
     buildHrefWithSeason,
-    canShowSurvivorCard,
     devModeEnabled,
     isAvalMode,
-    state.survivorBoard,
+    state.survivorBoards,
     state.me,
-    survivorMembership,
-    survivorWindowClosed,
     visibleVipCompetitions,
     visibleSeasonRows,
   ]);
@@ -460,25 +432,25 @@ export function DashboardEnrollmentsPageContent() {
     }
   }
 
-  async function handleJoinSurvivor() {
-    if (!regularEnrollmentSeason) {
-      return;
-    }
-    setActionLoading("survivor");
+  async function handleJoinSurvivor(season: Season) {
+    setActionLoading(`survivor:${season.id}`);
     setError(null);
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
       const survivorBoard = await backendFetch<SurvivorBoard>(
-        `/survivor/seasons/${regularEnrollmentSeason.id}/join`,
+        `/survivor/seasons/${season.id}/join`,
         accessToken,
         { method: "POST" },
       );
       setState((current) => ({
         ...current,
-        survivorBoard,
+        survivorBoards: {
+          ...current.survivorBoards,
+          [season.id]: survivorBoard,
+        },
       }));
-      setMessage("Tu alta a Survivor ya quedo activa.");
+      setMessage(`Tu alta a ${season.survivor_name?.trim() || `Survivor ${getSeasonDisplayName(season)}`} ya quedo activa.`);
     } catch (joinError) {
       setError(joinError instanceof Error ? joinError.message : "No se pudo completar la inscripcion a Survivor");
     } finally {
