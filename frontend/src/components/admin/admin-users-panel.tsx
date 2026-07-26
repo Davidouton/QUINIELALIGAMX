@@ -59,16 +59,16 @@ const squareActionButtonClass =
   "inline-flex h-8 w-full items-center justify-center whitespace-nowrap rounded-[12px] border px-3 text-[10px] font-semibold tracking-[0.02em] transition disabled:opacity-60";
 
 const actionNeutralClass =
-  `${squareActionButtonClass} border-white/[0.04] bg-white/[0.03] text-ink hover:border-white/[0.08] hover:bg-white/[0.05]`;
+  `${squareActionButtonClass} admin-action-neutral`;
 
 const actionPositiveClass =
-  `${squareActionButtonClass} border-emerald-300/30 bg-emerald-400/16 text-emerald-50 hover:border-emerald-300/45 hover:bg-emerald-400/22`;
+  `${squareActionButtonClass} admin-action-positive`;
 
 const actionDangerClass =
-  `${squareActionButtonClass} border-red-300/35 bg-red-500/16 text-red-50 hover:border-red-300/50 hover:bg-red-500/24`;
+  `${squareActionButtonClass} admin-action-danger`;
 
 function getTrafficTextClass(isPositive: boolean) {
-  return isPositive ? "text-emerald-100" : "text-rose-100";
+  return isPositive ? "admin-status-positive" : "admin-status-danger";
 }
 
 function getMembershipStateLabel(isActive?: boolean | null) {
@@ -1021,35 +1021,23 @@ export function AdminUsersPanel() {
               La temporada del selector define el alta, pago, Survivor y puntaje que ves y editas en la tabla.
               {!selectedSeasonSupportsSurvivor ? " Survivor esta deshabilitado para este torneo." : ""}
             </div>
-            <table className="admin-users-table min-w-[1360px] table-fixed text-center text-[11px] text-steel">
+            <table className="admin-users-table min-w-[1240px] table-fixed text-left text-[11px] text-steel">
               <colgroup>
-                <col className="w-[220px]" />
-                <col className="w-[92px]" />
-                <col className="w-[78px]" />
-                <col className="w-[78px]" />
-                <col className="w-[88px]" />
-                <col className="w-[84px]" />
-                <col className="w-[88px]" />
-                <col className="w-[150px]" />
+                <col className="w-[250px]" />
+                <col className="w-[260px]" />
+                <col className="w-[310px]" />
                 <col className="w-[190px]" />
-                <col className="w-[150px]" />
-                <col className="w-[360px]" />
+                <col className="w-[370px]" />
               </colgroup>
               <thead className="text-[10px] uppercase tracking-[0.18em] text-steel/85">
                 <tr>
-                  <th className="sticky left-0 z-20 bg-[rgba(9,20,37,0.68)] px-2 py-2 text-left font-medium backdrop-blur-[1px]">
+                  <th className="sticky left-0 z-20 bg-[var(--app-bg-mid)] px-3 py-3 text-left font-medium">
                     Usuario
                   </th>
-                  <th className="px-1 py-2 font-medium">Rol</th>
-                  <th className="px-1 py-2 font-medium">App</th>
-                  <th className="px-1 py-2 font-medium">Torneo</th>
-                  <th className="px-1 py-2 font-medium">Survivor</th>
-                  <th className="px-1 py-2 font-medium">Pago</th>
-                  <th className="px-1 py-2 font-medium">Puntua</th>
-                  <th className="px-1 py-2 font-medium">Modalidad</th>
-                  <th className="px-1 py-2 font-medium">Aval</th>
-                  <th className="px-1 py-2 font-medium">Clave</th>
-                  <th className="px-2 py-2 font-medium">Acciones</th>
+                  <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3 font-medium">Cobro</th>
+                  <th className="px-4 py-3 font-medium">Clave</th>
+                  <th className="px-4 py-3 font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -1075,80 +1063,70 @@ export function AdminUsersPanel() {
 
                   return (
                     <tr key={user.id} className="border-t border-white/10">
-                      <td className="sticky left-0 z-10 bg-[rgba(9,20,37,0.68)] px-2 py-2 text-left align-top backdrop-blur-[1px]">
+                      <td className="sticky left-0 z-10 bg-[var(--app-bg-mid)] px-3 py-4 text-left align-top">
                         <p className="truncate font-medium text-ink">{user.display_name}</p>
                         {user.username ? <p className="truncate text-xs text-steel">@{user.username}</p> : null}
                         <p className="mt-1 truncate text-[10px] text-steel">{user.email ?? "Sin correo"}</p>
                       </td>
-                      <td className="px-1 py-2 align-top">
-                        <span className={`inline-flex px-2 py-1 text-[10px] font-semibold uppercase ${getTrafficTextClass(
-                          user.role_code === "master_admin" || user.role_code === "admin",
-                        )}`}>
-                          {getRoleTableLabel(user.role_code)}
-                        </span>
-                      </td>
-                      <td className="px-1 py-2 align-top">
-                        <span className={`inline-flex px-2 py-1 text-[10px] font-semibold uppercase ${getTrafficTextClass(user.is_active)}`}>
-                          {user.is_active ? "Activa" : "Bloq."}
-                        </span>
-                      </td>
-                      <td className="px-1 py-2 align-top">
-                        <span className={`inline-flex px-2 py-1 text-[10px] font-semibold uppercase ${getTrafficTextClass(Boolean(membership?.is_active))}`}>
-                          {getMembershipStateLabel(membership?.is_active)}
-                        </span>
-                      </td>
-                      <td className="px-1 py-2 align-top">
-                        <span
-                          className={`inline-flex px-2 py-1 text-[10px] font-semibold uppercase ${getTrafficTextClass(
-                            Boolean(survivorMembership?.is_active),
-                          )}`}
-                        >
-                          {getSurvivorStateLabel(survivorMembership?.is_active)}
-                        </span>
-                      </td>
-                      <td className="px-1 py-2 align-top">
-                        <span className={`inline-flex px-2 py-1 text-[10px] font-semibold uppercase ${getTrafficTextClass(Boolean(membership?.is_paid))}`}>
-                          {getPaymentStateLabel(membership?.is_paid)}
-                        </span>
-                      </td>
-                      <td className="px-1 py-2 align-top">
-                        <span className={`inline-flex px-2 py-1 text-[10px] font-semibold uppercase ${getTrafficTextClass(
-                          Boolean(membership?.eligible_for_scoring),
-                        )}`}>
-                          {getScoringStateLabel(membership?.eligible_for_scoring)}
-                        </span>
-                      </td>
-                      <td className="px-1 py-2 align-top">
-                        <select
-                          value={billingDraft.modality}
-                          onChange={(event) =>
-                            updateBillingDraft(user.id, {
-                              modality: event.target.value,
-                              aval_profile_id: event.target.value === "aval" ? billingDraft.aval_profile_id : "",
-                            })
-                          }
-                          className="field-control h-8 w-full text-[11px]"
-                        >
-                          <option value="pre_pago">Pre-pago</option>
-                          <option value="aval">Aval</option>
-                        </select>
-                      </td>
-                      <td className="px-1 py-2 align-top">
-                        <select
-                          value={billingDraft.aval_profile_id}
-                          onChange={(event) => updateBillingDraft(user.id, { aval_profile_id: event.target.value })}
-                          className="field-control h-8 w-full text-[11px]"
-                          disabled={billingDraft.modality !== "aval"}
-                        >
-                          <option value="">{billingDraft.modality === "aval" ? "Selecciona aval" : "No aplica"}</option>
-                          {avalOptions.map((optionUser) => (
-                            <option key={optionUser.id} value={optionUser.id}>
-                              {optionUser.display_name}
-                            </option>
+                      <td className="px-4 py-4 align-top">
+                        <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                          {[
+                            ["Rol", getRoleTableLabel(user.role_code), user.role_code === "master_admin" || user.role_code === "admin"],
+                            ["App", user.is_active ? "Activa" : "Bloq.", user.is_active],
+                            ["Torneo", getMembershipStateLabel(membership?.is_active), Boolean(membership?.is_active)],
+                            ["Survivor", getSurvivorStateLabel(survivorMembership?.is_active), Boolean(survivorMembership?.is_active)],
+                            ["Pago", getPaymentStateLabel(membership?.is_paid), Boolean(membership?.is_paid)],
+                            ["Puntúa", getScoringStateLabel(membership?.eligible_for_scoring), Boolean(membership?.eligible_for_scoring)],
+                          ].map(([label, value, positive]) => (
+                            <div key={String(label)} className="min-w-0">
+                              <p className="text-[9px] uppercase tracking-[0.12em] text-steel/70">{String(label)}</p>
+                              <p className={`mt-1 truncate text-[10px] font-semibold uppercase ${getTrafficTextClass(Boolean(positive))}`}>
+                                {String(value)}
+                              </p>
+                            </div>
                           ))}
-                        </select>
+                        </div>
                       </td>
-                      <td className="px-1 py-2 align-top">
+                      <td className="px-4 py-4 align-top">
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={billingDraft.modality}
+                            onChange={(event) =>
+                              updateBillingDraft(user.id, {
+                                modality: event.target.value,
+                                aval_profile_id: event.target.value === "aval" ? billingDraft.aval_profile_id : "",
+                              })
+                            }
+                            className="field-control h-8 w-full text-[11px]"
+                          >
+                            <option value="pre_pago">Pre-pago</option>
+                            <option value="aval">Aval</option>
+                          </select>
+                          <select
+                            value={billingDraft.aval_profile_id}
+                            onChange={(event) => updateBillingDraft(user.id, { aval_profile_id: event.target.value })}
+                            className="field-control h-8 w-full text-[11px]"
+                            disabled={billingDraft.modality !== "aval"}
+                          >
+                            <option value="">{billingDraft.modality === "aval" ? "Selecciona aval" : "No aplica"}</option>
+                            {avalOptions.map((optionUser) => (
+                              <option key={optionUser.id} value={optionUser.id}>
+                                {optionUser.display_name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveBilling(user)}
+                            disabled={savingKey === `billing:${user.id}`}
+                            className={`${actionNeutralClass} col-span-2`}
+                            title="Guardar modalidad de cobro"
+                          >
+                            {savingKey === `billing:${user.id}` ? "..." : "Guardar cobro"}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-top">
                         <div className="flex flex-col gap-2">
                           <input
                             value={passwordDraft.password}
@@ -1173,8 +1151,8 @@ export function AdminUsersPanel() {
                           </button>
                         </div>
                       </td>
-                      <td className="px-2 py-2 align-top">
-                        <div className="flex flex-nowrap items-center gap-2 text-left">
+                      <td className="px-4 py-4 align-top">
+                        <div className="grid grid-cols-3 gap-2 text-left">
                           {canManageRole ? (
                             <button
                               type="button"
@@ -1254,15 +1232,6 @@ export function AdminUsersPanel() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void handleSaveBilling(user)}
-                            disabled={savingKey === `billing:${user.id}`}
-                            className={actionNeutralClass}
-                            title="Guardar modalidad de cobro"
-                          >
-                            {savingKey === `billing:${user.id}` ? "..." : "Guardar cobro"}
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => void handleDeleteUser(user)}
                             disabled={savingKey === `delete:${user.id}` || me?.id === user.id}
                             className={actionDangerClass}
@@ -1277,7 +1246,7 @@ export function AdminUsersPanel() {
                 })}
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-8 text-sm text-steel">
+                    <td colSpan={5} className="px-4 py-8 text-sm text-steel">
                       No hubo coincidencias para ese filtro.
                     </td>
                   </tr>

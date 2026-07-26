@@ -327,6 +327,39 @@ body::after {
     vertical-align: middle !important;
   }
 
+  .admin-shell .admin-action-neutral {
+    color: rgb(var(--app-ink-rgb));
+    border-color: var(--app-border-strong);
+    background: var(--app-surface-soft-bg);
+  }
+
+  .admin-shell .admin-action-positive,
+  .admin-shell .admin-status-positive {
+    color: color-mix(in srgb, #10b981 72%, rgb(var(--app-ink-rgb)));
+  }
+
+  .admin-shell .admin-action-positive {
+    border-color: color-mix(in srgb, #10b981 42%, transparent);
+    background: color-mix(in srgb, #10b981 13%, transparent);
+  }
+
+  .admin-shell .admin-action-danger,
+  .admin-shell .admin-status-danger {
+    color: color-mix(in srgb, #f43f5e 72%, rgb(var(--app-ink-rgb)));
+  }
+
+  .admin-shell .admin-action-danger {
+    border-color: color-mix(in srgb, #f43f5e 42%, transparent);
+    background: color-mix(in srgb, #f43f5e 11%, transparent);
+  }
+
+  .admin-shell .admin-action-neutral:hover,
+  .admin-shell .admin-action-positive:hover,
+  .admin-shell .admin-action-danger:hover {
+    border-color: rgb(var(--app-selection-rgb));
+    color: rgb(var(--app-selection-rgb));
+  }
+
   .compact-datetime-control::-webkit-datetime-edit {
     display: flex;
     align-items: center;
