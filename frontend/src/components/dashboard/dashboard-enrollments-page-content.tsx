@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
+import { useDevMode } from "@/components/layout/dev-mode-provider";
 import { isSeasonLive, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { VipStatusIcon } from "@/components/vip/vip-page-content";
@@ -42,14 +43,22 @@ function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
+function isLigaMxEnrollmentSeason(season: Season | null): season is Season {
+  if (!season || season.structure_format === "leagues_cup") {
+    return false;
+  }
+  const competitionLabel = `${season.competition_name ?? ""} ${season.competition_sport_name ?? ""}`.toLowerCase();
+  return season.tournament_format === "standard" && (competitionLabel.includes("liga mx") || !season.competition_name);
+}
+
 function resolveRegularEnrollmentSeason(seasons: Season[], selectedSeason: Season | null) {
-  if (selectedSeason?.tournament_format === "standard" && isSeasonLive(selectedSeason)) {
+  if (isLigaMxEnrollmentSeason(selectedSeason) && isSeasonLive(selectedSeason)) {
     return selectedSeason;
   }
   return (
-    seasons.find((season) => season.tournament_format === "standard" && isSeasonLive(season) && season.is_active) ??
-    seasons.find((season) => season.tournament_format === "standard" && isSeasonLive(season)) ??
-    seasons.find((season) => season.tournament_format === "standard") ??
+    seasons.find((season) => isLigaMxEnrollmentSeason(season) && isSeasonLive(season) && season.is_active) ??
+    seasons.find((season) => isLigaMxEnrollmentSeason(season) && isSeasonLive(season)) ??
+    seasons.find((season) => isLigaMxEnrollmentSeason(season)) ??
     null
   );
 }
@@ -125,6 +134,9 @@ function vipStatusCopy(vip: VipCompetition) {
 }
 
 function getSeasonDisplayName(season: Season) {
+  if (season.structure_format === "leagues_cup") {
+    return season.competition_name ?? "Leagues Cup";
+  }
   if (season.tournament_format === "world_cup") {
     return season.competition_name ?? "Mundial";
   }
@@ -138,6 +150,7 @@ export function DashboardEnrollmentsPageContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [expandedMembershipId, setExpandedMembershipId] = useState<string | null>(null);
+  const { enabled: devModeEnabled } = useDevMode();
   const { seasonId, competitionId, buildHrefWithSeason, setSeasonId } = useDashboardSeasonParam();
 
   useEffect(() => {
@@ -206,7 +219,7 @@ export function DashboardEnrollmentsPageContent() {
     () => resolveRegularEnrollmentSeason(state.seasons, state.selectedSeason),
     [state.seasons, state.selectedSeason],
   );
-  const isLigaMxSeason = regularEnrollmentSeason?.tournament_format === "standard";
+  const isLigaMxSeason = isLigaMxEnrollmentSeason(regularEnrollmentSeason);
   const isAvalMode = state.me?.modality === "aval";
   const canShowSurvivorCard = Boolean(isLigaMxSeason && isSurvivorAvailableForSeason(regularEnrollmentSeason));
   const survivorMembership = state.survivorBoard?.my_membership ?? null;
@@ -254,8 +267,8 @@ export function DashboardEnrollmentsPageContent() {
       const windowClosed = isClosedAt(season.participants_lock_at);
       const registrationClosedByAdmin = season.registration_closed;
       const seasonClosed = registrationClosedByAdmin || windowClosed;
-      const isLigaMxRegular = season.tournament_format === "standard";
-      const seasonTitle = isLigaMxRegular ? "Liga MX" : getSeasonDisplayName(season);
+      const seasonTitle = getSeasonDisplayName(season);
+      const registrationCloseLabel = formatMexicoDateTime(season.participants_lock_at);
       rows.push({
         id: `season-${season.id}`,
         name: seasonTitle,
@@ -268,13 +281,13 @@ export function DashboardEnrollmentsPageContent() {
         detail: hasActiveMembership
           ? "Tu membresia ya esta activa y puedes entrar al dashboard, picks, scores y ranking."
           : registrationClosedByAdmin
-            ? "El registro de esta liga fue cerrado por administracion."
+            ? "El registro de esta competencia se encuentra cerrado."
           : isAvalMode
             ? "Con modalidad aval tu alta entra en automatico en cuanto la activas."
             : "Con pre-pago tu alta se registra y queda pendiente de autorizacion admin.",
-        meta: registrationClosedByAdmin
-          ? `${season.name} · Registro cerrado manualmente`
-          : season.name,
+        meta: `${season.name}${registrationCloseLabel ? ` · Cierre ${registrationCloseLabel}` : ""}${
+          registrationClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""
+        }`,
         action: hasActiveMembership ? (
           <Link href={buildHrefWithSeason("/dashboard", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Ir al dashboard
@@ -301,6 +314,11 @@ export function DashboardEnrollmentsPageContent() {
   if (canShowSurvivorCard) {
       const survivorClosedByAdmin = Boolean(regularEnrollmentSeason?.survivor_registration_closed);
       const survivorEnrollmentStatus = survivorMembership ? "Activo" : "No inscrito";
+      const survivorLockAt =
+        state.survivorBoard?.season.registration_lock_at ??
+        regularEnrollmentSeason?.survivor_registration_lock_at ??
+        null;
+      const survivorCloseLabel = formatMexicoDateTime(survivorLockAt);
       rows.push({
         id: "survivor-liga-mx",
         name: "Survivor Liga MX",
@@ -309,15 +327,13 @@ export function DashboardEnrollmentsPageContent() {
         detail: survivorMembership
           ? `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
           : survivorClosedByAdmin
-            ? "El registro de survivor fue cerrado por administracion."
+            ? "El registro de Survivor se encuentra cerrado."
             : "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
-        meta: survivorClosedByAdmin
-          ? "Registro cerrado manualmente"
-          : state.survivorBoard?.season.registration_lock_at
-              ? `Cierre ${formatMexicoDateTime(state.survivorBoard.season.registration_lock_at) ?? "Por definir"}`
-              : regularEnrollmentSeason?.survivor_registration_lock_at
-                ? `Cierre ${formatMexicoDateTime(regularEnrollmentSeason.survivor_registration_lock_at) ?? "Por definir"}`
-                : null,
+        meta: survivorCloseLabel
+          ? `Cierre ${survivorCloseLabel}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`
+          : survivorClosedByAdmin && devModeEnabled
+            ? "Cierre manual"
+            : null,
         action: survivorMembership ? (
           <Link href={buildHrefWithSeason("/dashboard/survivor")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Abrir Survivor
@@ -371,6 +387,7 @@ export function DashboardEnrollmentsPageContent() {
     actionLoading,
     buildHrefWithSeason,
     canShowSurvivorCard,
+    devModeEnabled,
     isAvalMode,
     state.survivorBoard,
     state.me,
