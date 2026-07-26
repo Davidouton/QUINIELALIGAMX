@@ -285,7 +285,7 @@ export function DashboardEnrollmentsPageContent() {
           : isAvalMode
             ? "Con modalidad aval tu alta entra en automatico en cuanto la activas."
             : "Con pre-pago tu alta se registra y queda pendiente de autorizacion admin.",
-        meta: `${season.name}${registrationCloseLabel ? ` · Cierre ${registrationCloseLabel}` : ""}${
+        meta: `${season.name}${registrationCloseLabel ? ` · Límite de inscripción: ${registrationCloseLabel}` : ""}${
           registrationClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""
         }`,
         action: hasActiveMembership ? (
@@ -330,7 +330,7 @@ export function DashboardEnrollmentsPageContent() {
             ? "El registro de Survivor se encuentra cerrado."
             : "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
         meta: survivorCloseLabel
-          ? `Cierre ${survivorCloseLabel}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`
+          ? `Límite de inscripción: ${survivorCloseLabel}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`
           : survivorClosedByAdmin && devModeEnabled
             ? "Cierre manual"
             : null,
