@@ -335,22 +335,22 @@ body::after {
 
   .admin-shell .admin-action-positive,
   .admin-shell .admin-status-positive {
-    color: color-mix(in srgb, #10b981 72%, rgb(var(--app-ink-rgb)));
+    color: #6ee7b7;
   }
 
   .admin-shell .admin-action-positive {
-    border-color: color-mix(in srgb, #10b981 42%, transparent);
-    background: color-mix(in srgb, #10b981 13%, transparent);
+    border-color: rgba(52, 211, 153, 0.42);
+    background: rgba(16, 185, 129, 0.13);
   }
 
   .admin-shell .admin-action-danger,
   .admin-shell .admin-status-danger {
-    color: color-mix(in srgb, #f43f5e 72%, rgb(var(--app-ink-rgb)));
+    color: #fda4af;
   }
 
   .admin-shell .admin-action-danger {
-    border-color: color-mix(in srgb, #f43f5e 42%, transparent);
-    background: color-mix(in srgb, #f43f5e 11%, transparent);
+    border-color: rgba(251, 113, 133, 0.42);
+    background: rgba(244, 63, 94, 0.12);
   }
 
   .admin-shell .admin-action-neutral:hover,
@@ -358,6 +358,40 @@ body::after {
   .admin-shell .admin-action-danger:hover {
     border-color: rgb(var(--app-selection-rgb));
     color: rgb(var(--app-selection-rgb));
+  }
+
+  [data-app-surface="light"] .admin-shell .admin-action-neutral {
+    color: #12213a;
+    border-color: rgba(36, 55, 82, 0.28);
+    background: #eef2f7;
+  }
+
+  [data-app-surface="light"] .admin-shell .admin-action-positive,
+  [data-app-surface="light"] .admin-shell .admin-status-positive {
+    color: #047857;
+  }
+
+  [data-app-surface="light"] .admin-shell .admin-action-positive {
+    border-color: rgba(4, 120, 87, 0.42);
+    background: #ecfdf5;
+  }
+
+  [data-app-surface="light"] .admin-shell .admin-action-danger,
+  [data-app-surface="light"] .admin-shell .admin-status-danger {
+    color: #be123c;
+  }
+
+  [data-app-surface="light"] .admin-shell .admin-action-danger {
+    border-color: rgba(190, 18, 60, 0.38);
+    background: #fff1f2;
+  }
+
+  [data-app-surface="light"] .admin-shell .admin-action-neutral:hover,
+  [data-app-surface="light"] .admin-shell .admin-action-positive:hover,
+  [data-app-surface="light"] .admin-shell .admin-action-danger:hover {
+    border-color: #1f66ff;
+    color: #174ea6;
+    background: #e8f0ff;
   }
 
   .compact-datetime-control::-webkit-datetime-edit {
