@@ -16,6 +16,7 @@ from app.schemas.payments import (
     SettlementConfigUpdateRequest,
     SettlementGenerateRequest,
     SettlementGeneratedScopeOut,
+    SettlementManualAssignmentRequest,
     SettlementProofSubmitRequest,
     SettlementRejectRequest,
     SettlementScopeSummaryOut,
@@ -132,6 +133,25 @@ def generate_admin_settlement_split(
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SettlementScopeSummaryOut:
     return settlement_service.generate_assignments(db, payload, current_profile)
+
+
+@router.delete("/payments/settlements/admin/assignments", response_model=SettlementScopeSummaryOut)
+def clear_admin_settlement_assignments(
+    scope_type: str,
+    scope_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SettlementScopeSummaryOut:
+    return settlement_service.clear_assignments(db, scope_type, scope_id)
+
+
+@router.post("/payments/settlements/admin/manual", response_model=SettlementScopeSummaryOut)
+def create_admin_manual_settlement(
+    payload: SettlementManualAssignmentRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SettlementScopeSummaryOut:
+    return settlement_service.create_manual_assignment(db, payload, current_profile)
 
 
 @router.get("/payments/settlements/mine", response_model=MySettlementsResponse)

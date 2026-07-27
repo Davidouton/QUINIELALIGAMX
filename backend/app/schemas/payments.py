@@ -229,6 +229,14 @@ class SettlementGenerateRequest(BaseModel):
     payer_profile_ids: list[str] = Field(default_factory=list, max_length=200)
 
 
+class SettlementManualAssignmentRequest(BaseModel):
+    scope_type: PaymentScopeTypeLiteral
+    scope_id: str
+    payer_profile_id: str
+    payee_profile_id: str
+    amount: float = Field(gt=0, le=99_999_999.99)
+
+
 class SettlementProofSubmitRequest(BaseModel):
     proof_image_url: str = Field(min_length=1, max_length=2000)
     proof_note: str | None = Field(default=None, max_length=2000)

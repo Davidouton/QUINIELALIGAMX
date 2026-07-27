@@ -29,6 +29,7 @@ from app.schemas.payments import (
     SettlementConfigUpdateRequest,
     SettlementGenerateRequest,
     SettlementGeneratedScopeOut,
+    SettlementManualAssignmentRequest,
     SettlementParticipantOut,
     SettlementProofSubmitRequest,
     SettlementRejectRequest,
@@ -304,6 +305,81 @@ class SettlementService:
             self.send_generation_notifications(db, assignments, scope_label=scope_label)
         except Exception:
             db.rollback()
+        return self._build_scope_summary_out(
+            db,
+            scope_type_enum,
+            payload.scope_id,
+            scope_label,
+            participants,
+            assignments,
+            selected_payer_profile_ids=selected_payer_profile_ids,
+            config_row=config_row,
+        )
+
+    def clear_assignments(
+        self,
+        db: Session,
+        scope_type: str,
+        scope_id: str,
+    ) -> SettlementScopeSummaryOut:
+        scope_type_enum = self._supported_scope_type(scope_type)
+        scope_label, participants = self._build_participants(db, scope_type_enum, scope_id)
+        assignments = self._list_scope_assignments(db, scope_type_enum, scope_id)
+        if any(row.status in {SettlementStatus.PROOF_SUBMITTED, SettlementStatus.CONFIRMED} for row in assignments):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No se pueden borrar asignaciones con ficha enviada o ya confirmadas.",
+            )
+        db.execute(
+            delete(SettlementAssignment).where(
+                SettlementAssignment.scope_type == scope_type_enum,
+                SettlementAssignment.scope_id == scope_id,
+            )
+        )
+        db.commit()
+        config_row = self._get_or_create_config(db, scope_type_enum, scope_id, create=False)
+        return self._build_scope_summary_out(
+            db,
+            scope_type_enum,
+            scope_id,
+            scope_label,
+            participants,
+            [],
+            selected_payer_profile_ids=[],
+            config_row=config_row,
+        )
+
+    def create_manual_assignment(
+        self,
+        db: Session,
+        payload: SettlementManualAssignmentRequest,
+        current_profile: Profile,
+    ) -> SettlementScopeSummaryOut:
+        scope_type_enum = self._supported_scope_type(payload.scope_type)
+        scope_label, participants = self._build_participants(db, scope_type_enum, payload.scope_id)
+        if payload.payer_profile_id == payload.payee_profile_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quien paga y quien recibe deben ser distintos.")
+        participant_ids = {row.profile_id for row in participants}
+        if payload.payer_profile_id not in participant_ids or payload.payee_profile_id not in participant_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selecciona participantes o administradores que pertenezcan a este settlement.",
+            )
+        row = SettlementAssignment(
+            scope_type=scope_type_enum,
+            scope_id=payload.scope_id,
+            payer_profile_id=payload.payer_profile_id,
+            payee_profile_id=payload.payee_profile_id,
+            amount=self._to_money(payload.amount),
+            currency="mxn",
+            status=SettlementStatus.PENDING_PROOF,
+            created_by_profile_id=current_profile.id,
+        )
+        db.add(row)
+        db.commit()
+        assignments = self._list_scope_assignments(db, scope_type_enum, payload.scope_id)
+        selected_payer_profile_ids = sorted({assignment.payer_profile_id for assignment in assignments})
+        config_row = self._get_or_create_config(db, scope_type_enum, payload.scope_id, create=False)
         return self._build_scope_summary_out(
             db,
             scope_type_enum,

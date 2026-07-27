@@ -53,6 +53,9 @@ export function AdminPaymentsPanel() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [clearingAssignments, setClearingAssignments] = useState(false);
+  const [savingManualAssignment, setSavingManualAssignment] = useState(false);
+  const [manualAssignment, setManualAssignment] = useState({ payer_profile_id: "", payee_profile_id: "", amount: "" });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -261,6 +264,63 @@ export function AdminPaymentsPanel() {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo generar el split.");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleClearAssignments() {
+    if (!summary?.assignments.length) return;
+    if (!window.confirm(`Se borrarán las ${summary.assignments.length} asignaciones pendientes de ${summary.scope_label}. ¿Continuar?`)) return;
+    setClearingAssignments(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const response = await backendFetch<SettlementScopeSummary>(
+        `/payments/settlements/admin/assignments?scope_type=${scopeType}&scope_id=${selectedScopeId}`,
+        accessToken,
+        { method: "DELETE" },
+      );
+      setSummary(response);
+      setSelectedPayerIds([]);
+      setManualAssignment({ payer_profile_id: "", payee_profile_id: "", amount: "" });
+      setGeneratedScopes(await backendFetch<SettlementGeneratedScope[]>("/payments/settlements/admin/generated", accessToken));
+      setMessage("Asignaciones borradas. Ya puedes redistribuir desde cero.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron borrar las asignaciones.");
+    } finally {
+      setClearingAssignments(false);
+    }
+  }
+
+  async function handleCreateManualAssignment() {
+    if (!summary || !manualAssignment.payer_profile_id || !manualAssignment.payee_profile_id || Number(manualAssignment.amount) <= 0) {
+      setError("Selecciona quién paga, quién recibe y un monto mayor a cero.");
+      return;
+    }
+    setSavingManualAssignment(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const response = await backendFetch<SettlementScopeSummary>("/payments/settlements/admin/manual", accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          scope_type: scopeType,
+          scope_id: selectedScopeId,
+          payer_profile_id: manualAssignment.payer_profile_id,
+          payee_profile_id: manualAssignment.payee_profile_id,
+          amount: Number(manualAssignment.amount),
+        }),
+      });
+      setSummary(response);
+      setSelectedPayerIds(response.selected_payer_profile_ids);
+      setManualAssignment({ payer_profile_id: "", payee_profile_id: "", amount: "" });
+      setGeneratedScopes(await backendFetch<SettlementGeneratedScope[]>("/payments/settlements/admin/generated", accessToken));
+      setMessage("Movimiento manual agregado.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo agregar el movimiento manual.");
+    } finally {
+      setSavingManualAssignment(false);
     }
   }
 
@@ -542,7 +602,33 @@ export function AdminPaymentsPanel() {
                   Estado de fichas, comprobantes y validaciones del receptor.
                 </p>
               </div>
-              <p className="text-sm text-steel">{summary.assignments.length} pagos</p>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm text-steel">{summary.assignments.length} pagos</p>
+                <button type="button" onClick={handleClearAssignments} disabled={clearingAssignments || summary.assignments.length === 0} className="secondary-button text-coral">
+                  {clearingAssignments ? "Borrando..." : "Borrar todas"}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-[16px] border border-white/[0.08] bg-white/[0.03] p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-ink">Agregar movimiento manual</h3>
+                <p className="mt-1 text-xs text-steel">Crea directamente una línea de pago sin recalcular las demás asignaciones.</p>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[1fr_1fr_170px_auto]">
+                <select value={manualAssignment.payer_profile_id} onChange={(event) => setManualAssignment((current) => ({ ...current, payer_profile_id: event.target.value }))} className="field-control">
+                  <option value="">Quién paga</option>
+                  {summary.participants.map((participant) => <option key={`payer-${participant.profile_id}`} value={participant.profile_id}>{participant.display_name}</option>)}
+                </select>
+                <select value={manualAssignment.payee_profile_id} onChange={(event) => setManualAssignment((current) => ({ ...current, payee_profile_id: event.target.value }))} className="field-control">
+                  <option value="">Quién recibe</option>
+                  {summary.participants.map((participant) => <option key={`payee-${participant.profile_id}`} value={participant.profile_id}>{participant.display_name}</option>)}
+                </select>
+                <input type="number" min="0.01" step="0.01" placeholder="Monto" aria-label="Monto del movimiento manual" value={manualAssignment.amount} onChange={(event) => setManualAssignment((current) => ({ ...current, amount: event.target.value }))} className="field-control" />
+                <button type="button" onClick={handleCreateManualAssignment} disabled={savingManualAssignment} className="app-pill px-4 text-sm">
+                  {savingManualAssignment ? "Agregando..." : "Agregar pago"}
+                </button>
+              </div>
             </div>
 
             <div className="android-scroll-x">
