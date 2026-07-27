@@ -3397,6 +3397,26 @@ def recalculate_admin_vip(
     return {"status": "vip_recalculate_started", "vip_id": vip_id}
 
 
+@router.post("/vip/{vip_id}/close", response_model=AdminVipCompetitionOut)
+def close_admin_vip(
+    vip_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.close_admin_vip(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
+@router.post("/vip/{vip_id}/archive", response_model=AdminVipCompetitionOut)
+def archive_admin_vip(
+    vip_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.archive_admin_vip(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
 @router.post("/vip", response_model=AdminVipCompetitionOut, status_code=201)
 def create_admin_vip(
     payload: AdminVipUpsertRequest,

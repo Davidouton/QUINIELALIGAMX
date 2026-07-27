@@ -11,15 +11,20 @@ from app.models.entities import (
     MatchResult,
     Matchday,
     MatchdayStatus,
+    PaymentScopeType,
     PickSelection,
     Profile,
     RoleCode,
     Season,
     SeasonMembership,
+    SettlementAssignment,
+    SettlementStatus,
     UserPick,
     VipMembership,
     VipMembershipStatus,
+    VipCompetition,
 )
+from app.services.settlement_service import SettlementService
 
 from conftest import (
     MATCHDAY_ID,
@@ -786,3 +791,74 @@ def test_admin_cannot_create_vip_with_prize_split_over_100(admin_client: TestCli
 
     assert response.status_code == 422
     assert "no puede rebasar 100%" in response.text
+
+
+def test_admin_closes_vip_only_after_all_matchdays_are_closed(admin_client: TestClient) -> None:
+    create_response = admin_client.post(
+        "/api/v1/admin/vip",
+        json={
+            "name": "VIP J1 cierre",
+            "entry_fee_amount": 500,
+            "first_place_pct": 100,
+            "matchday_ids": [MATCHDAY_ID],
+            "is_active": True,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert create_response.status_code == 201
+    vip_id = create_response.json()["id"]
+    assert create_response.json()["lifecycle_status"] == "active"
+
+    pending_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/close",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert pending_response.status_code == 409
+
+    db = SessionLocal()
+    try:
+        matchday = db.get(Matchday, MATCHDAY_ID)
+        assert matchday is not None
+        matchday.status = MatchdayStatus.CLOSED
+        db.add(matchday)
+        db.commit()
+    finally:
+        db.close()
+
+    close_response = admin_client.post(
+        f"/api/v1/admin/vip/{vip_id}/close",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert close_response.status_code == 200
+    assert close_response.json()["lifecycle_status"] == "closed_pending_payments"
+    assert close_response.json()["is_active"] is False
+
+
+def test_vip_becomes_settled_when_all_assignments_are_confirmed() -> None:
+    db = SessionLocal()
+    try:
+        vip = VipCompetition(
+            season_id=SEASON_ID,
+            name="VIP liquidacion",
+            lifecycle_status="closed_pending_payments",
+            is_active=False,
+        )
+        db.add(vip)
+        db.flush()
+        db.add(
+            SettlementAssignment(
+                scope_type=PaymentScopeType.VIP,
+                scope_id=vip.id,
+                payer_profile_id=PROFILE_USER_ID,
+                payee_profile_id=PROFILE_LEADER_ID,
+                amount=500,
+                status=SettlementStatus.CONFIRMED,
+            )
+        )
+        db.commit()
+
+        SettlementService()._sync_vip_lifecycle_status(db, vip.id)
+        db.refresh(vip)
+        assert vip.lifecycle_status == "settled"
+    finally:
+        db.close()

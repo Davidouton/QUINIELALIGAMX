@@ -345,6 +345,7 @@ export interface VipMatchday {
 }
 
 export type VipCompetitionKind = "matchday" | "team_winner" | "question_pool";
+export type VipLifecycleStatus = "active" | "closed_pending_payments" | "settled" | "archived";
 
 export interface VipLeaderboardEntry {
   profile_id: string;
@@ -428,6 +429,7 @@ export interface VipCompetition {
   second_place_pct: number;
   third_place_pct: number;
   is_active: boolean;
+  lifecycle_status: VipLifecycleStatus;
   questions_lock_at: string | null;
   matchdays: VipMatchday[];
   approved_members_count: number;
@@ -469,6 +471,7 @@ export interface AdminVipCompetition {
   second_place_pct: number;
   third_place_pct: number;
   is_active: boolean;
+  lifecycle_status: VipLifecycleStatus;
   questions_lock_at: string | null;
   created_by_profile_id: string | null;
   created_by_display_name: string | null;

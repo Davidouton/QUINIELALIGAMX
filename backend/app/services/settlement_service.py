@@ -83,6 +83,8 @@ class SettlementService:
     ) -> SettlementScopeSummaryOut:
         self._auto_confirm_due_assignments(db)
         scope_type_enum = self._supported_scope_type(scope_type)
+        if scope_type_enum == PaymentScopeType.VIP:
+            self._sync_vip_lifecycle_status(db, scope_id)
         scope_label, participants = self._build_participants(db, scope_type_enum, scope_id)
         assignments = self._list_scope_assignments(db, scope_type_enum, scope_id)
         selected_payer_profile_ids = sorted({row.payer_profile_id for row in assignments})
@@ -331,6 +333,8 @@ class SettlementService:
         db.add(row)
         db.commit()
         db.refresh(row)
+        if row.scope_type == PaymentScopeType.VIP:
+            self._sync_vip_lifecycle_status(db, row.scope_id)
         return self._assignment_outs(db, [row])[0]
 
     def confirm_assignment(
@@ -355,6 +359,8 @@ class SettlementService:
         db.add(row)
         db.commit()
         db.refresh(row)
+        if row.scope_type == PaymentScopeType.VIP:
+            self._sync_vip_lifecycle_status(db, row.scope_id)
         return self._assignment_outs(db, [row])[0]
 
     def reject_assignment(
@@ -935,6 +941,26 @@ class SettlementService:
             self._mark_confirmed(row, confirmed_by_profile_id=row.payee_profile_id, automatic=True)
             db.add(row)
         db.commit()
+        for vip_id in {row.scope_id for row in due_rows if row.scope_type == PaymentScopeType.VIP}:
+            self._sync_vip_lifecycle_status(db, vip_id)
+
+    def _sync_vip_lifecycle_status(self, db: Session, vip_id: str) -> None:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None or vip.lifecycle_status != "closed_pending_payments":
+            return
+        assignments = list(
+            db.scalars(
+                select(SettlementAssignment).where(
+                    SettlementAssignment.scope_type == PaymentScopeType.VIP,
+                    SettlementAssignment.scope_id == vip_id,
+                )
+            )
+        )
+        if assignments and all(row.status == SettlementStatus.CONFIRMED for row in assignments):
+            vip.lifecycle_status = "settled"
+            vip.is_active = False
+            db.add(vip)
+            db.commit()
 
     def _mark_confirmed(
         self,

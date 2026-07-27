@@ -775,6 +775,7 @@ class VipCompetition(Base):
     second_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     third_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    lifecycle_status: Mapped[str] = mapped_column(String(32), default="active", nullable=False, index=True)
     questions_lock_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_profile_id: Mapped[str | None] = mapped_column(
         UUID_SQL,

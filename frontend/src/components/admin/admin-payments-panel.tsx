@@ -62,9 +62,20 @@ export function AdminPaymentsPanel() {
         ]);
         setSeasons(seasonRows);
         setVips(vipRows);
+        const searchParams = new URLSearchParams(window.location.search);
+        const requestedScopeType = searchParams.get("scope_type") === "vip" ? "vip" : "season";
+        const requestedScopeId = searchParams.get("scope_id") ?? "";
         const activeSeasonId = seasonRows.find((row) => row.is_active)?.id ?? seasonRows[0]?.id ?? "";
         const activeVipId = vipRows.find((row) => row.is_active)?.id ?? vipRows[0]?.id ?? "";
-        setSelectedScopeId(activeSeasonId || activeVipId);
+        const requestedRows = requestedScopeType === "vip" ? vipRows : seasonRows;
+        setScopeType(requestedScopeType);
+        setSelectedScopeId(
+          requestedRows.some((row) => row.id === requestedScopeId)
+            ? requestedScopeId
+            : requestedScopeType === "vip"
+              ? activeVipId
+              : activeSeasonId,
+        );
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el panel de pagos.");
       } finally {

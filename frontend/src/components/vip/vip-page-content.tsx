@@ -61,12 +61,28 @@ function statusCopy(status: VipMembershipStatus | null) {
 }
 
 function registrationStatusCopy(vip: VipCompetition) {
-  if (vip.season_visibility_status === "archived") {
+  if (vip.season_visibility_status === "archived" || vip.lifecycle_status === "archived") {
     return {
       label: "Archivada",
       sublabel: "Consulta histórica",
       tone: "text-steel",
       dot: "bg-steel",
+    };
+  }
+  if (vip.lifecycle_status === "settled") {
+    return {
+      label: "Liquidada",
+      sublabel: "Pagos concluidos",
+      tone: "text-mint",
+      dot: "bg-mint",
+    };
+  }
+  if (vip.lifecycle_status === "closed_pending_payments") {
+    return {
+      label: "Cerrada",
+      sublabel: "Pagos pendientes",
+      tone: "text-gold",
+      dot: "bg-gold",
     };
   }
   if (vip.join_locked) {
@@ -208,18 +224,18 @@ export function VipPageContent() {
   const [message, setMessage] = useState<string | null>(null);
 
   const activeVips = useMemo(
-    () => vips.filter((vip) => vip.season_visibility_status !== "archived"),
+    () => vips.filter((vip) => vip.season_visibility_status !== "archived" && vip.lifecycle_status !== "archived"),
     [vips],
   );
   const archivedVips = useMemo(
-    () => vips.filter((vip) => vip.season_visibility_status === "archived"),
+    () => vips.filter((vip) => vip.season_visibility_status === "archived" || vip.lifecycle_status === "archived"),
     [vips],
   );
   const selectedVip = useMemo(
     () => vips.find((vip) => vip.id === selectedVipId) ?? activeVips[0] ?? archivedVips[0] ?? null,
     [activeVips, archivedVips, selectedVipId, vips],
   );
-  const selectedVipIsArchived = selectedVip?.season_visibility_status === "archived";
+  const selectedVipIsArchived = selectedVip?.season_visibility_status === "archived" || selectedVip?.lifecycle_status === "archived";
   const selectedVipPricing = selectedVip ? pricingByVipId[selectedVip.id] ?? null : null;
   const questionPoolQuestions = useMemo(
     () =>
@@ -317,7 +333,7 @@ export function VipPageContent() {
     const accessToken = await getBrowserAccessToken();
     const rows = await backendFetch<VipCompetition[]>("/vip", accessToken);
     const pricingEntries = await Promise.all(
-      rows.filter((vip) => vip.season_visibility_status !== "archived").map(async (vip) => {
+      rows.filter((vip) => vip.season_visibility_status !== "archived" && vip.lifecycle_status !== "archived").map(async (vip) => {
         try {
           const pricing = await backendFetch<EffectivePricing>(
             `/payments/pricing?scope_type=vip&scope_id=${vip.id}`,
@@ -336,7 +352,7 @@ export function VipPageContent() {
     setSelectedVipId((current) =>
       rows.some((vip) => vip.id === current)
         ? current
-        : (rows.find((vip) => vip.season_visibility_status !== "archived")?.id ?? rows[0]?.id ?? ""),
+        : (rows.find((vip) => vip.season_visibility_status !== "archived" && vip.lifecycle_status !== "archived")?.id ?? rows[0]?.id ?? ""),
     );
   }
 

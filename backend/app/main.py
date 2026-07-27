@@ -122,6 +122,7 @@ def run_startup_migrations() -> None:
                       slug VARCHAR(120) NOT NULL UNIQUE,
                       provider_league_id VARCHAR(120),
                       is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      lifecycle_status VARCHAR(32) NOT NULL DEFAULT 'active',
                       sort_order INTEGER NOT NULL DEFAULT 100,
                       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
                       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
@@ -1011,6 +1012,7 @@ def run_startup_migrations() -> None:
                 "second_place_pct": "ALTER TABLE vip_competitions ADD COLUMN second_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
                 "third_place_pct": "ALTER TABLE vip_competitions ADD COLUMN third_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0",
                 "is_active": "ALTER TABLE vip_competitions ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE",
+                "lifecycle_status": "ALTER TABLE vip_competitions ADD COLUMN lifecycle_status VARCHAR(32) NOT NULL DEFAULT 'active'",
                 "created_by_profile_id": "ALTER TABLE vip_competitions ADD COLUMN created_by_profile_id UUID",
                 "questions_lock_at": "ALTER TABLE vip_competitions ADD COLUMN questions_lock_at TIMESTAMP WITH TIME ZONE",
             }
@@ -1027,6 +1029,12 @@ def run_startup_migrations() -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS idx_vip_competitions_kind "
                     "ON vip_competitions(competition_kind)"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_vip_competitions_lifecycle "
+                    "ON vip_competitions(lifecycle_status)"
                 )
             )
         connection.execute(

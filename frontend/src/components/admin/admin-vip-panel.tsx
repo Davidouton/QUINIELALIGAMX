@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { backendFetch } from "@/lib/api/backend";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminUser, AdminVipCompetition, Matchday, Season, Team, VipCompetitionKind } from "@/types/api";
+import type { AdminUser, AdminVipCompetition, Matchday, Season, Team, VipCompetitionKind, VipLifecycleStatus } from "@/types/api";
 
 type FormState = {
   competitionKind: VipCompetitionKind;
@@ -42,6 +42,13 @@ const initialForm: FormState = {
   isActive: true,
   matchdayIds: [],
 };
+
+function lifecycleLabel(status: VipLifecycleStatus) {
+  if (status === "closed_pending_payments") return "Cerrada · pagos pendientes";
+  if (status === "settled") return "Liquidada";
+  if (status === "archived") return "Archivada";
+  return "Activa";
+}
 
 const initialQuestionForm: QuestionFormState = {
   prompt: "",
@@ -190,6 +197,7 @@ export function AdminVipPanel() {
   const [houseLabel, setHouseLabel] = useState("Casa");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [updatingLifecycle, setUpdatingLifecycle] = useState(false);
   const [savingTeamWinner, setSavingTeamWinner] = useState(false);
   const [savingQuestion, setSavingQuestion] = useState(false);
   const [importingQuestions, setImportingQuestions] = useState(false);
@@ -562,6 +570,47 @@ export function AdminVipPanel() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleCloseVip() {
+    if (!selectedVip) return;
+    if (!window.confirm(`Vas a cerrar "${selectedVip.name}". Se congelara el ranking y ya no aceptara cambios. Continuar?`)) return;
+    setUpdatingLifecycle(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/admin/vip/${selectedVip.id}/close`, accessToken, { method: "POST" });
+      await loadPanel(selectedVip.id);
+      setMessage("VIP cerrada. Ya puedes preparar y enviar los pagos.");
+    } catch (caughtError) {
+      setError(`Cerrar VIP: ${getCaughtMessage(caughtError, "No se pudo cerrar la VIP")}`);
+    } finally {
+      setUpdatingLifecycle(false);
+    }
+  }
+
+  async function handleArchiveVip() {
+    if (!selectedVip) return;
+    if (!window.confirm(`Vas a archivar "${selectedVip.name}". Continuar?`)) return;
+    setUpdatingLifecycle(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/admin/vip/${selectedVip.id}/archive`, accessToken, { method: "POST" });
+      await loadPanel(selectedVip.id);
+      setMessage("VIP archivada.");
+    } catch (caughtError) {
+      setError(`Archivar VIP: ${getCaughtMessage(caughtError, "No se pudo archivar la VIP")}`);
+    } finally {
+      setUpdatingLifecycle(false);
+    }
+  }
+
+  function openVipPayments() {
+    if (!selectedVip) return;
+    window.location.href = `/dashboard/admin/payments?scope_type=vip&scope_id=${selectedVip.id}`;
   }
 
   async function handleDeleteVip() {
@@ -1078,8 +1127,8 @@ export function AdminVipPanel() {
                   <p className="text-base font-semibold text-ink">{vip.name}</p>
                   <p className="mt-1 text-sm text-steel">{vip.season_name}</p>
                 </div>
-                <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${vip.is_active ? "text-mint" : "text-steel"}`}>
-                  {vip.is_active ? "Activa" : "Pausa"}
+                <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${vip.lifecycle_status === "active" ? "text-mint" : "text-steel"}`}>
+                  {lifecycleLabel(vip.lifecycle_status)}
                 </span>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-steel">
@@ -1143,6 +1192,31 @@ export function AdminVipPanel() {
                 </h2>
               </div>
               <div className="flex gap-2">
+                {selectedVip?.lifecycle_status === "active" ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleCloseVip()}
+                    disabled={updatingLifecycle}
+                    className="app-pill px-4 text-coral disabled:opacity-50"
+                  >
+                    {updatingLifecycle ? "Cerrando" : "Cerrar VIP"}
+                  </button>
+                ) : null}
+                {selectedVip?.lifecycle_status === "closed_pending_payments" ? (
+                  <button type="button" onClick={openVipPayments} className="app-pill px-4 text-mint">
+                    Preparar pagos
+                  </button>
+                ) : null}
+                {selectedVip?.lifecycle_status === "settled" ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleArchiveVip()}
+                    disabled={updatingLifecycle}
+                    className="app-pill px-4 text-steel disabled:opacity-50"
+                  >
+                    {updatingLifecycle ? "Archivando" : "Archivar"}
+                  </button>
+                ) : null}
                 {selectedVip ? (
                   <button
                     type="button"
@@ -1153,7 +1227,12 @@ export function AdminVipPanel() {
                     {deletingVip ? "Borrando" : "Borrar"}
                   </button>
                 ) : null}
-                <button type="button" onClick={handleSave} disabled={saving} className="app-pill px-4">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || Boolean(selectedVip && selectedVip.lifecycle_status !== "active")}
+                  className="app-pill px-4 disabled:opacity-50"
+                >
                   {saving ? "Guardando" : selectedVip ? "Guardar cambios" : "Crear VIP"}
                 </button>
               </div>

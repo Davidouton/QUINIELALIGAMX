@@ -15,6 +15,7 @@ from app.models.entities import (
     Match,
     MatchResult,
     Matchday,
+    MatchdayStatus,
     Profile,
     Season,
     TournamentFormat,
@@ -80,7 +81,10 @@ class VipService:
         self._ensure_question_pool_schema(db)
         statement = (
             select(VipCompetition)
-            .where(VipCompetition.is_active.is_(True))
+            .where(
+                (VipCompetition.is_active.is_(True))
+                | (VipCompetition.lifecycle_status != "active")
+            )
             .order_by(VipCompetition.created_at.desc(), VipCompetition.name.asc())
         )
         if vip_id is not None:
@@ -140,6 +144,7 @@ class VipService:
                     second_place_pct=float(vip.second_place_pct),
                     third_place_pct=float(vip.third_place_pct),
                     is_active=vip.is_active,
+                    lifecycle_status=vip.lifecycle_status,
                     questions_lock_at=vip.questions_lock_at,
                     matchdays=matchdays,
                     approved_members_count=sum(1 for membership in memberships if membership.status == VipMembershipStatus.APPROVED),
@@ -274,6 +279,7 @@ class VipService:
                 second_place_pct=float(vip.second_place_pct),
                 third_place_pct=float(vip.third_place_pct),
                 is_active=vip.is_active,
+                lifecycle_status=vip.lifecycle_status,
                 questions_lock_at=vip.questions_lock_at,
                 created_by_profile_id=vip.created_by_profile_id,
                 created_by_display_name=(
@@ -376,6 +382,11 @@ class VipService:
         vip = db.get(VipCompetition, vip_id)
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+        if vip.lifecycle_status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Una VIP cerrada ya no puede modificar su configuracion",
+            )
 
         season, matchdays = self._resolve_vip_season_and_matchdays(db, payload)
         previous_kind = vip.competition_kind
@@ -397,6 +408,53 @@ class VipService:
             if previous_kind == VipCompetitionKind.QUESTION_POOL:
                 self._clear_question_pool_data(db, vip.id)
         self._replace_matchdays(db, vip.id, matchdays)
+        db.commit()
+        db.refresh(vip)
+        return vip
+
+    def close_admin_vip(self, db: Session, vip_id: str) -> VipCompetition:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+        if vip.lifecycle_status != "active":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La VIP ya fue cerrada")
+
+        if vip.competition_kind == VipCompetitionKind.MATCHDAY:
+            matchdays = list(
+                db.scalars(
+                    select(Matchday)
+                    .join(VipCompetitionMatchday, VipCompetitionMatchday.matchday_id == Matchday.id)
+                    .where(VipCompetitionMatchday.vip_competition_id == vip.id)
+                )
+            )
+            pending_matchdays = [row for row in matchdays if row.status != MatchdayStatus.CLOSED]
+            if pending_matchdays:
+                labels = ", ".join(f"J{row.number}" for row in sorted(pending_matchdays, key=lambda row: row.number))
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Cierra primero las jornadas pendientes: {labels}",
+                )
+
+        self.recalculate_vip_standings(db, vip.id)
+        vip.lifecycle_status = "closed_pending_payments"
+        vip.is_active = False
+        db.add(vip)
+        db.commit()
+        db.refresh(vip)
+        return vip
+
+    def archive_admin_vip(self, db: Session, vip_id: str) -> VipCompetition:
+        vip = db.get(VipCompetition, vip_id)
+        if vip is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+        if vip.lifecycle_status != "settled":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Solo puedes archivar una VIP liquidada",
+            )
+        vip.lifecycle_status = "archived"
+        vip.is_active = False
+        db.add(vip)
         db.commit()
         db.refresh(vip)
         return vip

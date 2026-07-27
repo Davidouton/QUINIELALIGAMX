@@ -132,6 +132,7 @@ class VipCompetitionOut(BaseModel):
     second_place_pct: float = 0
     third_place_pct: float = 0
     is_active: bool
+    lifecycle_status: Literal["active", "closed_pending_payments", "settled", "archived"] = "active"
     questions_lock_at: datetime | None = None
     matchdays: list[VipMatchdayOut] = []
     approved_members_count: int = 0
@@ -291,6 +292,7 @@ class AdminVipCompetitionOut(BaseModel):
     second_place_pct: float = 0
     third_place_pct: float = 0
     is_active: bool
+    lifecycle_status: Literal["active", "closed_pending_payments", "settled", "archived"] = "active"
     questions_lock_at: datetime | None = None
     created_by_profile_id: str | None = None
     created_by_display_name: str | None = None
