@@ -99,12 +99,13 @@ export function AdminSettingsPanel() {
   const [pricingMessage, setPricingMessage] = useState<string | null>(null);
   const [iconPreviewVersion, setIconPreviewVersion] = useState(() => Date.now());
 
-  async function loadSettings() {
+  async function loadSettings(seasonId?: string) {
     const accessToken = await getBrowserAccessToken();
+    const settingsSuffix = seasonId ? `?season_id=${seasonId}` : "";
     const [seasonRows, matchdayRows, settingsResponse, vipRows, pricingRuleRows] = await Promise.all([
       backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Matchday[]>("/matchdays", accessToken),
-      backendFetch<AdminSettings>("/admin/settings", accessToken),
+      backendFetch<AdminSettings>(`/admin/settings${settingsSuffix}`, accessToken),
       backendFetch<AdminVipCompetition[]>("/admin/vip", accessToken),
       backendFetch<PricingRule[]>("/payments/pricing-rules", accessToken),
     ]);
@@ -171,7 +172,7 @@ export function AdminSettingsPanel() {
           advancing_team_points: Number(form.advancing_team_points),
         }),
       });
-      await loadSettings();
+      await loadSettings(form.active_season_id);
       setIconPreviewVersion(Date.now());
       setMessage(
         [
@@ -253,7 +254,7 @@ export function AdminSettingsPanel() {
           is_active: pricingForm.is_active,
         }),
       });
-      await loadSettings();
+      await loadSettings(form.active_season_id);
       setPricingMessage(pricingForm.editing_id ? "Regla de precio actualizada." : "Regla de precio creada.");
       resetPricingForm(pricingForm.scope_type);
     } catch (caughtError) {
@@ -270,9 +271,11 @@ export function AdminSettingsPanel() {
     .filter((matchday) => matchday.season_id === form.active_season_id)
     .sort((left, right) => left.number - right.number);
   const pricingTargetOptions =
-    pricingForm.scope_type === "season"
-      ? seasons.map((season) => ({ id: season.id, label: season.name }))
-      : adminVips.map((vip) => ({ id: vip.id, label: `${vip.name} · ${vip.season_name}` }));
+    pricingForm.scope_type === "vip"
+      ? adminVips.map((vip) => ({ id: vip.id, label: `${vip.name} · ${vip.season_name}` }))
+      : seasons
+          .filter((season) => pricingForm.scope_type !== "survivor" || season.survivor_enabled)
+          .map((season) => ({ id: season.id, label: season.name }));
   const pricingRulesForSelectedScope = pricingRules.filter((rule) => rule.scope_type === pricingForm.scope_type);
 
   return (
@@ -283,14 +286,13 @@ export function AdminSettingsPanel() {
             <span className="text-sm text-steel">Torneo activo</span>
             <select
               value={form.active_season_id}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  active_season_id: event.target.value,
-                  start_matchday_id: "",
-                  end_matchday_id: "",
-                }))
-              }
+              onChange={(event) => {
+                const nextSeasonId = event.target.value;
+                setLoading(true);
+                setError(null);
+                setMessage(null);
+                void loadSettings(nextSeasonId).finally(() => setLoading(false));
+              }}
               className="field-control"
               required
               disabled={loading || seasons.length === 0}
@@ -307,14 +309,14 @@ export function AdminSettingsPanel() {
           </label>
 
           <label className="space-y-2 md:col-span-2">
-            <span className="text-sm text-steel">Jornada de inicio del torneo</span>
+            <span className="text-sm text-steel">Primera jornada que puntúa</span>
             <select
               value={form.start_matchday_id}
               onChange={(event) => setForm((current) => ({ ...current, start_matchday_id: event.target.value }))}
               className="field-control"
               disabled={loading || !form.active_season_id}
             >
-              <option value="">Sin corte configurado</option>
+              <option value="">Desde la primera jornada disponible</option>
               {seasonMatchdays.map((matchday) => (
                 <option key={matchday.id} value={matchday.id}>
                   Jornada {matchday.number} · {matchday.name}
@@ -478,24 +480,19 @@ export function AdminSettingsPanel() {
             <p className="text-right text-sm font-medium text-ink">{activeSeason?.name ?? "Sin torneo activo"}</p>
           </div>
           <div className="grid grid-cols-[1.15fr_1fr] gap-4 px-3 py-2">
-            <p className="text-sm text-steel">Jornada de inicio</p>
+            <p className="text-sm text-steel">Primera jornada que puntúa</p>
             <div className="text-right">
               <p className="text-sm font-medium text-ink">
                 {seasonMatchdays.find((matchday) => matchday.id === form.start_matchday_id)?.name ?? "Sin definir"}
               </p>
-              {settings?.participants_lock_at ? (
-                <p className="mt-1 text-[11px] text-steel">
-                  Corte: {formatMexicoCityDateTime(settings.participants_lock_at)}
-                </p>
-              ) : null}
             </div>
           </div>
           <div className="grid grid-cols-[1.15fr_1fr] gap-4 px-3 py-2">
-            <p className="text-sm text-steel">Participantes confirmados</p>
+            <p className="text-sm text-steel">Membresías activas del torneo</p>
             <div className="text-right">
               <p className="text-sm font-medium text-ink">{settings?.confirmed_participants ?? 0}</p>
               <p className="mt-1 text-[11px] text-steel">
-                {settings?.participants_locked ? "Listado congelado" : "Listado editable"}
+                {settings?.participants_locked ? "Elegibilidad ya congelada" : "Elegibilidad todavía editable"}
               </p>
             </div>
           </div>
@@ -524,13 +521,13 @@ export function AdminSettingsPanel() {
         <div>
           <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Reglas de precio</h3>
           <p className="mt-2 text-sm text-steel">
-            Aqui decides cuanto cuesta una temporada o una VIP y en que ventana aplica ese precio.
+            Define por separado el precio de Quiniela, Survivor o VIP y la ventana en que aplica.
           </p>
         </div>
 
         <form onSubmit={handlePricingSubmit} className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2">
-            <span className="text-sm text-steel">Tipo</span>
+            <span className="text-sm text-steel">Aplica a</span>
             <select
               value={pricingForm.scope_type}
               onChange={(event) => {
@@ -543,13 +540,14 @@ export function AdminSettingsPanel() {
               }}
               className="field-control"
             >
-              <option value="season">Temporada</option>
+              <option value="season">Quiniela</option>
+              <option value="survivor">Survivor</option>
               <option value="vip">VIP</option>
             </select>
           </label>
 
           <label className="space-y-2">
-            <span className="text-sm text-steel">Objetivo</span>
+            <span className="text-sm text-steel">Producto</span>
             <select
               value={pricingForm.scope_id}
               onChange={(event) => setPricingForm((current) => ({ ...current, scope_id: event.target.value }))}
@@ -571,7 +569,7 @@ export function AdminSettingsPanel() {
               value={pricingForm.label}
               onChange={(event) => setPricingForm((current) => ({ ...current, label: event.target.value }))}
               className="field-control"
-              placeholder="VIP Early Bird / Liga + Liguilla General"
+              placeholder="Quiniela general / Survivor / VIP Early Bird"
               required
             />
           </label>
@@ -693,7 +691,7 @@ export function AdminSettingsPanel() {
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">
-              Reglas {pricingForm.scope_type === "season" ? "de temporada" : "de VIP"}
+              Reglas de {pricingForm.scope_type === "season" ? "Quiniela" : pricingForm.scope_type === "survivor" ? "Survivor" : "VIP"}
             </p>
             <p className="text-xs text-steel">{pricingRulesForSelectedScope.length} registradas</p>
           </div>
@@ -710,7 +708,7 @@ export function AdminSettingsPanel() {
                   <div>
                     <p className="text-sm font-semibold text-ink">{rule.label}</p>
                     <p className="mt-1 text-xs text-steel">
-                      {rule.scope_type === "season" ? "Temporada" : "VIP"} · {rule.currency.toUpperCase()}
+                      {rule.scope_type === "season" ? "Quiniela" : rule.scope_type === "survivor" ? "Survivor" : "VIP"} · {rule.currency.toUpperCase()}
                     </p>
                   </div>
                   <div className="text-left lg:text-right">

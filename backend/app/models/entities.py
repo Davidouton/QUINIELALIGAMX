@@ -104,6 +104,7 @@ class PickReminderKind(str, Enum):
 
 class PaymentScopeType(str, Enum):
     SEASON = "season"
+    SURVIVOR = "survivor"
     VIP = "vip"
     QUINIELA_PLUS = "quiniela_plus"
 
@@ -261,6 +262,14 @@ class Season(Base):
     first_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     second_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     third_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
+    survivor_weekly_first_place_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
+    survivor_weekly_second_place_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
+    survivor_weekly_third_place_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
+    survivor_admin_commission_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
+    survivor_reserve_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
+    survivor_first_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
+    survivor_second_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
+    survivor_third_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -662,6 +671,7 @@ class SurvivorMembership(Base):
     season_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("seasons.id", ondelete="CASCADE"), index=True)
     profile_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

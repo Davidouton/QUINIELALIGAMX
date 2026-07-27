@@ -40,7 +40,7 @@ export type MatchStageType =
 export type PickSelection = "home" | "draw" | "away";
 export type ThemePreference = "standard" | "auto" | "night" | "day_blue" | "favorite_team";
 export type PaymentModality = "pre_pago" | "aval";
-export type PaymentScopeType = "season" | "vip" | "quiniela_plus";
+export type PaymentScopeType = "season" | "survivor" | "vip" | "quiniela_plus";
 export type PaymentStatus =
   | "pending_checkout"
   | "checkout_created"
@@ -1579,6 +1579,7 @@ export interface AdminSettings {
   selected_season_id: string | null;
   selected_season_name: string | null;
   selected_tournament_format: TournamentFormat | null;
+  prize_scope: "season" | "survivor";
   app_icon_url: string | null;
   show_live_tab: boolean;
   start_matchday_id: string | null;

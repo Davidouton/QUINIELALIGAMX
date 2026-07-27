@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
@@ -224,6 +224,7 @@ class AdminSettingsOut(BaseModel):
     selected_season_id: str | None = None
     selected_season_name: str | None = None
     selected_tournament_format: TournamentFormat | None = None
+    prize_scope: Literal["season", "survivor"] = "season"
     app_icon_url: str | None = None
     show_live_tab: bool = True
     start_matchday_id: str | None = None
@@ -261,6 +262,7 @@ class AdminSettingsOut(BaseModel):
 
 class AdminSettingsUpdateRequest(BaseModel):
     active_season_id: str
+    prize_scope: Literal["season", "survivor"] = "season"
     app_icon_url: str | None = Field(default=None, max_length=2000)
     show_live_tab: bool = True
     start_matchday_id: str | None = None

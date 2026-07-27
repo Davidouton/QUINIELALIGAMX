@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from pydantic import ValidationError
@@ -141,8 +142,8 @@ from app.schemas.vip import (
 )
 from app.api.v1.routes.rules import build_rule_page_out, get_or_create_rule_page
 from app.services.match_service import MatchService
-from app.services.reminder_service import ReminderService
 from app.services.pick_service import PickService
+from app.services.payment_service import PaymentService
 from app.services.result_service import ResultService
 from app.services.reminder_service import ReminderService
 from app.services.scoring_service import ScoringService
@@ -1213,6 +1214,7 @@ def get_admin_settings_payload(
     db: Session,
     *,
     season_id: str | None = None,
+    prize_scope: Literal["season", "survivor"] = "season",
     evaluated_picks: int | None = None,
     weekly_leaders: int | None = None,
 ) -> AdminSettingsOut:
@@ -1242,20 +1244,45 @@ def get_admin_settings_payload(
     second_place_pct = Decimal("0")
     third_place_pct = Decimal("0")
     if target_season is not None:
-        participants_lock_at = season_eligibility_service.get_effective_lock_at(db, target_season)
-        participants_locked = season_eligibility_service.is_locked(db, target_season)
-        memberships = season_membership_repo.list_for_season(db, target_season.id)
-        eligible_participants = sum(1 for membership in memberships if membership.eligible_for_scoring)
-        confirmed_participants = sum(1 for membership in memberships if membership.is_active)
-        entry_fee_amount = target_season.entry_fee_amount
-        weekly_first_place_amount = target_season.weekly_first_place_amount
-        weekly_second_place_amount = target_season.weekly_second_place_amount
-        weekly_third_place_amount = target_season.weekly_third_place_amount
-        admin_commission_pct = target_season.admin_commission_pct
-        reserve_pct = target_season.reserve_pct
-        first_place_pct = target_season.first_place_pct
-        second_place_pct = target_season.second_place_pct
-        third_place_pct = target_season.third_place_pct
+        if prize_scope == "survivor":
+            participants_lock_at = target_season.survivor_registration_lock_at
+            participants_locked = target_season.survivor_registration_closed
+            memberships = list(
+                db.scalars(
+                    select(SurvivorMembership).where(SurvivorMembership.season_id == target_season.id)
+                )
+            )
+            eligible_participants = sum(1 for membership in memberships if membership.is_active)
+            confirmed_participants = eligible_participants
+            weekly_first_place_amount = target_season.survivor_weekly_first_place_amount
+            weekly_second_place_amount = target_season.survivor_weekly_second_place_amount
+            weekly_third_place_amount = target_season.survivor_weekly_third_place_amount
+            admin_commission_pct = target_season.survivor_admin_commission_pct
+            reserve_pct = target_season.survivor_reserve_pct
+            first_place_pct = target_season.survivor_first_place_pct
+            second_place_pct = target_season.survivor_second_place_pct
+            third_place_pct = target_season.survivor_third_place_pct
+        else:
+            participants_lock_at = season_eligibility_service.get_effective_lock_at(db, target_season)
+            participants_locked = season_eligibility_service.is_locked(db, target_season)
+            memberships = season_membership_repo.list_for_season(db, target_season.id)
+            eligible_participants = sum(1 for membership in memberships if membership.eligible_for_scoring)
+            confirmed_participants = sum(1 for membership in memberships if membership.is_active)
+            weekly_first_place_amount = target_season.weekly_first_place_amount
+            weekly_second_place_amount = target_season.weekly_second_place_amount
+            weekly_third_place_amount = target_season.weekly_third_place_amount
+            admin_commission_pct = target_season.admin_commission_pct
+            reserve_pct = target_season.reserve_pct
+            first_place_pct = target_season.first_place_pct
+            second_place_pct = target_season.second_place_pct
+            third_place_pct = target_season.third_place_pct
+        try:
+            effective_pricing = PaymentService().get_effective_pricing(db, prize_scope, target_season.id)
+            entry_fee_amount = Decimal(str(effective_pricing.amount))
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_404_NOT_FOUND:
+                raise
+            entry_fee_amount = Decimal("0")
 
     tournament_matchdays_count = 0
     if target_season is not None:
@@ -1298,6 +1325,7 @@ def get_admin_settings_payload(
         selected_season_id=target_season.id if target_season is not None else None,
         selected_season_name=target_season.name if target_season is not None else None,
         selected_tournament_format=target_season.tournament_format if target_season is not None else None,
+        prize_scope=prize_scope,
         app_icon_url=commerce_settings.app_icon_url,
         show_live_tab=commerce_settings.show_live_tab,
         start_matchday_id=target_season.start_matchday_id if target_season is not None else None,
@@ -2104,10 +2132,11 @@ def upsert_user_survivor_membership(
 @router.get("/settings", response_model=AdminSettingsOut)
 def get_admin_settings(
     season_id: str | None = None,
+    prize_scope: Literal["season", "survivor"] = "season",
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminSettingsOut:
-    return get_admin_settings_payload(db, season_id=season_id)
+    return get_admin_settings_payload(db, season_id=season_id, prize_scope=prize_scope)
 
 
 @router.put("/settings", response_model=AdminSettingsOut)
@@ -2132,13 +2161,8 @@ def update_admin_settings(
                 detail="La jornada inicial no pertenece al torneo activo",
             )
         season.start_matchday_id = start_matchday.id
-        season.participants_lock_at = start_matchday.starts_at
     else:
         season.start_matchday_id = None
-        season.participants_lock_at = None
-
-    if season.survivor_enabled:
-        season.survivor_registration_lock_at = season.participants_lock_at
 
     if payload.end_matchday_id:
         end_matchday = matchday_repo.get_by_id(db, payload.end_matchday_id)
@@ -2165,15 +2189,24 @@ def update_admin_settings(
             detail="La suma de porcentajes de premios finales no puede exceder 100",
         )
 
-    season.entry_fee_amount = Decimal(str(payload.entry_fee_amount))
-    season.weekly_first_place_amount = Decimal(str(payload.weekly_first_place_amount))
-    season.weekly_second_place_amount = Decimal(str(payload.weekly_second_place_amount))
-    season.weekly_third_place_amount = Decimal(str(payload.weekly_third_place_amount))
-    season.admin_commission_pct = Decimal(str(payload.admin_commission_pct))
-    season.reserve_pct = Decimal(str(payload.reserve_pct))
-    season.first_place_pct = Decimal(str(payload.first_place_pct))
-    season.second_place_pct = Decimal(str(payload.second_place_pct))
-    season.third_place_pct = Decimal(str(payload.third_place_pct))
+    if payload.prize_scope == "survivor":
+        season.survivor_weekly_first_place_amount = Decimal(str(payload.weekly_first_place_amount))
+        season.survivor_weekly_second_place_amount = Decimal(str(payload.weekly_second_place_amount))
+        season.survivor_weekly_third_place_amount = Decimal(str(payload.weekly_third_place_amount))
+        season.survivor_admin_commission_pct = Decimal(str(payload.admin_commission_pct))
+        season.survivor_reserve_pct = Decimal(str(payload.reserve_pct))
+        season.survivor_first_place_pct = Decimal(str(payload.first_place_pct))
+        season.survivor_second_place_pct = Decimal(str(payload.second_place_pct))
+        season.survivor_third_place_pct = Decimal(str(payload.third_place_pct))
+    else:
+        season.weekly_first_place_amount = Decimal(str(payload.weekly_first_place_amount))
+        season.weekly_second_place_amount = Decimal(str(payload.weekly_second_place_amount))
+        season.weekly_third_place_amount = Decimal(str(payload.weekly_third_place_amount))
+        season.admin_commission_pct = Decimal(str(payload.admin_commission_pct))
+        season.reserve_pct = Decimal(str(payload.reserve_pct))
+        season.first_place_pct = Decimal(str(payload.first_place_pct))
+        season.second_place_pct = Decimal(str(payload.second_place_pct))
+        season.third_place_pct = Decimal(str(payload.third_place_pct))
     commerce_settings.app_icon_url = payload.app_icon_url
     commerce_settings.show_live_tab = payload.show_live_tab
 
@@ -2208,6 +2241,7 @@ def update_admin_settings(
     return get_admin_settings_payload(
         db,
         season_id=season.id,
+        prize_scope=payload.prize_scope,
         evaluated_picks=recalculate_summary["evaluated_picks"],
         weekly_leaders=recalculate_summary["weekly_leaders"],
     )
@@ -3858,6 +3892,11 @@ def publish_matchday(
     matchday = matchday_repo.get_by_id(db, matchday_id)
     if matchday is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
+    if matchday.status == MatchdayStatus.CLOSED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La jornada esta cerrada y no se puede volver a publicar",
+        )
 
     existing = db.scalar(
         select(PublishedMatchday).where(PublishedMatchday.matchday_id == matchday.id)
@@ -3879,4 +3918,61 @@ def publish_matchday(
         "matchday_id": matchday_id,
         "recalculate_status": "started",
         "vip_recalculate_status": "started",
+    }
+
+
+@router.post("/matchdays/{matchday_id}/close")
+def close_matchday(
+    matchday_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> dict[str, str | int]:
+    matchday = matchday_repo.get_by_id(db, matchday_id)
+    if matchday is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
+    if matchday.status == MatchdayStatus.CLOSED:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La jornada ya esta cerrada")
+
+    matches = list(db.scalars(select(Match).where(Match.matchday_id == matchday.id)))
+    if not matches:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede cerrar una jornada sin partidos",
+        )
+    official_match_ids = set(
+        db.scalars(
+            select(MatchResult.match_id).where(
+                MatchResult.match_id.in_([match.id for match in matches]),
+                MatchResult.is_official.is_(True),
+            )
+        )
+    )
+    pending_matches = [match for match in matches if match.id not in official_match_ids]
+    if pending_matches:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Faltan {len(pending_matches)} partidos con marcador oficial",
+        )
+
+    published = db.scalar(
+        select(PublishedMatchday).where(PublishedMatchday.matchday_id == matchday.id)
+    )
+    if published is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Publica la jornada antes de cerrarla",
+        )
+
+    matchday.status = MatchdayStatus.CLOSED
+    db.add(matchday)
+    db.flush()
+    summary = ScoringService().recalculate_matchday(db, matchday.id)
+    vip_competitions = recalculate_vips_for_matchday(db, matchday.id)
+    db.commit()
+    return {
+        "status": "closed",
+        "matchday_id": matchday.id,
+        "evaluated_picks": summary["evaluated_picks"],
+        "weekly_leaders": summary["weekly_leaders"],
+        "vip_competitions": vip_competitions,
     }

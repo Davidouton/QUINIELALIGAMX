@@ -224,6 +224,30 @@ def run_startup_migrations() -> None:
                 "third_place_pct": (
                     "ALTER TABLE seasons ADD COLUMN third_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0"
                 ),
+                "survivor_weekly_first_place_amount": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_weekly_first_place_amount NUMERIC(10,2) NOT NULL DEFAULT 0"
+                ),
+                "survivor_weekly_second_place_amount": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_weekly_second_place_amount NUMERIC(10,2) NOT NULL DEFAULT 0"
+                ),
+                "survivor_weekly_third_place_amount": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_weekly_third_place_amount NUMERIC(10,2) NOT NULL DEFAULT 0"
+                ),
+                "survivor_admin_commission_pct": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_admin_commission_pct NUMERIC(5,2) NOT NULL DEFAULT 0"
+                ),
+                "survivor_reserve_pct": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_reserve_pct NUMERIC(5,2) NOT NULL DEFAULT 0"
+                ),
+                "survivor_first_place_pct": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_first_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0"
+                ),
+                "survivor_second_place_pct": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_second_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0"
+                ),
+                "survivor_third_place_pct": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_third_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0"
+                ),
             }
             for column_name, statement in missing_season_columns.items():
                 if column_name not in season_column_names:
@@ -638,6 +662,7 @@ def run_startup_migrations() -> None:
                       season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
                       profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
                       is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      is_paid BOOLEAN NOT NULL DEFAULT FALSE,
                       joined_at TIMESTAMP WITH TIME ZONE,
                       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
@@ -652,6 +677,14 @@ def run_startup_migrations() -> None:
                     "ON survivor_memberships(season_id, profile_id)"
                 )
             )
+        else:
+            survivor_membership_columns = {
+                column["name"] for column in inspector.get_columns("survivor_memberships")
+            }
+            if "is_paid" not in survivor_membership_columns:
+                connection.execute(
+                    text("ALTER TABLE survivor_memberships ADD COLUMN is_paid BOOLEAN NOT NULL DEFAULT FALSE")
+                )
 
         if "settlement_configs" not in table_names:
             connection.execute(

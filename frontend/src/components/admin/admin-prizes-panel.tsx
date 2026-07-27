@@ -48,23 +48,26 @@ export function AdminPrizesPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
+  const [prizeScope, setPrizeScope] = useState<"season" | "survivor">("season");
   const [form, setForm] = useState<PrizeFormState>(initialForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function loadPrizeSettings(seasonId?: string) {
+  async function loadPrizeSettings(seasonId?: string, scope: "season" | "survivor" = prizeScope) {
     const accessToken = await getBrowserAccessToken();
-    const suffix = seasonId ? `?season_id=${seasonId}` : "";
+    const params = new URLSearchParams({ prize_scope: scope });
+    if (seasonId) params.set("season_id", seasonId);
     const [seasonRows, settingsResponse] = await Promise.all([
       backendFetch<Season[]>("/seasons", accessToken),
-      backendFetch<AdminSettings>(`/admin/settings${suffix}`, accessToken),
+      backendFetch<AdminSettings>(`/admin/settings?${params.toString()}`, accessToken),
     ]);
 
     setSeasons(seasonRows);
     setSettings(settingsResponse);
     setSelectedSeasonId(settingsResponse.selected_season_id ?? settingsResponse.active_season_id ?? "");
+    setPrizeScope(settingsResponse.prize_scope);
     setForm(mapSettingsToPrizeForm(settingsResponse));
   }
 
@@ -103,6 +106,9 @@ export function AdminPrizesPanel() {
         method: "PUT",
         body: JSON.stringify({
           active_season_id: selectedSeasonId,
+          prize_scope: prizeScope,
+          app_icon_url: settings.app_icon_url,
+          show_live_tab: settings.show_live_tab,
           start_matchday_id: settings.start_matchday_id,
           end_matchday_id: settings.end_matchday_id,
           entry_fee_amount: Number(form.entry_fee_amount),
@@ -130,16 +136,11 @@ export function AdminPrizesPanel() {
     }
   }
 
-  const activeSeason = useMemo(
-    () => seasons.find((season) => season.id === settings?.active_season_id) ?? null,
-    [seasons, settings?.active_season_id],
-  );
   const selectedSeason = useMemo(
     () => seasons.find((season) => season.id === selectedSeasonId) ?? null,
     [seasons, selectedSeasonId],
   );
-  const tournamentTypeLabel =
-    settings?.selected_tournament_format === "world_cup" ? "World Cup" : "Liga MX";
+  const tournamentTypeLabel = selectedSeason?.competition_name ?? selectedSeason?.structure_format ?? "Sin competencia";
 
   const formatMoney = (value: number) =>
     new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(value);
@@ -149,8 +150,18 @@ export function AdminPrizesPanel() {
   return (
     <div className="space-y-6">
       <section>
-        <h2 className="text-xl font-semibold text-ink">Premios del torneo</h2>
-        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,320px)_auto_auto] lg:items-end">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-xl font-semibold text-ink">Premios del torneo</h2>
+          <button
+            type="submit"
+            form="season-prizes-form"
+            disabled={saving || loading || !selectedSeasonId}
+            className="secondary-button disabled:opacity-60"
+          >
+            {saving ? "Guardando..." : "Guardar premios"}
+          </button>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-[minmax(0,320px)_minmax(0,260px)_auto] lg:items-end">
           <label className="space-y-2 text-left text-sm">
             <span className="text-steel">Temporada</span>
             <select
@@ -161,7 +172,10 @@ export function AdminPrizesPanel() {
                 setLoading(true);
                 setError(null);
                 setMessage(null);
-                void loadPrizeSettings(nextSeasonId).finally(() => setLoading(false));
+                const nextSeason = seasons.find((season) => season.id === nextSeasonId);
+                const nextScope = prizeScope === "survivor" && !nextSeason?.survivor_enabled ? "season" : prizeScope;
+                setPrizeScope(nextScope);
+                void loadPrizeSettings(nextSeasonId, nextScope).finally(() => setLoading(false));
               }}
               className="field-control"
               disabled={loading || seasons.length === 0}
@@ -173,37 +187,46 @@ export function AdminPrizesPanel() {
               ))}
             </select>
           </label>
+          <label className="space-y-2 text-left text-sm">
+            <span className="text-steel">Modalidad</span>
+            <select
+              value={prizeScope}
+              onChange={(event) => {
+                const nextScope = event.target.value as "season" | "survivor";
+                setPrizeScope(nextScope);
+                setLoading(true);
+                setError(null);
+                setMessage(null);
+                void loadPrizeSettings(selectedSeasonId, nextScope).finally(() => setLoading(false));
+              }}
+              className="field-control"
+              disabled={loading || !selectedSeasonId}
+            >
+              <option value="season">Quiniela</option>
+              {selectedSeason?.survivor_enabled ? <option value="survivor">Survivor</option> : null}
+            </select>
+          </label>
           <div className="pb-1">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Tipo de torneo</p>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Competencia</p>
             <p className="mt-2 text-sm font-semibold text-ink">{tournamentTypeLabel}</p>
-          </div>
-          <div className="pb-1">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-steel">Temporada activa</p>
-            <p className="mt-2 text-sm font-semibold text-ink">{activeSeason?.name ?? "Sin activa"}</p>
           </div>
         </div>
         <p className="mt-3 text-sm text-steel">
-          {selectedSeason ? `Editando la bolsa y comisiones de ${selectedSeason.name}.` : "Selecciona una temporada para editar su esquema de premios."}
+          {selectedSeason ? `Editando la bolsa de ${prizeScope === "survivor" ? "Survivor" : "Quiniela"} para ${selectedSeason.name}.` : "Selecciona una temporada para editar su esquema de premios."}
         </p>
       </section>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form id="season-prizes-form" onSubmit={handleSubmit} className="space-y-6">
         <section className="space-y-4">
           <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Base financiera</h3>
           <div className="space-y-2">
-            <label className="grid grid-cols-[1fr_auto] items-center gap-4 py-2">
+            <div className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-white/[0.06] py-3">
               <span className="text-sm text-steel">Costo por ingreso</span>
-              <input
-                type="number"
-                min={0}
-                max={1000000}
-                step={0.01}
-                value={form.entry_fee_amount}
-                onChange={(event) => setForm((current) => ({ ...current, entry_fee_amount: event.target.value }))}
-                className="field-control w-28 text-right"
-                required
-              />
-            </label>
+              <div className="text-right">
+                <p className="text-sm font-semibold text-ink">{formatMoney(settings?.entry_fee_amount ?? 0)}</p>
+                <p className="mt-1 text-[11px] text-steel">Heredado de Reglas de precio</p>
+              </div>
+            </div>
 
             <label className="grid grid-cols-[1fr_auto] items-center gap-4 py-2">
               <span className="text-sm text-steel">% comision administracion</span>
@@ -352,7 +375,7 @@ export function AdminPrizesPanel() {
             </div>
             <button
               type="submit"
-              disabled={saving || loading || !settings?.active_season_id}
+              disabled={saving || loading || !selectedSeasonId}
               className="secondary-button disabled:opacity-60"
             >
               {saving ? "Guardando..." : "Guardar"}

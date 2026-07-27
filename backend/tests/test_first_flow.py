@@ -407,7 +407,7 @@ def test_my_matchday_points_returns_rows_for_season(client):
     assert rows[0]["weekly_prize_amount"] == 0
 
 
-def test_my_matchday_points_only_awards_prize_when_matchday_is_closed(client):
+def test_my_matchday_points_only_awards_prize_after_matchday_is_closed(client):
     db = SessionLocal()
     try:
         season = db.get(Season, SEASON_ID)
@@ -452,7 +452,24 @@ def test_my_matchday_points_only_awards_prize_when_matchday_is_closed(client):
     assert response.status_code == 200
     rows = response.json()
     assert len(rows) == 1
-    assert rows[0]["weekly_prize_amount"] == 100
+    assert rows[0]["weekly_prize_amount"] == 0
+
+    db = SessionLocal()
+    try:
+        matchday = db.get(Matchday, MATCHDAY_ID)
+        assert matchday is not None
+        matchday.status = MatchdayStatus.CLOSED
+        db.commit()
+    finally:
+        db.close()
+
+    closed_response = client.get(
+        f"/api/v1/leaderboard/my-matchdays?season_id={SEASON_ID}",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert closed_response.status_code == 200
+    assert closed_response.json()[0]["weekly_prize_amount"] == 100
 
 
 def test_my_matchday_points_respects_tournament_bounds(client):

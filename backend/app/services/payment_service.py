@@ -23,6 +23,7 @@ from app.models.entities import (
     QuinielaPlusPlan,
     Season,
     SeasonMembership,
+    SurvivorMembership,
     VipCompetition,
     VipMembership,
     VipMembershipStatus,
@@ -174,11 +175,12 @@ class PaymentService:
             label = rule.label
             amount = rule.amount
             currency = rule.currency
-            description = (
-                f"Pago {scope.name}"
-                if payload.scope_type == PaymentScopeType.SEASON.value
-                else f"Acceso VIP {scope.name}"
-            )
+            if payload.scope_type == PaymentScopeType.SEASON.value:
+                description = f"Pago Quiniela {scope.name}"
+            elif payload.scope_type == PaymentScopeType.SURVIVOR.value:
+                description = f"Pago Survivor {scope.name}"
+            else:
+                description = f"Acceso VIP {scope.name}"
             metadata_extra = {}
             request_metadata["pricing_rule_id"] = rule.id
             pricing_rule_id = rule.id
@@ -259,6 +261,13 @@ class PaymentService:
             if scope is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada no encontrada")
             return scope
+        if scope_type == PaymentScopeType.SURVIVOR.value:
+            scope = db.get(Season, scope_id)
+            if scope is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada no encontrada")
+            if not scope.survivor_enabled:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Survivor no esta habilitado")
+            return scope
         if scope_type == PaymentScopeType.VIP.value:
             scope = db.get(VipCompetition, scope_id)
             if scope is None:
@@ -309,7 +318,7 @@ class PaymentService:
         return applicable[0]
 
     def _resolve_current_matchday_number(self, db: Session, scope_type: str, scope_id: str) -> int | None:
-        if scope_type == PaymentScopeType.SEASON.value:
+        if scope_type in {PaymentScopeType.SEASON.value, PaymentScopeType.SURVIVOR.value}:
             season_id = scope_id
         else:
             vip = db.get(VipCompetition, scope_id)
@@ -373,6 +382,22 @@ class PaymentService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="La ventana de pago para esta temporada ya cerro",
                 )
+            return
+
+        if scope_type == PaymentScopeType.SURVIVOR.value:
+            assert isinstance(scope, Season)
+            membership = db.scalar(
+                select(SurvivorMembership).where(
+                    SurvivorMembership.season_id == scope.id,
+                    SurvivorMembership.profile_id == profile.id,
+                )
+            )
+            if membership is not None and membership.is_paid:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este Survivor ya esta pagado")
+            if scope.survivor_registration_closed:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El registro de Survivor esta cerrado")
+            if scope.survivor_registration_lock_at and datetime.now(UTC) >= ensure_utc(scope.survivor_registration_lock_at):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La ventana de pago de Survivor ya cerro")
             return
 
         assert isinstance(scope, VipCompetition)
@@ -575,6 +600,24 @@ class PaymentService:
             membership.is_paid = True
             membership.is_active = True
             membership.activated_at = now
+            db.add(membership)
+            return
+
+        if payment.scope_type == PaymentScopeType.SURVIVOR:
+            membership = db.scalar(
+                select(SurvivorMembership).where(
+                    SurvivorMembership.season_id == payment.scope_id,
+                    SurvivorMembership.profile_id == payment.profile_id,
+                )
+            )
+            if membership is None:
+                membership = SurvivorMembership(
+                    season_id=payment.scope_id,
+                    profile_id=payment.profile_id,
+                )
+            membership.is_paid = True
+            membership.is_active = True
+            membership.joined_at = membership.joined_at or now
             db.add(membership)
             return
 

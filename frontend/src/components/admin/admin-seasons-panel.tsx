@@ -14,6 +14,7 @@ type SeasonFormState = {
   visibility_status: SeasonVisibilityStatus;
   is_active: boolean;
   registration_closed: boolean;
+  registration_lock_mode: "automatic" | "date";
   participants_lock_at: string;
   survivor_enabled: boolean;
   survivor_name: string;
@@ -28,6 +29,7 @@ const initialSeasonForm: SeasonFormState = {
   visibility_status: "testing",
   is_active: false,
   registration_closed: false,
+  registration_lock_mode: "automatic",
   participants_lock_at: "",
   survivor_enabled: false,
   survivor_name: "",
@@ -124,7 +126,10 @@ export function AdminSeasonsPanel() {
           competition_id: seasonForm.competition_id,
           survivor_name: seasonForm.survivor_name || null,
           survivor_max_lives: Number(seasonForm.survivor_max_lives || 1),
-          participants_lock_at: toUtcIsoValue(seasonForm.participants_lock_at),
+          participants_lock_at:
+            seasonForm.registration_lock_mode === "date"
+              ? toUtcIsoValue(seasonForm.participants_lock_at)
+              : null,
         }),
       });
       await loadSeasons();
@@ -371,19 +376,38 @@ export function AdminSeasonsPanel() {
             Cerrar inscripciones de Quiniela y Survivor
           </label>
           <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
-            Cierre de inscripciones
-            <input
-              type="datetime-local"
-              value={seasonForm.participants_lock_at}
+            Cierre automático
+            <select
+              value={seasonForm.registration_lock_mode}
               onChange={(event) =>
-                setSeasonForm((current) => ({ ...current, participants_lock_at: event.target.value }))
+                setSeasonForm((current) => ({
+                  ...current,
+                  registration_lock_mode: event.target.value as "automatic" | "date",
+                }))
               }
               className="field-control mt-2 w-full normal-case tracking-normal md:max-w-md"
-            />
+            >
+              <option value="automatic">Al iniciar la primera jornada configurada</option>
+              <option value="date">En una fecha específica</option>
+            </select>
             <span className="block text-xs font-normal normal-case tracking-normal text-steel">
-              Esta fecha aplica tanto a la Quiniela como a Survivor.
+              Aplica tanto a la Quiniela como a Survivor.
             </span>
           </label>
+          {seasonForm.registration_lock_mode === "date" ? (
+            <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
+              Fecha de cierre
+              <input
+                type="datetime-local"
+                value={seasonForm.participants_lock_at}
+                onChange={(event) =>
+                  setSeasonForm((current) => ({ ...current, participants_lock_at: event.target.value }))
+                }
+                className="field-control mt-2 w-full normal-case tracking-normal md:max-w-md"
+                required
+              />
+            </label>
+          ) : null}
           </section>
 
           <section className="space-y-4 border-b border-white/[0.08] pb-5">
@@ -535,6 +559,10 @@ export function AdminSeasonsPanel() {
                             registration_closed:
                               season.registration_closed ||
                               (season.survivor_enabled && season.survivor_registration_closed),
+                            registration_lock_mode:
+                              season.participants_lock_at || season.survivor_registration_lock_at
+                                ? "date"
+                                : "automatic",
                             participants_lock_at: toDatetimeLocalValue(
                               season.participants_lock_at ?? season.survivor_registration_lock_at,
                             ),

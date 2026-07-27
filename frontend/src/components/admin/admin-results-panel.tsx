@@ -21,13 +21,13 @@ const compactControlClass =
 const compactActionButtonClass =
   "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-[12px] border px-3 text-[11px] font-semibold transition disabled:opacity-60";
 const neutralActionClass =
-  `${compactActionButtonClass} border-white/[0.04] bg-white/[0.03] text-ink hover:border-white/[0.08] hover:bg-white/[0.05]`;
+  `${compactActionButtonClass} admin-action-neutral`;
 const positiveActionClass =
-  `${compactActionButtonClass} border-emerald-300/30 bg-emerald-400/16 text-emerald-50 hover:border-emerald-300/45 hover:bg-emerald-400/24`;
+  `${compactActionButtonClass} admin-action-positive`;
 const dangerActionClass =
-  `${compactActionButtonClass} border-red-300/35 bg-red-500/16 text-red-50 hover:border-red-300/50 hover:bg-red-500/24`;
+  `${compactActionButtonClass} admin-action-danger`;
 const warningActionClass =
-  `${compactActionButtonClass} border-amber-300/30 bg-amber-400/16 text-amber-50 hover:border-amber-300/45 hover:bg-amber-400/24`;
+  `${compactActionButtonClass} admin-action-warning`;
 function buildDraft(result: AdminResultRow): ResultDraft {
   return {
     home_score: result.home_score === null ? "" : String(result.home_score),
@@ -74,8 +74,8 @@ function shouldAutoMarkOfficial(nextHomeScore: string, nextAwayScore: string, cu
 
 function getStatusPillClass(isPositive: boolean) {
   return isPositive
-    ? "inline-flex h-8 items-center justify-center rounded-[12px] border border-emerald-300/30 bg-emerald-400/16 px-3 text-[11px] font-semibold text-emerald-50"
-    : "inline-flex h-8 items-center justify-center rounded-[12px] border border-red-300/35 bg-red-500/16 px-3 text-[11px] font-semibold text-red-50";
+    ? "admin-status-positive inline-flex h-8 items-center justify-center rounded-[12px] border border-emerald-300/30 bg-emerald-400/16 px-3 text-[11px] font-semibold"
+    : "admin-status-danger inline-flex h-8 items-center justify-center rounded-[12px] border border-red-300/35 bg-red-500/16 px-3 text-[11px] font-semibold";
 }
 
 function pickDefaultMatchday(matchdays: Matchday[], seasonId?: string) {
@@ -107,6 +107,7 @@ export function AdminResultsPanel() {
   const [syncing, setSyncing] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
   const [clearingResultMatchId, setClearingResultMatchId] = useState<string | null>(null);
   const [clearingMatchId, setClearingMatchId] = useState<string | null>(null);
@@ -462,6 +463,44 @@ export function AdminResultsPanel() {
     }
   }
 
+  async function handleCloseMatchday() {
+    if (!selectedMatchdayId) {
+      setError("Selecciona una jornada primero.");
+      return;
+    }
+    const pendingOfficial = results.filter(
+      (result) => !(drafts[result.match_id]?.is_official ?? result.is_official),
+    ).length;
+    if (pendingOfficial > 0) {
+      setError(`Faltan ${pendingOfficial} partidos por marcar como oficiales.`);
+      return;
+    }
+    if (!window.confirm("Vas a cerrar la jornada y calcular sus premios. Esta accion finaliza la jornada. Continuar?")) {
+      return;
+    }
+
+    setClosing(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/admin/matchdays/${selectedMatchdayId}/close`, accessToken, {
+        method: "POST",
+      });
+      setMatchdays((current) =>
+        current.map((matchday) =>
+          matchday.id === selectedMatchdayId ? { ...matchday, status: "closed" } : matchday,
+        ),
+      );
+      await refreshCurrentRows(accessToken);
+      setMessage("Jornada cerrada. Tabla y premios semanales calculados.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo cerrar la jornada");
+    } finally {
+      setClosing(false);
+    }
+  }
+
   const selectedMatchday = matchdayById[selectedMatchdayId];
   const selectedSeason = selectedMatchday ? seasonById[selectedMatchday.season_id] : null;
   const officialCount = results.filter(
@@ -470,6 +509,7 @@ export function AdminResultsPanel() {
   const publishedCount = results.filter((result) => result.is_published).length;
   const isSelectedMatchdayPublished =
     publishedCount > 0 || selectedMatchday?.status === "published";
+  const isSelectedMatchdayClosed = selectedMatchday?.status === "closed";
 
   return (
     <div className="space-y-6">
@@ -479,7 +519,7 @@ export function AdminResultsPanel() {
             <h2 className="text-xl font-semibold text-ink">Carga de marcadores oficiales</h2>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)] xl:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)_auto_auto_auto]">
+          <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)] xl:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)_auto_auto_auto_auto]">
             <select
               value={selectedSeasonId}
               onChange={(event) => {
@@ -541,10 +581,19 @@ export function AdminResultsPanel() {
             <button
               type="button"
               onClick={() => void handlePublishMatchday()}
-              disabled={publishing || loading || !selectedMatchdayId}
+              disabled={publishing || loading || !selectedMatchdayId || isSelectedMatchdayClosed}
               className={`${isSelectedMatchdayPublished ? warningActionClass : dangerActionClass} h-11 justify-center text-sm sm:h-10 sm:text-[11px]`}
             >
               {publishing ? "Publicando..." : isSelectedMatchdayPublished ? "Actualizar publicado" : "Publicar jornada"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleCloseMatchday()}
+              disabled={closing || loading || !isSelectedMatchdayPublished || isSelectedMatchdayClosed}
+              className={`${positiveActionClass} h-11 justify-center text-sm sm:h-10 sm:text-[11px]`}
+            >
+              {closing ? "Cerrando..." : isSelectedMatchdayClosed ? "Jornada cerrada" : "Cerrar jornada"}
             </button>
           </div>
         </div>
@@ -552,7 +601,7 @@ export function AdminResultsPanel() {
         {message ? <p className="mt-4 text-sm text-moss">{message}</p> : null}
         {error ? <p className="mt-4 text-sm text-coral">{error}</p> : null}
         {isSelectedMatchdayPublished ? (
-          <p className="mt-4 px-1 text-sm text-amber-50">
+          <p className="admin-status-warning mt-4 px-1 text-sm">
             Esta jornada ya esta publicada. Cualquier cambio en resultados oficiales se refleja en vivo dentro de la app.
           </p>
         ) : null}

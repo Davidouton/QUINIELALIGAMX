@@ -1192,7 +1192,7 @@ class LeaderboardService:
 
     @staticmethod
     def _is_matchday_finalized(matchday: Matchday) -> bool:
-        return matchday.status in {MatchdayStatus.CLOSED, MatchdayStatus.PUBLISHED}
+        return matchday.status == MatchdayStatus.CLOSED
 
     def _counts_for_scoring(
         self,

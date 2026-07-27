@@ -338,6 +338,16 @@ body::after {
     color: #6ee7b7;
   }
 
+  .admin-shell .admin-action-warning,
+  .admin-shell .admin-status-warning {
+    color: #fde68a;
+  }
+
+  .admin-shell .admin-action-warning {
+    border-color: rgba(251, 191, 36, 0.42);
+    background: rgba(245, 158, 11, 0.13);
+  }
+
   .admin-shell .admin-action-positive {
     border-color: rgba(52, 211, 153, 0.42);
     background: rgba(16, 185, 129, 0.13);
@@ -355,6 +365,7 @@ body::after {
 
   .admin-shell .admin-action-neutral:hover,
   .admin-shell .admin-action-positive:hover,
+  .admin-shell .admin-action-warning:hover,
   .admin-shell .admin-action-danger:hover {
     border-color: rgb(var(--app-selection-rgb));
     color: rgb(var(--app-selection-rgb));
@@ -376,6 +387,16 @@ body::after {
     background: #ecfdf5;
   }
 
+  [data-app-surface="light"] .admin-shell .admin-action-warning,
+  [data-app-surface="light"] .admin-shell .admin-status-warning {
+    color: #92400e;
+  }
+
+  [data-app-surface="light"] .admin-shell .admin-action-warning {
+    border-color: rgba(180, 83, 9, 0.4);
+    background: #fffbeb;
+  }
+
   [data-app-surface="light"] .admin-shell .admin-action-danger,
   [data-app-surface="light"] .admin-shell .admin-status-danger {
     color: #be123c;
@@ -388,6 +409,7 @@ body::after {
 
   [data-app-surface="light"] .admin-shell .admin-action-neutral:hover,
   [data-app-surface="light"] .admin-shell .admin-action-positive:hover,
+  [data-app-surface="light"] .admin-shell .admin-action-warning:hover,
   [data-app-surface="light"] .admin-shell .admin-action-danger:hover {
     border-color: #1f66ff;
     color: #174ea6;

@@ -9,7 +9,7 @@ import { useDevMode } from "@/components/layout/dev-mode-provider";
 import { isSeasonLive, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { VipStatusIcon } from "@/components/vip/vip-page-content";
-import type { AppBootstrap, Me, MembershipHistoryEntry, RegisteredUserOption, Season, SurvivorBoard, VipCompetition } from "@/types/api";
+import type { AppBootstrap, CheckoutSessionResponse, EffectivePricing, Me, MembershipHistoryEntry, RegisteredUserOption, Season, SurvivorBoard, VipCompetition } from "@/types/api";
 
 type EnrollmentState = {
   me: Me | null;
@@ -128,6 +128,7 @@ export function DashboardEnrollmentsPageContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [expandedMembershipId, setExpandedMembershipId] = useState<string | null>(null);
+  const [survivorPricing, setSurvivorPricing] = useState<Record<string, EffectivePricing>>({});
   const { enabled: devModeEnabled } = useDevMode();
   const { seasonId, competitionId, buildHrefWithSeason, setSeasonId } = useDashboardSeasonParam();
 
@@ -158,25 +159,30 @@ export function DashboardEnrollmentsPageContent() {
               }).catch(() => [])
             : [];
         const survivorBoards: Record<string, SurvivorBoard> = {};
+        const survivorPricingRows: Record<string, EffectivePricing> = {};
         if (accessToken) {
           const survivorSeasons = bootstrap.seasons.filter(
             (season) => isSeasonLive(season) && season.survivor_enabled,
           );
           const boardResults = await Promise.all(
             survivorSeasons.map(async (season) => {
-              const board = await backendFetch<SurvivorBoard>(
-                `/survivor/board?season_id=${season.id}`,
-                accessToken,
-              ).catch(() => null);
-              return [season.id, board] as const;
+              const [board, pricing] = await Promise.all([
+                backendFetch<SurvivorBoard>(`/survivor/board?season_id=${season.id}`, accessToken).catch(() => null),
+                backendFetch<EffectivePricing>(`/payments/pricing?scope_type=survivor&scope_id=${season.id}`, accessToken).catch(() => null),
+              ]);
+              return [season.id, board, pricing] as const;
             }),
           );
-          boardResults.forEach(([targetSeasonId, board]) => {
+          boardResults.forEach(([targetSeasonId, board, pricing]) => {
             if (board) {
               survivorBoards[targetSeasonId] = board;
             }
+            if (pricing) {
+              survivorPricingRows[targetSeasonId] = pricing;
+            }
           });
         }
+        setSurvivorPricing(survivorPricingRows);
 
         if (selectedSeason) {
           const nextCompetitionId = selectedSeason.competition_id ?? "";
@@ -300,6 +306,14 @@ export function DashboardEnrollmentsPageContent() {
         ? !survivorBoard.season.registration_open
         : survivorClosedByAdmin || isClosedAt(survivorLockAt);
       const survivorCloseLabel = formatMexicoDateTime(survivorLockAt);
+      const survivorPrice = survivorPricing[season.id] ?? null;
+      const survivorPriceLabel = survivorPrice
+        ? new Intl.NumberFormat("es-MX", {
+            style: "currency",
+            currency: survivorPrice.currency.toUpperCase(),
+            maximumFractionDigits: 2,
+          }).format(survivorPrice.amount)
+        : null;
       rows.push({
         id: `survivor-${season.id}`,
         name: season.survivor_name?.trim() || `Survivor ${getSeasonDisplayName(season)}`,
@@ -311,7 +325,7 @@ export function DashboardEnrollmentsPageContent() {
             ? "El registro de Survivor se encuentra cerrado."
             : "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
         meta: survivorCloseLabel
-          ? `Límite de inscripción: ${survivorCloseLabel}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`
+          ? `Límite de inscripción: ${survivorCloseLabel}${survivorPriceLabel ? ` · ${survivorPriceLabel}` : ""}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`
           : survivorClosedByAdmin && devModeEnabled
             ? "Cierre manual"
             : null,
@@ -326,7 +340,11 @@ export function DashboardEnrollmentsPageContent() {
             disabled={actionLoading === `survivor:${season.id}` || survivorWindowClosed}
             className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] disabled:opacity-50"
           >
-            {actionLoading === `survivor:${season.id}` ? "Procesando..." : "Inscribirme a Survivor"}
+            {actionLoading === `survivor:${season.id}`
+              ? "Procesando..."
+              : survivorPriceLabel
+                ? `Pagar e inscribirme · ${survivorPriceLabel}`
+                : "Inscribirme a Survivor"}
           </button>
         ),
       });
@@ -365,6 +383,7 @@ export function DashboardEnrollmentsPageContent() {
     buildHrefWithSeason,
     devModeEnabled,
     isAvalMode,
+    survivorPricing,
     state.survivorBoards,
     state.me,
     visibleVipCompetitions,
@@ -440,6 +459,14 @@ export function DashboardEnrollmentsPageContent() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
+      if (survivorPricing[season.id]) {
+        const checkout = await backendFetch<CheckoutSessionResponse>("/payments/checkout-session", accessToken, {
+          method: "POST",
+          body: JSON.stringify({ scope_type: "survivor", scope_id: season.id }),
+        });
+        window.location.href = checkout.checkout_url;
+        return;
+      }
       const survivorBoard = await backendFetch<SurvivorBoard>(
         `/survivor/seasons/${season.id}/join`,
         accessToken,

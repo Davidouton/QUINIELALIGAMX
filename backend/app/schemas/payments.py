@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
-PaymentScopeTypeLiteral = Literal["season", "vip", "quiniela_plus"]
+PaymentScopeTypeLiteral = Literal["season", "survivor", "vip", "quiniela_plus"]
 PaymentStatusLiteral = Literal[
     "pending_checkout",
     "checkout_created",
