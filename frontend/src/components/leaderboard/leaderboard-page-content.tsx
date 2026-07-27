@@ -52,6 +52,7 @@ export function LeaderboardPageContent() {
   const [loadingVipBoardId, setLoadingVipBoardId] = useState("");
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<"overall" | "weekly-prizes">("overall");
+  const [weeklyPrizeView, setWeeklyPrizeView] = useState<"matchday" | "matrix">("matchday");
   const [selectedWeeklyMatchdayId, setSelectedWeeklyMatchdayId] = useState("");
   const lastLoadedAtRef = useRef(0);
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
@@ -284,6 +285,32 @@ export function LeaderboardPageContent() {
   const activeWeeklyPrizes = selectedRegularSeason
     ? state.weeklyPrizesBySeasonId[selectedRegularSeason.id] ?? []
     : [];
+  const weeklyPrizeMatrix = useMemo(() => {
+    const players = new Map<string, {
+      profileId: string;
+      displayName: string;
+      prizesByMatchday: Record<string, number>;
+      total: number;
+    }>();
+
+    activeWeeklyPrizes.forEach((matchday) => {
+      matchday.winners.forEach((winner) => {
+        const player = players.get(winner.profile_id) ?? {
+          profileId: winner.profile_id,
+          displayName: winner.display_name,
+          prizesByMatchday: {},
+          total: 0,
+        };
+        player.prizesByMatchday[matchday.matchday_id] = winner.prize_amount;
+        player.total += winner.prize_amount;
+        players.set(winner.profile_id, player);
+      });
+    });
+
+    return Array.from(players.values()).sort(
+      (left, right) => right.total - left.total || left.displayName.localeCompare(right.displayName, "es"),
+    );
+  }, [activeWeeklyPrizes]);
   const selectedWeeklyPrizeIndex = activeWeeklyPrizes.findIndex(
     (matchday) => matchday.matchday_id === selectedWeeklyMatchdayId,
   );
@@ -522,7 +549,82 @@ export function LeaderboardPageContent() {
         ) : activeWeeklyPrizes.length === 0 ? (
           <p className="py-6 text-sm text-steel">Todavía no hay jornadas cerradas con premios calculados.</p>
         ) : (
-          <div className="border-t border-white/[0.08]">
+          <div className="space-y-4 border-t border-white/[0.08] pt-4">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setWeeklyPrizeView("matchday")}
+                className={weeklyPrizeView === "matchday" ? "tab-control tab-control-active" : "tab-control"}
+              >
+                Por jornada
+              </button>
+              <button
+                type="button"
+                onClick={() => setWeeklyPrizeView("matrix")}
+                className={weeklyPrizeView === "matrix" ? "tab-control tab-control-active" : "tab-control"}
+              >
+                Tabla acumulada
+              </button>
+            </div>
+
+            {weeklyPrizeView === "matrix" ? (
+              <div className="android-scroll-x">
+                <table className="min-w-max w-full text-left text-xs text-ink sm:text-sm">
+                  <thead className="app-table-head">
+                    <tr>
+                      <th className="sticky left-0 z-20 min-w-[180px] bg-night px-3 py-3">Nombre</th>
+                      {activeWeeklyPrizes.map((matchday) => (
+                        <th key={matchday.matchday_id} className="min-w-[104px] px-3 py-3 text-right">
+                          Jornada {matchday.matchday_number}
+                        </th>
+                      ))}
+                      <th className="sticky right-0 z-20 min-w-[120px] bg-night px-3 py-3 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {weeklyPrizeMatrix.map((player) => (
+                      <tr
+                        key={player.profileId}
+                        className={`app-table-row border-b last:border-b-0 ${player.profileId === state.me?.id ? "font-semibold text-[#4f7df3] [&>td]:text-[#4f7df3]" : ""}`}
+                      >
+                        <td className="sticky left-0 z-10 bg-night px-3 py-3 font-medium">
+                          {player.displayName}
+                        </td>
+                        {activeWeeklyPrizes.map((matchday) => {
+                          const prize = player.prizesByMatchday[matchday.matchday_id] ?? 0;
+                          return (
+                            <td key={matchday.matchday_id} className="px-3 py-3 text-right tabular-nums">
+                              {prize > 0
+                                ? new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(prize)
+                                : "—"}
+                            </td>
+                          );
+                        })}
+                        <td className="sticky right-0 z-10 bg-night px-3 py-3 text-right font-semibold tabular-nums">
+                          {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(player.total)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t border-white/[0.12] font-semibold text-ink">
+                    <tr>
+                      <td className="sticky left-0 z-10 bg-night px-3 py-3">Total entregado</td>
+                      {activeWeeklyPrizes.map((matchday) => (
+                        <td key={matchday.matchday_id} className="px-3 py-3 text-right tabular-nums">
+                          {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(matchday.total_prize_amount)}
+                        </td>
+                      ))}
+                      <td className="sticky right-0 z-10 bg-night px-3 py-3 text-right tabular-nums">
+                        {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(
+                          activeWeeklyPrizes.reduce((total, matchday) => total + matchday.total_prize_amount, 0),
+                        )}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            ) : (
+          <div>
             <div className="flex flex-col gap-3 border-b border-white/[0.08] py-4 sm:flex-row sm:items-center sm:justify-between">
               <button
                 type="button"
@@ -615,6 +717,8 @@ export function LeaderboardPageContent() {
                 </div>
               </section>
             ) : null}
+          </div>
+            )}
           </div>
         )}
       </section>
