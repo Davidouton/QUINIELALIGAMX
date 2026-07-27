@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 import { backendFetch } from "@/lib/api/backend";
 import { env } from "@/lib/env";
@@ -1085,7 +1086,9 @@ export function AdminUsersPanel() {
                   return (
                     <tr key={user.id} className="border-t border-white/10">
                       <td className="sticky left-0 z-10 bg-[var(--app-bg-mid)] px-3 py-4 text-left align-top">
-                        <p className="truncate font-medium text-ink">{user.display_name}</p>
+                        <Link href={`/dashboard/admin/user-info/${user.id}`} className="block truncate font-medium text-ink transition hover:text-[#4f7df3]">
+                          {user.display_name}
+                        </Link>
                         {user.username ? <p className="truncate text-xs text-steel">@{user.username}</p> : null}
                         <p className="mt-1 truncate text-[10px] text-steel">{user.email ?? "Sin correo"}</p>
                       </td>

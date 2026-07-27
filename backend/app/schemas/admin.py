@@ -327,6 +327,7 @@ class AdminUserOut(BaseModel):
     selected_season_membership: AdminUserSeasonMembershipOut | None = None
     selected_survivor_membership: AdminUserSurvivorMembershipOut | None = None
     season_memberships: list[AdminUserSeasonMembershipOut] = []
+    survivor_memberships: list[AdminUserSurvivorMembershipOut] = []
 
 
 class OddsPreviewRow(BaseModel):

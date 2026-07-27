@@ -1652,6 +1652,7 @@ export interface AdminUser {
   selected_season_membership: AdminUserSeasonMembership | null;
   selected_survivor_membership: AdminUserSurvivorMembership | null;
   season_memberships: AdminUserSeasonMembership[];
+  survivor_memberships: AdminUserSurvivorMembership[];
 }
 
 export interface AdminResultRow {

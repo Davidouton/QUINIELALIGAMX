@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -114,7 +115,9 @@ export function AdminUserInfoPanel() {
                 {filteredUsers.map((user) => (
                   <tr key={user.id} className="app-table-row border-b last:border-b-0">
                     <td className="px-3 py-3 font-medium text-ink">
-                      <span className="block">{user.display_name}</span>
+                      <Link href={`/dashboard/admin/user-info/${user.id}`} className="block transition hover:text-[#4f7df3]">
+                        {user.display_name}
+                      </Link>
                       {user.username ? <span className="text-xs font-normal text-steel">@{user.username}</span> : null}
                     </td>
                     <td className="px-3 py-3 text-steel">{user.email ?? "-"}</td>

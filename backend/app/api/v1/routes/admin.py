@@ -1441,6 +1441,15 @@ def build_admin_user_out_from_maps(
         )
         for membership_row in all_memberships
     ]
+    survivor_memberships = [
+        AdminUserSurvivorMembershipOut(
+            season_id=membership_row.season_id,
+            season_name=season_name_by_id.get(membership_row.season_id, "Temporada"),
+            is_active=membership_row.is_active,
+            joined_at=membership_row.joined_at,
+        )
+        for membership_row in all_survivor_memberships
+    ]
 
     return AdminUserOut(
         id=profile.id,
@@ -1462,6 +1471,7 @@ def build_admin_user_out_from_maps(
         selected_season_membership=selected_season_membership,
         selected_survivor_membership=selected_survivor_membership,
         season_memberships=season_memberships,
+        survivor_memberships=survivor_memberships,
     )
 
 
