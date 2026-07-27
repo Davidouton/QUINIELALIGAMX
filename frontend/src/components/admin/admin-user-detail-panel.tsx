@@ -10,6 +10,17 @@ import type { AdminUser, AdminVipCompetition, Season } from "@/types/api";
 
 type Props = { userId: string };
 
+type DetailMembershipRow = {
+  id: string;
+  type: "Quiniela" | "Survivor" | "VIP";
+  name: string;
+  status: string;
+  detail: string;
+  archived: boolean;
+  seasonId: string | null;
+  isActive: boolean;
+};
+
 function formatDate(value: string | null) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("es-MX", {
@@ -30,20 +41,26 @@ export function AdminUserDetailPanel({ userId }: Props) {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [savingMembershipId, setSavingMembershipId] = useState<string | null>(null);
+
+  async function loadUserData() {
+    const token = await getBrowserAccessToken();
+    const [userRows, vips, seasonRows] = await Promise.all([
+      backendFetch<AdminUser[]>("/admin/users", token),
+      backendFetch<AdminVipCompetition[]>("/admin/vip", token).catch(() => []),
+      backendFetch<Season[]>("/seasons", token).catch(() => []),
+    ]);
+    setUsers(userRows.sort((left, right) => left.display_name.localeCompare(right.display_name, "es-MX")));
+    setUser(userRows.find((row) => row.id === userId) ?? null);
+    setVipCompetitions(vips);
+    setSeasons(seasonRows);
+  }
 
   useEffect(() => {
     async function load() {
       try {
-        const token = await getBrowserAccessToken();
-        const [userRows, vips, seasonRows] = await Promise.all([
-          backendFetch<AdminUser[]>("/admin/users", token),
-          backendFetch<AdminVipCompetition[]>("/admin/vip", token).catch(() => []),
-          backendFetch<Season[]>("/seasons", token).catch(() => []),
-        ]);
-        setUsers(userRows.sort((left, right) => left.display_name.localeCompare(right.display_name, "es-MX")));
-        setUser(userRows.find((row) => row.id === userId) ?? null);
-        setVipCompetitions(vips);
-        setSeasons(seasonRows);
+        await loadUserData();
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el usuario");
       } finally {
@@ -64,40 +81,80 @@ export function AdminUserDetailPanel({ userId }: Props) {
   );
 
   const seasonById = useMemo(() => new Map(seasons.map((season) => [season.id, season])), [seasons]);
-  const membershipRows = useMemo(() => {
+  const membershipRows = useMemo<DetailMembershipRow[]>(() => {
     if (!user) return [];
     return [
       ...user.season_memberships.map((membership) => ({
         id: `quiniela-${membership.season_id}`,
-        type: "Quiniela",
+        type: "Quiniela" as const,
         name: membership.season_name,
         status: membership.is_active ? "Activa" : "Inactiva",
         detail: membership.is_paid ? "Pagada" : "Pago pendiente",
         archived: seasonById.get(membership.season_id)?.visibility_status === "archived",
+        seasonId: membership.season_id,
+        isActive: membership.is_active,
       })),
       ...user.survivor_memberships.map((membership) => ({
         id: `survivor-${membership.season_id}`,
-        type: "Survivor",
+        type: "Survivor" as const,
         name: membership.season_name,
         status: membership.is_active ? "Activa" : "Inactiva",
         detail: `Alta ${formatDate(membership.joined_at)}`,
         archived: seasonById.get(membership.season_id)?.visibility_status === "archived",
+        seasonId: membership.season_id,
+        isActive: membership.is_active,
       })),
       ...vipMemberships.map(({ vip, membership }) => ({
         id: `vip-${membership.id}`,
-        type: "VIP",
+        type: "VIP" as const,
         name: vip.name,
         status: membership.status,
         detail: `${vip.season_name} · ${membership.is_paid ? "Pagada" : "Pago pendiente"}`,
         archived: seasonById.get(vip.season_id)?.visibility_status === "archived",
+        seasonId: vip.season_id,
+        isActive: membership.status === "approved",
       })),
     ];
   }, [seasonById, user, vipMemberships]);
   const currentUserIndex = users.findIndex((row) => row.id === userId);
   const previousUser = currentUserIndex > 0 ? users[currentUserIndex - 1] : null;
   const nextUser = currentUserIndex >= 0 && currentUserIndex < users.length - 1 ? users[currentUserIndex + 1] : null;
-  const activeMemberships = membershipRows.filter((row) => !row.archived);
+  const activeMemberships = membershipRows.filter((row) => !row.archived && row.isActive);
+  const inactiveMemberships = membershipRows.filter((row) => !row.archived && !row.isActive);
   const archivedMemberships = membershipRows.filter((row) => row.archived);
+
+  async function handleToggleMembership(membership: DetailMembershipRow) {
+    if (!membership.seasonId || membership.type === "VIP") return;
+    setSavingMembershipId(membership.id);
+    setError(null);
+    setMessage(null);
+    try {
+      const token = await getBrowserAccessToken();
+      if (membership.type === "Quiniela") {
+        const currentMembership = user?.season_memberships.find((row) => row.season_id === membership.seasonId);
+        await backendFetch(`/admin/users/${userId}/season-membership`, token, {
+          method: "PUT",
+          body: JSON.stringify({
+            season_id: membership.seasonId,
+            is_active: !membership.isActive,
+            is_paid: currentMembership?.is_paid ?? false,
+            notes: currentMembership?.notes ?? null,
+          }),
+        });
+      } else {
+        await backendFetch(`/admin/users/${userId}/survivor-membership`, token, {
+          method: "PUT",
+          body: JSON.stringify({ season_id: membership.seasonId, is_active: !membership.isActive }),
+        });
+      }
+      await loadUserData();
+      setMessage(`${membership.name}: ${membership.isActive ? "membresía removida" : "membresía activada"}.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la membresía");
+    } finally {
+      setSavingMembershipId(null);
+    }
+  }
 
   if (loading) return <p className="text-sm text-steel">Cargando usuario...</p>;
   if (error) return <p className="text-sm text-coral">{error}</p>;
@@ -126,6 +183,8 @@ export function AdminUserDetailPanel({ userId }: Props) {
         <p className="mt-2 text-sm text-steel">{user.username ? `@${user.username} · ` : ""}{user.email ?? "Sin correo"}</p>
       </header>
 
+      {message ? <p className="border-l-2 border-mint px-3 text-sm text-mint">{message}</p> : null}
+
       <section className="grid gap-x-10 gap-y-5 border-b border-white/10 pb-7 sm:grid-cols-2 lg:grid-cols-4">
         <div><p className="text-xs uppercase tracking-[0.18em] text-steel">Cuenta</p><p className="mt-2 font-semibold text-ink">{user.is_active ? "Activa" : "Bloqueada"}</p></div>
         <div><p className="text-xs uppercase tracking-[0.18em] text-steel">Modalidad</p><p className="mt-2 font-semibold text-ink">{user.modality === "aval" ? "Aval" : "Pre-pago"}</p></div>
@@ -135,13 +194,19 @@ export function AdminUserDetailPanel({ userId }: Props) {
 
       <MembershipSection title="Membresías activas" empty="Sin membresías activas">
         {activeMemberships.map((membership) => (
-          <MembershipRow key={membership.id} type={membership.type} name={membership.name} status={membership.status} detail={membership.detail} />
+          <MembershipRow key={membership.id} membership={membership} saving={savingMembershipId === membership.id} onToggle={handleToggleMembership} />
+        ))}
+      </MembershipSection>
+
+      <MembershipSection title="Inactivas" empty="Sin membresías inactivas">
+        {inactiveMemberships.map((membership) => (
+          <MembershipRow key={membership.id} membership={membership} saving={savingMembershipId === membership.id} onToggle={handleToggleMembership} />
         ))}
       </MembershipSection>
 
       <MembershipSection title="Archivadas" empty="Sin membresías archivadas">
         {archivedMemberships.map((membership) => (
-          <MembershipRow key={membership.id} type={membership.type} name={membership.name} status={membership.status} detail={membership.detail} />
+          <MembershipRow key={membership.id} membership={membership} saving={false} onToggle={handleToggleMembership} />
         ))}
       </MembershipSection>
     </div>
@@ -161,13 +226,27 @@ function MembershipSection({ title, empty, children }: { title: string; empty: s
   );
 }
 
-function MembershipRow({ type, name, status, detail }: { type: string; name: string; status: string; detail: string }) {
+function MembershipRow({ membership, saving, onToggle }: { membership: DetailMembershipRow; saving: boolean; onToggle: (membership: DetailMembershipRow) => Promise<void> }) {
   return (
-    <div className="grid gap-2 py-4 sm:grid-cols-[110px_minmax(0,1fr)_140px_220px] sm:items-center">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-steel">{type}</p>
-      <p className="font-semibold text-ink">{name}</p>
-      <p className="text-sm text-ink">{status}</p>
-      <p className="text-sm text-steel">{detail}</p>
+    <div className="grid gap-2 py-4 sm:grid-cols-[110px_minmax(0,1fr)_120px_190px_110px] sm:items-center">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-steel">{membership.type}</p>
+      <p className="font-semibold text-ink">{membership.name}</p>
+      <p className={membership.isActive ? "text-sm font-semibold text-mint" : "text-sm text-steel"}>{membership.status}</p>
+      <p className="text-sm text-steel">{membership.detail}</p>
+      <div className="sm:text-right">
+        {!membership.archived && membership.type !== "VIP" ? (
+          <button
+            type="button"
+            onClick={() => void onToggle(membership)}
+            disabled={saving}
+            className={membership.isActive ? "text-sm font-semibold text-coral" : "text-sm font-semibold text-[#4f7df3]"}
+          >
+            {saving ? "Guardando..." : membership.isActive ? "Quitar" : "Dar alta"}
+          </button>
+        ) : (
+          <span className="text-sm text-steel">—</span>
+        )}
+      </div>
     </div>
   );
 }
