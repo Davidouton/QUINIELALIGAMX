@@ -493,7 +493,7 @@ export function AdminResultsPanel() {
         ),
       );
       await refreshCurrentRows(accessToken);
-      setMessage("Jornada cerrada. Tabla y premios semanales calculados.");
+      setMessage("Jornada cerrada. Tabla y premios semanales en recalculo; apareceran en unos segundos.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo cerrar la jornada");
     } finally {

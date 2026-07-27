@@ -3924,9 +3924,10 @@ def publish_matchday(
 @router.post("/matchdays/{matchday_id}/close")
 def close_matchday(
     matchday_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
-) -> dict[str, str | int]:
+) -> dict[str, str]:
     matchday = matchday_repo.get_by_id(db, matchday_id)
     if matchday is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Matchday not found")
@@ -3965,14 +3966,14 @@ def close_matchday(
 
     matchday.status = MatchdayStatus.CLOSED
     db.add(matchday)
-    db.flush()
-    summary = ScoringService().recalculate_matchday(db, matchday.id)
-    vip_competitions = recalculate_vips_for_matchday(db, matchday.id)
     db.commit()
+    background_tasks.add_task(
+        run_scoring_and_vip_recalculate_for_matchday_background,
+        matchday.id,
+    )
     return {
         "status": "closed",
         "matchday_id": matchday.id,
-        "evaluated_picks": summary["evaluated_picks"],
-        "weekly_leaders": summary["weekly_leaders"],
-        "vip_competitions": vip_competitions,
+        "recalculate_status": "started",
+        "vip_recalculate_status": "started",
     }
