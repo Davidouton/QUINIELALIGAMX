@@ -178,11 +178,33 @@ export function AdminPaymentsPanel() {
 
   async function handleGenerateSplit() {
     if (!selectedScopeId) return;
+    const hasExistingAssignments = Boolean(summary?.assignments.length);
+    if (
+      hasExistingAssignments
+      && !window.confirm(
+        `Se reemplazaran las ${summary?.assignments.length ?? 0} asignaciones actuales usando el nuevo limite por pago. Continuar?`,
+      )
+    ) {
+      return;
+    }
     setGenerating(true);
     setError(null);
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
+      await backendFetch(
+        "/payments/settlements/admin/config",
+        accessToken,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            scope_type: scopeType,
+            scope_id: selectedScopeId,
+            max_payment_amount: Number(configDraft.max_payment_amount),
+            confirmation_window_hours: Number(configDraft.confirmation_window_hours),
+          }),
+        },
+      );
       const response = await backendFetch<SettlementScopeSummary>(
         "/payments/settlements/admin/generate",
         accessToken,
@@ -197,7 +219,11 @@ export function AdminPaymentsPanel() {
       );
       setSummary(response);
       setSelectedPayerIds(response.selected_payer_profile_ids);
-      setMessage("Split generado.");
+      setConfigDraft({
+        max_payment_amount: String(response.config.max_payment_amount),
+        confirmation_window_hours: String(response.config.confirmation_window_hours),
+      });
+      setMessage(hasExistingAssignments ? "Configuración guardada y split regenerado." : "Configuración guardada y split generado.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo generar el split.");
     } finally {
@@ -250,6 +276,7 @@ export function AdminPaymentsPanel() {
               <input
                 type="number"
                 min="1"
+                max="99999999.99"
                 step="0.01"
                 value={configDraft.max_payment_amount}
                 onChange={(event) => setConfigDraft((current) => ({ ...current, max_payment_amount: event.target.value }))}
@@ -276,7 +303,11 @@ export function AdminPaymentsPanel() {
               {savingConfig ? "Guardando..." : "Guardar configuración"}
             </button>
             <button type="button" onClick={handleGenerateSplit} disabled={generating || !selectedScopeId} className="app-pill px-4 text-sm">
-              {generating ? "Generando..." : "Generar split"}
+              {generating
+                ? "Generando..."
+                : summary?.assignments.length
+                  ? "Guardar y regenerar split"
+                  : "Guardar y generar split"}
             </button>
           </div>
         </div>

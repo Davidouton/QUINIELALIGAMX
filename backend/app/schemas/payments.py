@@ -126,7 +126,7 @@ class SettlementConfigOut(BaseModel):
 class SettlementConfigUpdateRequest(BaseModel):
     scope_type: PaymentScopeTypeLiteral
     scope_id: str
-    max_payment_amount: float = Field(gt=0, le=1_000_000)
+    max_payment_amount: float = Field(gt=0, le=99_999_999.99)
     confirmation_window_hours: int = Field(ge=1, le=168)
 
 
