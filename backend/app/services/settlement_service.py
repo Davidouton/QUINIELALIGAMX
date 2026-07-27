@@ -88,7 +88,7 @@ class SettlementService:
     ) -> SettlementScopeSummaryOut:
         self._auto_confirm_due_assignments(db)
         scope_type_enum = self._supported_scope_type(scope_type)
-        if scope_type_enum == PaymentScopeType.VIP:
+        if scope_type_enum in {PaymentScopeType.SEASON, PaymentScopeType.VIP}:
             self._sync_vip_lifecycle_status(db, scope_id)
         scope_label, participants = self._build_participants(db, scope_type_enum, scope_id)
         assignments = self._list_scope_assignments(db, scope_type_enum, scope_id)
@@ -196,9 +196,10 @@ class SettlementService:
         if scope_type_enum == PaymentScopeType.SEASON:
             season = self._ensure_scope_exists(db, scope_type_enum, payload.scope_id)
             assert isinstance(season, Season)
+            config_row = self._get_or_create_config(db, scope_type_enum, payload.scope_id, create=False)
             expected_commission = self._expected_commission_amount(db, scope_type_enum, payload.scope_id)
             allocated_commission = self._to_money(sum(
-                (Decimal(str(item.get("amount", 0))) for item in (season.commission_allocations or [])),
+                (Decimal(str(item.get("amount", 0))) for item in ((config_row.commission_allocations if config_row else []) or [])),
                 Decimal("0"),
             ))
             if allocated_commission != expected_commission:
@@ -540,6 +541,7 @@ class SettlementService:
             total_receivable_amount=float(total_receivable_amount),
             total_selected_payable_amount=float(total_selected_payable_amount),
             total_assigned_amount=float(total_assigned_amount),
+            expected_admin_commission_amount=float(self._expected_commission_amount(db, scope_type, scope_id)),
             uncovered_receiver_amount=float(uncovered_receiver_amount),
             unallocated_payer_amount=float(unallocated_payer_amount),
         )
@@ -617,7 +619,10 @@ class SettlementService:
                     aval_display_name=aval_name_map.get(profile.aval_profile_id) if profile is not None and profile.aval_profile_id else None,
                 )
             )
-        allocations = season.commission_allocations or []
+        config_row = self._get_or_create_config(db, PaymentScopeType.SEASON, season.id, create=False)
+        allocations = config_row.commission_allocations if config_row is not None else []
+        if not allocations:
+            allocations = season.commission_allocations or []
         if not allocations and season.commission_recipient_profile_id:
             allocations = [{"profile_id": season.commission_recipient_profile_id, "amount": float(settings["admin_commission_amount"])}]
         self._apply_commission_allocations(db, participants, allocations)

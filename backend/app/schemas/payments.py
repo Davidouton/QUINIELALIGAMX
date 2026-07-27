@@ -205,6 +205,7 @@ class SettlementScopeSummaryOut(BaseModel):
     total_receivable_amount: float = 0
     total_selected_payable_amount: float = 0
     total_assigned_amount: float = 0
+    expected_admin_commission_amount: float = 0
     uncovered_receiver_amount: float = 0
     unallocated_payer_amount: float = 0
 

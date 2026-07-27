@@ -124,13 +124,19 @@ export function AdminPaymentsPanel() {
         accessToken,
       );
       setSummary(response);
+      const savedAllocations = response.config.commission_allocations.map((row) => ({
+        profile_id: row.profile_id,
+        amount: String(row.amount),
+      }));
+      const commissionAmount = response.expected_admin_commission_amount;
       setConfigDraft({
         max_payment_amount: String(response.config.max_payment_amount || 5000),
         confirmation_window_hours: String(response.config.confirmation_window_hours || 24),
-        commission_allocations: response.config.commission_allocations.map((row) => ({
-          profile_id: row.profile_id,
-          amount: String(row.amount),
-        })),
+        commission_allocations: savedAllocations.length > 0
+          ? savedAllocations
+          : commissionAmount > 0
+            ? [{ profile_id: "", amount: String(commissionAmount) }]
+            : [],
       });
       const defaultPayers =
         response.selected_payer_profile_ids.length > 0
@@ -154,10 +160,6 @@ export function AdminPaymentsPanel() {
     () => availableScopes.find((row) => row.id === selectedScopeId) ?? null,
     [availableScopes, selectedScopeId],
   );
-  const selectedVip = scopeType === "vip"
-    ? vips.find((row) => row.id === selectedScopeId) ?? null
-    : null;
-
   function togglePayer(profileId: string) {
     setSelectedPayerIds((current) =>
       current.includes(profileId) ? current.filter((item) => item !== profileId) : [...current, profileId],
@@ -181,9 +183,7 @@ export function AdminPaymentsPanel() {
             scope_id: selectedScopeId,
             max_payment_amount: Number(configDraft.max_payment_amount),
             confirmation_window_hours: Number(configDraft.confirmation_window_hours),
-            commission_allocations: scopeType === "vip"
-              ? configDraft.commission_allocations.map((row) => ({ ...row, amount: Number(row.amount) }))
-              : [],
+            commission_allocations: configDraft.commission_allocations.map((row) => ({ ...row, amount: Number(row.amount) })),
           }),
         },
       );
@@ -199,8 +199,8 @@ export function AdminPaymentsPanel() {
   async function handleGenerateSplit() {
     if (!selectedScopeId) return;
     const allocatedCommission = configDraft.commission_allocations.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-    if (selectedVip && Math.abs(allocatedCommission - selectedVip.admin_commission_amount) >= 0.01) {
-      setError(`Distribuye exactamente ${formatMoney(selectedVip.admin_commission_amount)} de comisión antes de generar el split.`);
+    if (summary && Math.abs(allocatedCommission - summary.expected_admin_commission_amount) >= 0.01) {
+      setError(`Distribuye exactamente ${formatMoney(summary.expected_admin_commission_amount)} de comisión antes de generar el split.`);
       return;
     }
     const hasExistingAssignments = Boolean(summary?.assignments.length);
@@ -227,9 +227,7 @@ export function AdminPaymentsPanel() {
             scope_id: selectedScopeId,
             max_payment_amount: Number(configDraft.max_payment_amount),
             confirmation_window_hours: Number(configDraft.confirmation_window_hours),
-            commission_allocations: scopeType === "vip"
-              ? configDraft.commission_allocations.map((row) => ({ ...row, amount: Number(row.amount) }))
-              : [],
+            commission_allocations: configDraft.commission_allocations.map((row) => ({ ...row, amount: Number(row.amount) })),
           }),
         },
       );
@@ -302,37 +300,6 @@ export function AdminPaymentsPanel() {
               </optgroup>
             </select>
           </label>
-          {scopeType === "vip" ? (
-            <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-steel">Distribución de comisión administrativa</span>
-                <button type="button" className="secondary-button" onClick={() => setConfigDraft((current) => ({
-                  ...current,
-                  commission_allocations: [...current.commission_allocations, { profile_id: "", amount: "" }],
-                }))}>+ Administrador</button>
-              </div>
-              {configDraft.commission_allocations.map((allocation, index) => (
-                <div key={`${index}-${allocation.profile_id}`} className="grid gap-2 sm:grid-cols-[1fr_150px_auto]">
-                  <select value={allocation.profile_id} onChange={(event) => setConfigDraft((current) => ({
-                    ...current,
-                    commission_allocations: current.commission_allocations.map((row, rowIndex) => rowIndex === index ? { ...row, profile_id: event.target.value } : row),
-                  }))} className="field-control">
-                    <option value="">Selecciona administrador</option>
-                    {adminUsers.map((admin) => <option key={admin.id} value={admin.id}>{admin.display_name}{admin.bank_name ? ` · ${admin.bank_name}` : " · sin banco"}</option>)}
-                  </select>
-                  <input type="number" min="0.01" step="0.01" placeholder="Monto" value={allocation.amount} onChange={(event) => setConfigDraft((current) => ({
-                    ...current,
-                    commission_allocations: current.commission_allocations.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row),
-                  }))} className="field-control" />
-                  <button type="button" className="secondary-button" onClick={() => setConfigDraft((current) => ({
-                    ...current,
-                    commission_allocations: current.commission_allocations.filter((_, rowIndex) => rowIndex !== index),
-                  }))}>Quitar</button>
-                </div>
-              ))}
-              {selectedVip ? <p className="text-xs text-steel">Asignado: {formatMoney(configDraft.commission_allocations.reduce((sum, row) => sum + Number(row.amount || 0), 0))} de {formatMoney(selectedVip.admin_commission_amount)}</p> : null}
-            </div>
-          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block space-y-2 text-sm">
               <span className="text-steel">Monto máximo por pago</span>
@@ -469,6 +436,46 @@ export function AdminPaymentsPanel() {
                 {summary.participants.length} jugadores · {selectedPayerIds.length} pagadores seleccionados
               </p>
             </div>
+
+            {summary.expected_admin_commission_amount > 0 ? (
+              <div className="space-y-3 rounded-[16px] border border-[#4f7df3]/40 bg-[#4f7df3]/[0.08] p-4 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-ink">1. Define quién recibe la comisión</p>
+                    <p className="mt-1 text-xs text-steel">Estas personas aparecerán abajo como receptores de pago. Después guarda y regenera el split.</p>
+                  </div>
+                  <button type="button" className="secondary-button" onClick={() => setConfigDraft((current) => ({
+                    ...current,
+                    commission_allocations: [...current.commission_allocations, { profile_id: "", amount: "" }],
+                  }))}>+ Otro administrador</button>
+                </div>
+                {configDraft.commission_allocations.map((allocation, index) => (
+                  <div key={`${index}-${allocation.profile_id}`} className="grid gap-2 sm:grid-cols-[1fr_170px_auto]">
+                    <select value={allocation.profile_id} onChange={(event) => setConfigDraft((current) => ({
+                      ...current,
+                      commission_allocations: current.commission_allocations.map((row, rowIndex) => rowIndex === index ? { ...row, profile_id: event.target.value } : row),
+                    }))} className="field-control">
+                      <option value="">Selecciona quién recibe</option>
+                      {adminUsers.map((admin) => <option key={admin.id} value={admin.id}>{admin.display_name}{admin.bank_name ? ` · ${admin.bank_name}` : " · sin banco"}</option>)}
+                    </select>
+                    <input type="number" min="0.01" step="0.01" aria-label="Monto de comisión" placeholder="Monto" value={allocation.amount} onChange={(event) => setConfigDraft((current) => ({
+                      ...current,
+                      commission_allocations: current.commission_allocations.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row),
+                    }))} className="field-control" />
+                    <button type="button" className="secondary-button" onClick={() => setConfigDraft((current) => ({
+                      ...current,
+                      commission_allocations: current.commission_allocations.filter((_, rowIndex) => rowIndex !== index),
+                    }))}>Quitar</button>
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-steel">Asignado: <strong className="text-ink">{formatMoney(configDraft.commission_allocations.reduce((sum, row) => sum + Number(row.amount || 0), 0))}</strong> de {formatMoney(summary.expected_admin_commission_amount)}</p>
+                  <button type="button" onClick={handleGenerateSplit} disabled={generating || !selectedScopeId} className="app-pill px-4 text-sm">
+                    {generating ? "Generando..." : summary.assignments.length ? "Guardar y regenerar pagos" : "Guardar y generar pagos"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="android-scroll-x">
               <table className="min-w-[1420px] w-full table-fixed text-left text-[12px] text-ink">

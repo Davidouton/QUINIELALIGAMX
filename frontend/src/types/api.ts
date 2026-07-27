@@ -634,6 +634,7 @@ export interface SettlementScopeSummary {
   total_receivable_amount: number;
   total_selected_payable_amount: number;
   total_assigned_amount: number;
+  expected_admin_commission_amount: number;
   uncovered_receiver_amount: number;
   unallocated_payer_amount: number;
 }
