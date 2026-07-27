@@ -16,6 +16,18 @@ type MemoryCacheEntry = {
 const memoryCache = new Map<string, MemoryCacheEntry>();
 const inflightRequests = new Map<string, Promise<unknown>>();
 
+export function invalidateBackendCache(path?: string) {
+  if (!path) {
+    memoryCache.clear();
+    return;
+  }
+  for (const key of memoryCache.keys()) {
+    if (key.endsWith(`::${path}`)) {
+      memoryCache.delete(key);
+    }
+  }
+}
+
 type BackendFetchInit = RequestInit & {
   timeoutMs?: number;
   cacheTtlMs?: number;

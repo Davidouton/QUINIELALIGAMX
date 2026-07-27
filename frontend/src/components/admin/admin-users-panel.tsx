@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-import { backendFetch } from "@/lib/api/backend";
+import { backendFetch, invalidateBackendCache } from "@/lib/api/backend";
 import { env } from "@/lib/env";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { getThemePreferenceLabel } from "@/lib/theme/app-theme";
@@ -260,7 +260,7 @@ export function AdminUsersPanel() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      await backendFetch<AdminUser>(`/admin/users/${user.id}/season-membership`, accessToken, {
+      const updatedUser = await backendFetch<AdminUser>(`/admin/users/${user.id}/season-membership`, accessToken, {
         method: "PUT",
         body: JSON.stringify({
           season_id: selectedSeasonId,
@@ -269,11 +269,14 @@ export function AdminUsersPanel() {
           notes: membership?.notes ?? null,
         }),
       });
+      const confirmedMembership = updatedUser.season_memberships.find((row) => row.season_id === selectedSeasonId);
+      if (confirmedMembership?.is_active !== nextIsActive) {
+        throw new Error("El servidor no confirmó el cambio de membresía.");
+      }
+      invalidateBackendCache("/bootstrap");
       await loadUsers(selectedSeasonId, accessToken);
       setMessage(
-        `${user.display_name}: ${
-          nextIsActive ? "dado de alta en el torneo" : "removido del torneo"
-        }.`,
+        `${user.display_name}: cambio confirmado por el servidor · ${nextIsActive ? "Activo" : "Inactivo"}.`,
       );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la membresia");

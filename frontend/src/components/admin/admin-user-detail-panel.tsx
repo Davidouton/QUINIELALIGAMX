@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { backendFetch } from "@/lib/api/backend";
+import { backendFetch, invalidateBackendCache } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AdminUser, AdminVipCompetition, Season } from "@/types/api";
 
@@ -132,7 +132,7 @@ export function AdminUserDetailPanel({ userId }: Props) {
       const token = await getBrowserAccessToken();
       if (membership.type === "Quiniela") {
         const currentMembership = user?.season_memberships.find((row) => row.season_id === membership.seasonId);
-        await backendFetch(`/admin/users/${userId}/season-membership`, token, {
+        const updatedUser = await backendFetch<AdminUser>(`/admin/users/${userId}/season-membership`, token, {
           method: "PUT",
           body: JSON.stringify({
             season_id: membership.seasonId,
@@ -141,14 +141,23 @@ export function AdminUserDetailPanel({ userId }: Props) {
             notes: currentMembership?.notes ?? null,
           }),
         });
+        const confirmedMembership = updatedUser.season_memberships.find((row) => row.season_id === membership.seasonId);
+        if (confirmedMembership?.is_active !== !membership.isActive) {
+          throw new Error("El servidor no confirmó el cambio de membresía.");
+        }
       } else {
-        await backendFetch(`/admin/users/${userId}/survivor-membership`, token, {
+        const updatedUser = await backendFetch<AdminUser>(`/admin/users/${userId}/survivor-membership`, token, {
           method: "PUT",
           body: JSON.stringify({ season_id: membership.seasonId, is_active: !membership.isActive }),
         });
+        const confirmedMembership = updatedUser.survivor_memberships.find((row) => row.season_id === membership.seasonId);
+        if (confirmedMembership?.is_active !== !membership.isActive) {
+          throw new Error("El servidor no confirmó el cambio de Survivor.");
+        }
       }
+      invalidateBackendCache("/bootstrap");
       await loadUserData();
-      setMessage(`${membership.name}: ${membership.isActive ? "membresía removida" : "membresía activada"}.`);
+      setMessage(`${membership.name}: cambio confirmado por el servidor · ${membership.isActive ? "Inactiva" : "Activa"}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la membresía");
     } finally {
