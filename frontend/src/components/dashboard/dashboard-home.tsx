@@ -354,6 +354,15 @@ function normalizeMe(me: Me): Me {
   };
 }
 
+function filterSeasonsForActiveMembership(seasons: Season[], me: Me) {
+  const activeSeasonIds = new Set(
+    me.season_memberships
+      .filter((membership) => membership.is_active)
+      .map((membership) => membership.season_id),
+  );
+  return seasons.filter((season) => activeSeasonIds.has(season.id));
+}
+
 function pickPreferredMatchday(matchdays: Matchday[]) {
   const sorted = matchdays.slice().sort((left, right) => right.number - left.number);
   return (
@@ -684,7 +693,8 @@ export function DashboardHome() {
         const activeMatchdays = asArray(bootstrap.active_matchdays);
         const teams = asArray(bootstrap.teams);
 
-        const preferredSeason = resolveLiveSeason(seasons, seasonIdParam);
+        const memberSeasons = filterSeasonsForActiveMembership(seasons, me);
+        const preferredSeason = resolveLiveSeason(memberSeasons, seasonIdParam);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
         const selectedMatchday =
           (preferredSeason
@@ -706,7 +716,7 @@ export function DashboardHome() {
         setState((current) => ({
           ...current,
           me,
-          seasons,
+          seasons: memberSeasons,
           matchdays,
           selectedMatchday,
           selectedSeason,
@@ -719,7 +729,7 @@ export function DashboardHome() {
           accessToken,
           { cacheTtlMs: MATCHDAY_CACHE_TTL_MS },
         ));
-        const survivorSeason = resolveSurvivorSeason(seasons, seasonIdParam, competitionId);
+        const survivorSeason = resolveSurvivorSeason(memberSeasons, seasonIdParam, competitionId);
         let survivorBoard: SurvivorBoard | null = null;
         if (accessToken && survivorSeason && isSurvivorAvailableForSeason(survivorSeason)) {
           try {
@@ -2187,7 +2197,16 @@ export function DashboardHome() {
                 {state.me ? `Hola, ${state.me.display_name}` : "Dashboard"}
               </h1>
             </div>
-            {shouldShowLigaMxActionPanel ? (
+            {state.me && state.seasons.length === 0 && !hasApprovedVipCompetition ? (
+              <div className="mt-3 max-w-2xl border-l-2 border-[#4f7df3] px-4 py-2 text-sm text-ink">
+                No tienes una quiniela activa. Revisa las inscripciones disponibles para entrar a un torneo.
+                <div className="mt-2">
+                  <Link href="/dashboard/enrollments" className="font-semibold text-[#4f7df3]">
+                    Ver inscripciones
+                  </Link>
+                </div>
+              </div>
+            ) : shouldShowLigaMxActionPanel ? (
               <div className="mt-3 max-w-4xl rounded-2xl border border-coral/25 bg-coral/10 px-4 py-4 text-sm text-ink">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -2846,7 +2865,9 @@ export function DashboardHome() {
           <div className="space-y-6">
             {isVipDashboardContext
               ? visibleDashboardWidgetIds.map((widgetId) => renderGeneralWidget(widgetId))
-              : visibleDashboardWidgetConfigs.map((widget) => renderRegularDashboardWidget(widget))}
+              : canViewRegularDashboard
+                ? visibleDashboardWidgetConfigs.map((widget) => renderRegularDashboardWidget(widget))
+                : null}
           </div>
         </>
       ) : null}
