@@ -94,10 +94,17 @@ export function VipStatusIcon({ type }: { type: "approved" | "pending" | "reject
         ? "text-[#ff647c]"
         : "text-[#8793a6]";
   if (type === "open" || type === "closed") {
+    if (type === "closed") {
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" className={`h-5 w-5 shrink-0 ${className}`} fill="currentColor">
+          <path d="M8 9V7a4 4 0 0 1 8 0v2h1.5A2.5 2.5 0 0 1 20 11.5v7a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5v-7A2.5 2.5 0 0 1 6.5 9H8Zm2 0h4V7a2 2 0 1 0-4 0v2Z" />
+        </svg>
+      );
+    }
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true" className={`h-5 w-5 shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="1.8">
         <rect x="5" y="10" width="14" height="10" rx="2" />
-        <path d={type === "open" ? "M9 10V7a4 4 0 0 1 7-2.6" : "M8 10V7a4 4 0 0 1 8 0v3"} />
+        <path d="M9 10V7a4 4 0 0 1 7-2.6" />
       </svg>
     );
   }

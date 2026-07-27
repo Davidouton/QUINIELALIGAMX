@@ -273,7 +273,7 @@ export function DashboardEnrollmentsPageContent() {
           <Link href={buildHrefWithSeason("/dashboard", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Ir al dashboard
           </Link>
-        ) : (
+        ) : seasonClosed ? null : (
           <button
             type="button"
             onClick={() => void handleJoinSeason(season)}
@@ -282,8 +282,6 @@ export function DashboardEnrollmentsPageContent() {
           >
             {actionLoading === `season:${season.id}`
               ? "Procesando..."
-              : registrationClosedByAdmin
-                ? `${seasonTitle} cerrada`
               : isAvalMode
                 ? `Inscribirme a ${seasonTitle}`
                 : `Solicitar alta ${seasonTitle}`}
@@ -321,18 +319,14 @@ export function DashboardEnrollmentsPageContent() {
           <Link href={buildHrefWithSeason("/dashboard/survivor", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Abrir Survivor
           </Link>
-        ) : (
+        ) : survivorWindowClosed ? null : (
           <button
             type="button"
             onClick={() => void handleJoinSurvivor(season)}
             disabled={actionLoading === `survivor:${season.id}` || survivorWindowClosed}
             className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] disabled:opacity-50"
           >
-            {actionLoading === `survivor:${season.id}`
-              ? "Procesando..."
-              : survivorClosedByAdmin
-                ? "Survivor cerrada"
-                : "Inscribirme a Survivor"}
+            {actionLoading === `survivor:${season.id}` ? "Procesando..." : "Inscribirme a Survivor"}
           </button>
         ),
       });
@@ -602,7 +596,7 @@ export function DashboardEnrollmentsPageContent() {
                       onClick={(event) => event.stopPropagation()}
                       onKeyDown={(event) => event.stopPropagation()}
                     >
-                      {row.action ? <div className="flex flex-wrap justify-end gap-2">{row.action}</div> : null}
+                      {row.action ? <div className="flex flex-wrap justify-end gap-2">{row.action}</div> : <span className="text-sm text-steel">—</span>}
                     </div>
                   </div>
                 ))}
