@@ -14,7 +14,6 @@ class SeasonRepository:
         )
         stmt = select(Season).order_by(
             visibility_rank.asc(),
-            Season.is_active.desc(),
             Season.created_at.desc(),
         )
         return list(db.scalars(stmt))

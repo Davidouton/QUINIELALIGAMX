@@ -214,6 +214,9 @@ export function AdminPrizesPanel() {
         <p className="mt-3 text-sm text-steel">
           {selectedSeason ? `Editando la bolsa de ${prizeScope === "survivor" ? "Survivor" : "Quiniela"} para ${selectedSeason.name}.` : "Selecciona una temporada para editar su esquema de premios."}
         </p>
+        <p className="mt-1 text-xs text-steel/80">
+          El costo de ingreso se hereda de Reglas de precio. Los importes semanales y porcentajes de reparto se editan en esta pantalla.
+        </p>
       </section>
 
       <form id="season-prizes-form" onSubmit={handleSubmit} className="space-y-6">
@@ -262,7 +265,7 @@ export function AdminPrizesPanel() {
           <section className="space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Awards semanales</h3>
+                <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Premios semanales editables</h3>
               </div>
             </div>
             <div className="space-y-2">

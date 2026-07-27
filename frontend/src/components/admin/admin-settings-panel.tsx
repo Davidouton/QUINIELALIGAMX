@@ -110,7 +110,8 @@ export function AdminSettingsPanel() {
       backendFetch<PricingRule[]>("/payments/pricing-rules", accessToken),
     ]);
 
-    const fallbackSeasonId = settingsResponse.active_season_id ?? seasonRows[0]?.id ?? "";
+    const fallbackSeasonId =
+      settingsResponse.selected_season_id ?? settingsResponse.active_season_id ?? seasonRows[0]?.id ?? "";
     setSeasons(seasonRows);
     setMatchdays(matchdayRows);
     setAdminVips(vipRows);
@@ -150,7 +151,7 @@ export function AdminSettingsPanel() {
 
     try {
       const accessToken = await getBrowserAccessToken();
-      const result = await backendFetch<AdminSettings>("/admin/settings", accessToken, {
+      const result = await backendFetch<AdminSettings>("/admin/settings?set_active=false", accessToken, {
         method: "PUT",
         body: JSON.stringify({
           active_season_id: form.active_season_id,
@@ -266,7 +267,7 @@ export function AdminSettingsPanel() {
     }
   }
 
-  const activeSeason = seasons.find((season) => season.id === form.active_season_id) ?? null;
+  const selectedSeason = seasons.find((season) => season.id === form.active_season_id) ?? null;
   const seasonMatchdays = matchdays
     .filter((matchday) => matchday.season_id === form.active_season_id)
     .sort((left, right) => left.number - right.number);
@@ -283,7 +284,7 @@ export function AdminSettingsPanel() {
       <section className="space-y-4">
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2 md:col-span-2">
-            <span className="text-sm text-steel">Torneo activo</span>
+            <span className="text-sm text-steel">Temporada a configurar</span>
             <select
               value={form.active_season_id}
               onChange={(event) => {
@@ -306,6 +307,9 @@ export function AdminSettingsPanel() {
                 </option>
               ))}
             </select>
+            <span className="block text-xs text-steel/80">
+              Cambiar esta selección sólo carga su configuración; no activa ni desactiva otras temporadas Live.
+            </span>
           </label>
 
           <label className="space-y-2 md:col-span-2">
@@ -476,8 +480,8 @@ export function AdminSettingsPanel() {
             <p className="text-right">Valor</p>
           </div>
           <div className="grid grid-cols-[1.15fr_1fr] gap-4 px-3 py-2">
-            <p className="text-sm text-steel">Torneo activo</p>
-            <p className="text-right text-sm font-medium text-ink">{activeSeason?.name ?? "Sin torneo activo"}</p>
+            <p className="text-sm text-steel">Temporada configurada</p>
+            <p className="text-right text-sm font-medium text-ink">{selectedSeason?.name ?? "Sin selección"}</p>
           </div>
           <div className="grid grid-cols-[1.15fr_1fr] gap-4 px-3 py-2">
             <p className="text-sm text-steel">Primera jornada que puntúa</p>

@@ -74,9 +74,7 @@ export function resolveSeasonForContext(
   const liveSeasons = scopedSeasons.filter(isSeasonLive);
   const currentSeasons = scopedSeasons.filter((season) => !isSeasonArchived(season));
   return (
-    liveSeasons.find((season) => season.is_active) ??
     liveSeasons[0] ??
-    currentSeasons.find((season) => season.is_active) ??
     currentSeasons[0] ??
     explicitSeason ??
     safeSeasons[0] ??
@@ -96,10 +94,8 @@ export function resolveLiveSeason(
 
   return (
     explicitLiveSeason ??
-    liveSeasons.find((season) => season.is_active) ??
     liveSeasons[0] ??
     explicitSeason ??
-    currentSeasons.find((season) => season.is_active) ??
     currentSeasons[0] ??
     safeSeasons[0] ??
     null
@@ -125,9 +121,7 @@ export function resolveSurvivorSeason(
     const liveRows = rows.filter(isSeasonLive);
     const currentRows = rows.filter((season) => !isSeasonArchived(season));
     return (
-      liveRows.find((season) => season.is_active) ??
       liveRows[0] ??
-      currentRows.find((season) => season.is_active) ??
       currentRows[0] ??
       rows[0] ??
       null
