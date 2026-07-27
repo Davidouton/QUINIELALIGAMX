@@ -626,6 +626,19 @@ export interface SettlementScopeSummary {
   unallocated_payer_amount: number;
 }
 
+export interface SettlementGeneratedScope {
+  scope_type: "season" | "vip";
+  scope_id: string;
+  scope_label: string;
+  assignments_count: number;
+  pending_count: number;
+  proof_submitted_count: number;
+  confirmed_count: number;
+  rejected_count: number;
+  total_assigned_amount: number;
+  updated_at: string;
+}
+
 export interface MySettlementsResponse {
   outgoing: SettlementAssignment[];
   incoming: SettlementAssignment[];

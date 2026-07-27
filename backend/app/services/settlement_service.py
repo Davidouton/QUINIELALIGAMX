@@ -27,6 +27,7 @@ from app.schemas.payments import (
     SettlementConfigOut,
     SettlementConfigUpdateRequest,
     SettlementGenerateRequest,
+    SettlementGeneratedScopeOut,
     SettlementParticipantOut,
     SettlementProofSubmitRequest,
     SettlementRejectRequest,
@@ -99,6 +100,40 @@ class SettlementService:
             selected_payer_profile_ids=selected_payer_profile_ids,
             config_row=config_row,
         )
+
+    def list_generated_scopes(self, db: Session) -> list[SettlementGeneratedScopeOut]:
+        self._auto_confirm_due_assignments(db)
+        rows = list(
+            db.scalars(
+                select(SettlementAssignment)
+                .where(SettlementAssignment.scope_type.in_([PaymentScopeType.SEASON, PaymentScopeType.VIP]))
+                .order_by(SettlementAssignment.updated_at.desc())
+            )
+        )
+        if not rows:
+            return []
+        labels = self._scope_labels_for_rows(db, rows)
+        grouped: dict[tuple[PaymentScopeType, str], list[SettlementAssignment]] = {}
+        for row in rows:
+            grouped.setdefault((row.scope_type, row.scope_id), []).append(row)
+
+        output = [
+            SettlementGeneratedScopeOut(
+                scope_type=scope_type.value,
+                scope_id=scope_id,
+                scope_label=labels.get((scope_type.value, scope_id), "Competencia"),
+                assignments_count=len(assignments),
+                pending_count=sum(row.status == SettlementStatus.PENDING_PROOF for row in assignments),
+                proof_submitted_count=sum(row.status == SettlementStatus.PROOF_SUBMITTED for row in assignments),
+                confirmed_count=sum(row.status == SettlementStatus.CONFIRMED for row in assignments),
+                rejected_count=sum(row.status == SettlementStatus.REJECTED for row in assignments),
+                total_assigned_amount=float(sum((row.amount for row in assignments), Decimal("0.00"))),
+                updated_at=max(row.updated_at for row in assignments),
+            )
+            for (scope_type, scope_id), assignments in grouped.items()
+        ]
+        output.sort(key=lambda row: row.updated_at, reverse=True)
+        return output
 
     def update_config(
         self,

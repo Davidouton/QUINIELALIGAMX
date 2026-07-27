@@ -15,6 +15,7 @@ from app.schemas.payments import (
     SettlementConfigOut,
     SettlementConfigUpdateRequest,
     SettlementGenerateRequest,
+    SettlementGeneratedScopeOut,
     SettlementProofSubmitRequest,
     SettlementRejectRequest,
     SettlementScopeSummaryOut,
@@ -95,6 +96,14 @@ async def stripe_webhook(
     payload = await request.body()
     event_type = service.handle_webhook(db, payload, stripe_signature)
     return WebhookAckResponse(received=True, event_type=event_type)
+
+
+@router.get("/payments/settlements/admin/generated", response_model=list[SettlementGeneratedScopeOut])
+def list_admin_generated_settlements(
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> list[SettlementGeneratedScopeOut]:
+    return settlement_service.list_generated_scopes(db)
 
 
 @router.get("/payments/settlements/admin/summary", response_model=SettlementScopeSummaryOut)

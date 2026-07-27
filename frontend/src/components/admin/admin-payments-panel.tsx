@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminVipCompetition, Season, SettlementScopeSummary } from "@/types/api";
+import type { AdminVipCompetition, Season, SettlementGeneratedScope, SettlementScopeSummary } from "@/types/api";
 
 type ScopeType = "season" | "vip";
 
@@ -41,6 +41,7 @@ export function AdminPaymentsPanel() {
   const [vips, setVips] = useState<AdminVipCompetition[]>([]);
   const [selectedScopeId, setSelectedScopeId] = useState("");
   const [summary, setSummary] = useState<SettlementScopeSummary | null>(null);
+  const [generatedScopes, setGeneratedScopes] = useState<SettlementGeneratedScope[]>([]);
   const [selectedPayerIds, setSelectedPayerIds] = useState<string[]>([]);
   const [configDraft, setConfigDraft] = useState({ max_payment_amount: "5000", confirmation_window_hours: "24" });
   const [loadingCatalog, setLoadingCatalog] = useState(true);
@@ -56,12 +57,14 @@ export function AdminPaymentsPanel() {
       setError(null);
       try {
         const accessToken = await getBrowserAccessToken();
-        const [seasonRows, vipRows] = await Promise.all([
+        const [seasonRows, vipRows, generatedRows] = await Promise.all([
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<AdminVipCompetition[]>("/admin/vip?include_leaderboard=true", accessToken),
+          backendFetch<SettlementGeneratedScope[]>("/payments/settlements/admin/generated", accessToken),
         ]);
         setSeasons(seasonRows);
         setVips(vipRows);
+        setGeneratedScopes(generatedRows);
         const searchParams = new URLSearchParams(window.location.search);
         const requestedScopeType = searchParams.get("scope_type") === "vip" ? "vip" : "season";
         const requestedScopeId = searchParams.get("scope_id") ?? "";
@@ -223,6 +226,9 @@ export function AdminPaymentsPanel() {
         max_payment_amount: String(response.config.max_payment_amount),
         confirmation_window_hours: String(response.config.confirmation_window_hours),
       });
+      setGeneratedScopes(
+        await backendFetch<SettlementGeneratedScope[]>("/payments/settlements/admin/generated", accessToken),
+      );
       setMessage(hasExistingAssignments ? "Configuración guardada y split regenerado." : "Configuración guardada y split generado.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo generar el split.");
@@ -243,31 +249,28 @@ export function AdminPaymentsPanel() {
 
       <section className="grid gap-4 rounded-[20px] border border-white/[0.08] bg-white/[0.03] p-5 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {(["season", "vip"] as ScopeType[]).map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setScopeType(option)}
-                className={`app-pill px-4 ${scopeType === option ? "app-pill-active text-ink" : ""}`}
-              >
-                {scopeTitle(option)}
-              </button>
-            ))}
-          </div>
           <label className="block space-y-2 text-sm">
-            <span className="text-steel">{scopeTitle(scopeType)}</span>
+            <span className="text-steel">Competencia normal o VIP</span>
             <select
-              value={selectedScopeId}
-              onChange={(event) => setSelectedScopeId(event.target.value)}
+              value={selectedScopeId ? `${scopeType}:${selectedScopeId}` : ""}
+              onChange={(event) => {
+                const [nextScopeType, nextScopeId] = event.target.value.split(":", 2) as [ScopeType, string];
+                setScopeType(nextScopeType);
+                setSelectedScopeId(nextScopeId);
+              }}
               className="field-control"
-              disabled={loadingCatalog || availableScopes.length === 0}
+              disabled={loadingCatalog || (seasons.length === 0 && vips.length === 0)}
             >
-              {availableScopes.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                </option>
-              ))}
+              <optgroup label="Temporadas normales">
+                {seasons.map((row) => (
+                  <option key={`season:${row.id}`} value={`season:${row.id}`}>{row.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="VIP">
+                {vips.map((row) => (
+                  <option key={`vip:${row.id}`} value={`vip:${row.id}`}>{row.name}</option>
+                ))}
+              </optgroup>
             </select>
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -338,6 +341,56 @@ export function AdminPaymentsPanel() {
             </p>
           </article>
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Splits generados</h2>
+            <p className="mt-1 text-sm text-steel">Conciliaciones normales y VIP que ya tienen pagos asignados.</p>
+          </div>
+          <span className="text-sm text-steel">{generatedScopes.length}</span>
+        </div>
+        {generatedScopes.length ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {generatedScopes.map((generated) => {
+              const isSelected = generated.scope_type === scopeType && generated.scope_id === selectedScopeId;
+              return (
+                <button
+                  key={`${generated.scope_type}:${generated.scope_id}`}
+                  type="button"
+                  onClick={() => {
+                    setScopeType(generated.scope_type);
+                    setSelectedScopeId(generated.scope_id);
+                  }}
+                  className={`rounded-[16px] border p-4 text-left transition ${
+                    isSelected
+                      ? "border-[#4f7df3]/50 bg-[#4f7df3]/10"
+                      : "border-white/[0.08] bg-white/[0.02] hover:border-white/[0.16]"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-[0.22em] text-steel">
+                        {generated.scope_type === "vip" ? "VIP" : "Temporada normal"}
+                      </p>
+                      <p className="mt-1 font-semibold text-ink">{generated.scope_label}</p>
+                    </div>
+                    <span className="text-xs text-steel">{generated.assignments_count} pagos</span>
+                  </div>
+                  <p className="mt-3 text-lg font-semibold text-ink">{formatMoney(generated.total_assigned_amount)}</p>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-steel">
+                    <span>{generated.pending_count} pendientes</span>
+                    <span>{generated.proof_submitted_count} en validación</span>
+                    <span>{generated.confirmed_count} confirmados</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-steel">Todavía no hay splits generados.</p>
+        )}
       </section>
 
       {loadingCatalog || loadingSummary ? <p className="text-sm text-steel">Cargando panel...</p> : null}

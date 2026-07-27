@@ -195,6 +195,19 @@ class SettlementScopeSummaryOut(BaseModel):
     unallocated_payer_amount: float = 0
 
 
+class SettlementGeneratedScopeOut(BaseModel):
+    scope_type: Literal["season", "vip"]
+    scope_id: str
+    scope_label: str
+    assignments_count: int = 0
+    pending_count: int = 0
+    proof_submitted_count: int = 0
+    confirmed_count: int = 0
+    rejected_count: int = 0
+    total_assigned_amount: float = 0
+    updated_at: datetime
+
+
 class SettlementGenerateRequest(BaseModel):
     scope_type: PaymentScopeTypeLiteral
     scope_id: str
