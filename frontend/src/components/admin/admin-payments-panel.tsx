@@ -55,6 +55,9 @@ export function AdminPaymentsPanel() {
   const [generating, setGenerating] = useState(false);
   const [clearingAssignments, setClearingAssignments] = useState(false);
   const [savingManualAssignment, setSavingManualAssignment] = useState(false);
+  const [dispatchingAssignments, setDispatchingAssignments] = useState(false);
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
+  const [overrideDraft, setOverrideDraft] = useState({ payer_profile_id: "", payee_profile_id: "", amount: "" });
   const [manualAssignment, setManualAssignment] = useState({ payer_profile_id: "", payee_profile_id: "", amount: "" });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -234,6 +237,17 @@ export function AdminPaymentsPanel() {
           }),
         },
       );
+      const refreshedSummary = await backendFetch<SettlementScopeSummary>(
+        `/payments/settlements/admin/summary?scope_type=${scopeType}&scope_id=${selectedScopeId}`,
+        accessToken,
+      );
+      const payerCandidates = new Set(
+        refreshedSummary.participants.filter((participant) => participant.is_payer_candidate).map((participant) => participant.profile_id),
+      );
+      const rebalancedPayerIds = selectedPayerIds.filter((profileId) => payerCandidates.has(profileId));
+      const effectivePayerIds = rebalancedPayerIds.length > 0
+        ? rebalancedPayerIds
+        : [...payerCandidates];
       const response = await backendFetch<SettlementScopeSummary>(
         "/payments/settlements/admin/generate",
         accessToken,
@@ -242,7 +256,7 @@ export function AdminPaymentsPanel() {
           body: JSON.stringify({
             scope_type: scopeType,
             scope_id: selectedScopeId,
-            payer_profile_ids: selectedPayerIds,
+            payer_profile_ids: effectivePayerIds,
           }),
         },
       );
@@ -319,6 +333,66 @@ export function AdminPaymentsPanel() {
       setMessage("Movimiento manual agregado.");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo agregar el movimiento manual.");
+    } finally {
+      setSavingManualAssignment(false);
+    }
+  }
+
+  async function handleDispatchAssignments() {
+    if (!summary?.assignments.length) return;
+    if (!window.confirm(`Se asignarán ${summary.assignments.length} pagos y se avisará a pagadores y receptores. ¿Continuar?`)) return;
+    setDispatchingAssignments(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const response = await backendFetch<{ assignments_count: number; notification_dispatches: number }>(
+        `/payments/settlements/admin/assign?scope_type=${scopeType}&scope_id=${selectedScopeId}`,
+        accessToken,
+        { method: "POST" },
+      );
+      setMessage(`${response.assignments_count} pagos asignados. Se procesaron ${response.notification_dispatches} avisos.`);
+      await loadSummary(scopeType, selectedScopeId);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron asignar los pagos.");
+    } finally {
+      setDispatchingAssignments(false);
+    }
+  }
+
+  function startOverride(assignment: SettlementScopeSummary["assignments"][number]) {
+    setEditingAssignmentId(assignment.id);
+    setOverrideDraft({
+      payer_profile_id: assignment.payer_profile_id,
+      payee_profile_id: assignment.payee_profile_id,
+      amount: String(assignment.amount),
+    });
+  }
+
+  async function handleSaveOverride() {
+    if (!editingAssignmentId || !overrideDraft.payer_profile_id || !overrideDraft.payee_profile_id || Number(overrideDraft.amount) <= 0) {
+      setError("Completa pagador, receptor y monto para guardar el override.");
+      return;
+    }
+    setSavingManualAssignment(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const response = await backendFetch<SettlementScopeSummary>(
+        `/payments/settlements/admin/assignments/${editingAssignmentId}`,
+        accessToken,
+        {
+          method: "PUT",
+          body: JSON.stringify({ ...overrideDraft, amount: Number(overrideDraft.amount) }),
+        },
+      );
+      setSummary(response);
+      setSelectedPayerIds(response.selected_payer_profile_ids);
+      setEditingAssignmentId(null);
+      setMessage("Override guardado. Presiona Asignar pagos cuando termines de revisar.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el override.");
     } finally {
       setSavingManualAssignment(false);
     }
@@ -604,6 +678,9 @@ export function AdminPaymentsPanel() {
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-sm text-steel">{summary.assignments.length} pagos</p>
+                <button type="button" onClick={handleDispatchAssignments} disabled={dispatchingAssignments || summary.assignments.length === 0} className="app-pill px-4 text-sm">
+                  {dispatchingAssignments ? "Asignando..." : "Asignar pagos"}
+                </button>
                 <button type="button" onClick={handleClearAssignments} disabled={clearingAssignments || summary.assignments.length === 0} className="secondary-button text-coral">
                   {clearingAssignments ? "Borrando..." : "Borrar todas"}
                 </button>
@@ -644,16 +721,33 @@ export function AdminPaymentsPanel() {
                     <th className="px-3 py-3">Ficha</th>
                     <th className="px-3 py-3">Auto confirmación</th>
                     <th className="px-3 py-3">Resolución</th>
+                    <th className="px-3 py-3">Ajuste</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summary.assignments.map((assignment) => (
                     <tr key={assignment.id} className="app-table-row border-b last:border-b-0 align-top">
-                      <td className="px-3 py-3 font-medium">{assignment.payer_display_name}</td>
-                      <td className="px-3 py-3 font-medium">{assignment.payee_display_name}</td>
+                      <td className="px-3 py-3 font-medium">
+                        {editingAssignmentId === assignment.id ? (
+                          <select value={overrideDraft.payer_profile_id} onChange={(event) => setOverrideDraft((current) => ({ ...current, payer_profile_id: event.target.value }))} className="field-control min-w-[160px]">
+                            {summary.participants.map((participant) => <option key={`override-payer-${participant.profile_id}`} value={participant.profile_id}>{participant.display_name}</option>)}
+                          </select>
+                        ) : assignment.payer_display_name}
+                      </td>
+                      <td className="px-3 py-3 font-medium">
+                        {editingAssignmentId === assignment.id ? (
+                          <select value={overrideDraft.payee_profile_id} onChange={(event) => setOverrideDraft((current) => ({ ...current, payee_profile_id: event.target.value }))} className="field-control min-w-[160px]">
+                            {summary.participants.map((participant) => <option key={`override-payee-${participant.profile_id}`} value={participant.profile_id}>{participant.display_name}</option>)}
+                          </select>
+                        ) : assignment.payee_display_name}
+                      </td>
                       <td className="px-3 py-3 text-steel">{assignment.payee_bank_name ?? "-"}</td>
                       <td className="px-3 py-3 text-steel">{assignment.payee_deposit_account ?? "-"}</td>
-                      <td className="px-3 py-3 font-semibold">{formatMoney(assignment.amount)}</td>
+                      <td className="px-3 py-3 font-semibold">
+                        {editingAssignmentId === assignment.id ? (
+                          <input type="number" min="0.01" step="0.01" value={overrideDraft.amount} onChange={(event) => setOverrideDraft((current) => ({ ...current, amount: event.target.value }))} className="field-control min-w-[130px]" />
+                        ) : formatMoney(assignment.amount)}
+                      </td>
                       <td className="px-3 py-3">{statusLabel(assignment.status)}</td>
                       <td className="px-3 py-3">
                         {assignment.proof_image_url ? (
@@ -672,11 +766,21 @@ export function AdminPaymentsPanel() {
                         {!assignment.confirmed_at && !assignment.rejected_at ? "-" : null}
                         {assignment.rejection_reason ? <p className="mt-1 text-[11px] text-coral">{assignment.rejection_reason}</p> : null}
                       </td>
+                      <td className="px-3 py-3">
+                        {editingAssignmentId === assignment.id ? (
+                          <div className="flex flex-col gap-2">
+                            <button type="button" onClick={handleSaveOverride} disabled={savingManualAssignment} className="app-pill px-3 text-xs">Guardar</button>
+                            <button type="button" onClick={() => setEditingAssignmentId(null)} className="secondary-button text-xs">Cancelar</button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => startOverride(assignment)} disabled={assignment.status === "proof_submitted" || assignment.status === "confirmed"} className="secondary-button text-xs">Override</button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   {summary.assignments.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-3 py-8 text-sm text-steel">
+                      <td colSpan={10} className="px-3 py-8 text-sm text-steel">
                         Todavía no hay pagos generados para {selectedScope?.name ?? "esta selección"}.
                       </td>
                     </tr>

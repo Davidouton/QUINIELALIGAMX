@@ -12,6 +12,8 @@ from app.schemas.payments import (
     PricingRuleOut,
     PricingRuleUpsertRequest,
     SettlementAssignmentOut,
+    SettlementAssignmentDispatchOut,
+    SettlementAssignmentOverrideRequest,
     SettlementConfigOut,
     SettlementConfigUpdateRequest,
     SettlementGenerateRequest,
@@ -152,6 +154,30 @@ def create_admin_manual_settlement(
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SettlementScopeSummaryOut:
     return settlement_service.create_manual_assignment(db, payload, current_profile)
+
+
+@router.put("/payments/settlements/admin/assignments/{settlement_id}", response_model=SettlementScopeSummaryOut)
+def override_admin_settlement_assignment(
+    settlement_id: str,
+    payload: SettlementAssignmentOverrideRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SettlementScopeSummaryOut:
+    return settlement_service.override_assignment(db, settlement_id, payload)
+
+
+@router.post("/payments/settlements/admin/assign", response_model=SettlementAssignmentDispatchOut)
+def dispatch_admin_settlement_assignments(
+    scope_type: str,
+    scope_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SettlementAssignmentDispatchOut:
+    assignments_count, notification_dispatches = settlement_service.dispatch_assignments(db, scope_type, scope_id)
+    return SettlementAssignmentDispatchOut(
+        assignments_count=assignments_count,
+        notification_dispatches=notification_dispatches,
+    )
 
 
 @router.get("/payments/settlements/mine", response_model=MySettlementsResponse)

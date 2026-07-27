@@ -237,6 +237,17 @@ class SettlementManualAssignmentRequest(BaseModel):
     amount: float = Field(gt=0, le=99_999_999.99)
 
 
+class SettlementAssignmentOverrideRequest(BaseModel):
+    payer_profile_id: str
+    payee_profile_id: str
+    amount: float = Field(gt=0, le=99_999_999.99)
+
+
+class SettlementAssignmentDispatchOut(BaseModel):
+    assignments_count: int
+    notification_dispatches: int
+
+
 class SettlementProofSubmitRequest(BaseModel):
     proof_image_url: str = Field(min_length=1, max_length=2000)
     proof_note: str | None = Field(default=None, max_length=2000)

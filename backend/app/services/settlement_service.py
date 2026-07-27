@@ -25,6 +25,7 @@ from app.models.entities import (
 from app.schemas.payments import (
     MySettlementsResponse,
     SettlementAssignmentOut,
+    SettlementAssignmentOverrideRequest,
     SettlementConfigOut,
     SettlementConfigUpdateRequest,
     SettlementGenerateRequest,
@@ -192,7 +193,6 @@ class SettlementService:
     ) -> SettlementScopeSummaryOut:
         self._auto_confirm_due_assignments(db)
         scope_type_enum = self._supported_scope_type(payload.scope_type)
-        selected_payer_profile_ids = list(dict.fromkeys(payload.payer_profile_ids))
         scope_label, participants = self._build_participants(db, scope_type_enum, payload.scope_id)
         if scope_type_enum == PaymentScopeType.SEASON:
             season = self._ensure_scope_exists(db, scope_type_enum, payload.scope_id)
@@ -212,16 +212,15 @@ class SettlementService:
                     ),
                 )
         participant_by_id = {participant.profile_id: participant for participant in participants}
-        invalid_payers = [
+        selected_payer_profile_ids = [
             profile_id
-            for profile_id in selected_payer_profile_ids
-            if profile_id not in participant_by_id or participant_by_id[profile_id].net_amount >= Decimal("0")
+            for profile_id in dict.fromkeys(payload.payer_profile_ids)
+            if profile_id in participant_by_id and participant_by_id[profile_id].net_amount < Decimal("0")
         ]
-        if invalid_payers:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Solo puedes seleccionar jugadores con saldo pendiente por pagar.",
-            )
+        if not selected_payer_profile_ids:
+            selected_payer_profile_ids = [
+                participant.profile_id for participant in participants if participant.net_amount < Decimal("0")
+            ]
 
         existing_assignments = self._list_scope_assignments(db, scope_type_enum, payload.scope_id)
         if any(
@@ -301,10 +300,6 @@ class SettlementService:
         db.commit()
 
         assignments = self._list_scope_assignments(db, scope_type_enum, payload.scope_id)
-        try:
-            self.send_generation_notifications(db, assignments, scope_label=scope_label)
-        except Exception:
-            db.rollback()
         return self._build_scope_summary_out(
             db,
             scope_type_enum,
@@ -390,6 +385,67 @@ class SettlementService:
             selected_payer_profile_ids=selected_payer_profile_ids,
             config_row=config_row,
         )
+
+    def override_assignment(
+        self,
+        db: Session,
+        settlement_id: str,
+        payload: SettlementAssignmentOverrideRequest,
+    ) -> SettlementScopeSummaryOut:
+        row = self._load_assignment_or_404(db, settlement_id)
+        if row.status in {SettlementStatus.PROOF_SUBMITTED, SettlementStatus.CONFIRMED}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No se puede modificar un pago con ficha enviada o ya confirmado.",
+            )
+        if payload.payer_profile_id == payload.payee_profile_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quien paga y quien recibe deben ser distintos.")
+        scope_label, participants = self._build_participants(db, row.scope_type, row.scope_id)
+        participant_ids = {participant.profile_id for participant in participants}
+        if payload.payer_profile_id not in participant_ids or payload.payee_profile_id not in participant_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selecciona participantes o administradores que pertenezcan a este settlement.",
+            )
+        row.payer_profile_id = payload.payer_profile_id
+        row.payee_profile_id = payload.payee_profile_id
+        row.amount = self._to_money(payload.amount)
+        row.status = SettlementStatus.PENDING_PROOF
+        row.proof_image_url = None
+        row.proof_note = None
+        row.proof_uploaded_at = None
+        row.first_payer_notification_sent_at = None
+        row.last_payer_notification_sent_at = None
+        row.payer_notification_count = 0
+        row.first_payee_notification_sent_at = None
+        row.last_payee_notification_sent_at = None
+        row.payee_notification_count = 0
+        row.rejected_by_profile_id = None
+        row.rejected_at = None
+        row.rejection_reason = None
+        db.add(row)
+        db.commit()
+        assignments = self._list_scope_assignments(db, row.scope_type, row.scope_id)
+        config_row = self._get_or_create_config(db, row.scope_type, row.scope_id, create=False)
+        return self._build_scope_summary_out(
+            db,
+            row.scope_type,
+            row.scope_id,
+            scope_label,
+            participants,
+            assignments,
+            selected_payer_profile_ids=sorted({assignment.payer_profile_id for assignment in assignments}),
+            config_row=config_row,
+        )
+
+    def dispatch_assignments(self, db: Session, scope_type: str, scope_id: str) -> tuple[int, int]:
+        scope_type_enum = self._supported_scope_type(scope_type)
+        scope = self._ensure_scope_exists(db, scope_type_enum, scope_id)
+        assignments = self._list_scope_assignments(db, scope_type_enum, scope_id)
+        if not assignments:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay pagos para asignar.")
+        dispatches = self.send_generation_notifications(db, assignments, scope_label=scope.name)
+        return len(assignments), len(dispatches)
 
     def list_my_settlements(self, db: Session, profile: Profile) -> MySettlementsResponse:
         self._auto_confirm_due_assignments(db)
@@ -1066,7 +1122,7 @@ class SettlementService:
 
         for (scope_type, scope_id, payer_profile_id), grouped_assignments in payer_groups.items():
             payer = profiles.get(payer_profile_id)
-            if payer is None or not payer.is_active or not payer.pick_reminder_email_enabled or not payer.auth_user_id:
+            if payer is None or not payer.is_active or not payer.auth_user_id:
                 continue
             pending_total = sum((assignment.amount for assignment in grouped_assignments), start=Decimal("0.00"))
             rejected_count = sum(1 for assignment in grouped_assignments if assignment.status == SettlementStatus.REJECTED)
@@ -1122,7 +1178,7 @@ class SettlementService:
 
         for (scope_type, scope_id, payee_profile_id), grouped_assignments in payee_groups.items():
             payee = profiles.get(payee_profile_id)
-            if payee is None or not payee.is_active or not payee.pick_reminder_email_enabled or not payee.auth_user_id:
+            if payee is None or not payee.is_active or not payee.auth_user_id:
                 continue
             incoming_total = sum((assignment.amount for assignment in grouped_assignments), start=Decimal("0.00"))
             current_scope_label = scope_label_map.get((scope_type, scope_id), "tu competencia")
