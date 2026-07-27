@@ -3642,7 +3642,10 @@ def sync_admin_results(
 ) -> SyncResponse:
     response = SyncResponse(**sync_results(db, get_results_provider(), matchday_id=matchday_id))
     if matchday_id is not None:
-        recalculate_matchday_scoring_inline(db, matchday_id=matchday_id)
+        background_tasks.add_task(
+            run_scoring_and_vip_recalculate_for_matchday_background,
+            matchday_id,
+        )
     else:
         background_tasks.add_task(run_scoring_recalculate_background)
         background_tasks.add_task(run_all_vip_recalculate_background)
