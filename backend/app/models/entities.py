@@ -258,6 +258,12 @@ class Season(Base):
     weekly_second_place_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
     weekly_third_place_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
     admin_commission_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
+    commission_recipient_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    commission_allocations: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     reserve_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     first_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     second_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
@@ -1190,6 +1196,12 @@ class SettlementConfig(Base):
     scope_id: Mapped[str] = mapped_column(UUID_SQL, nullable=False, index=True)
     max_payment_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
     confirmation_window_hours: Mapped[int] = mapped_column(Integer, default=24, nullable=False)
+    commission_recipient_profile_id: Mapped[str | None] = mapped_column(
+        UUID_SQL,
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+    commission_allocations: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     created_by_profile_id: Mapped[str | None] = mapped_column(
         UUID_SQL,
         ForeignKey("profiles.id", ondelete="SET NULL"),

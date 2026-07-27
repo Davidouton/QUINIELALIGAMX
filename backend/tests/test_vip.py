@@ -18,11 +18,13 @@ from app.models.entities import (
     Season,
     SeasonMembership,
     SettlementAssignment,
+    SettlementConfig,
     SettlementStatus,
     UserPick,
     VipMembership,
     VipMembershipStatus,
     VipCompetition,
+    VipStanding,
 )
 from app.services.settlement_service import SettlementService
 
@@ -145,8 +147,8 @@ def test_admin_can_create_vip_and_approve_request_with_leaderboard() -> None:
                 "entry_fee_amount": 750,
                 "admin_commission_pct": 10,
                 "first_place_pct": 50,
-                "second_place_pct": 30,
-                "third_place_pct": 20,
+                "second_place_pct": 25,
+                "third_place_pct": 15,
                 "matchday_ids": [MATCHDAY_ID, second_matchday_id],
                 "is_active": True,
             },
@@ -215,9 +217,9 @@ def test_admin_can_create_vip_and_approve_request_with_leaderboard() -> None:
         assert approved_payload["gross_pool_amount"] == 1500
         assert approved_payload["admin_commission_amount"] == 150
         assert approved_payload["distributable_prize_pool_amount"] == 1350
-        assert approved_payload["first_place_amount"] == 675
-        assert approved_payload["second_place_amount"] == 405
-        assert approved_payload["third_place_amount"] == 270
+        assert approved_payload["first_place_amount"] == 750
+        assert approved_payload["second_place_amount"] == 375
+        assert approved_payload["third_place_amount"] == 225
         assert approved_payload["remaining_pool_amount"] == 0
 
     app.dependency_overrides.clear()
@@ -233,7 +235,7 @@ def test_admin_can_create_vip_and_approve_request_with_leaderboard() -> None:
         assert len(public_payload) == 1
         assert public_payload[0]["my_membership"]["status"] == "approved"
         assert public_payload[0]["leaderboard"][0]["rank_position"] == 1
-        assert public_payload[0]["first_place_amount"] == 675
+        assert public_payload[0]["first_place_amount"] == 750
 
     app.dependency_overrides.clear()
 
@@ -267,8 +269,8 @@ def test_admin_cannot_create_vip_with_mixed_season_matchdays(admin_client: TestC
             "entry_fee_amount": 300,
             "admin_commission_pct": 10,
             "first_place_pct": 50,
-            "second_place_pct": 30,
-            "third_place_pct": 20,
+            "second_place_pct": 25,
+            "third_place_pct": 15,
             "matchday_ids": [MATCHDAY_ID, second_matchday_id],
             "is_active": True,
         },
@@ -514,7 +516,7 @@ def test_admin_can_run_team_winner_vip_draw_and_mark_eliminated(admin_client: Te
             "name": "Equipo ganador",
             "entry_fee_amount": 100,
             "admin_commission_pct": 10,
-            "first_place_pct": 100,
+            "first_place_pct": 90,
             "second_place_pct": 0,
             "third_place_pct": 0,
             "matchday_ids": [],
@@ -640,7 +642,7 @@ def test_admin_can_run_question_pool_vip_and_score_answers(admin_client: TestCli
             "name": "VIP FINAL WC 2026",
             "entry_fee_amount": 150,
             "admin_commission_pct": 10,
-            "first_place_pct": 100,
+            "first_place_pct": 90,
             "second_place_pct": 0,
             "third_place_pct": 0,
             "matchday_ids": [],
@@ -860,5 +862,66 @@ def test_vip_becomes_settled_when_all_assignments_are_confirmed() -> None:
         SettlementService()._sync_vip_lifecycle_status(db, vip.id)
         db.refresh(vip)
         assert vip.lifecycle_status == "settled"
+    finally:
+        db.close()
+
+
+def test_vip_split_includes_gross_prize_and_admin_commission_recipient() -> None:
+    db = SessionLocal()
+    try:
+        vip = VipCompetition(
+            season_id=SEASON_ID,
+            name="VIP formula completa",
+            entry_fee_amount=150,
+            admin_commission_pct=25,
+            first_place_pct=75,
+            is_active=False,
+        )
+        db.add(vip)
+        db.flush()
+        db.add_all(
+            [
+                VipMembership(
+                    vip_competition_id=vip.id,
+                    profile_id=PROFILE_USER_ID,
+                    status=VipMembershipStatus.APPROVED,
+                ),
+                VipMembership(
+                    vip_competition_id=vip.id,
+                    profile_id=PROFILE_LEADER_ID,
+                    status=VipMembershipStatus.APPROVED,
+                ),
+                VipStanding(
+                    vip_competition_id=vip.id,
+                    profile_id=PROFILE_USER_ID,
+                    total_points=10,
+                    correct_results=2,
+                    exact_scores=1,
+                    rank_position=1,
+                ),
+                VipStanding(
+                    vip_competition_id=vip.id,
+                    profile_id=PROFILE_LEADER_ID,
+                    total_points=5,
+                    correct_results=1,
+                    exact_scores=0,
+                    rank_position=2,
+                ),
+                SettlementConfig(
+                    scope_type=PaymentScopeType.VIP,
+                    scope_id=vip.id,
+                    max_payment_amount=1_000_000,
+                    confirmation_window_hours=24,
+                    commission_recipient_profile_id=PROFILE_USER_ID,
+                ),
+            ]
+        )
+        db.commit()
+
+        participants = SettlementService()._build_vip_participants(db, vip)
+        by_profile = {row.profile_id: row for row in participants}
+        assert by_profile[PROFILE_USER_ID].prize_amount == 300
+        assert by_profile[PROFILE_USER_ID].net_amount == 150
+        assert by_profile[PROFILE_LEADER_ID].net_amount == -150
     finally:
         db.close()

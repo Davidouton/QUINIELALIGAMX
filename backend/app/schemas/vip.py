@@ -177,9 +177,9 @@ class AdminVipUpsertRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_prize_distribution(self) -> "AdminVipUpsertRequest":
-        payout_pct = self.first_place_pct + self.second_place_pct + self.third_place_pct
+        payout_pct = self.admin_commission_pct + self.first_place_pct + self.second_place_pct + self.third_place_pct
         if payout_pct > 100:
-            raise ValueError("La suma de 1er, 2do y 3er lugar no puede rebasar 100%")
+            raise ValueError("La suma de comision y premios no puede rebasar 100%")
         if self.competition_kind == "matchday" and not self.matchday_ids:
             raise ValueError("Selecciona al menos una jornada para la VIP")
         if self.competition_kind in {"team_winner", "question_pool"} and not self.season_id:

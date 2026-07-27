@@ -1343,6 +1343,10 @@ def get_admin_settings_payload(
         weekly_total_prize_amount=float(weekly_total_prize_amount),
         tournament_matchdays_count=tournament_matchdays_count,
         admin_commission_pct=float(admin_commission_pct),
+        commission_recipient_profile_id=(
+            target_season.commission_recipient_profile_id if target_season is not None else None
+        ),
+        commission_allocations=(target_season.commission_allocations if target_season is not None else []),
         reserve_pct=float(reserve_pct),
         first_place_pct=float(first_place_pct),
         second_place_pct=float(second_place_pct),
@@ -2193,6 +2197,43 @@ def update_admin_settings(
             detail="La suma de porcentajes de premios finales no puede exceder 100",
         )
 
+    if update_prizes and payload.prize_scope == "season":
+        seen_commission_profiles: set[str] = set()
+        for allocation in payload.commission_allocations:
+            commission_recipient = db.get(Profile, allocation.profile_id)
+            if (
+                commission_recipient is None
+                or commission_recipient.role_code not in {RoleCode.ADMIN, RoleCode.MASTER_ADMIN}
+                or allocation.profile_id in seen_commission_profiles
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cada comisión debe tener un administrador válido y no repetido",
+                )
+            seen_commission_profiles.add(allocation.profile_id)
+        confirmed_count = sum(
+            1
+            for membership in season_membership_repo.list_for_season(db, season.id)
+            if membership.is_active
+        )
+        expected_commission = (
+            Decimal(confirmed_count)
+            * Decimal(str(payload.entry_fee_amount))
+            * (Decimal(str(payload.admin_commission_pct)) / Decimal("100"))
+        ).quantize(Decimal("0.01"))
+        allocated_commission = sum(
+            (Decimal(str(allocation.amount)) for allocation in payload.commission_allocations),
+            Decimal("0"),
+        ).quantize(Decimal("0.01"))
+        if payload.commission_allocations and allocated_commission != expected_commission:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Los montos de comisión deben sumar ${expected_commission:,.2f}; "
+                    f"actualmente suman ${allocated_commission:,.2f}"
+                ),
+            )
+
     if update_pricing:
         if payload.entry_fee_amount <= 0:
             raise HTTPException(
@@ -2246,6 +2287,13 @@ def update_admin_settings(
         season.weekly_second_place_amount = Decimal(str(payload.weekly_second_place_amount))
         season.weekly_third_place_amount = Decimal(str(payload.weekly_third_place_amount))
         season.admin_commission_pct = Decimal(str(payload.admin_commission_pct))
+        season.commission_allocations = [
+            {"profile_id": allocation.profile_id, "amount": float(Decimal(str(allocation.amount)).quantize(Decimal("0.01")))}
+            for allocation in payload.commission_allocations
+        ]
+        season.commission_recipient_profile_id = (
+            payload.commission_allocations[0].profile_id if len(payload.commission_allocations) == 1 else None
+        )
         season.reserve_pct = Decimal(str(payload.reserve_pct))
         season.first_place_pct = Decimal(str(payload.first_place_pct))
         season.second_place_pct = Decimal(str(payload.second_place_pct))

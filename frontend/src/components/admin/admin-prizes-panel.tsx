@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminSettings, Season } from "@/types/api";
+import type { AdminSettings, AdminUser, Season } from "@/types/api";
 
 type PrizeFormState = {
   entry_fee_amount: string;
@@ -12,6 +12,7 @@ type PrizeFormState = {
   weekly_second_place_amount: string;
   weekly_third_place_amount: string;
   admin_commission_pct: string;
+  commission_allocations: { profile_id: string; amount: string }[];
   reserve_pct: string;
   first_place_pct: string;
   second_place_pct: string;
@@ -24,6 +25,7 @@ const initialForm: PrizeFormState = {
   weekly_second_place_amount: "0",
   weekly_third_place_amount: "0",
   admin_commission_pct: "0",
+  commission_allocations: [],
   reserve_pct: "0",
   first_place_pct: "0",
   second_place_pct: "0",
@@ -37,6 +39,7 @@ function mapSettingsToPrizeForm(settings: AdminSettings): PrizeFormState {
     weekly_second_place_amount: String(settings.weekly_second_place_amount),
     weekly_third_place_amount: String(settings.weekly_third_place_amount),
     admin_commission_pct: String(settings.admin_commission_pct),
+    commission_allocations: settings.commission_allocations.map((row) => ({ profile_id: row.profile_id, amount: String(row.amount) })),
     reserve_pct: String(settings.reserve_pct),
     first_place_pct: String(settings.first_place_pct),
     second_place_pct: String(settings.second_place_pct),
@@ -47,6 +50,7 @@ function mapSettingsToPrizeForm(settings: AdminSettings): PrizeFormState {
 export function AdminPrizesPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [prizeScope, setPrizeScope] = useState<"season" | "survivor">("season");
   const [form, setForm] = useState<PrizeFormState>(initialForm);
@@ -59,13 +63,15 @@ export function AdminPrizesPanel() {
     const accessToken = await getBrowserAccessToken();
     const params = new URLSearchParams({ prize_scope: scope });
     if (seasonId) params.set("season_id", seasonId);
-    const [seasonRows, settingsResponse] = await Promise.all([
+    const [seasonRows, settingsResponse, userRows] = await Promise.all([
       backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<AdminSettings>(`/admin/settings?${params.toString()}`, accessToken),
+      backendFetch<AdminUser[]>("/admin/users", accessToken),
     ]);
 
     setSeasons(seasonRows);
     setSettings(settingsResponse);
+    setAdminUsers(userRows.filter((row) => row.role_code === "admin" || row.role_code === "master_admin"));
     setSelectedSeasonId(settingsResponse.selected_season_id ?? settingsResponse.active_season_id ?? "");
     setPrizeScope(settingsResponse.prize_scope);
     setForm(mapSettingsToPrizeForm(settingsResponse));
@@ -119,6 +125,9 @@ export function AdminPrizesPanel() {
           weekly_second_place_amount: Number(form.weekly_second_place_amount),
           weekly_third_place_amount: Number(form.weekly_third_place_amount),
           admin_commission_pct: Number(form.admin_commission_pct),
+          commission_allocations: prizeScope === "season"
+            ? form.commission_allocations.map((row) => ({ ...row, amount: Number(row.amount) }))
+            : [],
           reserve_pct: Number(form.reserve_pct),
           first_place_pct: Number(form.first_place_pct),
           second_place_pct: Number(form.second_place_pct),
@@ -256,6 +265,26 @@ export function AdminPrizesPanel() {
                 required
               />
             </label>
+
+            {prizeScope === "season" ? (
+              <div className="space-y-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-steel">Distribución de comisión</span>
+                  <button type="button" className="secondary-button" onClick={() => setForm((current) => ({ ...current, commission_allocations: [...current.commission_allocations, { profile_id: "", amount: "" }] }))}>+ Administrador</button>
+                </div>
+                {form.commission_allocations.map((allocation, index) => (
+                  <div key={`${index}-${allocation.profile_id}`} className="grid gap-2 sm:grid-cols-[1fr_140px_auto]">
+                    <select value={allocation.profile_id} onChange={(event) => setForm((current) => ({ ...current, commission_allocations: current.commission_allocations.map((row, rowIndex) => rowIndex === index ? { ...row, profile_id: event.target.value } : row) }))} className="field-control">
+                      <option value="">Selecciona administrador</option>
+                      {adminUsers.map((admin) => <option key={admin.id} value={admin.id}>{admin.display_name}{admin.bank_name ? ` · ${admin.bank_name}` : " · sin banco"}</option>)}
+                    </select>
+                    <input type="number" min="0.01" step="0.01" placeholder="Monto" value={allocation.amount} onChange={(event) => setForm((current) => ({ ...current, commission_allocations: current.commission_allocations.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row) }))} className="field-control" />
+                    <button type="button" className="secondary-button" onClick={() => setForm((current) => ({ ...current, commission_allocations: current.commission_allocations.filter((_, rowIndex) => rowIndex !== index) }))}>Quitar</button>
+                  </div>
+                ))}
+                <p className="text-xs text-steel">Asignado: {formatMoney(form.commission_allocations.reduce((sum, row) => sum + Number(row.amount || 0), 0))} de {formatMoney(settings?.admin_commission_amount ?? 0)}</p>
+              </div>
+            ) : null}
 
             <label className="grid grid-cols-[1fr_auto] items-center gap-4 py-2">
               <span className="text-sm text-steel">% reserva</span>

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminVipCompetition, Season, SettlementGeneratedScope, SettlementScopeSummary } from "@/types/api";
+import type { AdminUser, AdminVipCompetition, Season, SettlementGeneratedScope, SettlementScopeSummary } from "@/types/api";
 
 type ScopeType = "season" | "vip";
 
@@ -39,11 +39,16 @@ export function AdminPaymentsPanel() {
   const [scopeType, setScopeType] = useState<ScopeType>("season");
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [vips, setVips] = useState<AdminVipCompetition[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [selectedScopeId, setSelectedScopeId] = useState("");
   const [summary, setSummary] = useState<SettlementScopeSummary | null>(null);
   const [generatedScopes, setGeneratedScopes] = useState<SettlementGeneratedScope[]>([]);
   const [selectedPayerIds, setSelectedPayerIds] = useState<string[]>([]);
-  const [configDraft, setConfigDraft] = useState({ max_payment_amount: "5000", confirmation_window_hours: "24" });
+  const [configDraft, setConfigDraft] = useState({
+    max_payment_amount: "5000",
+    confirmation_window_hours: "24",
+    commission_allocations: [] as { profile_id: string; amount: string }[],
+  });
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
@@ -57,14 +62,16 @@ export function AdminPaymentsPanel() {
       setError(null);
       try {
         const accessToken = await getBrowserAccessToken();
-        const [seasonRows, vipRows, generatedRows] = await Promise.all([
+        const [seasonRows, vipRows, generatedRows, userRows] = await Promise.all([
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<AdminVipCompetition[]>("/admin/vip?include_leaderboard=true", accessToken),
           backendFetch<SettlementGeneratedScope[]>("/payments/settlements/admin/generated", accessToken),
+          backendFetch<AdminUser[]>("/admin/users", accessToken),
         ]);
         setSeasons(seasonRows);
         setVips(vipRows);
         setGeneratedScopes(generatedRows);
+        setAdminUsers(userRows.filter((row) => row.role_code === "admin" || row.role_code === "master_admin"));
         const searchParams = new URLSearchParams(window.location.search);
         const requestedScopeType = searchParams.get("scope_type") === "vip" ? "vip" : "season";
         const requestedScopeId = searchParams.get("scope_id") ?? "";
@@ -120,6 +127,10 @@ export function AdminPaymentsPanel() {
       setConfigDraft({
         max_payment_amount: String(response.config.max_payment_amount || 5000),
         confirmation_window_hours: String(response.config.confirmation_window_hours || 24),
+        commission_allocations: response.config.commission_allocations.map((row) => ({
+          profile_id: row.profile_id,
+          amount: String(row.amount),
+        })),
       });
       const defaultPayers =
         response.selected_payer_profile_ids.length > 0
@@ -143,6 +154,9 @@ export function AdminPaymentsPanel() {
     () => availableScopes.find((row) => row.id === selectedScopeId) ?? null,
     [availableScopes, selectedScopeId],
   );
+  const selectedVip = scopeType === "vip"
+    ? vips.find((row) => row.id === selectedScopeId) ?? null
+    : null;
 
   function togglePayer(profileId: string) {
     setSelectedPayerIds((current) =>
@@ -167,6 +181,9 @@ export function AdminPaymentsPanel() {
             scope_id: selectedScopeId,
             max_payment_amount: Number(configDraft.max_payment_amount),
             confirmation_window_hours: Number(configDraft.confirmation_window_hours),
+            commission_allocations: scopeType === "vip"
+              ? configDraft.commission_allocations.map((row) => ({ ...row, amount: Number(row.amount) }))
+              : [],
           }),
         },
       );
@@ -181,6 +198,11 @@ export function AdminPaymentsPanel() {
 
   async function handleGenerateSplit() {
     if (!selectedScopeId) return;
+    const allocatedCommission = configDraft.commission_allocations.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    if (selectedVip && Math.abs(allocatedCommission - selectedVip.admin_commission_amount) >= 0.01) {
+      setError(`Distribuye exactamente ${formatMoney(selectedVip.admin_commission_amount)} de comisión antes de generar el split.`);
+      return;
+    }
     const hasExistingAssignments = Boolean(summary?.assignments.length);
     if (
       hasExistingAssignments
@@ -205,6 +227,9 @@ export function AdminPaymentsPanel() {
             scope_id: selectedScopeId,
             max_payment_amount: Number(configDraft.max_payment_amount),
             confirmation_window_hours: Number(configDraft.confirmation_window_hours),
+            commission_allocations: scopeType === "vip"
+              ? configDraft.commission_allocations.map((row) => ({ ...row, amount: Number(row.amount) }))
+              : [],
           }),
         },
       );
@@ -225,6 +250,10 @@ export function AdminPaymentsPanel() {
       setConfigDraft({
         max_payment_amount: String(response.config.max_payment_amount),
         confirmation_window_hours: String(response.config.confirmation_window_hours),
+        commission_allocations: response.config.commission_allocations.map((row) => ({
+          profile_id: row.profile_id,
+          amount: String(row.amount),
+        })),
       });
       setGeneratedScopes(
         await backendFetch<SettlementGeneratedScope[]>("/payments/settlements/admin/generated", accessToken),
@@ -273,6 +302,37 @@ export function AdminPaymentsPanel() {
               </optgroup>
             </select>
           </label>
+          {scopeType === "vip" ? (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-steel">Distribución de comisión administrativa</span>
+                <button type="button" className="secondary-button" onClick={() => setConfigDraft((current) => ({
+                  ...current,
+                  commission_allocations: [...current.commission_allocations, { profile_id: "", amount: "" }],
+                }))}>+ Administrador</button>
+              </div>
+              {configDraft.commission_allocations.map((allocation, index) => (
+                <div key={`${index}-${allocation.profile_id}`} className="grid gap-2 sm:grid-cols-[1fr_150px_auto]">
+                  <select value={allocation.profile_id} onChange={(event) => setConfigDraft((current) => ({
+                    ...current,
+                    commission_allocations: current.commission_allocations.map((row, rowIndex) => rowIndex === index ? { ...row, profile_id: event.target.value } : row),
+                  }))} className="field-control">
+                    <option value="">Selecciona administrador</option>
+                    {adminUsers.map((admin) => <option key={admin.id} value={admin.id}>{admin.display_name}{admin.bank_name ? ` · ${admin.bank_name}` : " · sin banco"}</option>)}
+                  </select>
+                  <input type="number" min="0.01" step="0.01" placeholder="Monto" value={allocation.amount} onChange={(event) => setConfigDraft((current) => ({
+                    ...current,
+                    commission_allocations: current.commission_allocations.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row),
+                  }))} className="field-control" />
+                  <button type="button" className="secondary-button" onClick={() => setConfigDraft((current) => ({
+                    ...current,
+                    commission_allocations: current.commission_allocations.filter((_, rowIndex) => rowIndex !== index),
+                  }))}>Quitar</button>
+                </div>
+              ))}
+              {selectedVip ? <p className="text-xs text-steel">Asignado: {formatMoney(configDraft.commission_allocations.reduce((sum, row) => sum + Number(row.amount || 0), 0))} de {formatMoney(selectedVip.admin_commission_amount)}</p> : null}
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block space-y-2 text-sm">
               <span className="text-steel">Monto máximo por pago</span>
@@ -411,14 +471,17 @@ export function AdminPaymentsPanel() {
             </div>
 
             <div className="android-scroll-x">
-              <table className="min-w-[1180px] w-full table-fixed text-left text-[12px] text-ink">
+              <table className="min-w-[1420px] w-full table-fixed text-left text-[12px] text-ink">
                 <thead className="app-table-head">
                   <tr>
                     <th className="px-3 py-3">Paga</th>
                     <th className="px-3 py-3">Jugador</th>
                     <th className="px-3 py-3">Pos.</th>
                     <th className="px-3 py-3">Pts</th>
-                    <th className="px-3 py-3">Premio</th>
+                    <th className="px-3 py-3">Premio final</th>
+                    <th className="px-3 py-3">Premios jornada</th>
+                    <th className="px-3 py-3">Comisión admin</th>
+                    <th className="px-3 py-3">Total premios</th>
                     <th className="px-3 py-3">Adeudo</th>
                     <th className="px-3 py-3">Neto</th>
                     <th className="px-3 py-3">Banco</th>
@@ -443,7 +506,10 @@ export function AdminPaymentsPanel() {
                       <td className="px-3 py-3 font-medium">{participant.display_name}</td>
                       <td className="px-3 py-3">{participant.rank_position ? `#${participant.rank_position}` : "-"}</td>
                       <td className="px-3 py-3">{participant.total_points}</td>
-                      <td className="px-3 py-3">{formatMoney(participant.prize_amount)}</td>
+                      <td className="px-3 py-3">{formatMoney(participant.final_prize_amount)}</td>
+                      <td className="px-3 py-3">{formatMoney(participant.weekly_prize_amount)}</td>
+                      <td className="px-3 py-3">{formatMoney(participant.admin_commission_amount)}</td>
+                      <td className="px-3 py-3 font-medium">{formatMoney(participant.prize_amount)}</td>
                       <td className="px-3 py-3">{formatMoney(participant.pending_entry_amount)}</td>
                       <td className={`px-3 py-3 font-semibold ${participant.net_amount > 0 ? "text-moss" : participant.net_amount < 0 ? "text-coral" : "text-ink"}`}>
                         {participant.net_amount > 0

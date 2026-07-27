@@ -556,6 +556,9 @@ export interface SettlementConfig {
   scope_id: string;
   max_payment_amount: number;
   confirmation_window_hours: number;
+  commission_recipient_profile_id: string | null;
+  commission_recipient_display_name: string | null;
+  commission_allocations: CommissionAllocation[];
   created_by_profile_id: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -567,6 +570,9 @@ export interface SettlementParticipant {
   rank_position: number | null;
   total_points: number;
   prize_amount: number;
+  weekly_prize_amount: number;
+  final_prize_amount: number;
+  admin_commission_amount: number;
   pending_entry_amount: number;
   net_amount: number;
   is_payer_candidate: boolean;
@@ -576,6 +582,12 @@ export interface SettlementParticipant {
   deposit_account: string | null;
   modality: string | null;
   aval_display_name: string | null;
+}
+
+export interface CommissionAllocation {
+  profile_id: string;
+  amount: number;
+  display_name?: string | null;
 }
 
 export interface SettlementAssignment {
@@ -1611,6 +1623,8 @@ export interface AdminSettings {
   weekly_total_prize_amount: number;
   tournament_matchdays_count: number;
   admin_commission_pct: number;
+  commission_recipient_profile_id: string | null;
+  commission_allocations: CommissionAllocation[];
   reserve_pct: number;
   first_place_pct: number;
   second_place_pct: number;

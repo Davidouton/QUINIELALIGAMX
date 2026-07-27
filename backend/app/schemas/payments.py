@@ -21,6 +21,12 @@ SettlementStatusLiteral = Literal[
 ]
 
 
+class CommissionAllocation(BaseModel):
+    profile_id: str
+    amount: float = Field(gt=0, le=99_999_999.99)
+    display_name: str | None = None
+
+
 class PricingRuleOut(BaseModel):
     id: str
     scope_type: PaymentScopeTypeLiteral
@@ -118,6 +124,9 @@ class SettlementConfigOut(BaseModel):
     scope_id: str
     max_payment_amount: float
     confirmation_window_hours: int
+    commission_recipient_profile_id: str | None = None
+    commission_recipient_display_name: str | None = None
+    commission_allocations: list[CommissionAllocation] = Field(default_factory=list)
     created_by_profile_id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -128,6 +137,8 @@ class SettlementConfigUpdateRequest(BaseModel):
     scope_id: str
     max_payment_amount: float = Field(gt=0, le=99_999_999.99)
     confirmation_window_hours: int = Field(ge=1, le=168)
+    commission_recipient_profile_id: str | None = None
+    commission_allocations: list[CommissionAllocation] = Field(default_factory=list, max_length=20)
 
 
 class SettlementParticipantOut(BaseModel):
@@ -136,6 +147,9 @@ class SettlementParticipantOut(BaseModel):
     rank_position: int | None = None
     total_points: int = 0
     prize_amount: float = 0
+    weekly_prize_amount: float = 0
+    final_prize_amount: float = 0
+    admin_commission_amount: float = 0
     pending_entry_amount: float = 0
     net_amount: float = 0
     is_payer_candidate: bool = False

@@ -213,6 +213,13 @@ def run_startup_migrations() -> None:
                 "admin_commission_pct": (
                     "ALTER TABLE seasons ADD COLUMN admin_commission_pct NUMERIC(5,2) NOT NULL DEFAULT 0"
                 ),
+                "commission_recipient_profile_id": (
+                    "ALTER TABLE seasons ADD COLUMN commission_recipient_profile_id UUID "
+                    "REFERENCES profiles(id) ON DELETE SET NULL"
+                ),
+                "commission_allocations": (
+                    "ALTER TABLE seasons ADD COLUMN commission_allocations JSON NOT NULL DEFAULT '[]'"
+                ),
                 "reserve_pct": (
                     "ALTER TABLE seasons ADD COLUMN reserve_pct NUMERIC(5,2) NOT NULL DEFAULT 0"
                 ),
@@ -697,6 +704,8 @@ def run_startup_migrations() -> None:
                       scope_id UUID NOT NULL,
                       max_payment_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
                       confirmation_window_hours INTEGER NOT NULL DEFAULT 24,
+                      commission_recipient_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+                      commission_allocations JSON NOT NULL DEFAULT '[]',
                       created_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
                       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
@@ -715,6 +724,31 @@ def run_startup_migrations() -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS idx_settlement_configs_scope_id "
                     "ON settlement_configs(scope_id)"
+                )
+            )
+        else:
+            settlement_config_column_names = {
+                column["name"] for column in inspector.get_columns("settlement_configs")
+            }
+            if "commission_recipient_profile_id" not in settlement_config_column_names:
+                connection.execute(
+                    text(
+                        "ALTER TABLE settlement_configs "
+                        "ADD COLUMN commission_recipient_profile_id UUID "
+                        "REFERENCES profiles(id) ON DELETE SET NULL"
+                    )
+                )
+            if "commission_allocations" not in settlement_config_column_names:
+                connection.execute(
+                    text(
+                        "ALTER TABLE settlement_configs "
+                        "ADD COLUMN commission_allocations JSON NOT NULL DEFAULT '[]'"
+                    )
+                )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS idx_settlement_configs_commission_recipient "
+                    "ON settlement_configs(commission_recipient_profile_id)"
                 )
             )
 

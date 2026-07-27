@@ -219,6 +219,12 @@ class AdminPickRowOut(BaseModel):
     updated_at: datetime | None = None
 
 
+class AdminCommissionAllocation(BaseModel):
+    profile_id: str
+    amount: float = Field(gt=0, le=99_999_999.99)
+    display_name: str | None = None
+
+
 class AdminSettingsOut(BaseModel):
     active_season_id: str | None = None
     selected_season_id: str | None = None
@@ -240,6 +246,8 @@ class AdminSettingsOut(BaseModel):
     weekly_total_prize_amount: float = 0
     tournament_matchdays_count: int = 0
     admin_commission_pct: float = 0
+    commission_recipient_profile_id: str | None = None
+    commission_allocations: list[AdminCommissionAllocation] = Field(default_factory=list)
     reserve_pct: float = 0
     first_place_pct: float = 0
     second_place_pct: float = 0
@@ -272,6 +280,8 @@ class AdminSettingsUpdateRequest(BaseModel):
     weekly_second_place_amount: float = Field(default=0, ge=0, le=1000000)
     weekly_third_place_amount: float = Field(default=0, ge=0, le=1000000)
     admin_commission_pct: float = Field(default=0, ge=0, le=100)
+    commission_recipient_profile_id: str | None = None
+    commission_allocations: list[AdminCommissionAllocation] = Field(default_factory=list, max_length=20)
     reserve_pct: float = Field(default=0, ge=0, le=100)
     first_place_pct: float = Field(default=0, ge=0, le=100)
     second_place_pct: float = Field(default=0, ge=0, le=100)

@@ -13,6 +13,7 @@ from app.models.entities import (
     Matchday,
     PaymentScopeType,
     Profile,
+    RoleCode,
     Season,
     SeasonMembership,
     SettlementAssignment,
@@ -52,6 +53,9 @@ class ParticipantSnapshot:
     rank_position: int | None
     total_points: int
     prize_amount: Decimal
+    weekly_prize_amount: Decimal
+    final_prize_amount: Decimal
+    admin_commission_amount: Decimal
     pending_entry_amount: Decimal
     net_amount: Decimal
     contact_phone: str | None
@@ -146,6 +150,34 @@ class SettlementService:
         row = self._get_or_create_config(db, scope_type_enum, payload.scope_id, create=True, current_profile=current_profile)
         row.max_payment_amount = self._to_money(payload.max_payment_amount)
         row.confirmation_window_hours = payload.confirmation_window_hours
+        if scope_type_enum == PaymentScopeType.VIP:
+            seen_profile_ids: set[str] = set()
+            allocations: list[dict[str, str | float]] = []
+            for allocation in payload.commission_allocations:
+                recipient = db.get(Profile, allocation.profile_id)
+                if (
+                    recipient is None
+                    or recipient.role_code not in {RoleCode.ADMIN, RoleCode.MASTER_ADMIN}
+                    or allocation.profile_id in seen_profile_ids
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Cada comisión debe tener un administrador válido y no repetido.",
+                    )
+                seen_profile_ids.add(allocation.profile_id)
+                allocations.append({"profile_id": allocation.profile_id, "amount": float(self._to_money(allocation.amount))})
+            expected_commission = self._expected_commission_amount(db, scope_type_enum, payload.scope_id)
+            allocated_commission = self._to_money(sum((Decimal(str(item["amount"])) for item in allocations), Decimal("0")))
+            if allocated_commission != expected_commission:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Los montos de comisión deben sumar {self._format_money(expected_commission)}; "
+                        f"actualmente suman {self._format_money(allocated_commission)}."
+                    ),
+                )
+            row.commission_allocations = allocations
+            row.commission_recipient_profile_id = allocations[0]["profile_id"] if len(allocations) == 1 else None
         db.add(row)
         db.commit()
         db.refresh(row)
@@ -161,6 +193,22 @@ class SettlementService:
         scope_type_enum = self._supported_scope_type(payload.scope_type)
         selected_payer_profile_ids = list(dict.fromkeys(payload.payer_profile_ids))
         scope_label, participants = self._build_participants(db, scope_type_enum, payload.scope_id)
+        if scope_type_enum == PaymentScopeType.SEASON:
+            season = self._ensure_scope_exists(db, scope_type_enum, payload.scope_id)
+            assert isinstance(season, Season)
+            expected_commission = self._expected_commission_amount(db, scope_type_enum, payload.scope_id)
+            allocated_commission = self._to_money(sum(
+                (Decimal(str(item.get("amount", 0))) for item in (season.commission_allocations or [])),
+                Decimal("0"),
+            ))
+            if allocated_commission != expected_commission:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Distribuye la comisión administrativa completa antes de generar: "
+                        f"{self._format_money(allocated_commission)} de {self._format_money(expected_commission)}."
+                    ),
+                )
         participant_by_id = {participant.profile_id: participant for participant in participants}
         invalid_payers = [
             profile_id
@@ -450,6 +498,9 @@ class SettlementService:
                 rank_position=participant.rank_position,
                 total_points=participant.total_points,
                 prize_amount=float(participant.prize_amount),
+                weekly_prize_amount=float(participant.weekly_prize_amount),
+                final_prize_amount=float(participant.final_prize_amount),
+                admin_commission_amount=float(participant.admin_commission_amount),
                 pending_entry_amount=float(participant.pending_entry_amount),
                 net_amount=float(participant.net_amount),
                 is_payer_candidate=participant.net_amount < 0,
@@ -531,13 +582,22 @@ class SettlementService:
             settings["second_place_amount"],
             settings["third_place_amount"],
         )
+        weekly_prize_by_profile: dict[str, Decimal] = {}
+        for matchday in self.leaderboard_service.list_weekly_prizes(db, season.id):
+            for winner in matchday.winners:
+                weekly_prize_by_profile[winner.profile_id] = self._to_money(
+                    weekly_prize_by_profile.get(winner.profile_id, Decimal("0.00"))
+                    + Decimal(str(winner.prize_amount))
+                )
 
         participants: list[ParticipantSnapshot] = []
         for entry in leaderboard:
             profile = profile_map.get(entry.profile_id)
             membership = memberships.get(entry.profile_id)
             pending_entry_amount = Decimal("0.00") if membership and membership.is_paid else settings["entry_fee_amount"]
-            prize_amount = self._to_money(prize_shares.get(entry.profile_id, Decimal("0.00")))
+            final_prize_amount = self._to_money(prize_shares.get(entry.profile_id, Decimal("0.00")))
+            weekly_prize_amount = weekly_prize_by_profile.get(entry.profile_id, Decimal("0.00"))
+            prize_amount = self._to_money(final_prize_amount + weekly_prize_amount)
             participants.append(
                 ParticipantSnapshot(
                     profile_id=entry.profile_id,
@@ -545,6 +605,9 @@ class SettlementService:
                     rank_position=entry.rank_position,
                     total_points=entry.total_points,
                     prize_amount=prize_amount,
+                    weekly_prize_amount=weekly_prize_amount,
+                    final_prize_amount=final_prize_amount,
+                    admin_commission_amount=Decimal("0.00"),
                     pending_entry_amount=self._to_money(pending_entry_amount),
                     net_amount=self._to_money(prize_amount - pending_entry_amount),
                     contact_phone=profile.contact_phone if profile is not None else None,
@@ -554,6 +617,10 @@ class SettlementService:
                     aval_display_name=aval_name_map.get(profile.aval_profile_id) if profile is not None and profile.aval_profile_id else None,
                 )
             )
+        allocations = season.commission_allocations or []
+        if not allocations and season.commission_recipient_profile_id:
+            allocations = [{"profile_id": season.commission_recipient_profile_id, "amount": float(settings["admin_commission_amount"])}]
+        self._apply_commission_allocations(db, participants, allocations)
         return participants
 
     def _build_vip_participants(self, db: Session, vip: VipCompetition) -> list[ParticipantSnapshot]:
@@ -587,6 +654,9 @@ class SettlementService:
                     rank_position=entry.rank_position,
                     total_points=entry.total_points,
                     prize_amount=prize_amount,
+                    weekly_prize_amount=Decimal("0.00"),
+                    final_prize_amount=prize_amount,
+                    admin_commission_amount=Decimal("0.00"),
                     pending_entry_amount=self._to_money(pending_entry_amount),
                     net_amount=self._to_money(prize_amount - pending_entry_amount),
                     contact_phone=profile.contact_phone if profile is not None else None,
@@ -596,7 +666,53 @@ class SettlementService:
                     aval_display_name=aval_name_map.get(profile.aval_profile_id) if profile is not None and profile.aval_profile_id else None,
                 )
             )
+
+        config_row = self._get_or_create_config(db, PaymentScopeType.VIP, vip.id, create=False)
+        allocations = config_row.commission_allocations if config_row is not None else []
+        if not allocations and config_row is not None and config_row.commission_recipient_profile_id:
+            allocations = [{"profile_id": config_row.commission_recipient_profile_id, "amount": float(vip_row.admin_commission_amount)}]
+        self._apply_commission_allocations(db, participants, allocations)
         return participants
+
+    def _apply_commission_allocations(
+        self,
+        db: Session,
+        participants: list[ParticipantSnapshot],
+        allocations: list[dict],
+    ) -> None:
+        for allocation in allocations:
+            profile_id = str(allocation.get("profile_id") or "")
+            amount = self._to_money(allocation.get("amount") or 0)
+            if not profile_id or amount <= 0:
+                continue
+            existing = next((row for row in participants if row.profile_id == profile_id), None)
+            if existing is not None:
+                existing.prize_amount = self._to_money(existing.prize_amount + amount)
+                existing.admin_commission_amount = self._to_money(existing.admin_commission_amount + amount)
+                existing.net_amount = self._to_money(existing.net_amount + amount)
+                continue
+            profile = db.get(Profile, profile_id)
+            if profile is None:
+                continue
+            participants.append(
+                ParticipantSnapshot(
+                    profile_id=profile.id,
+                    display_name=f"{profile.display_name} · Comision admin",
+                    rank_position=None,
+                    total_points=0,
+                    prize_amount=amount,
+                    weekly_prize_amount=Decimal("0.00"),
+                    final_prize_amount=Decimal("0.00"),
+                    admin_commission_amount=amount,
+                    pending_entry_amount=Decimal("0.00"),
+                    net_amount=amount,
+                    contact_phone=profile.contact_phone,
+                    bank_name=profile.bank_name,
+                    deposit_account=profile.deposit_account,
+                    modality=profile.modality,
+                    aval_display_name=None,
+                )
+            )
 
     def _season_prize_settings(self, db: Session, season: Season) -> dict[str, Decimal]:
         matchdays = list(
@@ -633,6 +749,7 @@ class SettlementService:
         )
         return {
             "entry_fee_amount": entry_fee_amount,
+            "admin_commission_amount": admin_commission_amount,
             "first_place_amount": self._to_money(
                 distributable_prize_pool_amount * (Decimal(season.first_place_pct) / Decimal("100"))
             ),
@@ -643,6 +760,20 @@ class SettlementService:
                 distributable_prize_pool_amount * (Decimal(season.third_place_pct) / Decimal("100"))
             ),
         }
+
+    def _expected_commission_amount(
+        self,
+        db: Session,
+        scope_type: PaymentScopeType,
+        scope_id: str,
+    ) -> Decimal:
+        scope = self._ensure_scope_exists(db, scope_type, scope_id)
+        if scope_type == PaymentScopeType.SEASON:
+            assert isinstance(scope, Season)
+            return self._season_prize_settings(db, scope)["admin_commission_amount"]
+        assert isinstance(scope, VipCompetition)
+        vip_row = next(iter(self.vip_service.list_admin_vips(db, include_leaderboard=False, vip_id=scope.id)), None)
+        return self._to_money(vip_row.admin_commission_amount if vip_row is not None else 0)
 
     def _assignment_outs(
         self,
@@ -1058,12 +1189,21 @@ class SettlementService:
                 scope_id=scope_id,
                 max_payment_amount=float(DEFAULT_MAX_PAYMENT_AMOUNT),
                 confirmation_window_hours=DEFAULT_CONFIRMATION_WINDOW_HOURS,
+                commission_allocations=[],
             )
         return SettlementConfigOut(
             scope_type=row.scope_type.value,
             scope_id=row.scope_id,
             max_payment_amount=float(row.max_payment_amount),
             confirmation_window_hours=row.confirmation_window_hours,
+            commission_recipient_profile_id=row.commission_recipient_profile_id,
+            commission_allocations=[
+                {
+                    "profile_id": item["profile_id"],
+                    "amount": float(item["amount"]),
+                }
+                for item in (row.commission_allocations or [])
+            ],
             created_by_profile_id=row.created_by_profile_id,
             created_at=row.created_at,
             updated_at=row.updated_at,

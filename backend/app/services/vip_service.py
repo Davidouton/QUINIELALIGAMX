@@ -2244,7 +2244,7 @@ class VipService:
         memberships: list[VipMembership],
         team_entries: list[VipTeamWinnerEntry] | None = None,
     ) -> Decimal:
-        return self._distributable_prize_pool_amount(vip, memberships, team_entries) * (vip.first_place_pct / Decimal("100"))
+        return self._gross_pool_amount(vip, memberships, team_entries) * (vip.first_place_pct / Decimal("100"))
 
     def _second_place_amount(
         self,
@@ -2252,7 +2252,7 @@ class VipService:
         memberships: list[VipMembership],
         team_entries: list[VipTeamWinnerEntry] | None = None,
     ) -> Decimal:
-        return self._distributable_prize_pool_amount(vip, memberships, team_entries) * (vip.second_place_pct / Decimal("100"))
+        return self._gross_pool_amount(vip, memberships, team_entries) * (vip.second_place_pct / Decimal("100"))
 
     def _third_place_amount(
         self,
@@ -2260,7 +2260,7 @@ class VipService:
         memberships: list[VipMembership],
         team_entries: list[VipTeamWinnerEntry] | None = None,
     ) -> Decimal:
-        return self._distributable_prize_pool_amount(vip, memberships, team_entries) * (vip.third_place_pct / Decimal("100"))
+        return self._gross_pool_amount(vip, memberships, team_entries) * (vip.third_place_pct / Decimal("100"))
 
     def _remaining_pool_amount(
         self,
