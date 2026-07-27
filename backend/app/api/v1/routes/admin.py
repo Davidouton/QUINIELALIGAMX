@@ -2137,6 +2137,9 @@ def update_admin_settings(
         season.start_matchday_id = None
         season.participants_lock_at = None
 
+    if season.survivor_enabled:
+        season.survivor_registration_lock_at = season.participants_lock_at
+
     if payload.end_matchday_id:
         end_matchday = matchday_repo.get_by_id(db, payload.end_matchday_id)
         if end_matchday is None:
@@ -2245,11 +2248,12 @@ def create_season(
             live_dashboard_enabled=False,
             is_active=payload.is_active,
             registration_closed=payload.registration_closed,
+            participants_lock_at=payload.participants_lock_at,
             survivor_enabled=payload.survivor_enabled,
             survivor_name=normalize_optional_text(payload.survivor_name),
             survivor_max_lives=payload.survivor_max_lives,
-            survivor_registration_closed=payload.survivor_registration_closed,
-            survivor_registration_lock_at=payload.survivor_registration_lock_at,
+            survivor_registration_closed=payload.registration_closed if payload.survivor_enabled else False,
+            survivor_registration_lock_at=payload.participants_lock_at if payload.survivor_enabled else None,
         ),
     )
     db.flush()
@@ -2325,11 +2329,12 @@ def update_season(
     season.live_dashboard_enabled = False
     season.is_active = False if is_archiving else payload.is_active
     season.registration_closed = True if is_archiving else payload.registration_closed
+    season.participants_lock_at = payload.participants_lock_at
     season.survivor_enabled = payload.survivor_enabled
     season.survivor_name = normalize_optional_text(payload.survivor_name)
     season.survivor_max_lives = payload.survivor_max_lives
-    season.survivor_registration_closed = True if is_archiving else payload.survivor_registration_closed
-    season.survivor_registration_lock_at = payload.survivor_registration_lock_at
+    season.survivor_registration_closed = True if is_archiving else (payload.registration_closed if payload.survivor_enabled else False)
+    season.survivor_registration_lock_at = payload.participants_lock_at if payload.survivor_enabled else None
     season_repo.save(db, season)
     if season.is_active:
         set_active_season(db, season)
@@ -2987,6 +2992,8 @@ def delete_matchday(
         if season.start_matchday_id == matchday.id:
             season.start_matchday_id = None
             season.participants_lock_at = None
+            if season.survivor_enabled:
+                season.survivor_registration_lock_at = None
         if season.end_matchday_id == matchday.id:
             season.end_matchday_id = None
         db.add(season)

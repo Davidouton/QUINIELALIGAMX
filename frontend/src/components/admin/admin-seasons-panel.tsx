@@ -14,11 +14,10 @@ type SeasonFormState = {
   visibility_status: SeasonVisibilityStatus;
   is_active: boolean;
   registration_closed: boolean;
+  participants_lock_at: string;
   survivor_enabled: boolean;
   survivor_name: string;
   survivor_max_lives: string;
-  survivor_registration_closed: boolean;
-  survivor_registration_lock_at: string;
 };
 
 const initialSeasonForm: SeasonFormState = {
@@ -29,11 +28,10 @@ const initialSeasonForm: SeasonFormState = {
   visibility_status: "testing",
   is_active: false,
   registration_closed: false,
+  participants_lock_at: "",
   survivor_enabled: false,
   survivor_name: "",
   survivor_max_lives: "1",
-  survivor_registration_closed: false,
-  survivor_registration_lock_at: "",
 };
 
 function getStructureLabel(competition: Competition | null | undefined) {
@@ -50,6 +48,17 @@ function getSeasonStatusPresentation(status: SeasonVisibilityStatus) {
   if (status === "live") return { label: "Live", dotClass: "bg-moss" };
   if (status === "closed") return { label: "Cerrada", dotClass: "bg-coral" };
   return { label: "Archivada", dotClass: "bg-steel" };
+}
+
+function toDatetimeLocalValue(value: string | null | undefined) {
+  if (!value) return "";
+  const date = new Date(value);
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function toUtcIsoValue(value: string) {
+  return value ? new Date(value).toISOString() : null;
 }
 
 export function AdminSeasonsPanel() {
@@ -115,7 +124,7 @@ export function AdminSeasonsPanel() {
           competition_id: seasonForm.competition_id,
           survivor_name: seasonForm.survivor_name || null,
           survivor_max_lives: Number(seasonForm.survivor_max_lives || 1),
-          survivor_registration_lock_at: seasonForm.survivor_registration_lock_at || null,
+          participants_lock_at: toUtcIsoValue(seasonForm.participants_lock_at),
         }),
       });
       await loadSeasons();
@@ -149,8 +158,7 @@ export function AdminSeasonsPanel() {
           survivor_enabled: season.survivor_enabled,
           survivor_name: season.survivor_name,
           survivor_max_lives: season.survivor_max_lives,
-          survivor_registration_closed: season.survivor_registration_closed,
-          survivor_registration_lock_at: season.survivor_registration_lock_at,
+          participants_lock_at: season.participants_lock_at,
         }),
       });
       await loadSeasons();
@@ -162,8 +170,8 @@ export function AdminSeasonsPanel() {
     }
   }
 
-  async function handleToggleRegistration(season: Season, target: "season" | "survivor") {
-    const savingKey = `${target}:${season.id}`;
+  async function handleToggleRegistration(season: Season) {
+    const savingKey = `registration:${season.id}`;
     setSaving(savingKey);
     setError(null);
     setMessage(null);
@@ -179,24 +187,18 @@ export function AdminSeasonsPanel() {
           tournament_format: season.tournament_format,
           visibility_status: season.visibility_status,
           is_active: season.is_active,
-          registration_closed: target === "season" ? !season.registration_closed : season.registration_closed,
+          registration_closed: !season.registration_closed,
           survivor_enabled: season.survivor_enabled,
           survivor_name: season.survivor_name,
           survivor_max_lives: season.survivor_max_lives,
-          survivor_registration_closed:
-            target === "survivor" ? !season.survivor_registration_closed : season.survivor_registration_closed,
-          survivor_registration_lock_at: season.survivor_registration_lock_at,
+          participants_lock_at: season.participants_lock_at,
         }),
       });
       await loadSeasons();
       setMessage(
-        target === "season"
-          ? season.registration_closed
-            ? `Registro de liga abierto: ${season.name}.`
-            : `Registro de liga cerrado: ${season.name}.`
-          : season.survivor_registration_closed
-            ? `Registro de survivor abierto: ${season.name}.`
-            : `Registro de survivor cerrado: ${season.name}.`,
+        season.registration_closed
+          ? `Inscripciones abiertas: ${season.name}.`
+          : `Inscripciones cerradas: ${season.name}.`,
       );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar el bloqueo de registro");
@@ -228,8 +230,7 @@ export function AdminSeasonsPanel() {
           survivor_enabled: season.survivor_enabled,
           survivor_name: season.survivor_name,
           survivor_max_lives: season.survivor_max_lives,
-          survivor_registration_closed: true,
-          survivor_registration_lock_at: season.survivor_registration_lock_at,
+          participants_lock_at: season.participants_lock_at,
         }),
       });
       await loadSeasons();
@@ -367,7 +368,21 @@ export function AdminSeasonsPanel() {
                 setSeasonForm((current) => ({ ...current, registration_closed: event.target.checked }))
               }
             />
-            Cerrar registro de la liga
+            Cerrar inscripciones de Quiniela y Survivor
+          </label>
+          <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
+            Cierre de inscripciones
+            <input
+              type="datetime-local"
+              value={seasonForm.participants_lock_at}
+              onChange={(event) =>
+                setSeasonForm((current) => ({ ...current, participants_lock_at: event.target.value }))
+              }
+              className="field-control mt-2 w-full normal-case tracking-normal md:max-w-md"
+            />
+            <span className="block text-xs font-normal normal-case tracking-normal text-steel">
+              Esta fecha aplica tanto a la Quiniela como a Survivor.
+            </span>
           </label>
           </section>
 
@@ -387,44 +402,28 @@ export function AdminSeasonsPanel() {
               Habilitar survivor en esta temporada
             </label>
             {seasonForm.survivor_enabled ? <div className="grid gap-4 md:grid-cols-2">
-              <input
-                value={seasonForm.survivor_name}
-                onChange={(event) => setSeasonForm((current) => ({ ...current, survivor_name: event.target.value }))}
-                placeholder="Survivor Liga MX"
-                className="field-control"
-                disabled={!seasonForm.survivor_enabled}
-              />
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={seasonForm.survivor_max_lives}
-                onChange={(event) =>
-                  setSeasonForm((current) => ({ ...current, survivor_max_lives: event.target.value }))
-                }
-                className="field-control"
-                disabled={!seasonForm.survivor_enabled}
-              />
-              <label className="flex items-center gap-3 text-sm text-ink">
+              <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
+                Nombre de Survivor
                 <input
-                  type="checkbox"
-                  checked={seasonForm.survivor_registration_closed}
-                  onChange={(event) =>
-                    setSeasonForm((current) => ({ ...current, survivor_registration_closed: event.target.checked }))
-                  }
-                  disabled={!seasonForm.survivor_enabled}
+                  value={seasonForm.survivor_name}
+                  onChange={(event) => setSeasonForm((current) => ({ ...current, survivor_name: event.target.value }))}
+                  placeholder="Survivor Leagues Cup"
+                  className="field-control mt-2 w-full normal-case tracking-normal"
                 />
-                Cerrar registro de survivor
               </label>
-              <input
-                type="datetime-local"
-                value={seasonForm.survivor_registration_lock_at}
-                onChange={(event) =>
-                  setSeasonForm((current) => ({ ...current, survivor_registration_lock_at: event.target.value }))
-                }
-                className="field-control"
-                disabled={!seasonForm.survivor_enabled}
-              />
+              <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
+                Número de vidas
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={seasonForm.survivor_max_lives}
+                  onChange={(event) =>
+                    setSeasonForm((current) => ({ ...current, survivor_max_lives: event.target.value }))
+                  }
+                  className="field-control mt-2 w-full normal-case tracking-normal"
+                />
+              </label>
             </div> : null}
           </section>
           <button type="submit" disabled={saving === "season"} className="app-pill-active px-4 disabled:opacity-60">
@@ -509,14 +508,8 @@ export function AdminSeasonsPanel() {
                   </td>
                   <td className="px-3 py-3 text-steel">
                     <div className="flex flex-col gap-1">
-                      <span>{season.registration_closed ? "Liga cerrada" : "Liga abierta"}</span>
-                      <span>
-                        {season.survivor_enabled
-                          ? season.survivor_registration_closed
-                            ? "Survivor cerrado"
-                            : "Survivor abierto"
-                          : "Survivor off"}
-                      </span>
+                      <span>{season.registration_closed ? "Inscripciones cerradas" : "Inscripciones abiertas"}</span>
+                      <span>{season.participants_lock_at ? `Cierre: ${new Date(season.participants_lock_at).toLocaleString("es-MX")}` : "Sin fecha de cierre"}</span>
                     </div>
                   </td>
                   <td className="px-3 py-3 text-steel">
@@ -539,14 +532,15 @@ export function AdminSeasonsPanel() {
                             tournament_format: season.tournament_format,
                             visibility_status: season.visibility_status,
                             is_active: season.is_active,
-                            registration_closed: season.registration_closed,
+                            registration_closed:
+                              season.registration_closed ||
+                              (season.survivor_enabled && season.survivor_registration_closed),
+                            participants_lock_at: toDatetimeLocalValue(
+                              season.participants_lock_at ?? season.survivor_registration_lock_at,
+                            ),
                             survivor_enabled: season.survivor_enabled,
                             survivor_name: season.survivor_name ?? "",
                             survivor_max_lives: String(season.survivor_max_lives ?? 1),
-                            survivor_registration_closed: season.survivor_registration_closed,
-                            survivor_registration_lock_at: season.survivor_registration_lock_at
-                              ? season.survivor_registration_lock_at.slice(0, 16)
-                              : "",
                           });
                         }}
                         className="app-pill h-9 min-w-[76px] px-3 text-[11px]"
@@ -575,30 +569,16 @@ export function AdminSeasonsPanel() {
       ) : null}
                       <button
                         type="button"
-                        onClick={() => void handleToggleRegistration(season, "season")}
+                        onClick={() => void handleToggleRegistration(season)}
                         disabled={Boolean(saving)}
                         className="app-pill h-9 min-w-[104px] px-3 text-[11px]"
       >
-        {saving === `season:${season.id}`
+        {saving === `registration:${season.id}`
                           ? "..."
                           : season.registration_closed
-                            ? "Abrir registro"
-                            : "Cerrar registro"}
+                            ? "Abrir inscripciones"
+                            : "Cerrar inscripciones"}
                       </button>
-                      {season.survivor_enabled ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleToggleRegistration(season, "survivor")}
-                          disabled={Boolean(saving)}
-                          className="app-pill h-9 min-w-[120px] px-3 text-[11px]"
-                        >
-                          {saving === `survivor:${season.id}`
-                            ? "..."
-                            : season.survivor_registration_closed
-                              ? "Abrir survivor"
-                              : "Cerrar survivor"}
-                          </button>
-                      ) : null}
                     </div>
                   </td>
                 </tr>

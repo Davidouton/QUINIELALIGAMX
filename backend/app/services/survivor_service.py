@@ -637,7 +637,7 @@ class SurvivorService:
         return season.tournament_format == "standard" or bool(season.survivor_enabled)
 
     def _registration_open(self, db: Session, season: Season) -> bool:
-        if season.survivor_registration_closed:
+        if season.registration_closed or season.survivor_registration_closed:
             return False
         lock_at = self._get_registration_lock(season)
         if lock_at is None:
@@ -648,7 +648,8 @@ class SurvivorService:
 
     @staticmethod
     def _get_registration_lock(season: Season) -> datetime | None:
-        return ensure_utc(season.survivor_registration_lock_at) if season.survivor_registration_lock_at else None
+        lock_at = season.participants_lock_at or season.survivor_registration_lock_at
+        return ensure_utc(lock_at) if lock_at else None
 
     @staticmethod
     def _is_match_locked(match: Match) -> bool:
