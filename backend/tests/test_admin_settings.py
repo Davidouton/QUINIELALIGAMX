@@ -349,6 +349,41 @@ def test_admin_create_user_does_not_auto_join_selected_season(
     assert membership is None
 
 
+def test_admin_can_create_user_without_season(
+    admin_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_user_id = str(uuid4())
+    email = f"cuenta-global-{uuid4().hex}@example.com"
+
+    class FakeSupabaseAdminService:
+        def invite_user(self, *, email: str, display_name: str) -> AuthUser:
+            return AuthUser(
+                auth_user_id=auth_user_id,
+                email=email,
+                raw_claims={"user_metadata": {"display_name": display_name}},
+            )
+
+    monkeypatch.setattr(admin_routes, "supabase_admin_service", FakeSupabaseAdminService())
+
+    response = admin_client.post(
+        "/api/v1/admin/users",
+        json={
+            "email": email,
+            "display_name": "Cuenta Global",
+            "is_active": True,
+            "is_paid": False,
+            "modality": "pre_pago",
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["selected_season_membership"] is None
+    assert payload["season_memberships"] == []
+
+
 def test_admin_can_update_user_password(
     admin_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

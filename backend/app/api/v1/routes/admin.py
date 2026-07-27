@@ -1707,9 +1707,14 @@ def create_or_update_admin_user(
     if not display_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nombre requerido")
 
-    season = season_repo.get_by_id(db, payload.season_id)
-    if season is None:
+    season = season_repo.get_by_id(db, payload.season_id) if payload.season_id else None
+    if payload.season_id and season is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+    if season is None and (payload.season_membership_active or payload.is_paid):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selecciona una temporada para dar alta o registrar pago",
+        )
 
     modality = normalize_optional_text(payload.modality) or "pre_pago"
     if modality not in {"pre_pago", "aval"}:
@@ -1771,15 +1776,17 @@ def create_or_update_admin_user(
     db.add(profile)
     db.flush()
 
-    did_freeze = season_eligibility_service.freeze_season_if_due(db, season)
-    if did_freeze:
-        db.flush()
-        db.refresh(season)
+    membership = None
+    if season is not None:
+        did_freeze = season_eligibility_service.freeze_season_if_due(db, season)
+        if did_freeze:
+            db.flush()
+            db.refresh(season)
 
-    membership = season_membership_repo.get_for_profile_and_season(db, profile.id, season.id)
-    should_manage_membership = membership is not None or payload.season_membership_active or payload.is_paid
-    if membership is None and should_manage_membership:
-        membership = SeasonMembership(season_id=season.id, profile_id=profile.id)
+        membership = season_membership_repo.get_for_profile_and_season(db, profile.id, season.id)
+        should_manage_membership = membership is not None or payload.season_membership_active or payload.is_paid
+        if membership is None and should_manage_membership:
+            membership = SeasonMembership(season_id=season.id, profile_id=profile.id)
     if membership is not None:
         membership.is_active = payload.season_membership_active
         membership.is_paid = payload.is_paid

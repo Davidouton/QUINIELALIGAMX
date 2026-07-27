@@ -34,7 +34,7 @@ class AdminUserCreateRequest(BaseModel):
     display_name: str
     username: str | None = Field(default=None, min_length=3, max_length=24)
     password: str | None = Field(default=None, min_length=6, max_length=72)
-    season_id: str
+    season_id: str | None = None
     is_active: bool = True
     season_membership_active: bool = False
     is_paid: bool = False

@@ -183,10 +183,9 @@ export function AdminUsersPanel() {
     ]);
     setMe(meResponse);
     const visibleSeasons = seasonRows;
-    const defaultSeasonId = visibleSeasons.find((season) => season.is_active)?.id ?? visibleSeasons[0]?.id ?? "";
     setSeasons(visibleSeasons);
-    setSelectedSeasonId(defaultSeasonId);
-    await loadUsers(defaultSeasonId, accessToken);
+    setSelectedSeasonId("");
+    await loadUsers("", accessToken);
   }
 
   useEffect(() => {
@@ -205,6 +204,13 @@ export function AdminUsersPanel() {
 
   async function handleSeasonChange(seasonId: string) {
     setSelectedSeasonId(seasonId);
+    if (!seasonId) {
+      setNewUserDraft((current) => ({
+        ...current,
+        season_membership_active: false,
+        is_paid: false,
+      }));
+    }
     setError(null);
     setMessage(null);
     setLoading(true);
@@ -397,10 +403,6 @@ export function AdminUsersPanel() {
   }
 
   async function handleCreateUser() {
-    if (!selectedSeasonId) {
-      setError("Selecciona un torneo primero.");
-      return;
-    }
     if (!newUserDraft.email.trim() || !newUserDraft.display_name.trim() || !newUserDraft.username.trim()) {
       setError("Captura nombre, usuario y correo.");
       return;
@@ -422,7 +424,7 @@ export function AdminUsersPanel() {
           display_name: newUserDraft.display_name.trim(),
           username: newUserDraft.username.trim(),
           password: newUserDraft.password.trim() || null,
-          season_id: selectedSeasonId,
+          season_id: selectedSeasonId || null,
           is_active: true,
           season_membership_active: newUserDraft.season_membership_active,
           is_paid: newUserDraft.is_paid,
@@ -434,9 +436,9 @@ export function AdminUsersPanel() {
       setNewUserDraft(initialNewUserDraft);
       await loadUsers(selectedSeasonId, accessToken);
       setMessage(
-        newUserDraft.season_membership_active
+        selectedSeasonId && newUserDraft.season_membership_active
           ? `${createdUser.display_name}: usuario creado y dado de alta en ${selectedSeason?.name ?? "el torneo"}.`
-          : `${createdUser.display_name}: usuario creado sin meterlo todavia a ${selectedSeason?.name ?? "ese torneo"}.`,
+          : `${createdUser.display_name}: cuenta creada sin membresía de torneo.`,
       );
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo crear el usuario");
@@ -753,7 +755,7 @@ export function AdminUsersPanel() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">
-              Accesos por temporada
+              Usuarios
             </h2>
           </div>
           <div className="flex items-center gap-3">
@@ -785,8 +787,8 @@ export function AdminUsersPanel() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="px-4 py-3">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Torneo seleccionado</p>
-          <p className="mt-2 text-lg font-semibold text-ink">{selectedSeason?.name ?? "Sin torneo"}</p>
+          <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Contexto</p>
+          <p className="mt-2 text-lg font-semibold text-ink">{selectedSeason?.name ?? "Todos los usuarios"}</p>
         </div>
         <div className="px-4 py-3">
           <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Con acceso a la app</p>
@@ -890,6 +892,7 @@ export function AdminUsersPanel() {
                 checked={newUserDraft.season_membership_active}
                 onChange={(event) => updateNewUserDraft({ season_membership_active: event.target.checked })}
                 type="checkbox"
+                disabled={!selectedSeasonId}
                 className="h-4 w-4 accent-emerald-400"
               />
               Alta torneo
@@ -899,6 +902,7 @@ export function AdminUsersPanel() {
                 checked={newUserDraft.is_paid}
                 onChange={(event) => updateNewUserDraft({ is_paid: event.target.checked })}
                 type="checkbox"
+                disabled={!selectedSeasonId}
                 className="h-4 w-4 accent-emerald-400"
               />
               Pagado
@@ -906,7 +910,7 @@ export function AdminUsersPanel() {
             <button
               type="button"
               onClick={() => void handleCreateUser()}
-              disabled={savingKey === "create-user" || loading || !selectedSeasonId}
+              disabled={savingKey === "create-user" || loading}
               className={actionPositiveClass}
             >
               {savingKey === "create-user" ? "Creando..." : "Crear usuario"}
@@ -1006,8 +1010,8 @@ export function AdminUsersPanel() {
                   className="field-control"
                   disabled={loading || seasons.length === 0}
                 >
-                  <option value="" disabled>
-                    {loading ? "Cargando..." : "Selecciona torneo"}
+                  <option value="">
+                    {loading ? "Cargando..." : "Todos los usuarios"}
                   </option>
                   {seasons.map((season) => (
                     <option key={season.id} value={season.id}>
@@ -1018,8 +1022,10 @@ export function AdminUsersPanel() {
               </label>
             </div>
             <div className="px-2 pb-2 text-[10px] text-steel/80">
-              La temporada del selector define el alta, pago, Survivor y puntaje que ves y editas en la tabla.
-              {!selectedSeasonSupportsSurvivor ? " Survivor esta deshabilitado para este torneo." : ""}
+              {selectedSeason
+                ? "La temporada seleccionada habilita sus controles de alta, pago, Survivor y puntaje."
+                : "Vista general de cuentas. Selecciona una temporada para administrar sus membresías."}
+              {selectedSeason && !selectedSeasonSupportsSurvivor ? " Survivor esta deshabilitado para este torneo." : ""}
             </div>
             <table className="admin-users-table min-w-[1240px] table-fixed text-left text-[11px] text-steel">
               <colgroup>
@@ -1057,6 +1063,21 @@ export function AdminUsersPanel() {
                     aval_profile_id: user.aval_profile_id ?? "",
                   };
                   const passwordDraft = passwordDrafts[user.id] ?? { password: "" };
+                  const activeMembershipCount = user.season_memberships.filter((item) => item.is_active).length;
+                  const statusItems: Array<[string, string, boolean]> = selectedSeason
+                    ? [
+                        ["Rol", getRoleTableLabel(user.role_code), user.role_code === "master_admin" || user.role_code === "admin"],
+                        ["App", user.is_active ? "Activa" : "Bloq.", user.is_active],
+                        ["Torneo", getMembershipStateLabel(membership?.is_active), Boolean(membership?.is_active)],
+                        ["Survivor", getSurvivorStateLabel(survivorMembership?.is_active), Boolean(survivorMembership?.is_active)],
+                        ["Pago", getPaymentStateLabel(membership?.is_paid), Boolean(membership?.is_paid)],
+                        ["Puntúa", getScoringStateLabel(membership?.eligible_for_scoring), Boolean(membership?.eligible_for_scoring)],
+                      ]
+                    : [
+                        ["Rol", getRoleTableLabel(user.role_code), user.role_code === "master_admin" || user.role_code === "admin"],
+                        ["App", user.is_active ? "Activa" : "Bloq.", user.is_active],
+                        ["Torneos", `${activeMembershipCount} activo${activeMembershipCount === 1 ? "" : "s"}`, activeMembershipCount > 0],
+                      ];
                   const avalOptions = users
                     .filter((optionUser) => optionUser.id !== user.id)
                     .sort((left, right) => left.display_name.localeCompare(right.display_name));
@@ -1070,14 +1091,7 @@ export function AdminUsersPanel() {
                       </td>
                       <td className="px-4 py-4 align-top">
                         <div className="grid grid-cols-2 gap-x-5 gap-y-3">
-                          {[
-                            ["Rol", getRoleTableLabel(user.role_code), user.role_code === "master_admin" || user.role_code === "admin"],
-                            ["App", user.is_active ? "Activa" : "Bloq.", user.is_active],
-                            ["Torneo", getMembershipStateLabel(membership?.is_active), Boolean(membership?.is_active)],
-                            ["Survivor", getSurvivorStateLabel(survivorMembership?.is_active), Boolean(survivorMembership?.is_active)],
-                            ["Pago", getPaymentStateLabel(membership?.is_paid), Boolean(membership?.is_paid)],
-                            ["Puntúa", getScoringStateLabel(membership?.eligible_for_scoring), Boolean(membership?.eligible_for_scoring)],
-                          ].map(([label, value, positive]) => (
+                          {statusItems.map(([label, value, positive]) => (
                             <div key={String(label)} className="min-w-0">
                               <p className="text-[9px] uppercase tracking-[0.12em] text-steel/70">{String(label)}</p>
                               <p className={`mt-1 truncate text-[10px] font-semibold uppercase ${getTrafficTextClass(Boolean(positive))}`}>
@@ -1181,10 +1195,10 @@ export function AdminUsersPanel() {
                                 ? "Bloquear"
                                 : "Activar"}
                           </button>
-                          <button
+                          {selectedSeasonId ? <button
                             type="button"
                             onClick={() => void handleTogglePayment(user)}
-                            disabled={savingKey === `payment:${user.id}` || !selectedSeasonId}
+                            disabled={savingKey === `payment:${user.id}`}
                             className={paymentActionClass}
                             title={membership?.is_paid ? "Marcar pago pendiente" : "Marcar pago como confirmado"}
                           >
@@ -1193,11 +1207,11 @@ export function AdminUsersPanel() {
                               : membership?.is_paid
                                 ? "Pago pend."
                                 : "Marcar pag."}
-                          </button>
-                          <button
+                          </button> : null}
+                          {selectedSeasonId ? <button
                             type="button"
                             onClick={() => void handleToggleMembership(user)}
-                            disabled={savingKey === `membership:${user.id}` || !selectedSeasonId}
+                            disabled={savingKey === `membership:${user.id}`}
                             className={membershipActionClass}
                             title={membership?.is_active ? "Quitar del torneo" : "Dar de alta en el torneo"}
                           >
@@ -1206,13 +1220,12 @@ export function AdminUsersPanel() {
                               : membership?.is_active
                                 ? "Quitar"
                                 : "Dar alta"}
-                          </button>
-                          <button
+                          </button> : null}
+                          {selectedSeasonId ? <button
                             type="button"
                             onClick={() => void handleToggleSurvivorMembership(user)}
                             disabled={
                               savingKey === `survivor:${user.id}` ||
-                              !selectedSeasonId ||
                               !selectedSeasonSupportsSurvivor
                             }
                             className={survivorActionClass}
@@ -1229,7 +1242,7 @@ export function AdminUsersPanel() {
                               : survivorMembership?.is_active
                                 ? "Quitar surv."
                                 : "Alta surv."}
-                          </button>
+                          </button> : null}
                           <button
                             type="button"
                             onClick={() => void handleDeleteUser(user)}
