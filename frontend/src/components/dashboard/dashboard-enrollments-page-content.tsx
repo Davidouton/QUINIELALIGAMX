@@ -9,7 +9,7 @@ import { useDevMode } from "@/components/layout/dev-mode-provider";
 import { isSeasonLive, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { VipStatusIcon } from "@/components/vip/vip-page-content";
-import type { AppBootstrap, Me, RegisteredUserOption, Season, SurvivorBoard, VipCompetition } from "@/types/api";
+import type { AppBootstrap, Me, MembershipHistoryEntry, RegisteredUserOption, Season, SurvivorBoard, VipCompetition } from "@/types/api";
 
 type EnrollmentState = {
   me: Me | null;
@@ -17,6 +17,7 @@ type EnrollmentState = {
   selectedSeason: Season | null;
   survivorBoards: Record<string, SurvivorBoard>;
   vipCompetitions: VipCompetition[];
+  membershipHistory: MembershipHistoryEntry[];
   avalDisplayName: string | null;
 };
 
@@ -26,6 +27,7 @@ const initialState: EnrollmentState = {
   selectedSeason: null,
   survivorBoards: {},
   vipCompetitions: [],
+  membershipHistory: [],
   avalDisplayName: null,
 };
 
@@ -144,6 +146,11 @@ export function DashboardEnrollmentsPageContent() {
               cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
             }).catch(() => [])
           : [];
+        const membershipHistory = accessToken
+          ? await backendFetch<MembershipHistoryEntry[]>("/me/membership-history", accessToken, {
+              cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
+            }).catch(() => [])
+          : [];
         const registeredUsers =
           accessToken && bootstrap.me.aval_profile_id
             ? await backendFetch<RegisteredUserOption[]>("/me/registered-users", accessToken, {
@@ -184,6 +191,7 @@ export function DashboardEnrollmentsPageContent() {
           selectedSeason,
           survivorBoards,
           vipCompetitions: vipRows,
+          membershipHistory,
           avalDisplayName:
             bootstrap.me.aval_profile_id
               ? registeredUsers.find((user) => user.id === bootstrap.me.aval_profile_id)?.display_name ?? null
@@ -627,6 +635,29 @@ export function DashboardEnrollmentsPageContent() {
           </>
         ) : (
           <p className="mt-5 border-y border-white/10 py-5 text-sm text-steel">No hay nuevas inscripciones disponibles.</p>
+        )}
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-steel">Tu historial</h2>
+        {state.membershipHistory.length ? (
+          <div className="mt-5 border-y border-white/10 divide-y divide-white/10">
+            {state.membershipHistory.map((entry) => (
+              <div key={`${entry.membership_type}-${entry.id}`} className="grid gap-2 py-4 sm:grid-cols-[130px_minmax(0,1fr)_130px_180px] sm:items-center">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-steel">
+                  {entry.membership_type === "quiniela" ? "Quiniela" : entry.membership_type === "survivor" ? "Survivor" : "VIP"}
+                </p>
+                <div>
+                  <p className="font-semibold text-ink">{entry.name}</p>
+                  {entry.season_name !== entry.name ? <p className="mt-1 text-xs text-steel">{entry.season_name}</p> : null}
+                </div>
+                <p className="text-sm font-semibold text-ink">{entry.status}</p>
+                <p className="text-sm text-steel">{formatMexicoDateTime(entry.joined_at) ?? "Fecha no disponible"}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-5 border-y border-white/10 py-5 text-sm text-steel">Todavía no tienes inscripciones.</p>
         )}
       </section>
 

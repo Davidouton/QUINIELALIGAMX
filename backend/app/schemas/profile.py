@@ -84,6 +84,17 @@ class RegisteredUserOption(BaseModel):
     username: str | None = None
 
 
+class MembershipHistoryEntryOut(BaseModel):
+    id: str
+    membership_type: Literal["quiniela", "survivor", "vip"]
+    name: str
+    season_name: str
+    status: str
+    is_paid: bool | None = None
+    joined_at: datetime | None = None
+    season_visibility_status: str | None = None
+
+
 class PrizeSummaryResponse(BaseModel):
     season_id: str | None = None
     season_name: str | None = None

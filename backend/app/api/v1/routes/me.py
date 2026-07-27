@@ -1,11 +1,20 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_profile
 from app.core.database import get_db
-from app.models.entities import Profile, Season, SeasonMembership, SeasonVisibilityStatus
+from app.models.entities import (
+    Profile,
+    Season,
+    SeasonMembership,
+    SeasonVisibilityStatus,
+    SurvivorMembership,
+    VipCompetition,
+    VipMembership,
+)
 from app.repositories.season_membership_repository import SeasonMembershipRepository
 from app.schemas.dashboard import DashboardHomeOut
 from app.repositories.team_repository import TeamRepository
@@ -14,6 +23,7 @@ from app.schemas.profile import (
     DashboardSummaryResponse,
     MeResponse,
     MeUpdateRequest,
+    MembershipHistoryEntryOut,
     PersonalTrophyOut,
     PrizeSummaryResponse,
     RegisteredUserOption,
@@ -97,6 +107,73 @@ def get_registered_users(
     current_profile: Profile = Depends(get_current_profile),
 ) -> list[RegisteredUserOption]:
     return service.list_registered_user_options(db, current_profile)
+
+
+@router.get("/me/membership-history", response_model=list[MembershipHistoryEntryOut])
+def get_membership_history(
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> list[MembershipHistoryEntryOut]:
+    entries: list[MembershipHistoryEntryOut] = []
+
+    season_rows = db.execute(
+        select(SeasonMembership, Season)
+        .join(Season, Season.id == SeasonMembership.season_id)
+        .where(SeasonMembership.profile_id == current_profile.id)
+    ).all()
+    for membership, season in season_rows:
+        entries.append(
+            MembershipHistoryEntryOut(
+                id=membership.id,
+                membership_type="quiniela",
+                name=season.name,
+                season_name=season.name,
+                status="Activa" if membership.is_active else "Inactiva",
+                is_paid=membership.is_paid,
+                joined_at=membership.activated_at or membership.created_at,
+                season_visibility_status=season.visibility_status.value,
+            )
+        )
+
+    survivor_rows = db.execute(
+        select(SurvivorMembership, Season)
+        .join(Season, Season.id == SurvivorMembership.season_id)
+        .where(SurvivorMembership.profile_id == current_profile.id)
+    ).all()
+    for membership, season in survivor_rows:
+        entries.append(
+            MembershipHistoryEntryOut(
+                id=membership.id,
+                membership_type="survivor",
+                name=season.survivor_name or f"Survivor {season.name}",
+                season_name=season.name,
+                status="Activa" if membership.is_active else "Inactiva",
+                joined_at=membership.joined_at or membership.created_at,
+                season_visibility_status=season.visibility_status.value,
+            )
+        )
+
+    vip_rows = db.execute(
+        select(VipMembership, VipCompetition, Season)
+        .join(VipCompetition, VipCompetition.id == VipMembership.vip_competition_id)
+        .join(Season, Season.id == VipCompetition.season_id)
+        .where(VipMembership.profile_id == current_profile.id)
+    ).all()
+    for membership, vip, season in vip_rows:
+        entries.append(
+            MembershipHistoryEntryOut(
+                id=membership.id,
+                membership_type="vip",
+                name=vip.name,
+                season_name=season.name,
+                status=membership.status.value.capitalize(),
+                is_paid=membership.is_paid,
+                joined_at=membership.requested_at,
+                season_visibility_status=season.visibility_status.value,
+            )
+        )
+
+    return sorted(entries, key=lambda entry: entry.joined_at or datetime.min.replace(tzinfo=UTC), reverse=True)
 
 
 @router.post("/me/seasons/{season_id}/join", response_model=MeResponse)

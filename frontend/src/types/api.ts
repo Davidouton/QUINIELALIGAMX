@@ -1632,6 +1632,17 @@ export interface AdminUserSurvivorMembership {
   joined_at: string | null;
 }
 
+export interface MembershipHistoryEntry {
+  id: string;
+  membership_type: "quiniela" | "survivor" | "vip";
+  name: string;
+  season_name: string;
+  status: string;
+  is_paid: boolean | null;
+  joined_at: string | null;
+  season_visibility_status: string | null;
+}
+
 export interface AdminUser {
   id: string;
   auth_user_id: string;
