@@ -52,6 +52,7 @@ export function LeaderboardPageContent() {
   const [loadingVipBoardId, setLoadingVipBoardId] = useState("");
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<"overall" | "weekly-prizes">("overall");
+  const [selectedWeeklyMatchdayId, setSelectedWeeklyMatchdayId] = useState("");
   const lastLoadedAtRef = useRef(0);
   const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
 
@@ -283,10 +284,34 @@ export function LeaderboardPageContent() {
   const activeWeeklyPrizes = selectedRegularSeason
     ? state.weeklyPrizesBySeasonId[selectedRegularSeason.id] ?? []
     : [];
+  const selectedWeeklyPrizeIndex = activeWeeklyPrizes.findIndex(
+    (matchday) => matchday.matchday_id === selectedWeeklyMatchdayId,
+  );
+  const activeWeeklyPrize =
+    activeWeeklyPrizes[selectedWeeklyPrizeIndex >= 0 ? selectedWeeklyPrizeIndex : activeWeeklyPrizes.length - 1]
+    ?? null;
+  const displayedWeeklyPrizeIndex = activeWeeklyPrize
+    ? activeWeeklyPrizes.findIndex((matchday) => matchday.matchday_id === activeWeeklyPrize.matchday_id)
+    : -1;
+  const cumulativeWeeklyPrizeAmount = displayedWeeklyPrizeIndex >= 0
+    ? activeWeeklyPrizes
+        .slice(0, displayedWeeklyPrizeIndex + 1)
+        .reduce((total, matchday) => total + matchday.total_prize_amount, 0)
+    : 0;
   const isLoadingActiveVipBoard = Boolean(selectedVipCompetition && loadingVipBoardId === selectedVipCompetition.id);
   const hasSeasonParticipantsWithoutStandings = Boolean(
     selectedRegularSeason && activeEntries.length === 0 && activeParticipantsCount > 0,
   );
+
+  useEffect(() => {
+    if (activeWeeklyPrizes.length === 0) {
+      setSelectedWeeklyMatchdayId("");
+      return;
+    }
+    if (!activeWeeklyPrizes.some((matchday) => matchday.matchday_id === selectedWeeklyMatchdayId)) {
+      setSelectedWeeklyMatchdayId(activeWeeklyPrizes[activeWeeklyPrizes.length - 1].matchday_id);
+    }
+  }, [activeWeeklyPrizes, selectedWeeklyMatchdayId]);
 
   useEffect(() => {
     if (boardOptions.length === 0) {
@@ -497,16 +522,69 @@ export function LeaderboardPageContent() {
         ) : activeWeeklyPrizes.length === 0 ? (
           <p className="py-6 text-sm text-steel">Todavía no hay jornadas cerradas con premios calculados.</p>
         ) : (
-          <div className="divide-y divide-white/[0.08] border-t border-white/[0.08]">
-            {activeWeeklyPrizes.map((matchday) => (
-              <section key={matchday.matchday_id} className="py-5">
+          <div className="border-t border-white/[0.08]">
+            <div className="flex flex-col gap-3 border-b border-white/[0.08] py-4 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  const nextIndex = Math.max(0, selectedWeeklyPrizeIndex - 1);
+                  setSelectedWeeklyMatchdayId(activeWeeklyPrizes[nextIndex].matchday_id);
+                }}
+                disabled={selectedWeeklyPrizeIndex <= 0}
+                className="secondary-button disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                Anterior
+              </button>
+              <select
+                value={activeWeeklyPrize?.matchday_id ?? ""}
+                onChange={(event) => setSelectedWeeklyMatchdayId(event.target.value)}
+                className="field-control sm:max-w-xs"
+              >
+                {activeWeeklyPrizes.map((matchday) => (
+                  <option key={matchday.matchday_id} value={matchday.matchday_id}>
+                    Jornada {matchday.matchday_number} · {matchday.matchday_name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextIndex = Math.min(activeWeeklyPrizes.length - 1, selectedWeeklyPrizeIndex + 1);
+                  setSelectedWeeklyMatchdayId(activeWeeklyPrizes[nextIndex].matchday_id);
+                }}
+                disabled={selectedWeeklyPrizeIndex < 0 || selectedWeeklyPrizeIndex >= activeWeeklyPrizes.length - 1}
+                className="secondary-button disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                Siguiente
+              </button>
+            </div>
+            {activeWeeklyPrize ? (
+              <section key={activeWeeklyPrize.matchday_id} className="py-5">
+                <div className="mb-6 grid gap-4 border-b border-white/[0.08] pb-5 sm:grid-cols-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-steel">Premio de la jornada</p>
+                    <p className="mt-2 text-lg font-semibold text-ink">
+                      {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(activeWeeklyPrize.total_prize_amount)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-steel">Acumulado entregado</p>
+                    <p className="mt-2 text-lg font-semibold text-ink">
+                      {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(cumulativeWeeklyPrizeAmount)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-steel">Jornadas premiadas</p>
+                    <p className="mt-2 text-lg font-semibold text-ink">{displayedWeeklyPrizeIndex + 1}</p>
+                  </div>
+                </div>
                 <div className="flex items-baseline justify-between gap-4">
                   <div>
-                    <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Jornada {matchday.matchday_number}</p>
-                    <h2 className="mt-1 text-base font-semibold text-ink">{matchday.matchday_name}</h2>
+                    <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Jornada {activeWeeklyPrize.matchday_number}</p>
+                    <h2 className="mt-1 text-base font-semibold text-ink">{activeWeeklyPrize.matchday_name}</h2>
                   </div>
                   <p className="text-sm font-semibold text-ink">
-                    {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(matchday.total_prize_amount)}
+                    {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(activeWeeklyPrize.total_prize_amount)}
                   </p>
                 </div>
                 <div className="mt-4 overflow-x-auto">
@@ -521,7 +599,7 @@ export function LeaderboardPageContent() {
                       </tr>
                     </thead>
                     <tbody>
-                      {matchday.winners.map((winner) => (
+                      {activeWeeklyPrize.winners.map((winner) => (
                         <tr key={winner.profile_id} className={`app-table-row border-b last:border-b-0 ${winner.profile_id === state.me?.id ? "font-semibold text-[#4f7df3] [&>td]:text-[#4f7df3]" : ""}`}>
                           <td className="px-3 py-3 font-semibold">#{winner.rank_position}</td>
                           <td className="px-3 py-3 font-medium">{winner.display_name}</td>
@@ -536,7 +614,7 @@ export function LeaderboardPageContent() {
                   </table>
                 </div>
               </section>
-            ))}
+            ) : null}
           </div>
         )}
       </section>
