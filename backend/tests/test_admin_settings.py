@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
 from conftest import (
@@ -301,10 +302,14 @@ def test_admin_create_user_does_not_auto_join_selected_season(
     admin_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    unique_suffix = uuid4().hex
+    auth_user_id = str(uuid4())
+    email = f"sin-alta-{unique_suffix}@example.com"
+
     class FakeSupabaseAdminService:
         def invite_user(self, *, email: str, display_name: str) -> AuthUser:
             return AuthUser(
-                auth_user_id="30000000-0000-0000-0000-000000000011",
+                auth_user_id=auth_user_id,
                 email=email,
                 raw_claims={"user_metadata": {"display_name": display_name}},
             )
@@ -314,7 +319,7 @@ def test_admin_create_user_does_not_auto_join_selected_season(
     response = admin_client.post(
         "/api/v1/admin/users",
         json={
-            "email": "sin-alta@example.com",
+            "email": email,
             "display_name": "Usuario Sin Alta",
             "season_id": SEASON_ID,
             "is_active": True,
@@ -328,20 +333,20 @@ def test_admin_create_user_does_not_auto_join_selected_season(
     payload = response.json()
     assert payload["selected_season_membership"]["is_active"] is False
     assert payload["selected_season_membership"]["is_paid"] is False
+    assert payload["season_memberships"] == []
 
     db = SessionLocal()
     try:
         membership = (
             db.query(SeasonMembership)
             .join(Profile, Profile.id == SeasonMembership.profile_id)
-            .filter(Profile.email == "sin-alta@example.com", SeasonMembership.season_id == SEASON_ID)
-            .one()
+            .filter(Profile.email == email, SeasonMembership.season_id == SEASON_ID)
+            .one_or_none()
         )
     finally:
         db.close()
 
-    assert membership.is_active is False
-    assert membership.eligible_for_scoring is False
+    assert membership is None
 
 
 def test_admin_can_update_user_password(

@@ -1777,21 +1777,23 @@ def create_or_update_admin_user(
         db.refresh(season)
 
     membership = season_membership_repo.get_for_profile_and_season(db, profile.id, season.id)
-    if membership is None:
+    should_manage_membership = membership is not None or payload.season_membership_active or payload.is_paid
+    if membership is None and should_manage_membership:
         membership = SeasonMembership(season_id=season.id, profile_id=profile.id)
-    membership.is_active = payload.season_membership_active
-    membership.is_paid = payload.is_paid
-    membership.notes = normalize_optional_text(payload.notes)
-    if payload.season_membership_active:
-        membership.activated_at = datetime.now(UTC)
-        membership.activated_by_profile_id = current_profile.id
-    if not season_eligibility_service.is_locked(db, season):
-        membership.eligible_for_scoring = membership.is_active
-        membership.eligible_locked_at = None
-    elif membership.eligible_locked_at is None:
-        membership.eligible_for_scoring = False
-        membership.eligible_locked_at = datetime.now(UTC)
-    season_membership_repo.save(db, membership)
+    if membership is not None:
+        membership.is_active = payload.season_membership_active
+        membership.is_paid = payload.is_paid
+        membership.notes = normalize_optional_text(payload.notes)
+        if payload.season_membership_active:
+            membership.activated_at = datetime.now(UTC)
+            membership.activated_by_profile_id = current_profile.id
+        if not season_eligibility_service.is_locked(db, season):
+            membership.eligible_for_scoring = membership.is_active
+            membership.eligible_locked_at = None
+        elif membership.eligible_locked_at is None:
+            membership.eligible_for_scoring = False
+            membership.eligible_locked_at = datetime.now(UTC)
+        season_membership_repo.save(db, membership)
 
     db.commit()
     db.refresh(profile)
