@@ -54,7 +54,7 @@ def test_join_season_leaves_pre_pago_users_pending_admin_authorization(client) -
     assert payload["can_participate_selected_season"] is False
 
 
-def test_get_me_auto_activates_existing_aval_membership(client) -> None:
+def test_get_me_preserves_admin_deactivation_for_aval_membership(client) -> None:
     db = SessionLocal()
     try:
         membership = db.query(SeasonMembership).filter(
@@ -76,9 +76,9 @@ def test_get_me_auto_activates_existing_aval_membership(client) -> None:
     response = client.get(f"/api/v1/me?season_id={SEASON_ID}")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["selected_season_membership"]["is_active"] is True
-    assert payload["selected_season_membership"]["can_participate"] is True
-    assert payload["can_participate_selected_season"] is True
+    assert payload["selected_season_membership"]["is_active"] is False
+    assert payload["selected_season_membership"]["can_participate"] is False
+    assert payload["can_participate_selected_season"] is False
 
 
 def test_join_season_rejects_when_admin_closed_registration(client) -> None:
