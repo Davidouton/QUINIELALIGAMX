@@ -151,28 +151,32 @@ export function AdminSettingsPanel() {
 
     try {
       const accessToken = await getBrowserAccessToken();
-      const result = await backendFetch<AdminSettings>("/admin/settings?set_active=false", accessToken, {
-        method: "PUT",
-        body: JSON.stringify({
-          active_season_id: form.active_season_id,
-          app_icon_url: form.app_icon_url.trim() || null,
-          show_live_tab: form.show_live_tab,
-          start_matchday_id: form.start_matchday_id || null,
-          end_matchday_id: form.end_matchday_id || null,
-          entry_fee_amount: settings?.entry_fee_amount ?? 0,
-          weekly_first_place_amount: settings?.weekly_first_place_amount ?? 0,
-          weekly_second_place_amount: settings?.weekly_second_place_amount ?? 0,
-          weekly_third_place_amount: settings?.weekly_third_place_amount ?? 0,
-          admin_commission_pct: settings?.admin_commission_pct ?? 0,
-          reserve_pct: settings?.reserve_pct ?? 0,
-          first_place_pct: settings?.first_place_pct ?? 0,
-          second_place_pct: settings?.second_place_pct ?? 0,
-          third_place_pct: settings?.third_place_pct ?? 0,
-          result_correct_points: Number(form.result_correct_points),
-          exact_score_points: Number(form.exact_score_points),
-          advancing_team_points: Number(form.advancing_team_points),
-        }),
-      });
+      const result = await backendFetch<AdminSettings>(
+        "/admin/settings?set_active=false&update_prizes=false",
+        accessToken,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            active_season_id: form.active_season_id,
+            app_icon_url: form.app_icon_url.trim() || null,
+            show_live_tab: form.show_live_tab,
+            start_matchday_id: form.start_matchday_id || null,
+            end_matchday_id: form.end_matchday_id || null,
+            entry_fee_amount: settings?.entry_fee_amount ?? 0,
+            weekly_first_place_amount: settings?.weekly_first_place_amount ?? 0,
+            weekly_second_place_amount: settings?.weekly_second_place_amount ?? 0,
+            weekly_third_place_amount: settings?.weekly_third_place_amount ?? 0,
+            admin_commission_pct: settings?.admin_commission_pct ?? 0,
+            reserve_pct: settings?.reserve_pct ?? 0,
+            first_place_pct: settings?.first_place_pct ?? 0,
+            second_place_pct: settings?.second_place_pct ?? 0,
+            third_place_pct: settings?.third_place_pct ?? 0,
+            result_correct_points: Number(form.result_correct_points),
+            exact_score_points: Number(form.exact_score_points),
+            advancing_team_points: Number(form.advancing_team_points),
+          }),
+        },
+      );
       await loadSettings(form.active_season_id);
       setIconPreviewVersion(Date.now());
       setMessage(

@@ -102,7 +102,10 @@ export function AdminPrizesPanel() {
 
     try {
       const accessToken = await getBrowserAccessToken();
-      const savedSettings = await backendFetch<AdminSettings>("/admin/settings?set_active=false", accessToken, {
+      const savedSettings = await backendFetch<AdminSettings>(
+        "/admin/settings?set_active=false&update_prizes=true&update_pricing=true",
+        accessToken,
+        {
         method: "PUT",
         body: JSON.stringify({
           active_season_id: selectedSeasonId,
@@ -124,7 +127,8 @@ export function AdminPrizesPanel() {
           exact_score_points: settings.exact_score_points,
           advancing_team_points: settings.advancing_team_points,
         }),
-      });
+        },
+      );
       setSettings(savedSettings);
       setSelectedSeasonId(savedSettings.selected_season_id ?? selectedSeasonId);
       setForm(mapSettingsToPrizeForm(savedSettings));
@@ -215,7 +219,7 @@ export function AdminPrizesPanel() {
           {selectedSeason ? `Editando la bolsa de ${prizeScope === "survivor" ? "Survivor" : "Quiniela"} para ${selectedSeason.name}.` : "Selecciona una temporada para editar su esquema de premios."}
         </p>
         <p className="mt-1 text-xs text-steel/80">
-          El costo de ingreso se hereda de Reglas de precio. Los importes semanales y porcentajes de reparto se editan en esta pantalla.
+          El costo, los premios semanales y los porcentajes se guardan para esta temporada y modalidad.
         </p>
       </section>
 
@@ -223,13 +227,21 @@ export function AdminPrizesPanel() {
         <section className="space-y-4">
           <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Base financiera</h3>
           <div className="space-y-2">
-            <div className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-white/[0.06] py-3">
+            <label className="grid grid-cols-[1fr_auto] items-center gap-4 border-b border-white/[0.06] py-3">
               <span className="text-sm text-steel">Costo por ingreso</span>
-              <div className="text-right">
-                <p className="text-sm font-semibold text-ink">{formatMoney(settings?.entry_fee_amount ?? 0)}</p>
-                <p className="mt-1 text-[11px] text-steel">Heredado de Reglas de precio</p>
-              </div>
-            </div>
+              <input
+                type="number"
+                min={0.01}
+                max={1000000}
+                step={0.01}
+                value={form.entry_fee_amount}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, entry_fee_amount: event.target.value }))
+                }
+                className="field-control w-32 text-right"
+                required
+              />
+            </label>
 
             <label className="grid grid-cols-[1fr_auto] items-center gap-4 py-2">
               <span className="text-sm text-steel">% comision administracion</span>

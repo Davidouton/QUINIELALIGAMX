@@ -33,10 +33,12 @@ from app.models.entities import (
     Matchday,
     MatchdayStatus,
     PickSelection,
+    PaymentScopeType,
     Profile,
     Odds,
     ProfileTrophyAward,
     PublishedMatchday,
+    PricingRule,
     RoleCode,
     RulePage,
     ScoringRule,
@@ -2143,8 +2145,10 @@ def get_admin_settings(
 def update_admin_settings(
     payload: AdminSettingsUpdateRequest,
     set_active: bool = True,
+    update_prizes: bool = True,
+    update_pricing: bool = False,
     db: Session = Depends(get_db),
-    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminSettingsOut:
     season = season_repo.get_by_id(db, payload.active_season_id)
     if season is None:
@@ -2183,13 +2187,52 @@ def update_admin_settings(
         season.end_matchday_id = None
 
     payout_pct = payload.first_place_pct + payload.second_place_pct + payload.third_place_pct
-    if payout_pct > 100:
+    if update_prizes and payout_pct > 100:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="La suma de porcentajes de premios finales no puede exceder 100",
         )
 
-    if payload.prize_scope == "survivor":
+    if update_pricing:
+        if payload.entry_fee_amount <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El costo por ingreso debe ser mayor a cero",
+            )
+        pricing_scope = (
+            PaymentScopeType.SURVIVOR
+            if payload.prize_scope == "survivor"
+            else PaymentScopeType.SEASON
+        )
+        pricing_rule = db.scalar(
+            select(PricingRule).where(
+                PricingRule.scope_type == pricing_scope,
+                PricingRule.scope_id == season.id,
+                PricingRule.starts_at.is_(None),
+                PricingRule.ends_at.is_(None),
+                PricingRule.start_matchday_number.is_(None),
+                PricingRule.end_matchday_number.is_(None),
+            )
+        )
+        product_label = "Survivor" if pricing_scope == PaymentScopeType.SURVIVOR else "Quiniela"
+        if pricing_rule is None:
+            pricing_rule = PricingRule(
+                scope_type=pricing_scope,
+                scope_id=season.id,
+                label=f"{product_label} · {season.name}",
+                amount=Decimal(str(payload.entry_fee_amount)),
+                currency="mxn",
+                is_active=True,
+                created_by_profile_id=current_profile.id,
+            )
+        else:
+            pricing_rule.label = f"{product_label} · {season.name}"
+            pricing_rule.amount = Decimal(str(payload.entry_fee_amount))
+            pricing_rule.currency = "mxn"
+            pricing_rule.is_active = True
+        db.add(pricing_rule)
+
+    if update_prizes and payload.prize_scope == "survivor":
         season.survivor_weekly_first_place_amount = Decimal(str(payload.weekly_first_place_amount))
         season.survivor_weekly_second_place_amount = Decimal(str(payload.weekly_second_place_amount))
         season.survivor_weekly_third_place_amount = Decimal(str(payload.weekly_third_place_amount))
@@ -2198,7 +2241,7 @@ def update_admin_settings(
         season.survivor_first_place_pct = Decimal(str(payload.first_place_pct))
         season.survivor_second_place_pct = Decimal(str(payload.second_place_pct))
         season.survivor_third_place_pct = Decimal(str(payload.third_place_pct))
-    else:
+    elif update_prizes:
         season.weekly_first_place_amount = Decimal(str(payload.weekly_first_place_amount))
         season.weekly_second_place_amount = Decimal(str(payload.weekly_second_place_amount))
         season.weekly_third_place_amount = Decimal(str(payload.weekly_third_place_amount))

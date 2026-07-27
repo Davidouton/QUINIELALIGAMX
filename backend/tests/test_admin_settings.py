@@ -22,7 +22,9 @@ from app.models.entities import (
     AnalyticsEvent,
     Match,
     Matchday,
+    PaymentScopeType,
     Profile,
+    PricingRule,
     RoleCode,
     ScoringRule,
     Season,
@@ -129,6 +131,96 @@ def test_update_admin_settings_persists_active_season_and_rules(admin_client: Te
     assert seasons["20000000-0000-0000-0000-000000000099"].is_active is True
     assert rules["result_correct"] == 5
     assert rules["exact_score"] == 4
+
+
+def test_general_settings_update_does_not_overwrite_prizes(admin_client: TestClient) -> None:
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        assert season is not None
+        season.weekly_first_place_amount = 100
+        season.weekly_second_place_amount = 50
+        season.weekly_third_place_amount = 30
+        season.admin_commission_pct = 7
+        season.first_place_pct = 60
+        season.second_place_pct = 30
+        season.third_place_pct = 10
+        db.commit()
+    finally:
+        db.close()
+
+    response = admin_client.put(
+        "/api/v1/admin/settings?set_active=false&update_prizes=false",
+        json={
+            "active_season_id": SEASON_ID,
+            "weekly_first_place_amount": 0,
+            "weekly_second_place_amount": 0,
+            "weekly_third_place_amount": 0,
+            "admin_commission_pct": 0,
+            "first_place_pct": 0,
+            "second_place_pct": 0,
+            "third_place_pct": 0,
+            "result_correct_points": 3,
+            "exact_score_points": 2,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["weekly_first_place_amount"] == 100
+    assert payload["weekly_second_place_amount"] == 50
+    assert payload["weekly_third_place_amount"] == 30
+    assert payload["admin_commission_pct"] == 7
+    assert payload["first_place_pct"] == 60
+    assert payload["second_place_pct"] == 30
+    assert payload["third_place_pct"] == 10
+
+
+def test_prize_panel_saves_pricing_and_prizes_for_selected_product(
+    admin_client: TestClient,
+) -> None:
+    response = admin_client.put(
+        "/api/v1/admin/settings?set_active=false&update_prizes=true&update_pricing=true",
+        json={
+            "active_season_id": SEASON_ID,
+            "prize_scope": "season",
+            "entry_fee_amount": 1250,
+            "weekly_first_place_amount": 150,
+            "weekly_second_place_amount": 75,
+            "weekly_third_place_amount": 25,
+            "admin_commission_pct": 5,
+            "reserve_pct": 10,
+            "first_place_pct": 60,
+            "second_place_pct": 30,
+            "third_place_pct": 10,
+            "result_correct_points": 3,
+            "exact_score_points": 2,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["entry_fee_amount"] == 1250
+    assert payload["weekly_first_place_amount"] == 150
+    assert payload["weekly_second_place_amount"] == 75
+    assert payload["weekly_third_place_amount"] == 25
+
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        pricing_rule = db.query(PricingRule).filter_by(
+            scope_type=PaymentScopeType.SEASON,
+            scope_id=SEASON_ID,
+        ).one()
+    finally:
+        db.close()
+
+    assert season is not None
+    assert float(season.weekly_first_place_amount) == 150
+    assert float(pricing_rule.amount) == 1250
+    assert pricing_rule.is_active is True
 
 
 def test_admin_users_list_includes_selected_season_membership(admin_client: TestClient) -> None:
