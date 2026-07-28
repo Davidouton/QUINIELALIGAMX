@@ -184,46 +184,49 @@ export function PaymentsPageContent() {
         </p>
       </section>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <article className="rounded-[16px] border border-white/[0.08] bg-white/[0.03] p-4">
+      <div className="grid border-y border-white/[0.1] sm:grid-cols-3 sm:divide-x sm:divide-white/[0.1]">
+        <div className="border-b border-white/[0.1] py-4 sm:border-b-0 sm:px-5 sm:first:pl-0">
           <p className="text-xs uppercase tracking-[0.2em] text-steel">Pagos salientes</p>
           <p className="mt-2 text-2xl font-semibold text-ink">{data.outgoing.length}</p>
-        </article>
-        <article className="rounded-[16px] border border-white/[0.08] bg-white/[0.03] p-4">
+        </div>
+        <div className="border-b border-white/[0.1] py-4 sm:border-b-0 sm:px-5">
           <p className="text-xs uppercase tracking-[0.2em] text-steel">Pendientes por subir</p>
           <p className="mt-2 text-2xl font-semibold text-coral">{pendingOutgoing.length}</p>
-        </article>
-        <article className="rounded-[16px] border border-white/[0.08] bg-white/[0.03] p-4">
+        </div>
+        <div className="py-4 sm:px-5">
           <p className="text-xs uppercase tracking-[0.2em] text-steel">Pendientes por validar</p>
           <p className="mt-2 text-2xl font-semibold text-gold">{pendingIncoming.length}</p>
-        </article>
+        </div>
       </div>
 
       {loading ? <p className="text-sm text-steel">Cargando pagos...</p> : null}
       {error ? <p className="text-sm text-coral">{error}</p> : null}
       {message ? <p className="text-sm text-moss">{message}</p> : null}
 
-      <section className="space-y-4 rounded-[20px] border border-white/[0.08] bg-white/[0.02] p-5">
+      <section className="space-y-4 border-t border-white/[0.1] pt-5">
         <div>
           <h2 className="text-lg font-semibold text-ink">Tú pagas</h2>
           <p className="mt-1 text-sm text-steel">Sube la ficha del depósito para que el receptor la valide.</p>
         </div>
-        <div className="space-y-4">
+        <div className="divide-y divide-white/[0.08] border-b border-white/[0.1]">
           {data.outgoing.map((assignment) => (
-            <article key={assignment.id} className="rounded-[16px] border border-white/[0.08] bg-black/10 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
+            <details key={assignment.id} className="group">
+              <summary className="grid cursor-pointer list-none gap-3 py-4 transition hover:bg-white/[0.02] sm:grid-cols-[minmax(0,1.5fr)_minmax(120px,.65fr)_minmax(150px,.8fr)_24px] sm:items-center">
+                <div className="min-w-0">
                   <p className="text-[11px] uppercase tracking-[0.24em] text-steel">{assignment.scope_label ?? "Competencia"}</p>
-                  <h3 className="mt-1 text-lg font-semibold text-ink">{assignment.payee_display_name}</h3>
-                  <p className="mt-1 text-sm text-steel">Monto: {formatMoney(assignment.amount)}</p>
-                  <p className="mt-1 text-sm text-steel">Status: {statusLabel(assignment.status)}</p>
+                  <h3 className="mt-1 truncate text-base font-semibold text-ink">{assignment.payee_display_name}</h3>
                 </div>
-                <div className="text-sm text-steel">
+                <p className="text-sm font-semibold text-ink">{formatMoney(assignment.amount)}</p>
+                <p className="text-sm text-steel">{statusLabel(assignment.status)}</p>
+                <span aria-hidden="true" className="text-lg text-steel transition group-open:rotate-45">+</span>
+              </summary>
+
+              <div className="border-t border-white/[0.06] pb-5 pt-4">
+                <div className="grid gap-2 text-sm text-steel sm:grid-cols-3">
                   <p>Banco: {assignment.payee_bank_name ?? "-"}</p>
-                  <p className="mt-1">Cuenta: {assignment.payee_deposit_account ?? "-"}</p>
-                  <p className="mt-1">Contacto: {assignment.payee_contact_phone ?? "-"}</p>
+                  <p>Cuenta: {assignment.payee_deposit_account ?? "-"}</p>
+                  <p>Contacto: {assignment.payee_contact_phone ?? "-"}</p>
                 </div>
-              </div>
 
               {assignment.proof_image_url ? (
                 <div className="mt-4 rounded-[14px] border border-white/[0.08] bg-white/[0.02] p-3 text-sm text-steel">
@@ -276,7 +279,8 @@ export function PaymentsPageContent() {
                   </div>
                 </div>
               ) : null}
-            </article>
+              </div>
+            </details>
           ))}
           {!loading && data.outgoing.length === 0 ? (
             <p className="text-sm text-steel">No tienes pagos salientes asignados en este momento.</p>
@@ -284,27 +288,30 @@ export function PaymentsPageContent() {
         </div>
       </section>
 
-      <section className="space-y-4 rounded-[20px] border border-white/[0.08] bg-white/[0.02] p-5">
+      <section className="space-y-4 border-t border-white/[0.1] pt-5">
         <div>
           <h2 className="text-lg font-semibold text-ink">Tú recibes</h2>
           <p className="mt-1 text-sm text-steel">Valida o rechaza la ficha. Si no rechazas dentro de la ventana, se confirma sola.</p>
         </div>
-        <div className="space-y-4">
+        <div className="divide-y divide-white/[0.08] border-b border-white/[0.1]">
           {data.incoming.map((assignment) => (
-            <article key={assignment.id} className="rounded-[16px] border border-white/[0.08] bg-black/10 p-4">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
+            <details key={assignment.id} className="group">
+              <summary className="grid cursor-pointer list-none gap-3 py-4 transition hover:bg-white/[0.02] sm:grid-cols-[minmax(0,1.5fr)_minmax(120px,.65fr)_minmax(150px,.8fr)_24px] sm:items-center">
+                <div className="min-w-0">
                   <p className="text-[11px] uppercase tracking-[0.24em] text-steel">{assignment.scope_label ?? "Competencia"}</p>
-                  <h3 className="mt-1 text-lg font-semibold text-ink">{assignment.payer_display_name}</h3>
-                  <p className="mt-1 text-sm text-steel">Monto: {formatMoney(assignment.amount)}</p>
-                  <p className="mt-1 text-sm text-steel">Status: {statusLabel(assignment.status)}</p>
+                  <h3 className="mt-1 truncate text-base font-semibold text-ink">{assignment.payer_display_name}</h3>
                 </div>
-                <div className="text-sm text-steel">
+                <p className="text-sm font-semibold text-ink">{formatMoney(assignment.amount)}</p>
+                <p className="text-sm text-steel">{statusLabel(assignment.status)}</p>
+                <span aria-hidden="true" className="text-lg text-steel transition group-open:rotate-45">+</span>
+              </summary>
+
+              <div className="border-t border-white/[0.06] pb-5 pt-4">
+                <div className="grid gap-2 text-sm text-steel sm:grid-cols-3">
                   <p>Subida: {formatDateTime(assignment.proof_uploaded_at)}</p>
-                  <p className="mt-1">Auto confirmación: {formatDateTime(assignment.auto_confirm_at)}</p>
-                  <p className="mt-1">Contacto: {assignment.payer_contact_phone ?? "-"}</p>
+                  <p>Auto confirmación: {formatDateTime(assignment.auto_confirm_at)}</p>
+                  <p>Contacto: {assignment.payer_contact_phone ?? "-"}</p>
                 </div>
-              </div>
 
               <div className="mt-4 rounded-[14px] border border-white/[0.08] bg-white/[0.02] p-3">
                 {assignment.proof_image_url ? (
@@ -359,7 +366,8 @@ export function PaymentsPageContent() {
                   </div>
                 </div>
               ) : null}
-            </article>
+              </div>
+            </details>
           ))}
           {!loading && data.incoming.length === 0 ? (
             <p className="text-sm text-steel">No tienes pagos por validar en este momento.</p>
