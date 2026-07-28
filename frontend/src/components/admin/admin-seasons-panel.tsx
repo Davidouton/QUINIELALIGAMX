@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { Competition, Season, SeasonVisibilityStatus, TournamentFormat } from "@/types/api";
+import type { AdminUser, Competition, Season, SeasonVisibilityStatus, TournamentFormat } from "@/types/api";
 
 type SeasonFormState = {
   name: string;
@@ -73,6 +73,9 @@ export function AdminSeasonsPanel() {
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [approvalSeasonId, setApprovalSeasonId] = useState("");
+  const [approvalUsers, setApprovalUsers] = useState<AdminUser[]>([]);
+  const [loadingApprovals, setLoadingApprovals] = useState(false);
 
   const visibleSeasons = useMemo(
     () => seasons.filter((season) => (selectedCompetitionId ? season.competition_id === selectedCompetitionId : true)),
@@ -99,6 +102,7 @@ export function AdminSeasonsPanel() {
         ]);
         setSeasons(seasonRows);
         setCompetitions(competitionRows);
+        setApprovalSeasonId((current) => current || seasonRows.find((season) => season.visibility_status === "live")?.id || seasonRows[0]?.id || "");
       } catch (caughtError) {
         setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar las temporadas");
       } finally {
@@ -108,6 +112,77 @@ export function AdminSeasonsPanel() {
 
     void load();
   }, []);
+
+  async function loadApprovals(seasonId: string) {
+    if (!seasonId) {
+      setApprovalUsers([]);
+      return;
+    }
+    setLoadingApprovals(true);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const rows = await backendFetch<AdminUser[]>(`/admin/users?season_id=${seasonId}`, accessToken);
+      setApprovalUsers(rows);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar las solicitudes");
+    } finally {
+      setLoadingApprovals(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadApprovals(approvalSeasonId);
+  }, [approvalSeasonId]);
+
+  async function handleApproveMembership(profileId: string, type: "season" | "survivor") {
+    const savingKey = `approve:${type}:${profileId}`;
+    setSaving(savingKey);
+    setError(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(
+        type === "season"
+          ? `/admin/users/${profileId}/season-membership`
+          : `/admin/users/${profileId}/survivor-membership`,
+        accessToken,
+        {
+          method: "PUT",
+          body: JSON.stringify(
+            type === "season"
+              ? {
+                  season_id: approvalSeasonId,
+                  is_active: true,
+                  is_paid: approvalUsers.find((user) => user.id === profileId)?.season_memberships.find((row) => row.season_id === approvalSeasonId)?.is_paid ?? false,
+                  notes: "Aprobado desde Temporadas",
+                }
+              : { season_id: approvalSeasonId, is_active: true },
+          ),
+        },
+      );
+      await loadApprovals(approvalSeasonId);
+      setMessage("Solicitud aprobada.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo aprobar la solicitud");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  const pendingApprovals = useMemo(
+    () => approvalUsers.flatMap((user) => {
+      const rows: Array<{ key: string; profileId: string; name: string; modality: string; type: "season" | "survivor"; paid: boolean }> = [];
+      const seasonMembership = user.season_memberships.find((row) => row.season_id === approvalSeasonId);
+      if (seasonMembership && !seasonMembership.is_active) {
+        rows.push({ key: `season:${user.id}`, profileId: user.id, name: user.display_name, modality: user.modality, type: "season", paid: seasonMembership.is_paid });
+      }
+      const survivorMembership = user.survivor_memberships.find((row) => row.season_id === approvalSeasonId);
+      if (survivorMembership && !survivorMembership.is_active) {
+        rows.push({ key: `survivor:${user.id}`, profileId: user.id, name: user.display_name, modality: user.modality, type: "survivor", paid: survivorMembership.is_paid });
+      }
+      return rows;
+    }),
+    [approvalSeasonId, approvalUsers],
+  );
 
   async function handleSaveSeason(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -461,6 +536,42 @@ export function AdminSeasonsPanel() {
 
         {message ? <p className="mt-4 text-sm text-moss">{message}</p> : null}
         {error ? <p className="mt-4 text-sm text-coral">{error}</p> : null}
+      </section>
+
+      <section className="space-y-4 border-y border-white/[0.1] py-5">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-ink">Solicitudes de ingreso</h3>
+          <p className="mt-2 text-sm text-steel">Aprueba aquí las altas de Quiniela y Survivor que no cuentan con aval.</p>
+        </div>
+        <select value={approvalSeasonId} onChange={(event) => setApprovalSeasonId(event.target.value)} className="field-control max-w-md">
+          <option value="">Selecciona una temporada</option>
+          {seasons.filter((season) => season.visibility_status !== "archived").map((season) => (
+            <option key={`approval-${season.id}`} value={season.id}>{season.name}</option>
+          ))}
+        </select>
+        {loadingApprovals ? <p className="text-sm text-steel">Cargando solicitudes...</p> : null}
+        {!loadingApprovals && pendingApprovals.length === 0 ? (
+          <p className="border-t border-white/[0.08] py-4 text-sm text-steel">No hay solicitudes pendientes para esta temporada.</p>
+        ) : null}
+        {pendingApprovals.length ? (
+          <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
+            {pendingApprovals.map((request) => (
+              <div key={request.key} className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_130px_110px_110px] sm:items-center">
+                <p className="font-semibold text-ink">{request.name}</p>
+                <p className="text-sm text-steel">{request.type === "season" ? "Quiniela" : "Survivor"}</p>
+                <p className="text-sm text-steel">{request.paid ? "Pagado" : request.modality === "aval" ? "Con aval" : "Pre-pago"}</p>
+                <button
+                  type="button"
+                  onClick={() => void handleApproveMembership(request.profileId, request.type)}
+                  disabled={saving === `approve:${request.type}:${request.profileId}`}
+                  className="text-left text-sm font-semibold text-[#4f7df3] sm:text-right"
+                >
+                  {saving === `approve:${request.type}:${request.profileId}` ? "Aprobando..." : "Aprobar"}
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="space-y-3">

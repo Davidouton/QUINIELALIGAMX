@@ -316,6 +316,7 @@ class AdminUserSurvivorMembershipOut(BaseModel):
     season_id: str
     season_name: str
     is_active: bool
+    is_paid: bool = False
     joined_at: datetime | None = None
 
 

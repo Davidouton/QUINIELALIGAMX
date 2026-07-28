@@ -1410,6 +1410,7 @@ def build_admin_user_survivor_membership_out(
         season_id=membership.season_id,
         season_name=season_name or membership.season_id,
         is_active=membership.is_active,
+        is_paid=membership.is_paid,
         joined_at=membership.joined_at,
     )
 
@@ -1466,6 +1467,7 @@ def build_admin_user_out_from_maps(
             season_id=season.id,
             season_name=season.name,
             is_active=bool(survivor_membership and survivor_membership.is_active),
+            is_paid=bool(survivor_membership and survivor_membership.is_paid),
             joined_at=survivor_membership.joined_at if survivor_membership is not None else None,
         )
     season_memberships = [
@@ -1480,6 +1482,7 @@ def build_admin_user_out_from_maps(
             season_id=membership_row.season_id,
             season_name=season_name_by_id.get(membership_row.season_id, "Temporada"),
             is_active=membership_row.is_active,
+            is_paid=membership_row.is_paid,
             joined_at=membership_row.joined_at,
         )
         for membership_row in all_survivor_memberships

@@ -129,6 +129,7 @@ export function DashboardEnrollmentsPageContent() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [expandedMembershipId, setExpandedMembershipId] = useState<string | null>(null);
   const [survivorPricing, setSurvivorPricing] = useState<Record<string, EffectivePricing>>({});
+  const [seasonPricing, setSeasonPricing] = useState<Record<string, EffectivePricing>>({});
   const { enabled: devModeEnabled } = useDevMode();
   const { seasonId, competitionId, buildHrefWithSeason, setSeasonId } = useDashboardSeasonParam();
 
@@ -159,29 +160,35 @@ export function DashboardEnrollmentsPageContent() {
               }).catch(() => [])
             : [];
         const survivorBoards: Record<string, SurvivorBoard> = {};
+        const seasonPricingRows: Record<string, EffectivePricing> = {};
         const survivorPricingRows: Record<string, EffectivePricing> = {};
         if (accessToken) {
-          const survivorSeasons = bootstrap.seasons.filter(
-            (season) => isSeasonLive(season) && season.survivor_enabled,
-          );
+          const liveSeasons = bootstrap.seasons.filter(isSeasonLive);
           const boardResults = await Promise.all(
-            survivorSeasons.map(async (season) => {
-              const [board, pricing] = await Promise.all([
-                backendFetch<SurvivorBoard>(`/survivor/board?season_id=${season.id}`, accessToken).catch(() => null),
-                backendFetch<EffectivePricing>(`/payments/pricing?scope_type=survivor&scope_id=${season.id}`, accessToken).catch(() => null),
+            liveSeasons.map(async (season) => {
+              const [seasonPrice, board, survivorPrice] = await Promise.all([
+                backendFetch<EffectivePricing>(`/payments/pricing?scope_type=season&scope_id=${season.id}`, accessToken).catch(() => null),
+                season.survivor_enabled
+                  ? backendFetch<SurvivorBoard>(`/survivor/board?season_id=${season.id}`, accessToken).catch(() => null)
+                  : Promise.resolve(null),
+                season.survivor_enabled
+                  ? backendFetch<EffectivePricing>(`/payments/pricing?scope_type=survivor&scope_id=${season.id}`, accessToken).catch(() => null)
+                  : Promise.resolve(null),
               ]);
-              return [season.id, board, pricing] as const;
+              return [season.id, seasonPrice, board, survivorPrice] as const;
             }),
           );
-          boardResults.forEach(([targetSeasonId, board, pricing]) => {
+          boardResults.forEach(([targetSeasonId, seasonPrice, board, survivorPrice]) => {
+            if (seasonPrice) seasonPricingRows[targetSeasonId] = seasonPrice;
             if (board) {
               survivorBoards[targetSeasonId] = board;
             }
-            if (pricing) {
-              survivorPricingRows[targetSeasonId] = pricing;
+            if (survivorPrice) {
+              survivorPricingRows[targetSeasonId] = survivorPrice;
             }
           });
         }
+        setSeasonPricing(seasonPricingRows);
         setSurvivorPricing(survivorPricingRows);
 
         if (selectedSeason) {
@@ -213,7 +220,7 @@ export function DashboardEnrollmentsPageContent() {
     void load();
   }, [competitionId, seasonId, setSeasonId]);
 
-  const isAvalMode = state.me?.modality === "aval";
+  const isAvalMode = state.me?.modality === "aval" && Boolean(state.me.aval_profile_id);
   const visibleSeasonRows = useMemo(
     () =>
       state.seasons
@@ -256,6 +263,11 @@ export function DashboardEnrollmentsPageContent() {
       const seasonClosed = registrationClosedByAdmin || windowClosed;
       const seasonTitle = getSeasonDisplayName(season);
       const registrationCloseLabel = formatMexicoDateTime(season.participants_lock_at);
+      const seasonPrice = seasonPricing[season.id];
+      const seasonCost = seasonPrice
+        ? new Intl.NumberFormat("es-MX", { style: "currency", currency: seasonPrice.currency.toUpperCase() }).format(seasonPrice.amount)
+        : "Sin costo configurado";
+      const modalityLabel = isAvalMode ? "Aval" : "Pre-pago con aprobación admin";
       rows.push({
         id: `season-${season.id}`,
         name: seasonTitle,
@@ -272,7 +284,7 @@ export function DashboardEnrollmentsPageContent() {
           : isAvalMode
             ? "Con modalidad aval tu alta entra en automatico en cuanto la activas."
             : "Con pre-pago tu alta se registra y queda pendiente de autorizacion admin.",
-        meta: `${season.name}${registrationCloseLabel ? ` · Límite de inscripción: ${registrationCloseLabel}` : ""}${
+        meta: `${season.name} · Modalidad: ${modalityLabel} · Costo: ${seasonCost}${registrationCloseLabel ? ` · Límite: ${registrationCloseLabel}` : ""}${
           registrationClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""
         }`,
         action: hasActiveMembership ? (
@@ -318,22 +330,20 @@ export function DashboardEnrollmentsPageContent() {
         id: `survivor-${season.id}`,
         name: season.survivor_name?.trim() || `Survivor ${getSeasonDisplayName(season)}`,
         availability: survivorWindowClosed ? "Cerrado" : "Abierto",
-        enrollmentStatus: survivorMembership ? "Activo" : "No inscrito",
-        detail: survivorMembership
+        enrollmentStatus: survivorMembership?.is_active ? "Activo" : survivorMembership ? "Pendiente" : "No inscrito",
+        detail: survivorMembership?.is_active
           ? `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
+          : survivorMembership
+            ? "Tu pago o solicitud fue recibido y espera aprobación del administrador."
           : survivorClosedByAdmin
             ? "El registro de Survivor se encuentra cerrado."
             : "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
-        meta: survivorCloseLabel
-          ? `Límite de inscripción: ${survivorCloseLabel}${survivorPriceLabel ? ` · ${survivorPriceLabel}` : ""}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`
-          : survivorClosedByAdmin && devModeEnabled
-            ? "Cierre manual"
-            : null,
-        action: survivorMembership ? (
+        meta: `${season.name} · Modalidad: ${modalityLabel} · Costo: ${survivorPriceLabel ?? "Sin costo configurado"}${survivorCloseLabel ? ` · Límite: ${survivorCloseLabel}` : ""}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`,
+        action: survivorMembership?.is_active ? (
           <Link href={buildHrefWithSeason("/dashboard/survivor", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Abrir Survivor
           </Link>
-        ) : survivorWindowClosed ? null : (
+        ) : survivorMembership || survivorWindowClosed ? null : (
           <button
             type="button"
             onClick={() => void handleJoinSurvivor(season)}
@@ -362,10 +372,7 @@ export function DashboardEnrollmentsPageContent() {
             ? "No inscrito"
             : "Disponible",
         detail: status.description,
-        meta:
-          vip.season_name || vip.join_lock_at || vip.matchdays.length
-            ? `${vip.season_name}${vip.matchdays.length ? ` · ${vip.matchdays.length} jornadas` : ""}${vip.join_lock_at ? ` · Cierre ${formatMexicoDateTime(vip.join_lock_at) ?? "Por definir"}` : ""}`
-            : null,
+        meta: `${vip.season_name} · Modalidad: ${isAvalMode ? "Aval" : "Pre-pago"} · Costo: ${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(vip.entry_fee_amount)}${vip.matchdays.length ? ` · ${vip.matchdays.length} jornadas` : ""}${vip.join_lock_at ? ` · Cierre ${formatMexicoDateTime(vip.join_lock_at) ?? "Por definir"}` : ""}`,
         action: (
           <Link
             href={buildHrefWithSeason("/dashboard/vip", vip.season_id)}
@@ -384,6 +391,7 @@ export function DashboardEnrollmentsPageContent() {
     devModeEnabled,
     isAvalMode,
     survivorPricing,
+    seasonPricing,
     state.survivorBoards,
     state.me,
     visibleVipCompetitions,
@@ -479,7 +487,11 @@ export function DashboardEnrollmentsPageContent() {
           [season.id]: survivorBoard,
         },
       }));
-      setMessage(`Tu alta a ${season.survivor_name?.trim() || `Survivor ${getSeasonDisplayName(season)}`} ya quedo activa.`);
+      setMessage(
+        survivorBoard.my_membership?.is_active
+          ? `Tu alta a ${season.survivor_name?.trim() || `Survivor ${getSeasonDisplayName(season)}`} ya quedó activa.`
+          : "Tu solicitud de Survivor fue recibida y espera aprobación del administrador.",
+      );
     } catch (joinError) {
       setError(joinError instanceof Error ? joinError.message : "No se pudo completar la inscripcion a Survivor");
     } finally {

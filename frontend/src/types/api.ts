@@ -1661,6 +1661,7 @@ export interface AdminUserSurvivorMembership {
   season_id: string;
   season_name: string;
   is_active: boolean;
+  is_paid: boolean;
   joined_at: string | null;
 }
 

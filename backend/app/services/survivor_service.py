@@ -41,9 +41,11 @@ class SurvivorService:
     def get_board(self, db: Session, season_id: str, profile: Profile) -> SurvivorBoardOut:
         season = self._get_enabled_season(db, season_id)
         board_bundle = self._build_board_bundle(db, season)
-        membership = next(
-            (row for row in board_bundle["memberships"] if row.profile_id == profile.id),
-            None,
+        membership = db.scalar(
+            select(SurvivorMembership).where(
+                SurvivorMembership.season_id == season.id,
+                SurvivorMembership.profile_id == profile.id,
+            )
         )
         my_picks = board_bundle["picks_by_profile"].get(profile.id, [])
         membership_out = self._build_membership_out(
@@ -116,14 +118,15 @@ class SurvivorService:
                     detail="Este Survivor requiere pago. Completa la inscripcion desde Inscripciones.",
                 )
         now = datetime.now(UTC)
+        has_aval_access = profile.modality == "aval" and bool(profile.aval_profile_id)
         if membership is None:
             membership = SurvivorMembership(
                 season_id=season.id,
                 profile_id=profile.id,
-                is_active=True,
-                joined_at=now,
+                is_active=has_aval_access,
+                joined_at=now if has_aval_access else None,
             )
-        else:
+        elif has_aval_access:
             membership.is_active = True
             if membership.joined_at is None:
                 membership.joined_at = now

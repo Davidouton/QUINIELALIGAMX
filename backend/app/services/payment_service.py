@@ -573,6 +573,12 @@ class PaymentService:
 
     def _apply_paid_entitlement(self, db: Session, payment: Payment, payment_metadata: dict[str, object]) -> None:
         now = datetime.now(UTC)
+        profile = db.get(Profile, payment.profile_id)
+        has_aval_access = bool(
+            profile
+            and profile.modality == "aval"
+            and profile.aval_profile_id
+        )
         if payment.scope_type == PaymentScopeType.QUINIELA_PLUS:
             checkout_request = payment_metadata.get("checkout_request", {})
             selected_league_ids = checkout_request.get("selected_league_ids", [])
@@ -598,8 +604,12 @@ class PaymentService:
                     profile_id=payment.profile_id,
                 )
             membership.is_paid = True
-            membership.is_active = True
-            membership.activated_at = now
+            if has_aval_access:
+                membership.is_active = True
+                membership.activated_at = now
+            elif not membership.is_active:
+                membership.is_active = False
+                membership.activated_at = None
             db.add(membership)
             return
 
@@ -616,8 +626,11 @@ class PaymentService:
                     profile_id=payment.profile_id,
                 )
             membership.is_paid = True
-            membership.is_active = True
-            membership.joined_at = membership.joined_at or now
+            if has_aval_access:
+                membership.is_active = True
+                membership.joined_at = membership.joined_at or now
+            elif not membership.is_active:
+                membership.is_active = False
             db.add(membership)
             return
 

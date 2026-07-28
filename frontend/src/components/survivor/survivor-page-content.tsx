@@ -203,8 +203,8 @@ export function SurvivorPageContent() {
   }, [competitionId, seasonIdParam]);
 
   const canSubmitPick = useMemo(
-    () => Boolean(board.my_membership?.alive && board.current_matchday && board.available_teams.length > 0),
-    [board.available_teams.length, board.current_matchday, board.my_membership?.alive],
+    () => Boolean(board.my_membership?.is_active && board.my_membership.alive && board.current_matchday && board.available_teams.length > 0),
+    [board.available_teams.length, board.current_matchday, board.my_membership?.alive, board.my_membership?.is_active],
   );
   const availableMatches = useMemo(() => {
     const grouped = new Map<
@@ -408,6 +408,12 @@ export function SurvivorPageContent() {
           </div>
         ) : null}
 
+        {board.my_membership && !board.my_membership.is_active ? (
+          <p className="mt-6 border-y border-white/[0.1] py-4 text-sm text-gold">
+            Tu solicitud de Survivor está pendiente de aprobación administrativa. Podrás capturar picks cuando sea aprobada.
+          </p>
+        ) : null}
+
         {error && selectedSeason ? (
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <p className="text-sm text-coral">{error}</p>
@@ -488,7 +494,7 @@ export function SurvivorPageContent() {
         </div>
       </section>
 
-      {board.my_membership ? (
+      {board.my_membership?.is_active ? (
         <section className="surface-card px-5 py-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -586,7 +592,7 @@ export function SurvivorPageContent() {
         </section>
       ) : null}
 
-      {board.my_membership ? (
+      {board.my_membership?.is_active ? (
         <section className="hidden surface-card px-5 py-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
