@@ -644,13 +644,19 @@ class PaymentService:
             membership = VipMembership(
                 vip_competition_id=payment.scope_id,
                 profile_id=payment.profile_id,
-                status=VipMembershipStatus.APPROVED,
+                status=VipMembershipStatus.APPROVED if has_aval_access else VipMembershipStatus.PENDING,
                 requested_at=now,
             )
-        membership.status = VipMembershipStatus.APPROVED
         membership.is_paid = True
-        membership.decided_at = now
-        membership.admin_note = "Pago confirmado via Stripe"
+        if has_aval_access:
+            membership.status = VipMembershipStatus.APPROVED
+            membership.decided_at = now
+            membership.admin_note = "Pago confirmado vía Stripe · acceso con aval"
+        elif membership.status != VipMembershipStatus.APPROVED:
+            membership.status = VipMembershipStatus.PENDING
+            membership.decided_at = None
+            membership.decided_by_profile_id = None
+            membership.admin_note = "Pago confirmado vía Stripe · pendiente de aprobación admin"
         db.add(membership)
 
     def _payment_metadata_dict(self, payment: Payment) -> dict[str, object]:

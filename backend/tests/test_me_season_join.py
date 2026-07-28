@@ -54,6 +54,30 @@ def test_join_season_leaves_pre_pago_users_pending_admin_authorization(client) -
     assert payload["can_participate_selected_season"] is False
 
 
+def test_join_season_requires_an_assigned_aval_for_automatic_activation(client) -> None:
+    db = SessionLocal()
+    try:
+        membership = db.query(SeasonMembership).filter(
+            SeasonMembership.profile_id == PROFILE_USER_ID,
+            SeasonMembership.season_id == SEASON_ID,
+        ).one()
+        db.delete(membership)
+        profile = db.get(Profile, PROFILE_USER_ID)
+        assert profile is not None
+        profile.modality = "aval"
+        profile.aval_profile_id = None
+        db.add(profile)
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.post(f"/api/v1/me/seasons/{SEASON_ID}/join")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_season_membership"]["is_active"] is False
+    assert payload["can_participate_selected_season"] is False
+
+
 def test_get_me_preserves_admin_deactivation_for_aval_membership(client) -> None:
     db = SessionLocal()
     try:

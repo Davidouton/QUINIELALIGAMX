@@ -8,6 +8,7 @@ from app.models.entities import (
     Matchday,
     MatchdayStatus,
     Season,
+    Profile,
     SurvivorMembership,
     SurvivorPick,
 )
@@ -46,6 +47,31 @@ def test_user_can_join_survivor_on_standard_season_even_without_flag(client) -> 
     survivor_payload = survivor_response.json()
     assert survivor_payload["season"]["survivor_enabled"] is True
     assert survivor_payload["my_membership"]["remaining_lives"] == 1
+
+
+def test_prepaid_user_without_aval_stays_pending_in_survivor(client) -> None:
+    db = SessionLocal()
+    try:
+        existing = db.query(SurvivorMembership).filter(
+            SurvivorMembership.season_id == SEASON_ID,
+            SurvivorMembership.profile_id == PROFILE_USER_ID,
+        ).one_or_none()
+        if existing is not None:
+            db.delete(existing)
+        profile = db.get(Profile, PROFILE_USER_ID)
+        assert profile is not None
+        profile.modality = "pre_pago"
+        profile.aval_profile_id = None
+        db.add(profile)
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.post(f"/api/v1/survivor/seasons/{SEASON_ID}/join")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["my_membership"]["is_active"] is False
+    assert all(row["profile_id"] != PROFILE_USER_ID for row in payload["leaderboard"])
 
 
 def test_survivor_rejects_repeated_team_selection(client) -> None:
