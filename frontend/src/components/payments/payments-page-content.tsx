@@ -74,23 +74,30 @@ export function PaymentsPageContent() {
     if (!env.supabaseUrl || !env.supabaseAnonKey) {
       throw new Error("Faltan las variables públicas de Supabase para subir fichas.");
     }
+    const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+    if (!allowedTypes.has(file.type)) {
+      throw new Error("La ficha debe ser JPG, PNG, WEBP o PDF.");
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      throw new Error("La ficha no puede pesar más de 2 MB.");
+    }
     const supabase = createSupabaseBrowserClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
+    }
     const extension = file.name.split(".").pop()?.toLowerCase() ?? "png";
-    const path = `settlements/${assignmentId}/${crypto.randomUUID()}.${extension}`;
+    const path = `${userData.user.id}/settlements/${assignmentId}/${crypto.randomUUID()}.${extension}`;
     const { data: uploadRow, error: uploadError } = await supabase.storage
       .from(env.paymentProofsBucket)
       .upload(path, file, {
         contentType: file.type || "image/png",
-        upsert: true,
+        upsert: false,
       });
     if (uploadError) {
       throw new Error(uploadError.message);
     }
-    const { data: publicData } = supabase.storage.from(env.paymentProofsBucket).getPublicUrl(uploadRow.path);
-    if (!publicData.publicUrl) {
-      throw new Error("No se pudo obtener la URL pública de la ficha.");
-    }
-    return publicData.publicUrl;
+    return uploadRow.path;
   }
 
   async function handleSubmitProof(assignmentId: string) {
@@ -104,7 +111,7 @@ export function PaymentsPageContent() {
     setError(null);
     setMessage(null);
     try {
-      const proofImageUrl = await uploadProofImage(file, assignmentId);
+      const proofObjectPath = await uploadProofImage(file, assignmentId);
       const accessToken = await getBrowserAccessToken();
       await backendFetch(
         `/payments/settlements/${assignmentId}/proof`,
@@ -112,7 +119,7 @@ export function PaymentsPageContent() {
         {
           method: "PUT",
           body: JSON.stringify({
-            proof_image_url: proofImageUrl,
+            proof_object_path: proofObjectPath,
             proof_note: proofNotes[assignmentId] ?? "",
           }),
         },
@@ -235,7 +242,7 @@ export function PaymentsPageContent() {
                     <span className="text-steel">Imagen del depósito</span>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
                       onChange={(event) =>
                         setProofFiles((current) => ({
                           ...current,

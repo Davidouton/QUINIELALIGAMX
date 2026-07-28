@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
+from urllib.parse import quote
 
+import httpx
 from fastapi import HTTPException, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -528,6 +530,17 @@ class SettlementService:
         if row.status == SettlementStatus.CONFIRMED:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este pago ya fue confirmado.")
 
+        expected_prefix = f"{profile.auth_user_id}/settlements/{row.id}/"
+        if (
+            not payload.proof_object_path.startswith(expected_prefix)
+            or ".." in payload.proof_object_path.split("/")
+            or "\\" in payload.proof_object_path
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La ruta privada de la ficha no corresponde a este pago.",
+            )
+
         config_row = self._get_or_create_config(db, row.scope_type, row.scope_id, create=False)
         confirmation_window_hours = (
             config_row.confirmation_window_hours
@@ -536,7 +549,9 @@ class SettlementService:
         )
         now = datetime.now(UTC)
         row.status = SettlementStatus.PROOF_SUBMITTED
-        row.proof_image_url = payload.proof_image_url
+        # The legacy column now stores the private Storage object path. Existing
+        # public URLs remain readable while historical rows are migrated naturally.
+        row.proof_image_url = payload.proof_object_path
         row.proof_note = payload.proof_note
         row.proof_uploaded_at = now
         row.auto_confirm_at = now + timedelta(hours=confirmation_window_hours)
@@ -967,7 +982,7 @@ class SettlementService:
                     amount=float(row.amount),
                     currency=row.currency,
                     status=row.status.value,
-                    proof_image_url=row.proof_image_url,
+                    proof_image_url=self._proof_access_url(row.proof_image_url),
                     proof_note=row.proof_note,
                     proof_uploaded_at=row.proof_uploaded_at,
                     auto_confirm_at=row.auto_confirm_at,
@@ -1345,6 +1360,48 @@ class SettlementService:
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
+
+    @staticmethod
+    def _proof_access_url(stored_value: str | None) -> str | None:
+        if not stored_value:
+            return None
+        if stored_value.startswith(("https://", "http://")):
+            return stored_value
+        if not settings.supabase_service_role_key:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="No está configurado el acceso privado a las fichas de pago.",
+            )
+
+        bucket = quote(settings.payment_proofs_bucket, safe="")
+        object_path = quote(stored_value, safe="/")
+        endpoint = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/sign/{bucket}/{object_path}"
+        try:
+            response = httpx.post(
+                endpoint,
+                headers={
+                    "apikey": settings.supabase_service_role_key,
+                    "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                    "Content-Type": "application/json",
+                },
+                json={"expiresIn": settings.payment_proof_signed_url_seconds},
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            signed_path = response.json().get("signedURL") or response.json().get("signedUrl")
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="No se pudo abrir temporalmente la ficha de pago.",
+            ) from exc
+        if not signed_path:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Supabase no devolvió el acceso temporal a la ficha.",
+            )
+        if signed_path.startswith(("https://", "http://")):
+            return signed_path
+        return f"{settings.supabase_url.rstrip('/')}/storage/v1{signed_path}"
 
     @staticmethod
     def _to_money(value: Decimal | float | int) -> Decimal:

@@ -249,12 +249,12 @@ class SettlementAssignmentDispatchOut(BaseModel):
 
 
 class SettlementProofSubmitRequest(BaseModel):
-    proof_image_url: str = Field(min_length=1, max_length=2000)
+    proof_object_path: str = Field(min_length=1, max_length=1000)
     proof_note: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
     def normalize(self) -> "SettlementProofSubmitRequest":
-        self.proof_image_url = self.proof_image_url.strip()
+        self.proof_object_path = self.proof_object_path.strip().lstrip("/")
         if self.proof_note is not None:
             note = self.proof_note.strip()
             self.proof_note = note or None

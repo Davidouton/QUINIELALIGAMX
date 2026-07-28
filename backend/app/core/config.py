@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     supabase_url: str = "https://your-project.supabase.co"
     supabase_anon_key: str = "replace-me"
     supabase_service_role_key: str = ""
+    payment_proofs_bucket: str = "payment-proofs"
+    payment_proof_signed_url_seconds: int = 300
     supabase_jwt_secret: str = ""
     resend_api_key: str = ""
     resend_from_email: str = ""
