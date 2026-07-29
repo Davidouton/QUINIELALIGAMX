@@ -160,6 +160,7 @@ def run_startup_migrations() -> None:
         if "seasons" in table_names:
             season_column_names = {column["name"] for column in inspector.get_columns("seasons")}
             missing_season_columns = {
+                "description": "ALTER TABLE seasons ADD COLUMN description TEXT",
                 "competition_id": (
                     "ALTER TABLE seasons "
                     "ADD COLUMN competition_id UUID REFERENCES competitions(id) ON DELETE SET NULL"

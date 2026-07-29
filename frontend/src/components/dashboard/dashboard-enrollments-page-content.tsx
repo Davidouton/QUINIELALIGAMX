@@ -281,14 +281,14 @@ export function DashboardEnrollmentsPageContent() {
             ? "Pendiente"
             : "No inscrito",
         detail: hasActiveMembership
-          ? "Tu membresia ya esta activa y puedes entrar al dashboard, picks, scores y ranking."
+          ? season.description || "Tu membresia ya esta activa y puedes entrar al dashboard, picks, scores y ranking."
           : isRejected
             ? "La solicitud anterior no fue aprobada. Puedes enviarla nuevamente mientras el registro siga abierto."
           : registrationClosedByAdmin
             ? "El registro de esta competencia se encuentra cerrado."
           : isAvalMode
-            ? "Con modalidad aval tu alta entra en automatico en cuanto la activas."
-            : "Con pre-pago tu alta se registra y queda pendiente de autorizacion admin.",
+            ? season.description || "Con modalidad aval tu alta entra en automático en cuanto la activas."
+            : season.description || "Con pre-pago tu alta se registra y queda pendiente de autorización admin.",
         meta: `${season.name} · Modalidad: ${modalityLabel} · Costo: ${seasonCost}${registrationCloseLabel ? ` · Límite: ${registrationCloseLabel}` : ""}${
           registrationClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""
         }`,
@@ -347,14 +347,14 @@ export function DashboardEnrollmentsPageContent() {
               ? "Pendiente"
               : "No inscrito",
         detail: survivorMembership?.is_active
-          ? `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
+          ? season.description || `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
           : survivorMembership?.is_rejected
             ? "La solicitud anterior no fue aprobada. Puedes solicitar nuevamente."
           : survivorMembership
             ? "Tu pago o solicitud fue recibido y espera aprobación del administrador."
           : survivorClosedByAdmin
             ? "El registro de Survivor se encuentra cerrado."
-            : "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
+            : season.description || "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
         meta: `${season.name} · Modalidad: ${modalityLabel} · Costo: ${survivorPriceLabel ?? "Sin costo configurado"}${survivorCloseLabel ? ` · Límite: ${survivorCloseLabel}` : ""}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`,
         action: survivorMembership?.is_active ? (
           <Link href={buildHrefWithSeason("/dashboard/survivor", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">

@@ -216,6 +216,7 @@ class Season(Base):
 
     id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
     name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     competition_id: Mapped[str | None] = mapped_column(
         UUID_SQL,

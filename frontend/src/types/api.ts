@@ -1464,6 +1464,7 @@ export interface Competition {
 export interface Season {
   id: string;
   name: string;
+  description: string | null;
   slug: string;
   competition_id: string | null;
   competition_name: string | null;

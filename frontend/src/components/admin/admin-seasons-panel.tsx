@@ -8,6 +8,7 @@ import type { AdminUser, Competition, Season, SeasonVisibilityStatus, Tournament
 
 type SeasonFormState = {
   name: string;
+  description: string;
   slug: string;
   competition_id: string;
   tournament_format: TournamentFormat;
@@ -23,6 +24,7 @@ type SeasonFormState = {
 
 const initialSeasonForm: SeasonFormState = {
   name: "",
+  description: "",
   slug: "",
   competition_id: "",
   tournament_format: "standard",
@@ -250,6 +252,7 @@ export function AdminSeasonsPanel() {
         method: "PUT",
         body: JSON.stringify({
           name: season.name,
+          description: season.description,
           slug: season.slug,
           competition_id: season.competition_id,
           tournament_format: season.tournament_format,
@@ -283,6 +286,7 @@ export function AdminSeasonsPanel() {
         method: "PUT",
         body: JSON.stringify({
           name: season.name,
+          description: season.description,
           slug: season.slug,
           competition_id: season.competition_id,
           tournament_format: season.tournament_format,
@@ -322,6 +326,7 @@ export function AdminSeasonsPanel() {
         method: "PUT",
         body: JSON.stringify({
           name: season.name,
+          description: season.description,
           slug: season.slug,
           competition_id: season.competition_id,
           tournament_format: season.tournament_format,
@@ -413,6 +418,18 @@ export function AdminSeasonsPanel() {
                   className="field-control mt-2 w-full normal-case tracking-normal"
                   required
                 />
+              </label>
+              <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel md:col-span-2">
+                Descripción para inscripciones
+                <textarea
+                  value={seasonForm.description}
+                  onChange={(event) => setSeasonForm((current) => ({ ...current, description: event.target.value }))}
+                  placeholder="Explica brevemente de qué trata el torneo, cómo se juega o a quién está dirigido."
+                  rows={3}
+                  maxLength={2000}
+                  className="field-control mt-2 min-h-[96px] w-full normal-case tracking-normal"
+                />
+                <span className="block text-xs font-normal normal-case tracking-normal text-steel">Se mostrará a los jugadores en el hub de Inscripciones.</span>
               </label>
               <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
                 Identificador
@@ -683,6 +700,7 @@ export function AdminSeasonsPanel() {
                           setEditingSeasonId(season.id);
                           setSeasonForm({
                             name: season.name,
+                            description: season.description ?? "",
                             slug: season.slug,
                             competition_id: season.competition_id ?? "",
                             tournament_format: season.tournament_format,

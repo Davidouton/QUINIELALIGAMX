@@ -96,6 +96,7 @@ def list_seasons(
             SeasonOut(
                 id=season.id,
                 name=season.name,
+                description=season.description,
                 slug=season.slug,
                 competition_id=resolved_competition.id if resolved_competition is not None else season.competition_id,
                 competition_name=resolved_competition.name if resolved_competition is not None else None,

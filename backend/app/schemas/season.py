@@ -10,6 +10,7 @@ from app.models.entities import CompetitionStructureFormat, SeasonVisibilityStat
 class SeasonOut(BaseModel):
     id: str
     name: str
+    description: str | None = None
     slug: str
     competition_id: str | None = None
     competition_name: str | None = None

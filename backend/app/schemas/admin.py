@@ -412,6 +412,7 @@ class OddsUnmatchedResponse(BaseModel):
 
 class SeasonCreateRequest(BaseModel):
     name: str
+    description: str | None = Field(default=None, max_length=2000)
     slug: str
     competition_id: str
     tournament_format: TournamentFormat = TournamentFormat.STANDARD

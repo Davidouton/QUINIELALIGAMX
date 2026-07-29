@@ -1127,6 +1127,7 @@ def build_season_out(row: Season, competition: Competition | None = None) -> Sea
     return SeasonOut(
         id=row.id,
         name=row.name,
+        description=row.description,
         slug=row.slug,
         competition_id=row.competition_id,
         competition_name=competition.name if competition is not None else None,
@@ -2396,6 +2397,7 @@ def create_season(
         db,
         Season(
             name=payload.name.strip(),
+            description=normalize_optional_text(payload.description),
             slug=normalize_slug(payload.slug),
             competition_id=competition.id if competition is not None else None,
             tournament_format=payload.tournament_format,
@@ -2474,6 +2476,7 @@ def update_season(
     is_archiving = payload.visibility_status == SeasonVisibilityStatus.ARCHIVED
     competition_changed = season.competition_id != (competition.id if competition is not None else None)
     season.name = payload.name.strip()
+    season.description = normalize_optional_text(payload.description)
     season.slug = normalize_slug(payload.slug)
     season.competition_id = competition.id if competition is not None else None
     season.tournament_format = payload.tournament_format
