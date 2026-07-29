@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminUser, AdminVipCompetition, Season, SettlementGeneratedScope, SettlementScopeSummary } from "@/types/api";
+import type { AdminUser, AdminVipCompetition, PricingRule, Season, SettlementGeneratedScope, SettlementScopeSummary } from "@/types/api";
 
 type ScopeType = "season" | "vip";
+type EntryProductType = "season" | "survivor" | "vip";
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("es-MX", {
@@ -37,9 +38,11 @@ function statusLabel(status: SettlementScopeSummary["assignments"][number]["stat
 
 export function AdminPaymentsPanel() {
   const [scopeType, setScopeType] = useState<ScopeType>("season");
+  const [entryProductType, setEntryProductType] = useState<EntryProductType>("season");
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [vips, setVips] = useState<AdminVipCompetition[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
   const [selectedScopeId, setSelectedScopeId] = useState("");
   const [summary, setSummary] = useState<SettlementScopeSummary | null>(null);
   const [generatedScopes, setGeneratedScopes] = useState<SettlementGeneratedScope[]>([]);
@@ -52,6 +55,8 @@ export function AdminPaymentsPanel() {
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
+  const [savingEntryPrice, setSavingEntryPrice] = useState(false);
+  const [entryPriceDraft, setEntryPriceDraft] = useState({ label: "", amount: "", currency: "mxn", is_active: true });
   const [generating, setGenerating] = useState(false);
   const [clearingAssignments, setClearingAssignments] = useState(false);
   const [savingManualAssignment, setSavingManualAssignment] = useState(false);
@@ -68,16 +73,18 @@ export function AdminPaymentsPanel() {
       setError(null);
       try {
         const accessToken = await getBrowserAccessToken();
-        const [seasonRows, vipRows, generatedRows, userRows] = await Promise.all([
+        const [seasonRows, vipRows, generatedRows, userRows, pricingRows] = await Promise.all([
           backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<AdminVipCompetition[]>("/admin/vip?include_leaderboard=true", accessToken),
           backendFetch<SettlementGeneratedScope[]>("/payments/settlements/admin/generated", accessToken),
           backendFetch<AdminUser[]>("/admin/users", accessToken),
+          backendFetch<PricingRule[]>("/payments/pricing-rules", accessToken),
         ]);
         setSeasons(seasonRows);
         setVips(vipRows);
         setGeneratedScopes(generatedRows);
         setAdminUsers(userRows.filter((row) => row.role_code === "admin" || row.role_code === "master_admin"));
+        setPricingRules(pricingRows);
         const searchParams = new URLSearchParams(window.location.search);
         const requestedScopeType = searchParams.get("scope_type") === "vip" ? "vip" : "season";
         const requestedScopeId = searchParams.get("scope_id") ?? "";
@@ -166,6 +173,63 @@ export function AdminPaymentsPanel() {
     () => availableScopes.find((row) => row.id === selectedScopeId) ?? null,
     [availableScopes, selectedScopeId],
   );
+  const selectedEntryRule = useMemo(
+    () => pricingRules
+      .filter((rule) => rule.scope_type === entryProductType && rule.scope_id === selectedScopeId)
+      .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime())[0] ?? null,
+    [entryProductType, pricingRules, selectedScopeId],
+  );
+
+  useEffect(() => {
+    setEntryProductType(scopeType === "vip" ? "vip" : "season");
+  }, [scopeType, selectedScopeId]);
+
+  useEffect(() => {
+    setEntryPriceDraft({
+      label: selectedEntryRule?.label ?? (selectedScope ? `${entryProductType === "survivor" ? "Entrada Survivor" : "Entrada"} ${selectedScope.name}` : "Pago de entrada"),
+      amount: selectedEntryRule ? String(selectedEntryRule.amount) : "",
+      currency: selectedEntryRule?.currency ?? "mxn",
+      is_active: selectedEntryRule?.is_active ?? true,
+    });
+  }, [entryProductType, selectedEntryRule, selectedScope]);
+
+  async function handleSaveEntryPrice() {
+    if (!selectedScopeId || !entryPriceDraft.label.trim() || Number(entryPriceDraft.amount) <= 0) {
+      setError("Captura una descripción y un costo de entrada mayor a cero.");
+      return;
+    }
+    setSavingEntryPrice(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      const saved = await backendFetch<PricingRule>(
+        selectedEntryRule ? `/payments/pricing-rules/${selectedEntryRule.id}` : "/payments/pricing-rules",
+        accessToken,
+        {
+          method: selectedEntryRule ? "PUT" : "POST",
+          body: JSON.stringify({
+            scope_type: entryProductType,
+            scope_id: selectedScopeId,
+            label: entryPriceDraft.label.trim(),
+            amount: Number(entryPriceDraft.amount),
+            currency: entryPriceDraft.currency.toLowerCase(),
+            starts_at: null,
+            ends_at: null,
+            start_matchday_number: null,
+            end_matchday_number: null,
+            is_active: entryPriceDraft.is_active,
+          }),
+        },
+      );
+      setPricingRules((current) => [saved, ...current.filter((rule) => rule.id !== saved.id)]);
+      setMessage(`Pago de entrada guardado para ${selectedScope?.name ?? "el torneo"}.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el pago de entrada.");
+    } finally {
+      setSavingEntryPrice(false);
+    }
+  }
   function togglePayer(profileId: string) {
     setSelectedPayerIds((current) =>
       current.includes(profileId) ? current.filter((item) => item !== profileId) : [...current, profileId],
@@ -434,6 +498,75 @@ export function AdminPaymentsPanel() {
               </optgroup>
             </select>
           </label>
+          <div className="space-y-4 border-y border-white/[0.1] py-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-steel">Pago de entrada</p>
+              <p className="mt-1 text-sm text-steel">Tarifa individual para inscribirse a {selectedScope?.name ?? "este torneo"}.</p>
+            </div>
+            {scopeType === "season" ? (
+              <div className="flex gap-5 border-b border-white/[0.08] text-sm font-semibold">
+                <button type="button" onClick={() => setEntryProductType("season")} className={`pb-2 ${entryProductType === "season" ? "text-[#4f7df3]" : "text-steel"}`}>
+                  Quiniela
+                </button>
+                <button type="button" onClick={() => setEntryProductType("survivor")} className={`pb-2 ${entryProductType === "survivor" ? "text-[#4f7df3]" : "text-steel"}`}>
+                  Survivor
+                </button>
+              </div>
+            ) : null}
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(120px,.65fr)_100px]">
+              <label className="block space-y-2 text-sm">
+                <span className="text-steel">Descripción</span>
+                <input
+                  value={entryPriceDraft.label}
+                  onChange={(event) => setEntryPriceDraft((current) => ({ ...current, label: event.target.value }))}
+                  className="field-control"
+                  placeholder="Entrada Apertura 2026"
+                />
+              </label>
+              <label className="block space-y-2 text-sm">
+                <span className="text-steel">Costo</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  max="1000000"
+                  step="0.01"
+                  value={entryPriceDraft.amount}
+                  onChange={(event) => setEntryPriceDraft((current) => ({ ...current, amount: event.target.value }))}
+                  className="field-control"
+                  placeholder="0.00"
+                />
+              </label>
+              <label className="block space-y-2 text-sm">
+                <span className="text-steel">Moneda</span>
+                <select
+                  value={entryPriceDraft.currency}
+                  onChange={(event) => setEntryPriceDraft((current) => ({ ...current, currency: event.target.value }))}
+                  className="field-control"
+                >
+                  <option value="mxn">MXN</option>
+                  <option value="usd">USD</option>
+                </select>
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={entryPriceDraft.is_active}
+                  onChange={(event) => setEntryPriceDraft((current) => ({ ...current, is_active: event.target.checked }))}
+                />
+                Cobro activo
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleSaveEntryPrice()}
+                disabled={savingEntryPrice || !selectedScopeId}
+                className="secondary-button"
+              >
+                {savingEntryPrice ? "Guardando..." : selectedEntryRule ? "Actualizar pago" : "Crear pago"}
+              </button>
+            </div>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block space-y-2 text-sm">
               <span className="text-steel">Monto máximo por pago</span>
