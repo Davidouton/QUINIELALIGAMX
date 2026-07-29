@@ -37,6 +37,7 @@ type MembershipRow = {
   availability: "Abierto" | "Cerrado";
   enrollmentStatus: string;
   detail: string;
+  statusNotice?: string | null;
   meta: string | null;
   action: ReactNode;
 };
@@ -280,15 +281,18 @@ export function DashboardEnrollmentsPageContent() {
           : isPendingApproval
             ? "Pendiente"
             : "No inscrito",
-        detail: hasActiveMembership
-          ? season.description || "Tu membresia ya esta activa y puedes entrar al dashboard, picks, scores y ranking."
+        detail: season.description || "Participa en esta Quiniela y consulta aquí las condiciones de inscripción.",
+        statusNotice: hasActiveMembership
+          ? "Tu membresía ya está activa."
           : isRejected
             ? "La solicitud anterior no fue aprobada. Puedes enviarla nuevamente mientras el registro siga abierto."
-          : registrationClosedByAdmin
-            ? "El registro de esta competencia se encuentra cerrado."
-          : isAvalMode
-            ? season.description || "Con modalidad aval tu alta entra en automático en cuanto la activas."
-            : season.description || "Con pre-pago tu alta se registra y queda pendiente de autorización admin.",
+            : registrationClosedByAdmin
+              ? "El registro de esta competencia se encuentra cerrado."
+              : isPendingApproval
+                ? "Tu solicitud fue recibida y espera aprobación del administrador."
+                : isAvalMode
+                  ? "Con modalidad aval tu alta entra en automático en cuanto la activas."
+                  : "Con pre-pago tu alta queda pendiente de autorización administrativa.",
         meta: `${season.name} · Modalidad: ${modalityLabel} · Costo: ${seasonCost}${registrationCloseLabel ? ` · Límite: ${registrationCloseLabel}` : ""}${
           registrationClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""
         }`,
@@ -346,15 +350,18 @@ export function DashboardEnrollmentsPageContent() {
             : survivorMembership
               ? "Pendiente"
               : "No inscrito",
-        detail: survivorMembership?.is_active
-          ? season.survivor_description || `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
+        detail: season.survivor_description || "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
+        statusNotice: survivorMembership?.is_active
+          ? `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
           : survivorMembership?.is_rejected
             ? "La solicitud anterior no fue aprobada. Puedes solicitar nuevamente."
-          : survivorMembership
-            ? "Tu pago o solicitud fue recibido y espera aprobación del administrador."
-          : survivorClosedByAdmin
-            ? "El registro de Survivor se encuentra cerrado."
-            : season.survivor_description || "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
+            : survivorMembership
+              ? "Tu pago o solicitud fue recibido y espera aprobación del administrador."
+              : survivorClosedByAdmin
+                ? "El registro de Survivor se encuentra cerrado."
+                : isAvalMode
+                  ? "Con modalidad aval tu alta entra en automático en cuanto la activas."
+                  : "Con pre-pago tu alta queda pendiente de autorización administrativa.",
         meta: `${season.name} · Modalidad: ${modalityLabel} · Costo: ${survivorPriceLabel ?? "Sin costo configurado"}${survivorCloseLabel ? ` · Límite: ${survivorCloseLabel}` : ""}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`,
         action: survivorMembership?.is_active ? (
           <Link href={buildHrefWithSeason("/dashboard/survivor", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
@@ -679,6 +686,9 @@ export function DashboardEnrollmentsPageContent() {
                   <div>
                     <p className="text-lg font-semibold text-ink">{expandedMembership.name}</p>
                     <p className="mt-2 text-sm text-steel">{expandedMembership.detail}</p>
+                    {expandedMembership.statusNotice ? (
+                      <p className="mt-2 text-sm font-medium text-ink">{expandedMembership.statusNotice}</p>
+                    ) : null}
                     {expandedMembership.meta ? (
                       <p className="mt-2 text-xs text-steel">{expandedMembership.meta}</p>
                     ) : null}
