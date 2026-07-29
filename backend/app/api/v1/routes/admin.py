@@ -1141,6 +1141,7 @@ def build_season_out(row: Season, competition: Competition | None = None) -> Sea
         registration_closed=row.registration_closed,
         survivor_enabled=row.survivor_enabled,
         survivor_name=row.survivor_name,
+        survivor_description=row.survivor_description,
         survivor_max_lives=row.survivor_max_lives,
         survivor_registration_closed=row.survivor_registration_closed,
         survivor_registration_lock_at=row.survivor_registration_lock_at,
@@ -2418,6 +2419,7 @@ def create_season(
             participants_lock_at=payload.participants_lock_at,
             survivor_enabled=payload.survivor_enabled,
             survivor_name=normalize_optional_text(payload.survivor_name),
+            survivor_description=normalize_optional_text(payload.survivor_description),
             survivor_max_lives=payload.survivor_max_lives,
             survivor_registration_closed=payload.registration_closed if payload.survivor_enabled else False,
             survivor_registration_lock_at=payload.participants_lock_at if payload.survivor_enabled else None,
@@ -2500,6 +2502,7 @@ def update_season(
     season.participants_lock_at = payload.participants_lock_at
     season.survivor_enabled = payload.survivor_enabled
     season.survivor_name = normalize_optional_text(payload.survivor_name)
+    season.survivor_description = normalize_optional_text(payload.survivor_description)
     season.survivor_max_lives = payload.survivor_max_lives
     season.survivor_registration_closed = True if is_archiving else (payload.registration_closed if payload.survivor_enabled else False)
     season.survivor_registration_lock_at = payload.participants_lock_at if payload.survivor_enabled else None

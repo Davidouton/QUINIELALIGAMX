@@ -248,6 +248,7 @@ class Season(Base):
     registration_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     survivor_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     survivor_name: Mapped[str | None] = mapped_column(String(160))
+    survivor_description: Mapped[str | None] = mapped_column(Text)
     survivor_max_lives: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     survivor_registration_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     survivor_registration_lock_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

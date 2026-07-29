@@ -24,6 +24,7 @@ class SeasonOut(BaseModel):
     registration_closed: bool = False
     survivor_enabled: bool = False
     survivor_name: str | None = None
+    survivor_description: str | None = None
     survivor_max_lives: int = 1
     survivor_registration_closed: bool = False
     survivor_registration_lock_at: datetime | None = None

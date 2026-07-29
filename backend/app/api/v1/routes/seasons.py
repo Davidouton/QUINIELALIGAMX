@@ -110,6 +110,7 @@ def list_seasons(
                 registration_closed=season.registration_closed,
                 survivor_enabled=season.survivor_enabled,
                 survivor_name=season.survivor_name,
+                survivor_description=season.survivor_description,
                 survivor_max_lives=season.survivor_max_lives,
                 survivor_registration_closed=season.survivor_registration_closed,
                 survivor_registration_lock_at=season.survivor_registration_lock_at,

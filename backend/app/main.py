@@ -187,6 +187,7 @@ def run_startup_migrations() -> None:
                     "ALTER TABLE seasons ADD COLUMN survivor_enabled BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
                 "survivor_name": "ALTER TABLE seasons ADD COLUMN survivor_name VARCHAR(160)",
+                "survivor_description": "ALTER TABLE seasons ADD COLUMN survivor_description TEXT",
                 "survivor_max_lives": (
                     "ALTER TABLE seasons ADD COLUMN survivor_max_lives INTEGER NOT NULL DEFAULT 1"
                 ),

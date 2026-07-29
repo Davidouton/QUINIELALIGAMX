@@ -347,14 +347,14 @@ export function DashboardEnrollmentsPageContent() {
               ? "Pendiente"
               : "No inscrito",
         detail: survivorMembership?.is_active
-          ? season.description || `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
+          ? season.survivor_description || `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
           : survivorMembership?.is_rejected
             ? "La solicitud anterior no fue aprobada. Puedes solicitar nuevamente."
           : survivorMembership
             ? "Tu pago o solicitud fue recibido y espera aprobación del administrador."
           : survivorClosedByAdmin
             ? "El registro de Survivor se encuentra cerrado."
-            : season.description || "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
+            : season.survivor_description || "Puedes inscribirte a Survivor de forma independiente y jugar con el mismo calendario y resultados oficiales.",
         meta: `${season.name} · Modalidad: ${modalityLabel} · Costo: ${survivorPriceLabel ?? "Sin costo configurado"}${survivorCloseLabel ? ` · Límite: ${survivorCloseLabel}` : ""}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`,
         action: survivorMembership?.is_active ? (
           <Link href={buildHrefWithSeason("/dashboard/survivor", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">

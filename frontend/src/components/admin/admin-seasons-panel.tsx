@@ -19,6 +19,7 @@ type SeasonFormState = {
   participants_lock_at: string;
   survivor_enabled: boolean;
   survivor_name: string;
+  survivor_description: string;
   survivor_max_lives: string;
 };
 
@@ -35,6 +36,7 @@ const initialSeasonForm: SeasonFormState = {
   participants_lock_at: "",
   survivor_enabled: false,
   survivor_name: "",
+  survivor_description: "",
   survivor_max_lives: "1",
 };
 
@@ -223,6 +225,7 @@ export function AdminSeasonsPanel() {
           ...seasonForm,
           competition_id: seasonForm.competition_id,
           survivor_name: seasonForm.survivor_name || null,
+          survivor_description: seasonForm.survivor_description || null,
           survivor_max_lives: Number(seasonForm.survivor_max_lives || 1),
           participants_lock_at:
             seasonForm.registration_lock_mode === "date"
@@ -261,6 +264,7 @@ export function AdminSeasonsPanel() {
           registration_closed: season.registration_closed,
           survivor_enabled: season.survivor_enabled,
           survivor_name: season.survivor_name,
+          survivor_description: season.survivor_description,
           survivor_max_lives: season.survivor_max_lives,
           participants_lock_at: season.participants_lock_at,
         }),
@@ -295,6 +299,7 @@ export function AdminSeasonsPanel() {
           registration_closed: !season.registration_closed,
           survivor_enabled: season.survivor_enabled,
           survivor_name: season.survivor_name,
+          survivor_description: season.survivor_description,
           survivor_max_lives: season.survivor_max_lives,
           participants_lock_at: season.participants_lock_at,
         }),
@@ -335,6 +340,7 @@ export function AdminSeasonsPanel() {
           registration_closed: true,
           survivor_enabled: season.survivor_enabled,
           survivor_name: season.survivor_name,
+          survivor_description: season.survivor_description,
           survivor_max_lives: season.survivor_max_lives,
           participants_lock_at: season.participants_lock_at,
         }),
@@ -561,6 +567,18 @@ export function AdminSeasonsPanel() {
                   className="field-control mt-2 w-full normal-case tracking-normal"
                 />
               </label>
+              <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel md:col-span-2">
+                Descripción de Survivor
+                <textarea
+                  value={seasonForm.survivor_description}
+                  onChange={(event) => setSeasonForm((current) => ({ ...current, survivor_description: event.target.value }))}
+                  placeholder="Explica la dinámica, reglas principales o condiciones específicas de Survivor."
+                  rows={3}
+                  maxLength={2000}
+                  className="field-control mt-2 min-h-[96px] w-full normal-case tracking-normal"
+                />
+                <span className="block text-xs font-normal normal-case tracking-normal text-steel">Solo se mostrará en la inscripción de Survivor.</span>
+              </label>
             </div> : null}
           </section>
           <button type="submit" disabled={saving === "season"} className="app-pill-active px-4 disabled:opacity-60">
@@ -718,6 +736,7 @@ export function AdminSeasonsPanel() {
                             ),
                             survivor_enabled: season.survivor_enabled,
                             survivor_name: season.survivor_name ?? "",
+                            survivor_description: season.survivor_description ?? "",
                             survivor_max_lives: String(season.survivor_max_lives ?? 1),
                           });
                         }}

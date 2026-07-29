@@ -1478,6 +1478,7 @@ export interface Season {
   registration_closed: boolean;
   survivor_enabled: boolean;
   survivor_name: string | null;
+  survivor_description: string | null;
   survivor_max_lives: number;
   survivor_registration_closed: boolean;
   survivor_registration_lock_at: string | null;
