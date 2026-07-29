@@ -47,17 +47,6 @@ class SurvivorService:
                 SurvivorMembership.profile_id == profile.id,
             )
         )
-        if (
-            membership is not None
-            and not membership.is_active
-            and profile.modality == "aval"
-            and profile.aval_profile_id
-        ):
-            membership.is_active = True
-            membership.joined_at = membership.joined_at or datetime.now(UTC)
-            db.add(membership)
-            db.commit()
-            db.refresh(membership)
         my_picks = board_bundle["picks_by_profile"].get(profile.id, [])
         membership_out = self._build_membership_out(
             membership=membership,

@@ -74,6 +74,46 @@ def test_prepaid_user_without_aval_stays_pending_in_survivor(client) -> None:
     assert all(row["profile_id"] != PROFILE_USER_ID for row in payload["leaderboard"])
 
 
+def test_loading_survivor_board_does_not_reactivate_admin_disabled_aval_membership(client) -> None:
+    db = SessionLocal()
+    try:
+        profile = db.get(Profile, PROFILE_USER_ID)
+        assert profile is not None
+        profile.modality = "aval"
+        profile.aval_profile_id = PROFILE_LEADER_ID
+
+        membership = db.query(SurvivorMembership).filter(
+            SurvivorMembership.season_id == SEASON_ID,
+            SurvivorMembership.profile_id == PROFILE_USER_ID,
+        ).one_or_none()
+        if membership is None:
+            membership = SurvivorMembership(
+                season_id=SEASON_ID,
+                profile_id=PROFILE_USER_ID,
+            )
+        membership.is_active = False
+        membership.is_rejected = False
+        db.add_all([profile, membership])
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/v1/survivor/board?season_id={SEASON_ID}")
+
+    assert response.status_code == 200
+    assert response.json()["my_membership"]["is_active"] is False
+
+    db = SessionLocal()
+    try:
+        membership = db.query(SurvivorMembership).filter_by(
+            profile_id=PROFILE_USER_ID,
+            season_id=SEASON_ID,
+        ).one()
+        assert membership.is_active is False
+    finally:
+        db.close()
+
+
 def test_survivor_rejects_repeated_team_selection(client) -> None:
     previous_matchday_id = "30000000-0000-0000-0000-000000000099"
     previous_match_id = "50000000-0000-0000-0000-000000000099"
