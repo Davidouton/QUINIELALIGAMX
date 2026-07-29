@@ -33,7 +33,6 @@ class ProfileOut(BaseModel):
     username: str | None = None
     role_code: RoleCode
     is_active: bool
-    is_rejected: bool = False
     created_at: datetime
 
 
@@ -43,6 +42,7 @@ class MySeasonMembershipOut(BaseModel):
     competition_id: str | None = None
     competition_name: str | None = None
     is_active: bool
+    is_rejected: bool = False
     is_paid: bool
     eligible_for_scoring: bool = False
     can_participate: bool = False

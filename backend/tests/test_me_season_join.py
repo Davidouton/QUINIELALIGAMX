@@ -50,8 +50,31 @@ def test_join_season_leaves_pre_pago_users_pending_admin_authorization(client) -
     assert response.status_code == 200
     payload = response.json()
     assert payload["selected_season_membership"]["is_active"] is False
+    assert payload["selected_season_membership"]["is_rejected"] is False
     assert payload["selected_season_membership"]["can_participate"] is False
     assert payload["can_participate_selected_season"] is False
+
+
+def test_bootstrap_exposes_rejected_season_membership(client) -> None:
+    db = SessionLocal()
+    try:
+        membership = db.query(SeasonMembership).filter(
+            SeasonMembership.profile_id == PROFILE_USER_ID,
+            SeasonMembership.season_id == SEASON_ID,
+        ).one()
+        membership.is_active = False
+        membership.is_rejected = True
+        db.add(membership)
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/api/v1/bootstrap")
+    assert response.status_code == 200
+    membership_payload = next(
+        row for row in response.json()["me"]["season_memberships"] if row["season_id"] == SEASON_ID
+    )
+    assert membership_payload["is_rejected"] is True
 
 
 def test_join_season_requires_an_assigned_aval_for_automatic_activation(client) -> None:
