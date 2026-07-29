@@ -128,6 +128,7 @@ export function DashboardEnrollmentsPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [expandedMembershipId, setExpandedMembershipId] = useState<string | null>(null);
   const [survivorPricing, setSurvivorPricing] = useState<Record<string, EffectivePricing>>({});
   const [seasonPricing, setSeasonPricing] = useState<Record<string, EffectivePricing>>({});
@@ -211,7 +212,13 @@ export function DashboardEnrollmentsPageContent() {
     }
 
     void load();
-  }, [competitionId, seasonId, setSeasonId]);
+  }, [competitionId, refreshVersion, seasonId, setSeasonId]);
+
+  useEffect(() => {
+    const refreshOnFocus = () => setRefreshVersion((current) => current + 1);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
+  }, []);
 
   const isAvalMode = state.me?.modality === "aval" && Boolean(state.me.aval_profile_id);
   const visibleSeasonRows = useMemo(
