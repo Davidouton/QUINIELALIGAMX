@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 
-import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
+import { backendFetch } from "@/lib/api/backend";
 import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { useDevMode } from "@/components/layout/dev-mode-provider";
 import { isSeasonLive, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
@@ -140,25 +140,17 @@ export function DashboardEnrollmentsPageContent() {
         setLoading(true);
         setError(null);
         const accessToken = await getBrowserAccessToken().catch(() => undefined);
-        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken, {
-          cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
-        });
+        const bootstrap = await backendFetch<AppBootstrap>("/bootstrap", accessToken);
         const selectedSeason = resolveSeasonForContext(bootstrap.seasons, seasonId, competitionId);
         const vipRows = accessToken
-          ? await backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken, {
-              cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
-            }).catch(() => [])
+          ? await backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken).catch(() => [])
           : [];
         const membershipHistory = accessToken
-          ? await backendFetch<MembershipHistoryEntry[]>("/me/membership-history", accessToken, {
-              cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
-            }).catch(() => [])
+          ? await backendFetch<MembershipHistoryEntry[]>("/me/membership-history", accessToken).catch(() => [])
           : [];
         const registeredUsers =
           accessToken && bootstrap.me.aval_profile_id
-            ? await backendFetch<RegisteredUserOption[]>("/me/registered-users", accessToken, {
-                cacheTtlMs: MATCHDAY_CACHE_TTL_MS,
-              }).catch(() => [])
+            ? await backendFetch<RegisteredUserOption[]>("/me/registered-users", accessToken).catch(() => [])
             : [];
         const survivorBoards: Record<string, SurvivorBoard> = {};
         const seasonPricingRows: Record<string, EffectivePricing> = {};
