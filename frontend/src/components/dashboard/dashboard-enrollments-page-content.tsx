@@ -629,6 +629,33 @@ export function DashboardEnrollmentsPageContent() {
 
         {availableMembershipRows.length > 0 ? (
           <>
+            {expandedMembership ? (
+              <div className="mt-5 border-y border-white/10 py-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-lg font-semibold text-ink">{expandedMembership.name}</p>
+                    <p className="mt-2 text-sm text-steel">{expandedMembership.detail}</p>
+                    {expandedMembership.statusNotice ? (
+                      <p className="mt-2 text-sm font-medium text-ink">{expandedMembership.statusNotice}</p>
+                    ) : null}
+                    {expandedMembership.meta ? (
+                      <p className="mt-2 text-xs text-steel">{expandedMembership.meta}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap items-center gap-5 text-sm font-semibold">
+                    <span
+                      title={`Registro ${expandedMembership.availability.toLowerCase()}`}
+                      aria-label={`Registro ${expandedMembership.availability.toLowerCase()}`}
+                    >
+                      <VipStatusIcon type={expandedMembership.availability === "Abierto" ? "open" : "closed"} />
+                    </span>
+                    <span className="text-ink">{expandedMembership.enrollmentStatus}</span>
+                  </div>
+                </div>
+                {expandedMembership.action ? <div className="mt-4 flex flex-wrap gap-3">{expandedMembership.action}</div> : null}
+              </div>
+            ) : null}
+
             <div className="mt-5 border-y border-white/10">
               <div className="hidden grid-cols-[minmax(0,1.5fr)_120px_140px_180px] gap-6 border-b border-white/10 py-4 text-xs uppercase tracking-[0.18em] text-steel md:grid">
                 <span>Membresia</span>
@@ -680,32 +707,6 @@ export function DashboardEnrollmentsPageContent() {
               </div>
             </div>
 
-            {expandedMembership ? (
-              <div className="mt-6 border-b border-white/10 pb-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-lg font-semibold text-ink">{expandedMembership.name}</p>
-                    <p className="mt-2 text-sm text-steel">{expandedMembership.detail}</p>
-                    {expandedMembership.statusNotice ? (
-                      <p className="mt-2 text-sm font-medium text-ink">{expandedMembership.statusNotice}</p>
-                    ) : null}
-                    {expandedMembership.meta ? (
-                      <p className="mt-2 text-xs text-steel">{expandedMembership.meta}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-5 text-sm font-semibold">
-                    <span
-                      title={`Registro ${expandedMembership.availability.toLowerCase()}`}
-                      aria-label={`Registro ${expandedMembership.availability.toLowerCase()}`}
-                    >
-                      <VipStatusIcon type={expandedMembership.availability === "Abierto" ? "open" : "closed"} />
-                    </span>
-                    <span className="text-ink">{expandedMembership.enrollmentStatus}</span>
-                  </div>
-                </div>
-                {expandedMembership.action ? <div className="mt-4 flex flex-wrap gap-3">{expandedMembership.action}</div> : null}
-              </div>
-            ) : null}
           </>
         ) : (
           <p className="mt-5 border-y border-white/10 py-5 text-sm text-steel">No hay nuevas inscripciones disponibles.</p>
