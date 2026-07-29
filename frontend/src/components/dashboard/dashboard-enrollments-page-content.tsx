@@ -300,7 +300,7 @@ export function DashboardEnrollmentsPageContent() {
             Ir al dashboard
           </Link>
         ) : isPendingApproval ? (
-          <span className="text-sm font-semibold text-gold">En revisión</span>
+          <span className="text-sm font-semibold text-gold">Espera aprobación del administrador</span>
         ) : seasonClosed ? null : (
           <button
             type="button"
@@ -309,12 +309,10 @@ export function DashboardEnrollmentsPageContent() {
             className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] disabled:opacity-50"
           >
             {actionLoading === `season:${season.id}`
-              ? "Procesando..."
-              : isAvalMode
-                ? `Inscribirme a ${seasonTitle}`
-                : isRejected
-                  ? "Solicitar nuevamente"
-                  : `Solicitar alta ${seasonTitle}`}
+              ? "Activando..."
+              : isRejected
+                ? "Solicitar nuevamente"
+                : "Activar inscripción"}
           </button>
         ),
       });
@@ -371,7 +369,7 @@ export function DashboardEnrollmentsPageContent() {
             {actionLoading === `survivor:${season.id}` ? "Enviando..." : "Solicitar nuevamente"}
           </button>
         ) : survivorMembership && !isAvalMode ? (
-          <span className="text-sm font-semibold text-gold">En revisión</span>
+          <span className="text-sm font-semibold text-gold">Espera aprobación del administrador</span>
         ) : survivorMembership && isAvalMode && !survivorWindowClosed ? (
           <button
             type="button"
