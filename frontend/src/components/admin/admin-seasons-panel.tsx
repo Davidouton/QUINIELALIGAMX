@@ -173,6 +173,10 @@ export function AdminSeasonsPanel() {
   }
 
   async function handleRejectMembership(profileId: string, type: "season" | "survivor") {
+    const productLabel = type === "season" ? "Quiniela" : "Survivor";
+    if (!window.confirm(`¿No aprobar esta solicitud de ${productLabel}? El jugador podrá solicitar nuevamente.`)) {
+      return;
+    }
     const savingKey = `reject:${type}:${profileId}`;
     setSaving(savingKey);
     setError(null);
@@ -612,15 +616,15 @@ export function AdminSeasonsPanel() {
         {pendingApprovals.length ? (
           <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
             {pendingApprovals.map((request) => (
-              <div key={request.key} className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_130px_110px_180px] sm:items-center">
+              <div key={request.key} className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_130px_110px_270px] sm:items-center">
                 <p className="font-semibold text-ink">{request.name}</p>
                 <p className="text-sm text-steel">{request.type === "season" ? "Quiniela" : "Survivor"}</p>
                 <p className="text-sm text-steel">{request.paid ? "Pagado" : request.modality === "aval" ? "Con aval" : "Pre-pago"}</p>
-                <div className="flex gap-4 sm:justify-end">
-                  <button type="button" onClick={() => void handleRejectMembership(request.profileId, request.type)} disabled={Boolean(saving)} className="text-sm font-semibold text-coral">
+                <div className="flex flex-wrap gap-2 sm:flex-nowrap sm:justify-end">
+                  <button type="button" onClick={() => void handleRejectMembership(request.profileId, request.type)} disabled={Boolean(saving)} className="shrink-0 border border-coral/60 px-3 py-2 text-sm font-semibold text-coral transition hover:bg-coral/10 disabled:opacity-50">
                     {saving === `reject:${request.type}:${request.profileId}` ? "Procesando..." : "No aprobar"}
                   </button>
-                  <button type="button" onClick={() => void handleApproveMembership(request.profileId, request.type)} disabled={Boolean(saving)} className="text-sm font-semibold text-[#4f7df3]">
+                  <button type="button" onClick={() => void handleApproveMembership(request.profileId, request.type)} disabled={Boolean(saving)} className="shrink-0 border border-[#4f7df3]/60 px-3 py-2 text-sm font-semibold text-[#4f7df3] transition hover:bg-[#4f7df3]/10 disabled:opacity-50">
                     {saving === `approve:${request.type}:${request.profileId}` ? "Aprobando..." : "Aprobar"}
                   </button>
                 </div>
