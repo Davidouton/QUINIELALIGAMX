@@ -371,6 +371,8 @@ export function DashboardEnrollmentsPageContent() {
           <button type="button" onClick={() => void handleJoinSurvivor(season)} disabled={actionLoading === `survivor:${season.id}`} className="text-sm font-semibold text-[#4f7df3] disabled:opacity-50">
             {actionLoading === `survivor:${season.id}` ? "Enviando..." : "Solicitar nuevamente"}
           </button>
+        ) : survivorMembership && !isAvalMode ? (
+          <span className="text-sm font-semibold text-gold">En revisión</span>
         ) : survivorMembership && isAvalMode && !survivorWindowClosed ? (
           <button
             type="button"
