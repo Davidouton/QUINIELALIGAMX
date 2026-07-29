@@ -117,12 +117,12 @@ export function AdminSeasonsPanel() {
     void load();
   }, []);
 
-  async function loadApprovals(seasonId: string) {
+  async function loadApprovals(seasonId: string, silent = false) {
     if (!seasonId) {
       setApprovalUsers([]);
       return;
     }
-    setLoadingApprovals(true);
+    if (!silent) setLoadingApprovals(true);
     try {
       const accessToken = await getBrowserAccessToken();
       const rows = await backendFetch<AdminUser[]>(`/admin/users?season_id=${seasonId}`, accessToken);
@@ -130,12 +130,21 @@ export function AdminSeasonsPanel() {
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar las solicitudes");
     } finally {
-      setLoadingApprovals(false);
+      if (!silent) setLoadingApprovals(false);
     }
   }
 
   useEffect(() => {
     void loadApprovals(approvalSeasonId);
+    if (!approvalSeasonId) return;
+
+    const refreshApprovals = () => void loadApprovals(approvalSeasonId, true);
+    const intervalId = window.setInterval(refreshApprovals, 10000);
+    window.addEventListener("focus", refreshApprovals);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshApprovals);
+    };
   }, [approvalSeasonId]);
 
   async function handleApproveMembership(profileId: string, type: "season" | "survivor") {
