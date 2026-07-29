@@ -343,6 +343,15 @@ export function DashboardEnrollmentsPageContent() {
           <Link href={buildHrefWithSeason("/dashboard/survivor", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Abrir Survivor
           </Link>
+        ) : survivorMembership && isAvalMode && !survivorWindowClosed ? (
+          <button
+            type="button"
+            onClick={() => void handleJoinSurvivor(season)}
+            disabled={actionLoading === `survivor:${season.id}`}
+            className="text-sm font-semibold text-[#4f7df3] transition disabled:opacity-50"
+          >
+            {actionLoading === `survivor:${season.id}` ? "Activando..." : "Activar inscripción"}
+          </button>
         ) : survivorMembership || survivorWindowClosed ? null : (
           <button
             type="button"
@@ -467,7 +476,8 @@ export function DashboardEnrollmentsPageContent() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      if (survivorPricing[season.id]) {
+      const existingMembership = state.survivorBoards[season.id]?.my_membership ?? null;
+      if (survivorPricing[season.id] && !existingMembership) {
         const checkout = await backendFetch<CheckoutSessionResponse>("/payments/checkout-session", accessToken, {
           method: "POST",
           body: JSON.stringify({ scope_type: "survivor", scope_id: season.id }),
