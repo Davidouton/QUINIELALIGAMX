@@ -171,6 +171,8 @@ export function AdminSeasonsPanel() {
   const pendingApprovals = useMemo(
     () => approvalUsers.flatMap((user) => {
       const rows: Array<{ key: string; profileId: string; name: string; modality: string; type: "season" | "survivor"; paid: boolean }> = [];
+      const hasAvalAccess = user.modality === "aval" && Boolean(user.aval_profile_id);
+      if (hasAvalAccess) return rows;
       const seasonMembership = user.season_memberships.find((row) => row.season_id === approvalSeasonId);
       if (seasonMembership && !seasonMembership.is_active) {
         rows.push({ key: `season:${user.id}`, profileId: user.id, name: user.display_name, modality: user.modality, type: "season", paid: seasonMembership.is_paid });
