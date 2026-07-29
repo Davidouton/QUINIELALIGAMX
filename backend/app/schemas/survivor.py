@@ -93,6 +93,7 @@ class SurvivorPickOut(BaseModel):
 class SurvivorMembershipOut(BaseModel):
     season_id: str
     is_active: bool = False
+    is_rejected: bool = False
     joined_at: datetime | None = None
     max_lives: int = 1
     remaining_lives: int = 1

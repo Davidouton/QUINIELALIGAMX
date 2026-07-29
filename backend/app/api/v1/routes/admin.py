@@ -117,6 +117,7 @@ from app.schemas.admin import (
     TrophyAssetOut,
     TrophyAssetUpdateRequest,
     UserAccessUpdateRequest,
+    UserMembershipRejectRequest,
     UserSeasonMembershipUpdateRequest,
     UserSurvivorMembershipUpdateRequest,
 )
@@ -1393,6 +1394,7 @@ def build_admin_user_season_membership_out(
         season_id=membership.season_id,
         season_name=season_name or membership.season_id,
         is_active=membership.is_active,
+        is_rejected=membership.is_rejected,
         is_paid=membership.is_paid,
         eligible_for_scoring=membership.eligible_for_scoring,
         eligible_locked_at=membership.eligible_locked_at,
@@ -1410,6 +1412,7 @@ def build_admin_user_survivor_membership_out(
         season_id=membership.season_id,
         season_name=season_name or membership.season_id,
         is_active=membership.is_active,
+        is_rejected=membership.is_rejected,
         is_paid=membership.is_paid,
         joined_at=membership.joined_at,
     )
@@ -1455,6 +1458,7 @@ def build_admin_user_out_from_maps(
             season_id=season.id,
             season_name=season.name,
             is_active=bool(membership and membership.is_active),
+            is_rejected=bool(membership and membership.is_rejected),
             is_paid=bool(membership and membership.is_paid),
             eligible_for_scoring=bool(membership and membership.eligible_for_scoring),
             eligible_locked_at=membership.eligible_locked_at if membership is not None else None,
@@ -1467,6 +1471,7 @@ def build_admin_user_out_from_maps(
             season_id=season.id,
             season_name=season.name,
             is_active=bool(survivor_membership and survivor_membership.is_active),
+            is_rejected=bool(survivor_membership and survivor_membership.is_rejected),
             is_paid=bool(survivor_membership and survivor_membership.is_paid),
             joined_at=survivor_membership.joined_at if survivor_membership is not None else None,
         )
@@ -1482,6 +1487,7 @@ def build_admin_user_out_from_maps(
             season_id=membership_row.season_id,
             season_name=season_name_by_id.get(membership_row.season_id, "Temporada"),
             is_active=membership_row.is_active,
+            is_rejected=membership_row.is_rejected,
             is_paid=membership_row.is_paid,
             joined_at=membership_row.joined_at,
         )
@@ -2083,6 +2089,8 @@ def upsert_user_season_membership(
             membership.eligible_locked_at = datetime.now(UTC)
 
     membership.is_active = payload.is_active
+    if payload.is_active:
+        membership.is_rejected = False
     membership.is_paid = payload.is_paid
     membership.notes = normalize_optional_text(payload.notes)
     if payload.is_active:
@@ -2130,9 +2138,38 @@ def upsert_user_survivor_membership(
         )
 
     membership.is_active = payload.is_active
+    if payload.is_active:
+        membership.is_rejected = False
     if payload.is_active and membership.joined_at is None:
         membership.joined_at = datetime.now(UTC)
 
+    db.add(membership)
+    db.commit()
+    return build_admin_user_out(db, profile, season)
+
+
+@router.post("/users/{profile_id}/membership-rejection", response_model=AdminUserOut)
+def reject_user_membership(
+    profile_id: str,
+    payload: UserMembershipRejectRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminUserOut:
+    profile = profile_repo.get_by_id(db, profile_id)
+    season = season_repo.get_by_id(db, payload.season_id)
+    if profile is None or season is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario o temporada no encontrado")
+    if payload.membership_type == "season":
+        membership = season_membership_repo.get_for_profile_and_season(db, profile.id, season.id)
+    else:
+        membership = db.scalar(select(SurvivorMembership).where(
+            SurvivorMembership.season_id == season.id,
+            SurvivorMembership.profile_id == profile.id,
+        ))
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solicitud no encontrada")
+    membership.is_active = False
+    membership.is_rejected = True
     db.add(membership)
     db.commit()
     return build_admin_user_out(db, profile, season)

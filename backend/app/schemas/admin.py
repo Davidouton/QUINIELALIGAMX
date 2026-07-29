@@ -79,6 +79,11 @@ class UserSurvivorMembershipUpdateRequest(BaseModel):
     is_active: bool = False
 
 
+class UserMembershipRejectRequest(BaseModel):
+    season_id: str
+    membership_type: Literal["season", "survivor"]
+
+
 class SyncResponse(BaseModel):
     provider_name: str
     resource_type: str
@@ -305,6 +310,7 @@ class AdminUserSeasonMembershipOut(BaseModel):
     season_id: str
     season_name: str
     is_active: bool
+    is_rejected: bool = False
     is_paid: bool
     eligible_for_scoring: bool = False
     eligible_locked_at: datetime | None = None
@@ -316,6 +322,7 @@ class AdminUserSurvivorMembershipOut(BaseModel):
     season_id: str
     season_name: str
     is_active: bool
+    is_rejected: bool = False
     is_paid: bool = False
     joined_at: datetime | None = None
 

@@ -719,6 +719,7 @@ class ProfileService:
             competition_id=season.competition_id,
             competition_name=competition.name if competition is not None else None,
             is_active=bool(membership.is_active),
+            is_rejected=bool(membership.is_rejected),
             is_paid=bool(membership.is_paid),
             eligible_for_scoring=bool(membership.eligible_for_scoring),
             can_participate=bool(self.eligibility_service.can_participate(db, season, membership)),

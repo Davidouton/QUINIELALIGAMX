@@ -141,6 +141,8 @@ class SurvivorService:
             membership.is_active = True
             if membership.joined_at is None:
                 membership.joined_at = now
+        else:
+            membership.is_rejected = False
         db.add(membership)
         db.commit()
         return self.get_board(db, season.id, profile)
@@ -503,6 +505,7 @@ class SurvivorService:
         return SurvivorMembershipOut(
             season_id=season.id,
             is_active=bool(membership.is_active),
+            is_rejected=bool(membership.is_rejected),
             joined_at=membership.joined_at,
             max_lives=max_lives,
             remaining_lives=remaining_lives,

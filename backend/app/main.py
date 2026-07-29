@@ -595,6 +595,7 @@ def run_startup_migrations() -> None:
                       season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
                       profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
                       is_active BOOLEAN NOT NULL DEFAULT FALSE,
+                      is_rejected BOOLEAN NOT NULL DEFAULT FALSE,
                       is_paid BOOLEAN NOT NULL DEFAULT FALSE,
                       eligible_for_scoring BOOLEAN NOT NULL DEFAULT FALSE,
                       activated_at TIMESTAMP WITH TIME ZONE,
@@ -628,6 +629,7 @@ def run_startup_migrations() -> None:
                     "ADD COLUMN eligible_for_scoring BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
                 "eligible_locked_at": "ALTER TABLE season_memberships ADD COLUMN eligible_locked_at TIMESTAMP WITH TIME ZONE",
+                "is_rejected": "ALTER TABLE season_memberships ADD COLUMN is_rejected BOOLEAN NOT NULL DEFAULT FALSE",
             }
             for column_name, statement in missing_membership_columns.items():
                 if column_name not in membership_column_names:
@@ -670,6 +672,7 @@ def run_startup_migrations() -> None:
                       season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
                       profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
                       is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      is_rejected BOOLEAN NOT NULL DEFAULT FALSE,
                       is_paid BOOLEAN NOT NULL DEFAULT FALSE,
                       joined_at TIMESTAMP WITH TIME ZONE,
                       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
@@ -692,6 +695,10 @@ def run_startup_migrations() -> None:
             if "is_paid" not in survivor_membership_columns:
                 connection.execute(
                     text("ALTER TABLE survivor_memberships ADD COLUMN is_paid BOOLEAN NOT NULL DEFAULT FALSE")
+                )
+            if "is_rejected" not in survivor_membership_columns:
+                connection.execute(
+                    text("ALTER TABLE survivor_memberships ADD COLUMN is_rejected BOOLEAN NOT NULL DEFAULT FALSE")
                 )
 
         if "settlement_configs" not in table_names:

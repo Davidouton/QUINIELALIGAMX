@@ -210,6 +210,7 @@ def join_season(
         )
 
     is_aval_member = current_profile.modality == "aval" and bool(current_profile.aval_profile_id)
+    membership.is_rejected = False
     if is_aval_member:
         membership.is_active = True
         if membership.activated_at is None:

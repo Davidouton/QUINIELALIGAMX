@@ -257,7 +257,8 @@ export function DashboardEnrollmentsPageContent() {
     visibleSeasonRows.forEach((season) => {
       const membership = state.me?.season_memberships.find((item) => item.season_id === season.id) ?? null;
       const hasActiveMembership = Boolean(membership?.is_active);
-      const isPendingApproval = Boolean(membership && !membership.is_active && !isAvalMode);
+      const isRejected = Boolean(membership?.is_rejected);
+      const isPendingApproval = Boolean(membership && !membership.is_active && !isAvalMode && !isRejected);
       const windowClosed = isClosedAt(season.participants_lock_at);
       const registrationClosedByAdmin = season.registration_closed;
       const seasonClosed = registrationClosedByAdmin || windowClosed;
@@ -274,11 +275,15 @@ export function DashboardEnrollmentsPageContent() {
         availability: seasonClosed ? "Cerrado" : "Abierto",
         enrollmentStatus: hasActiveMembership
           ? "Activo"
+          : isRejected
+            ? "No aprobado"
           : isPendingApproval
             ? "Pendiente"
             : "No inscrito",
         detail: hasActiveMembership
           ? "Tu membresia ya esta activa y puedes entrar al dashboard, picks, scores y ranking."
+          : isRejected
+            ? "La solicitud anterior no fue aprobada. Puedes enviarla nuevamente mientras el registro siga abierto."
           : registrationClosedByAdmin
             ? "El registro de esta competencia se encuentra cerrado."
           : isAvalMode
@@ -304,7 +309,9 @@ export function DashboardEnrollmentsPageContent() {
               ? "Procesando..."
               : isAvalMode
                 ? `Inscribirme a ${seasonTitle}`
-                : `Solicitar alta ${seasonTitle}`}
+                : isRejected
+                  ? "Solicitar nuevamente"
+                  : `Solicitar alta ${seasonTitle}`}
           </button>
         ),
       });
@@ -332,9 +339,17 @@ export function DashboardEnrollmentsPageContent() {
         id: `survivor-${season.id}`,
         name: season.survivor_name?.trim() || `Survivor ${getSeasonDisplayName(season)}`,
         availability: survivorWindowClosed ? "Cerrado" : "Abierto",
-        enrollmentStatus: survivorMembership?.is_active ? "Activo" : survivorMembership ? "Pendiente" : "No inscrito",
+        enrollmentStatus: survivorMembership?.is_active
+          ? "Activo"
+          : survivorMembership?.is_rejected
+            ? "No aprobado"
+            : survivorMembership
+              ? "Pendiente"
+              : "No inscrito",
         detail: survivorMembership?.is_active
           ? `${survivorMembership.remaining_lives}/${survivorMembership.max_lives} vidas disponibles en esta temporada.`
+          : survivorMembership?.is_rejected
+            ? "La solicitud anterior no fue aprobada. Puedes solicitar nuevamente."
           : survivorMembership
             ? "Tu pago o solicitud fue recibido y espera aprobación del administrador."
           : survivorClosedByAdmin
@@ -345,6 +360,10 @@ export function DashboardEnrollmentsPageContent() {
           <Link href={buildHrefWithSeason("/dashboard/survivor", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Abrir Survivor
           </Link>
+        ) : survivorMembership?.is_rejected && !survivorWindowClosed ? (
+          <button type="button" onClick={() => void handleJoinSurvivor(season)} disabled={actionLoading === `survivor:${season.id}`} className="text-sm font-semibold text-[#4f7df3] disabled:opacity-50">
+            {actionLoading === `survivor:${season.id}` ? "Enviando..." : "Solicitar nuevamente"}
+          </button>
         ) : survivorMembership && isAvalMode && !survivorWindowClosed ? (
           <button
             type="button"

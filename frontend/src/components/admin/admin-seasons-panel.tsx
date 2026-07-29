@@ -168,17 +168,36 @@ export function AdminSeasonsPanel() {
     }
   }
 
+  async function handleRejectMembership(profileId: string, type: "season" | "survivor") {
+    const savingKey = `reject:${type}:${profileId}`;
+    setSaving(savingKey);
+    setError(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/admin/users/${profileId}/membership-rejection`, accessToken, {
+        method: "POST",
+        body: JSON.stringify({ season_id: approvalSeasonId, membership_type: type }),
+      });
+      await loadApprovals(approvalSeasonId);
+      setMessage("Solicitud no aprobada. El jugador puede solicitar nuevamente.");
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo rechazar la solicitud");
+    } finally {
+      setSaving(null);
+    }
+  }
+
   const pendingApprovals = useMemo(
     () => approvalUsers.flatMap((user) => {
       const rows: Array<{ key: string; profileId: string; name: string; modality: string; type: "season" | "survivor"; paid: boolean }> = [];
       const hasAvalAccess = user.modality === "aval" && Boolean(user.aval_profile_id);
       if (hasAvalAccess) return rows;
       const seasonMembership = user.season_memberships.find((row) => row.season_id === approvalSeasonId);
-      if (seasonMembership && !seasonMembership.is_active) {
+      if (seasonMembership && !seasonMembership.is_active && !seasonMembership.is_rejected) {
         rows.push({ key: `season:${user.id}`, profileId: user.id, name: user.display_name, modality: user.modality, type: "season", paid: seasonMembership.is_paid });
       }
       const survivorMembership = user.survivor_memberships.find((row) => row.season_id === approvalSeasonId);
-      if (survivorMembership && !survivorMembership.is_active) {
+      if (survivorMembership && !survivorMembership.is_active && !survivorMembership.is_rejected) {
         rows.push({ key: `survivor:${user.id}`, profileId: user.id, name: user.display_name, modality: user.modality, type: "survivor", paid: survivorMembership.is_paid });
       }
       return rows;
@@ -558,18 +577,18 @@ export function AdminSeasonsPanel() {
         {pendingApprovals.length ? (
           <div className="divide-y divide-white/[0.08] border-y border-white/[0.08]">
             {pendingApprovals.map((request) => (
-              <div key={request.key} className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_130px_110px_110px] sm:items-center">
+              <div key={request.key} className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_130px_110px_180px] sm:items-center">
                 <p className="font-semibold text-ink">{request.name}</p>
                 <p className="text-sm text-steel">{request.type === "season" ? "Quiniela" : "Survivor"}</p>
                 <p className="text-sm text-steel">{request.paid ? "Pagado" : request.modality === "aval" ? "Con aval" : "Pre-pago"}</p>
-                <button
-                  type="button"
-                  onClick={() => void handleApproveMembership(request.profileId, request.type)}
-                  disabled={saving === `approve:${request.type}:${request.profileId}`}
-                  className="text-left text-sm font-semibold text-[#4f7df3] sm:text-right"
-                >
-                  {saving === `approve:${request.type}:${request.profileId}` ? "Aprobando..." : "Aprobar"}
-                </button>
+                <div className="flex gap-4 sm:justify-end">
+                  <button type="button" onClick={() => void handleRejectMembership(request.profileId, request.type)} disabled={Boolean(saving)} className="text-sm font-semibold text-coral">
+                    {saving === `reject:${request.type}:${request.profileId}` ? "Procesando..." : "No aprobar"}
+                  </button>
+                  <button type="button" onClick={() => void handleApproveMembership(request.profileId, request.type)} disabled={Boolean(saving)} className="text-sm font-semibold text-[#4f7df3]">
+                    {saving === `approve:${request.type}:${request.profileId}` ? "Aprobando..." : "Aprobar"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>

@@ -1144,6 +1144,7 @@ export interface AdminSurvivorPick extends SurvivorPick {
 export interface SurvivorMembership {
   season_id: string;
   is_active: boolean;
+  is_rejected: boolean;
   joined_at: string | null;
   max_lives: number;
   remaining_lives: number;
@@ -1212,6 +1213,7 @@ export interface UserSeasonMembership {
   competition_id: string | null;
   competition_name: string | null;
   is_active: boolean;
+  is_rejected: boolean;
   is_paid: boolean;
   eligible_for_scoring: boolean;
   can_participate: boolean;
@@ -1650,6 +1652,7 @@ export interface AdminUserSeasonMembership {
   season_id: string;
   season_name: string;
   is_active: boolean;
+  is_rejected: boolean;
   is_paid: boolean;
   eligible_for_scoring: boolean;
   eligible_locked_at: string | null;
@@ -1661,6 +1664,7 @@ export interface AdminUserSurvivorMembership {
   season_id: string;
   season_name: string;
   is_active: boolean;
+  is_rejected: boolean;
   is_paid: boolean;
   joined_at: string | null;
 }
