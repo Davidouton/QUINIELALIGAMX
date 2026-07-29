@@ -257,7 +257,7 @@ export function DashboardEnrollmentsPageContent() {
     visibleSeasonRows.forEach((season) => {
       const membership = state.me?.season_memberships.find((item) => item.season_id === season.id) ?? null;
       const hasActiveMembership = Boolean(membership?.is_active);
-      const isPendingApproval = Boolean(membership && !membership.is_active && state.me?.modality === "pre_pago");
+      const isPendingApproval = Boolean(membership && !membership.is_active && !isAvalMode);
       const windowClosed = isClosedAt(season.participants_lock_at);
       const registrationClosedByAdmin = season.registration_closed;
       const seasonClosed = registrationClosedByAdmin || windowClosed;
@@ -291,6 +291,8 @@ export function DashboardEnrollmentsPageContent() {
           <Link href={buildHrefWithSeason("/dashboard", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Ir al dashboard
           </Link>
+        ) : isPendingApproval ? (
+          <span className="text-sm font-semibold text-gold">En revisión</span>
         ) : seasonClosed ? null : (
           <button
             type="button"
