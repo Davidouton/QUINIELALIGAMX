@@ -104,21 +104,8 @@ class SurvivorService:
                 SurvivorMembership.profile_id == profile.id,
             )
         )
-        if membership is None:
-            from app.services.payment_service import PaymentService
-
-            try:
-                PaymentService().get_effective_pricing(db, "survivor", season.id)
-            except HTTPException as exc:
-                if exc.status_code not in {status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND}:
-                    raise
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail="Este Survivor requiere pago. Completa la inscripcion desde Inscripciones.",
-                )
-        now = datetime.now(UTC)
         has_aval_access = profile.modality == "aval" and bool(profile.aval_profile_id)
+        now = datetime.now(UTC)
         if membership is None:
             membership = SurvivorMembership(
                 season_id=season.id,

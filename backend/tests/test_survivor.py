@@ -74,6 +74,30 @@ def test_prepaid_user_without_aval_stays_pending_in_survivor(client) -> None:
     assert all(row["profile_id"] != PROFILE_USER_ID for row in payload["leaderboard"])
 
 
+def test_aval_user_can_join_survivor_without_payment_request(client) -> None:
+    db = SessionLocal()
+    try:
+        profile = db.get(Profile, PROFILE_USER_ID)
+        assert profile is not None
+        profile.modality = "aval"
+        profile.aval_profile_id = PROFILE_LEADER_ID
+        existing = db.query(SurvivorMembership).filter(
+            SurvivorMembership.season_id == SEASON_ID,
+            SurvivorMembership.profile_id == PROFILE_USER_ID,
+        ).one_or_none()
+        if existing is not None:
+            db.delete(existing)
+        db.add(profile)
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.post(f"/api/v1/survivor/seasons/{SEASON_ID}/join")
+
+    assert response.status_code == 200
+    assert response.json()["my_membership"]["is_active"] is True
+
+
 def test_loading_survivor_board_does_not_reactivate_admin_disabled_aval_membership(client) -> None:
     db = SessionLocal()
     try:

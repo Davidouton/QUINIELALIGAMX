@@ -21,10 +21,12 @@ from app.models.entities import (
     SettlementAssignment,
     SettlementConfig,
     SettlementStatus,
+    SurvivorMembership,
     VipCompetition,
     VipMembership,
 )
 from app.schemas.payments import (
+    EnrollmentPaymentRequestCreate,
     MySettlementsResponse,
     SettlementAssignmentOut,
     SettlementAssignmentOverrideRequest,
@@ -388,6 +390,78 @@ class SettlementService:
             config_row=config_row,
         )
 
+    def create_enrollment_payment_request(
+        self,
+        db: Session,
+        payload: EnrollmentPaymentRequestCreate,
+        current_profile: Profile,
+    ) -> SettlementAssignmentOut:
+        scope_type = PaymentScopeType(payload.scope_type)
+        season = db.get(Season, payload.scope_id)
+        payer = db.get(Profile, payload.profile_id)
+        if season is None or payer is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario o torneo no encontrado.")
+        if payer.modality == "aval" and payer.aval_profile_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Los usuarios con aval no requieren cobro.")
+
+        if scope_type == PaymentScopeType.SEASON:
+            membership = db.scalar(
+                select(SeasonMembership).where(
+                    SeasonMembership.season_id == season.id,
+                    SeasonMembership.profile_id == payer.id,
+                )
+            )
+        else:
+            membership = db.scalar(
+                select(SurvivorMembership).where(
+                    SurvivorMembership.season_id == season.id,
+                    SurvivorMembership.profile_id == payer.id,
+                )
+            )
+        if membership is None or membership.is_active or membership.is_rejected:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El usuario no tiene una solicitud pendiente para este producto.",
+            )
+
+        existing = db.scalar(
+            select(SettlementAssignment).where(
+                SettlementAssignment.scope_type == scope_type,
+                SettlementAssignment.scope_id == season.id,
+                SettlementAssignment.payer_profile_id == payer.id,
+                SettlementAssignment.status.in_([
+                    SettlementStatus.PENDING_PROOF,
+                    SettlementStatus.PROOF_SUBMITTED,
+                    SettlementStatus.CONFIRMED,
+                ]),
+            )
+        )
+        if existing is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este usuario ya tiene un cobro generado.")
+
+        from app.services.payment_service import PaymentService
+
+        pricing = PaymentService().get_effective_pricing(db, scope_type.value, season.id)
+        row = SettlementAssignment(
+            scope_type=scope_type,
+            scope_id=season.id,
+            payer_profile_id=payer.id,
+            payee_profile_id=current_profile.id,
+            amount=self._to_money(pricing.amount),
+            currency=pricing.currency,
+            status=SettlementStatus.PENDING_PROOF,
+            created_by_profile_id=current_profile.id,
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        self.send_generation_notifications(
+            db,
+            [row],
+            scope_label=(season.survivor_name or f"Survivor {season.name}") if scope_type == PaymentScopeType.SURVIVOR else season.name,
+        )
+        return self._assignment_outs(db, [row])[0]
+
     def override_assignment(
         self,
         db: Session,
@@ -587,6 +661,7 @@ class SettlementService:
                 detail="Todavia no hay una ficha pendiente por confirmar en este pago.",
             )
         self._mark_confirmed(row, confirmed_by_profile_id=profile.id, automatic=False)
+        self._sync_confirmed_enrollment_payment(db, row)
         db.add(row)
         db.commit()
         db.refresh(row)
@@ -1006,7 +1081,7 @@ class SettlementService:
         db: Session,
         rows: list[SettlementAssignment],
     ) -> dict[tuple[str, str], str]:
-        season_ids = {row.scope_id for row in rows if row.scope_type == PaymentScopeType.SEASON}
+        season_ids = {row.scope_id for row in rows if row.scope_type in {PaymentScopeType.SEASON, PaymentScopeType.SURVIVOR}}
         vip_ids = {row.scope_id for row in rows if row.scope_type == PaymentScopeType.VIP}
         season_map = {
             row.id: row.name
@@ -1018,6 +1093,7 @@ class SettlementService:
         }
         labels: dict[tuple[str, str], str] = {}
         labels.update({(PaymentScopeType.SEASON.value, scope_id): label for scope_id, label in season_map.items()})
+        labels.update({(PaymentScopeType.SURVIVOR.value, scope_id): f"Survivor · {label}" for scope_id, label in season_map.items()})
         labels.update({(PaymentScopeType.VIP.value, scope_id): label for scope_id, label in vip_map.items()})
         return labels
 
@@ -1257,6 +1333,7 @@ class SettlementService:
             return
         for row in due_rows:
             self._mark_confirmed(row, confirmed_by_profile_id=row.payee_profile_id, automatic=True)
+            self._sync_confirmed_enrollment_payment(db, row)
             db.add(row)
         db.commit()
         for vip_id in {row.scope_id for row in due_rows if row.scope_type == PaymentScopeType.VIP}:
@@ -1295,6 +1372,28 @@ class SettlementService:
         row.rejected_at = None
         row.rejection_reason = None
         row.auto_confirm_at = None
+
+    @staticmethod
+    def _sync_confirmed_enrollment_payment(db: Session, row: SettlementAssignment) -> None:
+        if row.scope_type == PaymentScopeType.SEASON:
+            membership = db.scalar(
+                select(SeasonMembership).where(
+                    SeasonMembership.season_id == row.scope_id,
+                    SeasonMembership.profile_id == row.payer_profile_id,
+                )
+            )
+        elif row.scope_type == PaymentScopeType.SURVIVOR:
+            membership = db.scalar(
+                select(SurvivorMembership).where(
+                    SurvivorMembership.season_id == row.scope_id,
+                    SurvivorMembership.profile_id == row.payer_profile_id,
+                )
+            )
+        else:
+            return
+        if membership is not None and not membership.is_active and not membership.is_rejected:
+            membership.is_paid = True
+            db.add(membership)
 
     def _ensure_scope_exists(
         self,

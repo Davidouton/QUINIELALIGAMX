@@ -9,7 +9,7 @@ import { useDevMode } from "@/components/layout/dev-mode-provider";
 import { isSeasonLive, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { VipStatusIcon } from "@/components/vip/vip-page-content";
-import type { AppBootstrap, CheckoutSessionResponse, EffectivePricing, Me, MembershipHistoryEntry, RegisteredUserOption, Season, SurvivorBoard, VipCompetition } from "@/types/api";
+import type { AppBootstrap, EffectivePricing, Me, MembershipHistoryEntry, RegisteredUserOption, Season, SurvivorBoard, VipCompetition } from "@/types/api";
 
 type EnrollmentState = {
   me: Me | null;
@@ -265,9 +265,11 @@ export function DashboardEnrollmentsPageContent() {
       const seasonTitle = getSeasonDisplayName(season);
       const registrationCloseLabel = formatMexicoDateTime(season.participants_lock_at);
       const seasonPrice = seasonPricing[season.id];
-      const seasonCost = seasonPrice
-        ? new Intl.NumberFormat("es-MX", { style: "currency", currency: seasonPrice.currency.toUpperCase() }).format(seasonPrice.amount)
-        : "Sin costo configurado";
+      const seasonCost = isAvalMode
+        ? "Incluido con aval"
+        : seasonPrice
+          ? new Intl.NumberFormat("es-MX", { style: "currency", currency: seasonPrice.currency.toUpperCase() }).format(seasonPrice.amount)
+          : "Sin costo configurado";
       const modalityLabel = isAvalMode ? "Aval" : "Pre-pago con aprobación admin";
       rows.push({
         id: `season-${season.id}`,
@@ -336,6 +338,7 @@ export function DashboardEnrollmentsPageContent() {
             maximumFractionDigits: 2,
           }).format(survivorPrice.amount)
         : null;
+      const survivorCostLabel = isAvalMode ? "Incluido con aval" : survivorPriceLabel ?? "Sin costo configurado";
       rows.push({
         id: `survivor-${season.id}`,
         name: season.survivor_name?.trim() || `Survivor ${getSeasonDisplayName(season)}`,
@@ -359,7 +362,7 @@ export function DashboardEnrollmentsPageContent() {
                 : isAvalMode
                   ? "Con modalidad aval tu alta entra en automático en cuanto la activas."
                   : "Con pre-pago tu alta queda pendiente de autorización administrativa.",
-        meta: `${season.name} · Modalidad: ${modalityLabel} · Costo: ${survivorPriceLabel ?? "Sin costo configurado"}${survivorCloseLabel ? ` · Límite: ${survivorCloseLabel}` : ""}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`,
+        meta: `${season.name} · Modalidad: ${modalityLabel} · Costo: ${survivorCostLabel}${survivorCloseLabel ? ` · Límite: ${survivorCloseLabel}` : ""}${survivorClosedByAdmin && devModeEnabled ? " · Cierre manual" : ""}`,
         action: survivorMembership?.is_active ? (
           <Link href={buildHrefWithSeason("/dashboard/survivor", season.id, season.competition_id ?? "")} className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]">
             Abrir Survivor
@@ -387,10 +390,10 @@ export function DashboardEnrollmentsPageContent() {
             className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] disabled:opacity-50"
           >
             {actionLoading === `survivor:${season.id}`
-              ? "Procesando..."
-              : survivorPriceLabel
-                ? `Pagar e inscribirme · ${survivorPriceLabel}`
-                : "Inscribirme a Survivor"}
+              ? isAvalMode ? "Activando..." : "Enviando..."
+              : isAvalMode
+                ? "Activar inscripción"
+                : "Solicitar inscripción"}
           </button>
         ),
       });
@@ -503,15 +506,6 @@ export function DashboardEnrollmentsPageContent() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      const existingMembership = state.survivorBoards[season.id]?.my_membership ?? null;
-      if (survivorPricing[season.id] && !existingMembership) {
-        const checkout = await backendFetch<CheckoutSessionResponse>("/payments/checkout-session", accessToken, {
-          method: "POST",
-          body: JSON.stringify({ scope_type: "survivor", scope_id: season.id }),
-        });
-        window.location.href = checkout.checkout_url;
-        return;
-      }
       const survivorBoard = await backendFetch<SurvivorBoard>(
         `/survivor/seasons/${season.id}/join`,
         accessToken,

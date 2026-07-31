@@ -29,8 +29,11 @@ from app.models.entities import (
     ScoringRule,
     Season,
     SeasonMembership,
+    SettlementAssignment,
+    SettlementStatus,
     SurvivorMembership,
 )
+from app.services.settlement_service import SettlementService
 
 
 @pytest.fixture
@@ -335,6 +338,90 @@ def test_admin_can_update_user_survivor_membership(admin_client: TestClient) -> 
 
     assert membership.is_active is True
     assert membership.joined_at is not None
+
+
+def test_admin_generates_survivor_charge_in_players_payment_hub(admin_client: TestClient) -> None:
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        payer = db.get(Profile, PROFILE_LEADER_ID)
+        assert season is not None
+        assert payer is not None
+        season.survivor_enabled = True
+        payer.modality = "pre_pago"
+        payer.aval_profile_id = None
+        db.add_all([
+            season,
+            payer,
+            SurvivorMembership(
+                season_id=SEASON_ID,
+                profile_id=PROFILE_LEADER_ID,
+                is_active=False,
+                is_rejected=False,
+            ),
+            PricingRule(
+                scope_type=PaymentScopeType.SURVIVOR,
+                scope_id=SEASON_ID,
+                label="Entrada Survivor",
+                amount=250,
+                currency="mxn",
+                is_active=True,
+                created_by_profile_id=PROFILE_USER_ID,
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+    response = admin_client.post(
+        "/api/v1/payments/settlements/admin/enrollment-request",
+        json={
+            "profile_id": PROFILE_LEADER_ID,
+            "scope_type": "survivor",
+            "scope_id": SEASON_ID,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["scope_type"] == "survivor"
+    assert payload["payer_profile_id"] == PROFILE_LEADER_ID
+    assert payload["payee_profile_id"] == PROFILE_USER_ID
+    assert payload["amount"] == 250
+    assert payload["status"] == "pending_proof"
+
+    db = SessionLocal()
+    try:
+        payer = db.get(Profile, PROFILE_LEADER_ID)
+        assert payer is not None
+        hub = SettlementService().list_my_settlements(db, payer)
+        assert [row.id for row in hub.outgoing] == [payload["id"]]
+        assignment = db.get(SettlementAssignment, payload["id"])
+        assert assignment is not None
+        assert assignment.scope_type == PaymentScopeType.SURVIVOR
+        assignment.status = SettlementStatus.PROOF_SUBMITTED
+        db.add(assignment)
+        db.commit()
+    finally:
+        db.close()
+
+    confirm_response = admin_client.post(
+        f"/api/v1/payments/settlements/{payload['id']}/confirm",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert confirm_response.status_code == 200
+
+    db = SessionLocal()
+    try:
+        membership = db.query(SurvivorMembership).filter_by(
+            season_id=SEASON_ID,
+            profile_id=PROFILE_LEADER_ID,
+        ).one()
+        assert membership.is_paid is True
+        assert membership.is_active is False
+    finally:
+        db.close()
 
 
 def test_admin_can_create_invited_user_with_season_membership(

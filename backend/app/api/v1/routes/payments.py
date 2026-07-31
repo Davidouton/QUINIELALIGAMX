@@ -6,6 +6,7 @@ from app.models.entities import Profile, RoleCode
 from app.schemas.payments import (
     CheckoutSessionRequest,
     CheckoutSessionResponse,
+    EnrollmentPaymentRequestCreate,
     EffectivePricingResponse,
     MySettlementsResponse,
     PaymentOut,
@@ -154,6 +155,15 @@ def create_admin_manual_settlement(
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> SettlementScopeSummaryOut:
     return settlement_service.create_manual_assignment(db, payload, current_profile)
+
+
+@router.post("/payments/settlements/admin/enrollment-request", response_model=SettlementAssignmentOut)
+def create_admin_enrollment_payment_request(
+    payload: EnrollmentPaymentRequestCreate,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SettlementAssignmentOut:
+    return settlement_service.create_enrollment_payment_request(db, payload, current_profile)
 
 
 @router.put("/payments/settlements/admin/assignments/{settlement_id}", response_model=SettlementScopeSummaryOut)

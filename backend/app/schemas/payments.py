@@ -237,6 +237,12 @@ class SettlementManualAssignmentRequest(BaseModel):
     amount: float = Field(gt=0, le=99_999_999.99)
 
 
+class EnrollmentPaymentRequestCreate(BaseModel):
+    profile_id: str
+    scope_type: Literal["season", "survivor"]
+    scope_id: str
+
+
 class SettlementAssignmentOverrideRequest(BaseModel):
     payer_profile_id: str
     payee_profile_id: str

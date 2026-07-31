@@ -4,38 +4,52 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { isSurvivorAvailableForSeason } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AdminUser, AdminUserSeasonMembership, Season } from "@/types/api";
+import type { AdminUser, AdminUserSeasonMembership, AdminUserSurvivorMembership, Season } from "@/types/api";
 
-type EnrollmentStatus = "active" | "pending" | "rejected";
+type EnrollmentStatus = "active" | "pending" | "inactive" | "rejected";
 type StatusFilter = "all" | EnrollmentStatus;
+type EnrollmentProduct = "quiniela" | "survivor";
+type EnrollmentMembership = AdminUserSeasonMembership | AdminUserSurvivorMembership;
 
 type EnrollmentRow = {
   user: AdminUser;
-  membership: AdminUserSeasonMembership;
+  membership: EnrollmentMembership | null;
   status: EnrollmentStatus;
 };
 
-function getEnrollmentStatus(membership: AdminUserSeasonMembership): EnrollmentStatus {
+function getEnrollmentStatus(membership: EnrollmentMembership | null): EnrollmentStatus {
+  if (!membership) return "inactive";
   if (membership.is_active) return "active";
   if (membership.is_rejected) return "rejected";
-  return "pending";
+  const previousActivation = "activated_at" in membership ? membership.activated_at : membership.joined_at;
+  return previousActivation ? "inactive" : "pending";
+}
+
+function getMembershipActivationDate(membership: EnrollmentMembership | null) {
+  if (!membership) return null;
+  return "activated_at" in membership ? membership.activated_at : membership.joined_at;
 }
 
 const statusPresentation: Record<EnrollmentStatus, { label: string; className: string }> = {
   active: { label: "Inscrito", className: "text-mint" },
   pending: { label: "Pendiente", className: "text-gold" },
+  inactive: { label: "No inscrito", className: "text-steel" },
   rejected: { label: "No aprobado", className: "text-coral" },
 };
 
 export function AdminTournamentEnrollmentsPanel() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<EnrollmentProduct>("quiniela");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [loading, setLoading] = useState(true);
+  const [generatingForUserId, setGeneratingForUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadSeasons() {
@@ -87,11 +101,13 @@ export function AdminTournamentEnrollmentsPanel() {
 
   const enrollmentRows = useMemo<EnrollmentRow[]>(
     () =>
-      users.flatMap((user) => {
-        const membership = user.season_memberships.find((row) => row.season_id === selectedSeasonId);
-        return membership ? [{ user, membership, status: getEnrollmentStatus(membership) }] : [];
+      users.map((user) => {
+        const membership = selectedProduct === "survivor"
+          ? user.survivor_memberships.find((row) => row.season_id === selectedSeasonId) ?? null
+          : user.season_memberships.find((row) => row.season_id === selectedSeasonId) ?? null;
+        return { user, membership, status: getEnrollmentStatus(membership) };
       }),
-    [selectedSeasonId, users],
+    [selectedProduct, selectedSeasonId, users],
   );
 
   const counts = useMemo(
@@ -99,8 +115,9 @@ export function AdminTournamentEnrollmentsPanel() {
       all: enrollmentRows.length,
       active: enrollmentRows.filter((row) => row.status === "active").length,
       pending: enrollmentRows.filter((row) => row.status === "pending").length,
+      inactive: enrollmentRows.filter((row) => row.status === "inactive").length,
       rejected: enrollmentRows.filter((row) => row.status === "rejected").length,
-      paid: enrollmentRows.filter((row) => row.membership.is_paid).length,
+      paid: enrollmentRows.filter((row) => row.membership?.is_paid).length,
     }),
     [enrollmentRows],
   );
@@ -119,14 +136,50 @@ export function AdminTournamentEnrollmentsPanel() {
   }, [enrollmentRows, searchTerm, statusFilter]);
 
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) ?? null;
+  const survivorAvailable = isSurvivorAvailableForSeason(selectedSeason);
+
+  useEffect(() => {
+    if (!survivorAvailable && selectedProduct === "survivor") {
+      setSelectedProduct("quiniela");
+    }
+  }, [selectedProduct, survivorAvailable]);
+
+  async function handleGeneratePaymentRequest(user: AdminUser) {
+    setGeneratingForUserId(user.id);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch("/payments/settlements/admin/enrollment-request", accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          profile_id: user.id,
+          scope_type: selectedProduct === "survivor" ? "survivor" : "season",
+          scope_id: selectedSeasonId,
+        }),
+      });
+      setMessage(`Cobro generado para ${user.display_name}. Ya aparece en su Hub de Pagos.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo generar el cobro");
+    } finally {
+      setGeneratingForUserId(null);
+    }
+  }
 
   return (
     <div className="space-y-8">
-      <section className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(240px,360px)] sm:items-end">
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_minmax(240px,360px)] lg:items-end">
         <div>
           <h2 className="text-lg font-semibold text-ink">Participantes del torneo</h2>
-          <p className="mt-1 text-sm text-steel">Consulta rápidamente quién solicitó inscripción y su estado actual.</p>
+          <p className="mt-1 text-sm text-steel">Consulta rápidamente las inscripciones de Quiniela y Survivor.</p>
         </div>
+        <label className="page-context-label">
+          <span>Modalidad</span>
+          <select value={selectedProduct} onChange={(event) => { setSelectedProduct(event.target.value as EnrollmentProduct); setStatusFilter("all"); }} className="page-context-select">
+            <option value="quiniela">Quiniela</option>
+            {survivorAvailable ? <option value="survivor">Survivor</option> : null}
+          </select>
+        </label>
         <label className="page-context-label">
           <span>Torneo</span>
           <select value={selectedSeasonId} onChange={(event) => { setSelectedSeasonId(event.target.value); setStatusFilter("all"); }} className="page-context-select">
@@ -140,12 +193,14 @@ export function AdminTournamentEnrollmentsPanel() {
       </section>
 
       {error ? <p className="text-sm text-coral">{error}</p> : null}
+      {message ? <p className="text-sm text-mint">{message}</p> : null}
 
-      <section className="grid grid-cols-2 border-l border-t border-white/10 sm:grid-cols-5">
+      <section className="grid grid-cols-2 border-l border-t border-white/10 sm:grid-cols-3 xl:grid-cols-6">
         {[
-          ["Solicitudes", counts.all],
+          ["Usuarios", counts.all],
           ["Inscritos", counts.active],
           ["Pendientes", counts.pending],
+          ["No inscritos", counts.inactive],
           ["No aprobados", counts.rejected],
           ["Pagados", counts.paid],
         ].map(([label, value]) => (
@@ -163,6 +218,7 @@ export function AdminTournamentEnrollmentsPanel() {
               ["all", "Todos", counts.all],
               ["active", "Inscritos", counts.active],
               ["pending", "Pendientes", counts.pending],
+              ["inactive", "No inscritos", counts.inactive],
               ["rejected", "No aprobados", counts.rejected],
             ] as const).map(([value, label, count]) => (
               <button key={value} type="button" onClick={() => setStatusFilter(value)} className={statusFilter === value ? "app-pill-active h-10 px-4 text-sm" : "app-pill h-10 px-4 text-sm"}>
@@ -176,7 +232,7 @@ export function AdminTournamentEnrollmentsPanel() {
         {loading ? <p className="py-6 text-sm text-steel">Cargando inscritos...</p> : null}
         {!loading && !visibleRows.length ? (
           <p className="border-y border-white/10 py-6 text-sm text-steel">
-            {enrollmentRows.length ? "No hay resultados con estos filtros." : "Todavía no hay solicitudes para este torneo."}
+            {enrollmentRows.length ? "No hay resultados con estos filtros." : "Todavía no hay usuarios registrados."}
           </p>
         ) : null}
         {!loading && visibleRows.length ? (
@@ -189,7 +245,7 @@ export function AdminTournamentEnrollmentsPanel() {
                   <th className="px-3 py-3">Pago</th>
                   <th className="px-3 py-3">Modalidad</th>
                   <th className="px-3 py-3">Alta</th>
-                  <th className="px-3 py-3 text-right">Detalle</th>
+                  <th className="px-3 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,11 +256,23 @@ export function AdminTournamentEnrollmentsPanel() {
                       <p className="mt-1 text-xs text-steel">{user.username ? `@${user.username} · ` : ""}{user.email ?? "Sin correo"}</p>
                     </td>
                     <td className={`px-3 py-3 font-semibold ${statusPresentation[status].className}`}>{statusPresentation[status].label}</td>
-                    <td className="px-3 py-3 text-steel">{membership.is_paid ? "Pagado" : "No pagado"}</td>
+                    <td className="px-3 py-3 text-steel">{membership?.is_paid ? "Pagado" : "No pagado"}</td>
                     <td className="px-3 py-3 text-steel">{user.modality === "aval" ? `Aval${user.aval_display_name ? ` · ${user.aval_display_name}` : ""}` : "Pre-pago"}</td>
-                    <td className="px-3 py-3 text-steel">{membership.activated_at ? new Date(membership.activated_at).toLocaleString("es-MX") : "—"}</td>
+                    <td className="px-3 py-3 text-steel">{getMembershipActivationDate(membership) ? new Date(getMembershipActivationDate(membership)!).toLocaleString("es-MX") : "—"}</td>
                     <td className="px-3 py-3 text-right">
-                      <Link href={`/dashboard/admin/user-info/${user.id}`} className="font-semibold text-[#4f7df3] transition hover:text-ink">Ver usuario</Link>
+                      <div className="flex items-center justify-end gap-3">
+                        {status === "pending" && user.modality !== "aval" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleGeneratePaymentRequest(user)}
+                            disabled={Boolean(generatingForUserId)}
+                            className="font-semibold text-mint transition hover:text-ink disabled:opacity-50"
+                          >
+                            {generatingForUserId === user.id ? "Generando..." : "Generar cobro"}
+                          </button>
+                        ) : null}
+                        <Link href={`/dashboard/admin/user-info/${user.id}`} className="font-semibold text-[#4f7df3] transition hover:text-ink">Ver usuario</Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -214,7 +282,7 @@ export function AdminTournamentEnrollmentsPanel() {
         ) : null}
       </section>
 
-      {selectedSeason ? <p className="text-xs text-steel">Mostrando {selectedSeason.name} · {visibleRows.length} resultados visibles.</p> : null}
+      {selectedSeason ? <p className="text-xs text-steel">Mostrando {selectedProduct === "survivor" ? selectedSeason.survivor_name?.trim() || "Survivor" : "Quiniela"} · {selectedSeason.name} · {visibleRows.length} resultados visibles.</p> : null}
     </div>
   );
 }

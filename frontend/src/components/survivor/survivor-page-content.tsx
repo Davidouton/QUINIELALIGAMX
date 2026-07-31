@@ -408,9 +408,15 @@ export function SurvivorPageContent() {
           </div>
         ) : null}
 
-        {board.my_membership && !board.my_membership.is_active ? (
+        {board.my_membership && !board.my_membership.is_active && board.my_membership.alive ? (
           <p className="mt-6 border-y border-white/[0.1] py-4 text-sm text-gold">
             Tu solicitud de Survivor está pendiente de aprobación administrativa. Podrás capturar picks cuando sea aprobada.
+          </p>
+        ) : null}
+
+        {board.my_membership && !board.my_membership.alive ? (
+          <p className="mt-6 border-y border-white/[0.1] py-4 text-sm text-coral">
+            Quedaste eliminado con 0 vidas. Puedes seguir consultando el torneo, la tabla y tu historial de picks.
           </p>
         ) : null}
 
@@ -494,7 +500,7 @@ export function SurvivorPageContent() {
         </div>
       </section>
 
-      {board.my_membership?.is_active ? (
+      {board.my_membership ? (
         <section className="surface-card px-5 py-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -528,9 +534,11 @@ export function SurvivorPageContent() {
 
           {board.current_matchday && !canSubmitPick ? (
             <p className="mt-4 text-sm text-steel">
-              {board.my_membership.alive
-                ? "No hay equipos disponibles para esta jornada o todos los partidos ya cerraron."
-                : "Te quedaste sin vidas en esta temporada."}
+              {!board.my_membership.is_active && board.my_membership.alive
+                ? "Tu inscripción no está activa. Puedes consultar el torneo, pero no capturar picks."
+                : board.my_membership.alive
+                  ? "No hay equipos disponibles para esta jornada o todos los partidos ya cerraron."
+                  : "Te quedaste sin vidas en esta temporada. El torneo permanece disponible en modo consulta."}
             </p>
           ) : null}
 
@@ -592,7 +600,7 @@ export function SurvivorPageContent() {
         </section>
       ) : null}
 
-      {board.my_membership?.is_active ? (
+      {board.my_membership ? (
         <section className="hidden surface-card px-5 py-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
