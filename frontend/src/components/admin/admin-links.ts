@@ -31,6 +31,7 @@ export const ADMIN_NAV_GROUPS: readonly AdminNavGroup[] = [
     id: "players",
     label: "Participantes",
     links: [
+      { href: "/dashboard/admin/enrollments", label: "Inscritos por torneo" },
       { href: "/dashboard/admin/users", label: "Usuarios y membresías" },
       { href: "/dashboard/admin/user-info", label: "Ficha de usuario" },
       { href: "/dashboard/admin/picks", label: "Picks" },
