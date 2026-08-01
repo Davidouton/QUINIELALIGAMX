@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { AdvancedStatsPanel } from "@/components/dashboard/advanced-stats-panel";
@@ -567,12 +567,24 @@ export function DashboardHome() {
   const [hasAppliedDashboardDefault, setHasAppliedDashboardDefault] = useState(false);
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
   const { seasonId: seasonIdParam, competitionId, setSeasonId, buildHrefWithSeason } = useDashboardSeasonParam();
-  const effectiveDashboardWidgets =
-    state.me?.dashboard_widgets?.length
+  const effectiveDashboardWidgets = useMemo(() => {
+    const storedDashboardWidgets = state.me?.dashboard_widgets?.length
       ? state.me.dashboard_widgets
       : state.me?.dashboard_widget_ids?.length
         ? state.me.dashboard_widget_ids.map((widgetId) => createDashboardWidgetConfig(widgetId))
         : buildDefaultDashboardWidgets();
+    if (!state.seasons.length) {
+      return storedDashboardWidgets;
+    }
+    return storedDashboardWidgets.filter((widget) => {
+      if (!widgetSupportsSeasonContext(widget.widget_id) || !widget.season_id) {
+        return true;
+      }
+      return state.seasons.some(
+        (season) => season.id === widget.season_id && season.visibility_status !== "archived",
+      );
+    });
+  }, [state.me?.dashboard_widget_ids, state.me?.dashboard_widgets, state.seasons]);
   const effectiveDashboardWidgetIds = dedupeWidgetIds(effectiveDashboardWidgets);
 
   useEffect(() => {
@@ -2796,7 +2808,7 @@ export function DashboardHome() {
                             }
                             className="min-w-[180px] border-b border-white/[0.12] bg-transparent px-2 py-3 text-xs text-ink outline-none focus:border-[#4f7df3]"
                           >
-                            {state.seasons.map((season) => (
+                            {state.seasons.filter((season) => season.visibility_status !== "archived").map((season) => (
                               <option key={season.id} value={season.id}>
                                 {(season.competition_name ?? "Torneo") + " · " + season.name}
                               </option>
