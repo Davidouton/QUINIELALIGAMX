@@ -16,6 +16,7 @@ import type {
   QuinielaPlusUserDistribution,
   QuinielaPlusUserDistributionMatch,
   QuinielaPlusValueLab,
+  Season,
   VipCompetition,
 } from "@/types/api";
 
@@ -527,6 +528,7 @@ function AdvancedStatsCard({ match, defaultOpen }: { match: QuinielaPlusAdvanced
 
 export function QuinielaPlusPageContent() {
   const [me, setMe] = useState<Me | null>(null);
+  const [seasons, setSeasons] = useState<Season[]>([]);
   const [vipCompetitions, setVipCompetitions] = useState<VipCompetition[]>([]);
   const [oddsSneakPeek, setOddsSneakPeek] = useState<QuinielaPlusOddsSneakPeek | null>(null);
   const [userDistribution, setUserDistribution] = useState<QuinielaPlusUserDistribution | null>(null);
@@ -545,21 +547,34 @@ export function QuinielaPlusPageContent() {
   const [selectedDistributionContext, setSelectedDistributionContext] = useState("");
 
   const distributionContextOptions = useMemo<DistributionContextOption[]>(() => {
+    const activeSeasonIds = new Set(
+      seasons
+        .filter((season) => season.is_active && season.visibility_status === "live")
+        .map((season) => season.id),
+    );
     const seasonOptions =
       me?.season_memberships
-        .filter((membership) => membership.can_participate)
+        .filter((membership) => membership.can_participate && activeSeasonIds.has(membership.season_id))
         .map((membership) => ({
           value: `season:${membership.season_id}`,
           label: `Torneo regular · ${membership.season_name}`,
         })) ?? [];
     const vipOptions = vipCompetitions
-      .filter((vip) => vip.competition_kind === "matchday" && vip.my_membership?.status === "approved")
+      .filter(
+        (vip) =>
+          vip.competition_kind === "matchday" &&
+          vip.my_membership?.status === "approved" &&
+          vip.is_active &&
+          vip.lifecycle_status === "active" &&
+          vip.season_visibility_status === "live" &&
+          activeSeasonIds.has(vip.season_id),
+      )
       .map((vip) => ({
         value: `vip:${vip.id}`,
         label: `VIP · ${vip.name}`,
       }));
     return [...seasonOptions, ...vipOptions];
-  }, [me, vipCompetitions]);
+  }, [me, seasons, vipCompetitions]);
 
   const refreshUserDistribution = useCallback(
     async ({ silent = false, contextValue }: { silent?: boolean; contextValue?: string } = {}) => {
@@ -596,8 +611,9 @@ export function QuinielaPlusPageContent() {
     async function loadInitialData() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const [meResult, vipResult, oddsResult, advancedStatsResult, valueLabResult] = await Promise.allSettled([
+        const [meResult, seasonsResult, vipResult, oddsResult, advancedStatsResult, valueLabResult] = await Promise.allSettled([
           backendFetch<Me>("/me", accessToken),
+          backendFetch<Season[]>("/seasons", accessToken),
           backendFetch<VipCompetition[]>(VIP_SUMMARY_PATH, accessToken),
           backendFetch<QuinielaPlusOddsSneakPeek>("/quiniela-plus/odds-sneak-peek", accessToken),
           backendFetch<QuinielaPlusAdvancedStats>("/quiniela-plus/advanced-stats", accessToken),
@@ -607,6 +623,7 @@ export function QuinielaPlusPageContent() {
           throw meResult.reason;
         }
         setMe(meResult.value);
+        setSeasons(seasonsResult.status === "fulfilled" ? seasonsResult.value : []);
         setVipCompetitions(vipResult.status === "fulfilled" ? vipResult.value : []);
         setOddsSneakPeek(oddsResult.status === "fulfilled" ? oddsResult.value : null);
         setAdvancedStats(advancedStatsResult.status === "fulfilled" ? advancedStatsResult.value : null);
