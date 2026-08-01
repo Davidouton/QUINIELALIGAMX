@@ -20,6 +20,7 @@ from app.models.entities import (
     TournamentFormat,
     TrophyAsset,
     UserPick,
+    WeeklyTiebreakPick,
     WeeklyLeader,
 )
 from app.repositories.season_membership_repository import SeasonMembershipRepository
@@ -201,8 +202,9 @@ class ScoringService:
                 for (current_matchday_id, profile_id), values in matchday_agg.items()
                 if current_matchday_id == matchday_id
             ]
+            self._attach_tiebreak_differences(db, matchday, rows_for_matchday)
             rows_for_matchday.sort(
-                key=lambda item: (-item[1]["total_points"], -item[1]["exact_scores"], item[0])
+                key=lambda item: (-item[1]["total_points"], item[1].get("tiebreak_difference", 10**9), -item[1]["exact_scores"], item[0])
             )
             ranked_rows = self._apply_competition_ranks(rows_for_matchday)
             weekly_leader_recorded = False
@@ -214,6 +216,7 @@ class ScoringService:
                         total_points=values["total_points"],
                         correct_results=values["correct_results"],
                         exact_scores=values["exact_scores"],
+                        tiebreak_difference=values.get("tiebreak_difference"),
                         rank_position=position,
                     )
                 )
@@ -551,15 +554,36 @@ class ScoringService:
         rows: list[tuple[str, dict[str, int]]],
     ) -> list[tuple[str, dict[str, int], int]]:
         ranked_rows: list[tuple[str, dict[str, int], int]] = []
-        previous_signature: int | None = None
+        previous_signature: tuple[int, int] | None = None
         previous_rank = 0
         for index, (profile_id, values) in enumerate(rows, start=1):
-            current_signature = values["total_points"]
+            current_signature = (values["total_points"], values.get("tiebreak_difference", 10**9))
             if previous_signature is None or current_signature != previous_signature:
                 previous_rank = index
                 previous_signature = current_signature
             ranked_rows.append((profile_id, values, previous_rank))
         return ranked_rows
+
+    @staticmethod
+    def _attach_tiebreak_differences(
+        db: Session,
+        matchday: Matchday,
+        rows: list[tuple[str, dict[str, int]]],
+    ) -> None:
+        if not matchday.tiebreak_match_id:
+            return
+        result = db.scalar(select(MatchResult).where(MatchResult.match_id == matchday.tiebreak_match_id, MatchResult.is_official.is_(True)))
+        if result is None:
+            return
+        predictions = {
+            row.profile_id: row.predicted_total
+            for row in db.scalars(select(WeeklyTiebreakPick).where(WeeklyTiebreakPick.matchday_id == matchday.id))
+        }
+        official_total = result.home_score + result.away_score
+        for profile_id, values in rows:
+            prediction = predictions.get(profile_id)
+            if prediction is not None:
+                values["tiebreak_difference"] = abs(prediction - official_total)
 
     def _load_rules(self, db: Session) -> dict[str, int]:
         stored_rules = {
@@ -639,8 +663,9 @@ class ScoringService:
             matchday_agg.setdefault(profile_id, empty_bucket.copy())
 
         rows_for_matchday = list(matchday_agg.items())
+        self._attach_tiebreak_differences(db, matchday, rows_for_matchday)
         rows_for_matchday.sort(
-            key=lambda item: (-item[1]["total_points"], -item[1]["exact_scores"], item[0])
+            key=lambda item: (-item[1]["total_points"], item[1].get("tiebreak_difference", 10**9), -item[1]["exact_scores"], item[0])
         )
         ranked_rows = self._apply_competition_ranks(rows_for_matchday)
 
@@ -673,6 +698,7 @@ class ScoringService:
                     total_points=values["total_points"],
                     correct_results=values["correct_results"],
                     exact_scores=values["exact_scores"],
+                    tiebreak_difference=values.get("tiebreak_difference"),
                     rank_position=position,
                 )
             )

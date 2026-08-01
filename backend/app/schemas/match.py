@@ -32,6 +32,7 @@ class MatchOut(BaseModel):
     home_win_probability: float | None = None
     draw_probability: float | None = None
     away_win_probability: float | None = None
+    is_tiebreaker: bool = False
 
     @field_serializer("kickoff_at", "picks_lock_at")
     def serialize_datetimes(self, value: datetime) -> str:

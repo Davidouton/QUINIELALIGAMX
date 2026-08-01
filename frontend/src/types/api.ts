@@ -108,6 +108,7 @@ export interface Match {
   home_win_probability: number | null;
   draw_probability: number | null;
   away_win_probability: number | null;
+  is_tiebreaker: boolean;
 }
 
 export interface Pick {
@@ -1476,11 +1477,13 @@ export interface Season {
   live_dashboard_enabled: boolean;
   is_active: boolean;
   registration_closed: boolean;
+  dashboard_enrollment_enabled: boolean;
   survivor_enabled: boolean;
   survivor_name: string | null;
   survivor_description: string | null;
   survivor_max_lives: number;
   survivor_registration_closed: boolean;
+  survivor_dashboard_enrollment_enabled: boolean;
   survivor_registration_lock_at: string | null;
   start_matchday_id: string | null;
   end_matchday_id: string | null;
@@ -1570,6 +1573,14 @@ export interface AdminNflSpreadRow {
   published_at: string | null;
   pick_count: number;
   is_frozen: boolean;
+  is_tiebreaker: boolean;
+}
+
+export interface WeeklyTiebreakPick {
+  matchday_id: string;
+  match_id: string;
+  predicted_total: number | null;
+  is_locked: boolean;
 }
 
 export interface AdvancedStatsPullResult {

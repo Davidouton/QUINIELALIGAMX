@@ -104,6 +104,7 @@ from app.schemas.admin import (
     OddsUnmatchedTeamOut,
     RoleUpdateRequest,
     SeasonCreateRequest,
+    SeasonDashboardEnrollmentUpdateRequest,
     SeasonStructureUpdateRequest,
     SeasonUpdateRequest,
     SyncResponse,
@@ -1139,11 +1140,13 @@ def build_season_out(row: Season, competition: Competition | None = None) -> Sea
         live_dashboard_enabled=row.live_dashboard_enabled,
         is_active=row.is_active,
         registration_closed=row.registration_closed,
+        dashboard_enrollment_enabled=row.dashboard_enrollment_enabled,
         survivor_enabled=row.survivor_enabled,
         survivor_name=row.survivor_name,
         survivor_description=row.survivor_description,
         survivor_max_lives=row.survivor_max_lives,
         survivor_registration_closed=row.survivor_registration_closed,
+        survivor_dashboard_enrollment_enabled=row.survivor_dashboard_enrollment_enabled,
         survivor_registration_lock_at=row.survivor_registration_lock_at,
         start_matchday_id=row.start_matchday_id,
         end_matchday_id=row.end_matchday_id,
@@ -2416,12 +2419,14 @@ def create_season(
             live_dashboard_enabled=False,
             is_active=payload.is_active,
             registration_closed=payload.registration_closed,
+            dashboard_enrollment_enabled=payload.dashboard_enrollment_enabled,
             participants_lock_at=payload.participants_lock_at,
             survivor_enabled=payload.survivor_enabled,
             survivor_name=normalize_optional_text(payload.survivor_name),
             survivor_description=normalize_optional_text(payload.survivor_description),
             survivor_max_lives=payload.survivor_max_lives,
             survivor_registration_closed=payload.registration_closed if payload.survivor_enabled else False,
+            survivor_dashboard_enrollment_enabled=(payload.survivor_dashboard_enrollment_enabled if payload.survivor_enabled else False),
             survivor_registration_lock_at=payload.participants_lock_at if payload.survivor_enabled else None,
         ),
     )
@@ -2499,18 +2504,45 @@ def update_season(
     season.live_dashboard_enabled = False
     season.is_active = False if is_archiving else payload.is_active
     season.registration_closed = True if is_archiving else payload.registration_closed
+    season.dashboard_enrollment_enabled = False if is_archiving else payload.dashboard_enrollment_enabled
     season.participants_lock_at = payload.participants_lock_at
     season.survivor_enabled = payload.survivor_enabled
     season.survivor_name = normalize_optional_text(payload.survivor_name)
     season.survivor_description = normalize_optional_text(payload.survivor_description)
     season.survivor_max_lives = payload.survivor_max_lives
     season.survivor_registration_closed = True if is_archiving else (payload.registration_closed if payload.survivor_enabled else False)
+    season.survivor_dashboard_enrollment_enabled = False if is_archiving else (payload.survivor_dashboard_enrollment_enabled if payload.survivor_enabled else False)
     season.survivor_registration_lock_at = payload.participants_lock_at if payload.survivor_enabled else None
     season_repo.save(db, season)
     if season.is_active:
         set_active_season(db, season)
     db.commit()
     db.refresh(season)
+    return build_season_out(season, competition)
+
+
+@router.patch("/seasons/{season_id}/dashboard-enrollment", response_model=SeasonOut)
+def update_season_dashboard_enrollment(
+    season_id: str,
+    payload: SeasonDashboardEnrollmentUpdateRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> SeasonOut:
+    season = season_repo.get_by_id(db, season_id)
+    if season is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Season not found")
+    if season.visibility_status == SeasonVisibilityStatus.ARCHIVED and payload.enabled:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="No puedes publicar una temporada archivada")
+    if payload.product == "survivor":
+        if payload.enabled and not season.survivor_enabled:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Primero habilita Survivor en esta temporada")
+        season.survivor_dashboard_enrollment_enabled = payload.enabled
+    else:
+        season.dashboard_enrollment_enabled = payload.enabled
+    season_repo.save(db, season)
+    db.commit()
+    db.refresh(season)
+    competition = db.get(Competition, season.competition_id) if season.competition_id else None
     return build_season_out(season, competition)
 
 
@@ -3922,6 +3954,7 @@ def list_admin_nfl_spreads(
             published_at=latest_odds[match.id].synced_at if match.id in latest_odds else None,
             pick_count=int(pick_counts.get(match.id, 0)),
             is_frozen=bool(pick_counts.get(match.id, 0)),
+            is_tiebreaker=matchday_by_id[match.matchday_id].tiebreak_match_id == match.id,
         )
         for match in matches
     ]
@@ -3939,6 +3972,11 @@ def update_admin_nfl_spread(
     if match is None or matchday is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partido no encontrado")
     require_nfl_season(db, matchday.season_id)
+    if payload.is_tiebreaker is not None:
+        matchday.tiebreak_match_id = match.id if payload.is_tiebreaker else (
+            None if matchday.tiebreak_match_id == match.id else matchday.tiebreak_match_id
+        )
+        db.add(matchday)
     pick_count = int(db.scalar(select(func.count(UserPick.id)).where(UserPick.match_id == match.id)) or 0)
     if pick_count and not payload.force:
         raise HTTPException(
@@ -3985,7 +4023,25 @@ def update_admin_nfl_spread(
         published_at=odds.synced_at,
         pick_count=pick_count,
         is_frozen=pick_count > 0,
+        is_tiebreaker=matchday.tiebreak_match_id == match.id,
     )
+
+
+@router.put("/nfl-tiebreak/{match_id}")
+def update_admin_nfl_tiebreak(
+    match_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> dict[str, bool]:
+    match = db.get(Match, match_id)
+    matchday = db.get(Matchday, match.matchday_id) if match else None
+    if match is None or matchday is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partido no encontrado")
+    require_nfl_season(db, matchday.season_id)
+    matchday.tiebreak_match_id = match.id
+    db.add(matchday)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/odds/pull", response_model=OddsPullResponse)

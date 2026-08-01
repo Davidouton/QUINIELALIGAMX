@@ -13,6 +13,7 @@ class MatchdayOut(BaseModel):
     name: str
     default_lock_offset_minutes: int
     picks_reopened_override: bool
+    tiebreak_match_id: str | None = None
     status: MatchdayStatus
     starts_at: datetime
     ends_at: datetime

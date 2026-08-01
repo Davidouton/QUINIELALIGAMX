@@ -246,11 +246,13 @@ class Season(Base):
     live_dashboard_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     registration_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    dashboard_enrollment_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     survivor_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     survivor_name: Mapped[str | None] = mapped_column(String(160))
     survivor_description: Mapped[str | None] = mapped_column(Text)
     survivor_max_lives: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     survivor_registration_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    survivor_dashboard_enrollment_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     survivor_registration_lock_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     start_matchday_id: Mapped[str | None] = mapped_column(UUID_SQL, nullable=True, index=True)
     end_matchday_id: Mapped[str | None] = mapped_column(UUID_SQL, nullable=True, index=True)
@@ -296,6 +298,7 @@ class Matchday(Base):
     name: Mapped[str] = mapped_column(String(120))
     default_lock_offset_minutes: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     picks_reopened_override: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    tiebreak_match_id: Mapped[str | None] = mapped_column(UUID_SQL, nullable=True, index=True)
     status: Mapped[MatchdayStatus] = mapped_column(
         SqlEnum(MatchdayStatus, native_enum=False, values_callable=enum_values),
         default=MatchdayStatus.DRAFT,
@@ -510,6 +513,18 @@ class UserPick(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class WeeklyTiebreakPick(Base):
+    __tablename__ = "weekly_tiebreak_picks"
+    __table_args__ = (UniqueConstraint("matchday_id", "profile_id", name="uq_weekly_tiebreak_pick"),)
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    matchday_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("matchdays.id", ondelete="CASCADE"), index=True)
+    profile_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    predicted_total: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class AnalyticsEvent(Base):
@@ -1317,6 +1332,7 @@ class StandingsMatchday(Base):
     total_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     correct_results: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     exact_scores: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tiebreak_difference: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rank_position: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -161,11 +161,13 @@ class AdminNflSpreadRowOut(BaseModel):
     published_at: datetime | None = None
     pick_count: int = 0
     is_frozen: bool = False
+    is_tiebreaker: bool = False
 
 
 class AdminNflSpreadUpdateRequest(BaseModel):
     home_line: str | None = Field(default=None, max_length=24)
     force: bool = False
+    is_tiebreaker: bool | None = None
 
 
 class AdminPickOverrideRequest(BaseModel):
@@ -419,17 +421,24 @@ class SeasonCreateRequest(BaseModel):
     visibility_status: SeasonVisibilityStatus = SeasonVisibilityStatus.LIVE
     is_active: bool = False
     registration_closed: bool = False
+    dashboard_enrollment_enabled: bool = False
     participants_lock_at: datetime | None = None
     survivor_enabled: bool = False
     survivor_name: str | None = Field(default=None, max_length=160)
     survivor_description: str | None = Field(default=None, max_length=2000)
     survivor_max_lives: int = Field(default=1, ge=1, le=10)
     survivor_registration_closed: bool = False
+    survivor_dashboard_enrollment_enabled: bool = False
     survivor_registration_lock_at: datetime | None = None
 
 
 class SeasonUpdateRequest(SeasonCreateRequest):
     pass
+
+
+class SeasonDashboardEnrollmentUpdateRequest(BaseModel):
+    product: str = Field(pattern="^(season|survivor)$")
+    enabled: bool
 
 
 class SeasonStructureUpdateRequest(BaseModel):

@@ -44,6 +44,7 @@ class MatchService:
             )
         ) if match_ids else set()
         inferred_group_labels = self._infer_group_labels(db, matches)
+        tiebreak_match_ids = set(db.scalars(select(Matchday.tiebreak_match_id).where(Matchday.id.in_({m.matchday_id for m in matches})))) if matches else set()
         return [
             self._to_match_out(
                 match,
@@ -51,6 +52,7 @@ class MatchService:
                 odds=latest_odds_by_match_id.get(match.id),
                 inferred_group_label=inferred_group_labels.get(match.id),
                 has_official_result=match.id in official_result_match_ids,
+                is_tiebreaker=match.id in tiebreak_match_ids,
             )
             for match in matches
         ]
@@ -74,6 +76,7 @@ class MatchService:
             odds=latest_odds_by_match_id.get(match.id),
             inferred_group_label=inferred_group_labels.get(match.id),
             has_official_result=has_official_result,
+            is_tiebreaker=match.id == db.scalar(select(Matchday.tiebreak_match_id).where(Matchday.id == match.matchday_id)),
         )
 
     def _to_match_out(
@@ -84,6 +87,7 @@ class MatchService:
         odds: Odds | None = None,
         inferred_group_label: str | None = None,
         has_official_result: bool = False,
+        is_tiebreaker: bool = False,
     ) -> MatchOut:
         home_team = teams_by_id.get(match.home_team_id) if match.home_team_id else None
         away_team = teams_by_id.get(match.away_team_id) if match.away_team_id else None
@@ -120,6 +124,7 @@ class MatchService:
             home_win_probability=home_probability,
             draw_probability=draw_probability,
             away_win_probability=away_probability,
+            is_tiebreaker=is_tiebreaker,
         )
 
     @staticmethod

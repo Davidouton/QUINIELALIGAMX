@@ -22,11 +22,13 @@ class SeasonOut(BaseModel):
     live_dashboard_enabled: bool = False
     is_active: bool
     registration_closed: bool = False
+    dashboard_enrollment_enabled: bool = False
     survivor_enabled: bool = False
     survivor_name: str | None = None
     survivor_description: str | None = None
     survivor_max_lives: int = 1
     survivor_registration_closed: bool = False
+    survivor_dashboard_enrollment_enabled: bool = False
     survivor_registration_lock_at: datetime | None = None
     start_matchday_id: str | None = None
     end_matchday_id: str | None = None

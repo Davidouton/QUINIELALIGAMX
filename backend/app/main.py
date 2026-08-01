@@ -183,6 +183,9 @@ def run_startup_migrations() -> None:
                 "registration_closed": (
                     "ALTER TABLE seasons ADD COLUMN registration_closed BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
+                "dashboard_enrollment_enabled": (
+                    "ALTER TABLE seasons ADD COLUMN dashboard_enrollment_enabled BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
                 "survivor_enabled": (
                     "ALTER TABLE seasons ADD COLUMN survivor_enabled BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
@@ -193,6 +196,9 @@ def run_startup_migrations() -> None:
                 ),
                 "survivor_registration_closed": (
                     "ALTER TABLE seasons ADD COLUMN survivor_registration_closed BOOLEAN NOT NULL DEFAULT FALSE"
+                ),
+                "survivor_dashboard_enrollment_enabled": (
+                    "ALTER TABLE seasons ADD COLUMN survivor_dashboard_enrollment_enabled BOOLEAN NOT NULL DEFAULT FALSE"
                 ),
                 "survivor_registration_lock_at": (
                     "ALTER TABLE seasons ADD COLUMN survivor_registration_lock_at TIMESTAMP WITH TIME ZONE"
@@ -469,6 +475,32 @@ def run_startup_migrations() -> None:
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS idx_user_picks_match_profile ON user_picks(match_id, profile_id)")
             )
+
+        if "matchdays" in table_names:
+            matchday_column_names = {column["name"] for column in inspector.get_columns("matchdays")}
+            if "tiebreak_match_id" not in matchday_column_names:
+                connection.execute(text("ALTER TABLE matchdays ADD COLUMN tiebreak_match_id UUID"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_matchdays_tiebreak_match ON matchdays(tiebreak_match_id)"))
+
+        if "weekly_tiebreak_picks" not in table_names:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS weekly_tiebreak_picks (
+                  id UUID PRIMARY KEY,
+                  matchday_id UUID NOT NULL REFERENCES matchdays(id) ON DELETE CASCADE,
+                  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                  predicted_total INTEGER NOT NULL CHECK (predicted_total >= 0 AND predicted_total <= 300),
+                  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+                  CONSTRAINT uq_weekly_tiebreak_pick UNIQUE (matchday_id, profile_id)
+                )
+            """))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_weekly_tiebreak_matchday ON weekly_tiebreak_picks(matchday_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_weekly_tiebreak_profile ON weekly_tiebreak_picks(profile_id)"))
+
+        if "standings_matchday" in table_names:
+            standing_column_names = {column["name"] for column in inspector.get_columns("standings_matchday")}
+            if "tiebreak_difference" not in standing_column_names:
+                connection.execute(text("ALTER TABLE standings_matchday ADD COLUMN tiebreak_difference INTEGER"))
 
         if "pick_points" in table_names:
             pick_point_column_names = {column["name"] for column in inspector.get_columns("pick_points")}

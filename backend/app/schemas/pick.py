@@ -32,6 +32,17 @@ class PickUpdate(PickBase):
     pass
 
 
+class WeeklyTiebreakPickUpsert(BaseModel):
+    predicted_total: int = Field(ge=0, le=300)
+
+
+class WeeklyTiebreakPickOut(BaseModel):
+    matchday_id: str
+    match_id: str
+    predicted_total: int | None = None
+    is_locked: bool = False
+
+
 class PickOut(BaseModel):
     id: str
     profile_id: str

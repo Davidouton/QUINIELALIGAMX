@@ -115,6 +115,23 @@ export function AdminNflSpreadsPanel() {
     }
   }
 
+  async function selectTiebreak(row: AdminNflSpreadRow) {
+    setSaving(true);
+    setError(null);
+    try {
+      const token = await getBrowserAccessToken();
+      await backendFetch(`/admin/nfl-tiebreak/${row.match_id}`, token, {
+        method: "PUT",
+      });
+      await loadRows(seasonId, matchdayId || undefined);
+      setMessage(`Tie Break configurado: ${row.home_team_name} vs ${row.away_team_name}.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudo configurar el Tie Break");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const seasonMatchdays = matchdays.filter((row) => row.season_id === seasonId).sort((a, b) => a.number - b.number);
   const changedCount = rows.filter(
     (row) => (drafts[row.match_id]?.trim() || "") !== (row.spread_home_line?.trim() || ""),
@@ -154,7 +171,7 @@ export function AdminNflSpreadsPanel() {
       {loading ? <p className="text-sm text-steel">Cargando...</p> : rows.length ? (
         <div className="android-scroll-x">
           <table className="min-w-full text-left text-sm">
-            <thead className="app-table-head"><tr><th className="px-3 py-3">Semana</th><th className="px-3 py-3">Partido</th><th className="px-3 py-3">Inicio</th><th className="px-3 py-3">Línea local</th><th className="px-3 py-3">Línea visitante</th><th className="px-3 py-3">Estado</th></tr></thead>
+            <thead className="app-table-head"><tr><th className="px-3 py-3">Semana</th><th className="px-3 py-3">Partido</th><th className="px-3 py-3">Inicio</th><th className="px-3 py-3">Línea local</th><th className="px-3 py-3">Línea visitante</th><th className="px-3 py-3">Tie Break</th><th className="px-3 py-3">Estado</th></tr></thead>
             <tbody>{rows.map((row) => (
               <tr key={row.match_id} className="app-table-row border-b last:border-b-0">
                 <td className="px-3 py-3 text-steel">{row.matchday_number}</td>
@@ -162,6 +179,7 @@ export function AdminNflSpreadsPanel() {
                 <td className="px-3 py-3 text-steel">{formatMexicoCityDateTime(row.kickoff_at)}</td>
                 <td className="px-3 py-3"><input value={drafts[row.match_id] ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [row.match_id]: event.target.value }))} placeholder="-3.5 / PK" className="field-control min-w-28" /></td>
                 <td className="px-3 py-3 font-semibold text-ink">{awayLine(drafts[row.match_id] ?? "")}</td>
+                <td className="px-3 py-3"><label className="inline-flex items-center gap-2 text-steel"><input type="radio" name={`tiebreak-${row.matchday_id}`} checked={row.is_tiebreaker} onChange={() => void selectTiebreak(row)} disabled={saving} /> SNF/MNF</label></td>
                 <td className="px-3 py-3 text-steel">{row.is_frozen ? `Congelado · ${row.pick_count} picks` : row.spread_home_line ? "Publicado" : "Sin publicar"}</td>
               </tr>
             ))}</tbody>

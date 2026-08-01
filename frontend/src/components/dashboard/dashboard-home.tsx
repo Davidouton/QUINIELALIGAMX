@@ -50,6 +50,7 @@ import type {
 type DashboardState = {
   me: Me | null;
   seasons: Season[];
+  enrollmentSeasons: Season[];
   matchdays: Matchday[];
   selectedMatchday: Matchday | null;
   selectedSeason: Season | null;
@@ -177,6 +178,7 @@ function widgetSupportsSeasonContext(widgetId: DashboardWidgetId) {
 const initialState: DashboardState = {
   me: null,
   seasons: [],
+  enrollmentSeasons: [],
   matchdays: [],
   selectedMatchday: null,
   selectedSeason: null,
@@ -226,6 +228,20 @@ function formatCompactSeasonName(value: string | null | undefined) {
   const season = match[1];
   const year = match[2].slice(-2);
   return `${season.slice(0, 3)} ${year}`;
+}
+
+function formatEnrollmentCountdown(lockAt: string | null, now: number) {
+  if (!lockAt) return null;
+  const remaining = new Date(lockAt).getTime() - now;
+  if (!Number.isFinite(remaining) || remaining <= 0) return "Inscripción cerrada";
+  const totalSeconds = Math.floor(remaining / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return days > 0
+    ? `${days}d ${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m`
+    : `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function renderDashboardLives(remainingLives: number, maxLives: number) {
@@ -566,7 +582,13 @@ export function DashboardHome() {
   const [dashboardDefaultView, setDashboardDefaultView] = useState<DashboardDefaultView>(readStoredDashboardDefaultView);
   const [hasAppliedDashboardDefault, setHasAppliedDashboardDefault] = useState(false);
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
+  const [dashboardNow, setDashboardNow] = useState(() => Date.now());
   const { seasonId: seasonIdParam, competitionId, setSeasonId, buildHrefWithSeason } = useDashboardSeasonParam();
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setDashboardNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const effectiveDashboardWidgets = useMemo(() => {
     const storedDashboardWidgets = state.me?.dashboard_widgets?.length
       ? state.me.dashboard_widgets
@@ -729,6 +751,7 @@ export function DashboardHome() {
           ...current,
           me,
           seasons: memberSeasons,
+          enrollmentSeasons: seasons.filter((season) => season.visibility_status === "live" && (season.dashboard_enrollment_enabled || (season.survivor_enabled && season.survivor_dashboard_enrollment_enabled))),
           matchdays,
           selectedMatchday,
           selectedSeason,
@@ -1293,6 +1316,33 @@ export function DashboardHome() {
     state.selectedSeason && state.me
       ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
       : null;
+  const dashboardEnrollmentProducts = state.enrollmentSeasons.flatMap((season) => {
+    const membership = state.me?.season_memberships.find((row) => row.season_id === season.id) ?? null;
+    const products: Array<{ id: string; name: string; description: string; season: Season; status: string; lockAt: string | null; closed: boolean }> = [];
+    if (season.dashboard_enrollment_enabled && !membership?.is_active) {
+      products.push({
+        id: `season-${season.id}`,
+        name: season.name,
+        description: season.description || "Inscripción a Liga/Quiniela.",
+        season,
+        status: membership ? (membership.is_rejected ? "Solicitar nuevamente" : "En revisión") : "Inscribirme",
+        lockAt: season.participants_lock_at,
+        closed: season.registration_closed,
+      });
+    }
+    if (season.survivor_enabled && season.survivor_dashboard_enrollment_enabled) {
+      products.push({
+        id: `survivor-${season.id}`,
+        name: season.survivor_name || `Survivor ${season.name}`,
+        description: season.survivor_description || "Inscripción independiente a Survivor.",
+        season,
+        status: "Ver inscripción",
+        lockAt: season.survivor_registration_lock_at ?? season.participants_lock_at,
+        closed: season.survivor_registration_closed || season.registration_closed,
+      });
+    }
+    return products;
+  });
   const isLigaMxSeason = state.selectedSeason?.tournament_format === "standard";
   const hasActiveLigaMxMembership = Boolean(selectedSeasonMembership?.is_active);
   const isPrePagoPendingApproval = Boolean(
@@ -2239,6 +2289,32 @@ export function DashboardHome() {
               </div>
             ) : null}
           </div>
+
+          {dashboardEnrollmentProducts.length > 0 ? (
+            <section className="mt-5 border-y border-white/10 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-steel">Inscripciones disponibles</p>
+                  <p className="mt-1 text-sm text-ink">Torneos publicados por el administrador.</p>
+                </div>
+                <Link href="/dashboard/enrollments" className="text-xs font-semibold text-[#4f7df3]">Ver todas</Link>
+              </div>
+              <div className="mt-3 divide-y divide-white/[0.08] border-t border-white/[0.08]">
+                {dashboardEnrollmentProducts.map((product) => {
+                  const countdown = formatEnrollmentCountdown(product.lockAt, dashboardNow);
+                  const isClosed = product.closed || countdown === "Inscripción cerrada";
+                  return <div key={product.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-ink">{product.name}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-steel">{product.description}</p>
+                      {countdown ? <p className={`mt-2 text-xs font-semibold tabular-nums ${isClosed ? "text-coral" : "text-gold"}`}>{isClosed ? "Inscripción cerrada" : `Cierra en ${countdown}`}</p> : null}
+                    </div>
+                    {isClosed ? <span className="shrink-0 text-sm font-semibold text-steel">Cerrado</span> : <Link href={buildHrefWithSeason("/dashboard/enrollments", product.season.id, product.season.competition_id ?? "")} className="shrink-0 text-sm font-semibold text-[#4f7df3]">{product.status}</Link>}
+                  </div>
+                })}
+              </div>
+            </section>
+          ) : null}
 
           <div className="mt-5 flex w-full items-end gap-2 sm:gap-6">
             {computedLeagueOptions.length > 1 ? (

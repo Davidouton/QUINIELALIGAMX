@@ -15,7 +15,7 @@ import {
 } from "@/lib/dashboard-season";
 import { SurvivorPageContent } from "@/components/survivor/survivor-page-content";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
-import type { AppBootstrap, GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition } from "@/types/api";
+import type { AppBootstrap, GlobalPickBoard, Match, Matchday, Me, Pick, PickSelection, Season, Team, VipCompetition, WeeklyTiebreakPick } from "@/types/api";
 
 type PickFormState = {
   winner_selection: PickSelection | "";
@@ -515,6 +515,9 @@ export function PickBoard() {
   const [globalBoardLoading, setGlobalBoardLoading] = useState(false);
   const [globalPickError, setGlobalPickError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tiebreak, setTiebreak] = useState<WeeklyTiebreakPick | null>(null);
+  const [tiebreakDraft, setTiebreakDraft] = useState("");
+  const [tiebreakStatus, setTiebreakStatus] = useState("");
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const globalBoardCacheRef = useRef<Record<string, GlobalPickBoard>>({});
   const trackedGlobalViewRef = useRef("");
@@ -522,6 +525,37 @@ export function PickBoard() {
   const useWorldCupAbbreviation = isWorldCupSeason(state.selectedSeason);
   const useWorldCupMode = isWorldCupSeason(state.selectedSeason);
   const useNflMode = isNflSeason(state.selectedSeason);
+
+  useEffect(() => {
+    if (!useNflMode || !state.selectedMatchday || !state.matches.some((match) => match.is_tiebreaker)) {
+      setTiebreak(null);
+      setTiebreakDraft("");
+      return;
+    }
+    getBrowserAccessToken()
+      .then((token) => backendFetch<WeeklyTiebreakPick>(`/picks/tiebreak/${state.selectedMatchday?.id}`, token))
+      .then((row) => {
+        setTiebreak(row);
+        setTiebreakDraft(row.predicted_total === null ? "" : String(row.predicted_total));
+      })
+      .catch(() => setTiebreak(null));
+  }, [state.matches, state.selectedMatchday, useNflMode]);
+
+  async function saveTiebreak() {
+    if (!state.selectedMatchday || !tiebreakDraft.trim()) return;
+    setTiebreakStatus("Guardando...");
+    try {
+      const token = await getBrowserAccessToken();
+      const row = await backendFetch<WeeklyTiebreakPick>(`/picks/tiebreak/${state.selectedMatchday.id}`, token, {
+        method: "PUT",
+        body: JSON.stringify({ predicted_total: Number(tiebreakDraft) }),
+      });
+      setTiebreak(row);
+      setTiebreakStatus("Guardado");
+    } catch (caught) {
+      setTiebreakStatus(caught instanceof Error ? caught.message : "No se pudo guardar");
+    }
+  }
 
   function getMatchTeamLabel(teamId: string | null, fallbackName: string) {
     if (!useWorldCupAbbreviation || !teamId) {
@@ -1558,6 +1592,18 @@ export function PickBoard() {
               );
             })}
           </div>
+          {useNflMode && tiebreak ? (
+            <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink">TIE Break</p>
+                <p className="mt-1 text-xs text-steel">Total de puntos del partido {state.matches.find((match) => match.id === tiebreak.match_id)?.home_team_name} vs {state.matches.find((match) => match.id === tiebreak.match_id)?.away_team_name}. Solo desempata la jornada; no suma puntos.</p>
+              </div>
+              <label className="flex items-center gap-3">
+                <input type="number" min="0" max="300" inputMode="numeric" value={tiebreakDraft} onChange={(event) => { setTiebreakDraft(event.target.value); setTiebreakStatus(""); }} onBlur={() => void saveTiebreak()} disabled={tiebreak.is_locked || !canPickSelectedMatchday} placeholder="Total" className="field-control w-28 text-center" />
+                <span className="min-w-20 text-xs text-steel">{tiebreak.is_locked ? "Cerrado" : tiebreakStatus}</span>
+              </label>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

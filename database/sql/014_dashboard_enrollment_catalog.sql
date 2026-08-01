@@ -1,0 +1,5 @@
+ALTER TABLE seasons
+ADD COLUMN IF NOT EXISTS dashboard_enrollment_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE seasons
+ADD COLUMN IF NOT EXISTS survivor_dashboard_enrollment_enabled BOOLEAN NOT NULL DEFAULT FALSE;

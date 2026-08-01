@@ -15,9 +15,11 @@ type SeasonFormState = {
   visibility_status: SeasonVisibilityStatus;
   is_active: boolean;
   registration_closed: boolean;
+  dashboard_enrollment_enabled: boolean;
   registration_lock_mode: "automatic" | "date";
   participants_lock_at: string;
   survivor_enabled: boolean;
+  survivor_dashboard_enrollment_enabled: boolean;
   survivor_name: string;
   survivor_description: string;
   survivor_max_lives: string;
@@ -32,9 +34,11 @@ const initialSeasonForm: SeasonFormState = {
   visibility_status: "testing",
   is_active: false,
   registration_closed: false,
+  dashboard_enrollment_enabled: false,
   registration_lock_mode: "automatic",
   participants_lock_at: "",
   survivor_enabled: false,
+  survivor_dashboard_enrollment_enabled: false,
   survivor_name: "",
   survivor_description: "",
   survivor_max_lives: "1",
@@ -275,7 +279,9 @@ export function AdminSeasonsPanel() {
           visibility_status: season.visibility_status,
           is_active: true,
           registration_closed: season.registration_closed,
+          dashboard_enrollment_enabled: season.dashboard_enrollment_enabled,
           survivor_enabled: season.survivor_enabled,
+          survivor_dashboard_enrollment_enabled: season.survivor_dashboard_enrollment_enabled,
           survivor_name: season.survivor_name,
           survivor_description: season.survivor_description,
           survivor_max_lives: season.survivor_max_lives,
@@ -310,7 +316,9 @@ export function AdminSeasonsPanel() {
           visibility_status: season.visibility_status,
           is_active: season.is_active,
           registration_closed: !season.registration_closed,
+          dashboard_enrollment_enabled: season.dashboard_enrollment_enabled,
           survivor_enabled: season.survivor_enabled,
+          survivor_dashboard_enrollment_enabled: season.survivor_dashboard_enrollment_enabled,
           survivor_name: season.survivor_name,
           survivor_description: season.survivor_description,
           survivor_max_lives: season.survivor_max_lives,
@@ -351,7 +359,9 @@ export function AdminSeasonsPanel() {
           visibility_status: "archived",
           is_active: false,
           registration_closed: true,
+          dashboard_enrollment_enabled: false,
           survivor_enabled: season.survivor_enabled,
+          survivor_dashboard_enrollment_enabled: false,
           survivor_name: season.survivor_name,
           survivor_description: season.survivor_description,
           survivor_max_lives: season.survivor_max_lives,
@@ -362,6 +372,27 @@ export function AdminSeasonsPanel() {
       setMessage(`Temporada archivada: ${season.name}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo archivar la temporada");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function handleToggleDashboardEnrollment(season: Season, product: "season" | "survivor") {
+    const enabled = product === "season" ? !season.dashboard_enrollment_enabled : !season.survivor_dashboard_enrollment_enabled;
+    const savingKey = `dashboard:${product}:${season.id}`;
+    setSaving(savingKey);
+    setError(null);
+    setMessage(null);
+    try {
+      const accessToken = await getBrowserAccessToken();
+      await backendFetch(`/admin/seasons/${season.id}/dashboard-enrollment`, accessToken, {
+        method: "PATCH",
+        body: JSON.stringify({ product, enabled }),
+      });
+      await loadSeasons();
+      setMessage(`${product === "season" ? "Liga/Quiniela" : "Survivor"} ${enabled ? "publicado en" : "retirado del"} dashboard.`);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "No se pudo actualizar la publicación");
     } finally {
       setSaving(null);
     }
@@ -507,6 +538,10 @@ export function AdminSeasonsPanel() {
             />
             Cerrar inscripciones de Quiniela y Survivor
           </label>
+          <label className="flex items-center gap-3 text-sm text-ink">
+            <input type="checkbox" checked={seasonForm.dashboard_enrollment_enabled} onChange={(event) => setSeasonForm((current) => ({ ...current, dashboard_enrollment_enabled: event.target.checked }))} />
+            Publicar inscripción de Liga/Quiniela en el dashboard
+          </label>
           <label className="block space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
             Cierre automático
             <select
@@ -557,6 +592,10 @@ export function AdminSeasonsPanel() {
               />
               Habilitar survivor en esta temporada
             </label>
+            {seasonForm.survivor_enabled ? <label className="flex items-center gap-3 text-sm text-ink">
+              <input type="checkbox" checked={seasonForm.survivor_dashboard_enrollment_enabled} onChange={(event) => setSeasonForm((current) => ({ ...current, survivor_dashboard_enrollment_enabled: event.target.checked }))} />
+              Publicar inscripción de Survivor en el dashboard
+            </label> : null}
             {seasonForm.survivor_enabled ? <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2 text-xs font-semibold uppercase tracking-[0.14em] text-steel">
                 Nombre de Survivor
@@ -681,6 +720,7 @@ export function AdminSeasonsPanel() {
                 <th className="px-3 py-3">Formato</th>
                 <th className="px-3 py-3">Survivor</th>
                 <th className="px-3 py-3">Registro</th>
+                <th className="px-3 py-3">En dashboard</th>
                 <th className="px-3 py-3">Visibilidad</th>
                 <th className="px-3 py-3">Default</th>
                 <th className="px-3 py-3">Acciones</th>
@@ -716,6 +756,18 @@ export function AdminSeasonsPanel() {
                       <span>{season.participants_lock_at ? `Cierre: ${new Date(season.participants_lock_at).toLocaleString("es-MX")}` : "Sin fecha de cierre"}</span>
                     </div>
                   </td>
+                  <td className="px-3 py-3">
+                    <div className="flex min-w-[150px] flex-col gap-2 text-xs">
+                      <label className="inline-flex items-center gap-2 text-ink">
+                        <input type="checkbox" checked={season.dashboard_enrollment_enabled} onChange={() => void handleToggleDashboardEnrollment(season, "season")} disabled={Boolean(saving) || season.visibility_status === "archived"} />
+                        Liga/Quiniela
+                      </label>
+                      <label className={`inline-flex items-center gap-2 ${season.survivor_enabled ? "text-ink" : "text-steel"}`}>
+                        <input type="checkbox" checked={season.survivor_dashboard_enrollment_enabled} onChange={() => void handleToggleDashboardEnrollment(season, "survivor")} disabled={Boolean(saving) || !season.survivor_enabled || season.visibility_status === "archived"} />
+                        Survivor
+                      </label>
+                    </div>
+                  </td>
                   <td className="px-3 py-3 text-steel">
                     <span className="inline-flex items-center gap-2 font-semibold text-ink">
                       <i className={`h-2 w-2 rounded-full ${getSeasonStatusPresentation(season.visibility_status).dotClass}`} />
@@ -740,6 +792,7 @@ export function AdminSeasonsPanel() {
                             registration_closed:
                               season.registration_closed ||
                               (season.survivor_enabled && season.survivor_registration_closed),
+                            dashboard_enrollment_enabled: season.dashboard_enrollment_enabled,
                             registration_lock_mode:
                               season.participants_lock_at || season.survivor_registration_lock_at
                                 ? "date"
@@ -748,6 +801,7 @@ export function AdminSeasonsPanel() {
                               season.participants_lock_at ?? season.survivor_registration_lock_at,
                             ),
                             survivor_enabled: season.survivor_enabled,
+                            survivor_dashboard_enrollment_enabled: season.survivor_dashboard_enrollment_enabled,
                             survivor_name: season.survivor_name ?? "",
                             survivor_description: season.survivor_description ?? "",
                             survivor_max_lives: String(season.survivor_max_lives ?? 1),
