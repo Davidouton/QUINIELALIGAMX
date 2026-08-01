@@ -604,6 +604,9 @@ export function PickBoard() {
             .filter((membership) => membership.can_participate)
             .map((membership) => membership.season_id),
         );
+        if (me.role_code === "admin" || me.role_code === "master_admin") {
+          seasons.forEach((season) => accessibleSeasonIds.add(season.id));
+        }
         vipCompetitions
           .filter((vip) => vip.my_membership?.status === "approved")
           .flatMap((vip) => vip.matchdays)

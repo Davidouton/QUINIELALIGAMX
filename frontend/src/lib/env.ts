@@ -4,12 +4,18 @@ const defaultWorldCupLogoUrl =
   "https://exmvulojkzfjivoykagb.supabase.co/storage/v1/object/public/LOGOS/2026_FIFA_World_Cup_emblem.svg.png";
 const defaultLigaMxLogoUrl =
   "https://exmvulojkzfjivoykagb.supabase.co/storage/v1/object/public/LOGOS/league/LIGAMX.png";
+const defaultLeaguesCupLogoUrl =
+  "https://images.mlssoccer.com/image/upload/assets/lc/logos/lc-logo";
+const defaultNflLogoUrl =
+  "https://exmvulojkzfjivoykagb.supabase.co/storage/v1/object/public/LOGOS/NFL/nfl-logo/nfl-logo-png-transparent.png";
 
 export const env = {
   appName: process.env.NEXT_PUBLIC_APP_NAME ?? "El Quinielón",
   apiBaseUrl: rawApiBaseUrl.replace(/\/+$/, ""),
   worldCupLogoUrl: process.env.NEXT_PUBLIC_WORLD_CUP_LOGO_URL ?? defaultWorldCupLogoUrl,
   ligaMxLogoUrl: process.env.NEXT_PUBLIC_LIGA_MX_LOGO_URL ?? defaultLigaMxLogoUrl,
+  leaguesCupLogoUrl: process.env.NEXT_PUBLIC_LEAGUES_CUP_LOGO_URL ?? defaultLeaguesCupLogoUrl,
+  nflLogoUrl: process.env.NEXT_PUBLIC_NFL_LOGO_URL ?? defaultNflLogoUrl,
   whatsappGeneralUrl: process.env.NEXT_PUBLIC_WHATSAPP_GENERAL_URL ?? "",
   whatsappConversationUrl: process.env.NEXT_PUBLIC_WHATSAPP_CONVERSATION_URL ?? "",
   supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",

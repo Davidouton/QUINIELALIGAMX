@@ -70,18 +70,30 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} className="surface-card-strong w-full p-8">
         <div className="mb-8 flex flex-col items-center text-center">
           <p className="eyebrow">El Quinielón</p>
-          <div className="mt-5 flex items-center justify-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white p-1 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
-              {env.ligaMxLogoUrl ? (
-                <img
-                  src={env.ligaMxLogoUrl}
-                  alt="Liga MX"
-                  className="h-full w-full object-contain"
-                />
-              ) : (
-                <span className="text-[10px] font-semibold tracking-[0.08em] text-night">LMX</span>
-              )}
-            </div>
+          <div className="mt-5 flex items-center justify-center gap-3">
+            {[
+              { name: "Liga MX", shortName: "LMX", src: env.ligaMxLogoUrl },
+              { name: "Leagues Cup", shortName: "LC", src: env.leaguesCupLogoUrl },
+              { name: "NFL", shortName: "NFL", src: env.nflLogoUrl },
+            ].map((competition) => (
+              <div
+                key={competition.name}
+                className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_12px_30px_rgba(0,0,0,0.24)] sm:h-20 sm:w-20"
+                title={competition.name}
+              >
+                {competition.src ? (
+                  <img
+                    src={competition.src}
+                    alt={competition.name}
+                    className="h-full w-full object-contain"
+                  />
+                ) : (
+                  <span className="text-[10px] font-semibold tracking-[0.08em] text-night">
+                    {competition.shortName}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         </div>
         <p className="eyebrow">Acceso</p>
