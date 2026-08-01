@@ -28,6 +28,13 @@ type MatchFormState = {
   external_id: string;
 };
 
+type ImportProgress = {
+  percent: number;
+  phase: string;
+  processed: number;
+  total: number;
+};
+
 const initialMatchForm: MatchFormState = {
   matchday_id: "",
   home_team_id: "",
@@ -117,6 +124,7 @@ export function AdminMatchesPanel() {
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
   const [importingTemplate, setImportingTemplate] = useState(false);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -325,12 +333,14 @@ export function AdminMatchesPanel() {
     }
 
     setImportingTemplate(true);
+    setImportProgress({ percent: 2, phase: "Leyendo archivo XLSX", processed: 0, total: 0 });
     setError(null);
     setMessage(null);
     try {
       const ExcelJS = await import("exceljs");
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(await file.arrayBuffer());
+      setImportProgress({ percent: 8, phase: "Leyendo hoja Calendario", processed: 0, total: 0 });
       const calendar = workbook.getWorksheet("Calendario");
       if (!calendar) throw new Error("El archivo no contiene la hoja Calendario.");
 
@@ -372,6 +382,7 @@ export function AdminMatchesPanel() {
         });
       });
       if (!rows.length) throw new Error("La hoja Calendario no contiene partidos.");
+      setImportProgress({ percent: 12, phase: `Validando ${rows.length} partidos`, processed: 0, total: rows.length });
 
       const validStages = new Set(Object.keys(stageLabels));
       const teamBySlug = new Map(getTemplateTeams(season.id).map((team) => [team.slug, team]));
@@ -388,6 +399,7 @@ export function AdminMatchesPanel() {
       if (validationErrors.length) {
         throw new Error(`${validationErrors.slice(0, 8).join(". ")}${validationErrors.length > 8 ? ` y ${validationErrors.length - 8} errores más` : ""}.`);
       }
+      setImportProgress({ percent: 18, phase: "Preparando jornadas y partidos", processed: 0, total: rows.length });
 
       const accessToken = await getBrowserAccessToken();
       const seasonMatchdays = matchdays.filter((matchday) => matchday.season_id === season.id);
@@ -397,8 +409,20 @@ export function AdminMatchesPanel() {
         const number = Number(row.matchday_number);
         rowsByMatchday.set(number, [...(rowsByMatchday.get(number) ?? []), row]);
       }
-      for (const [number, matchdayRows] of rowsByMatchday) {
-        if (matchdayMap.has(number)) continue;
+      const missingMatchdays = [...rowsByMatchday].filter(([number]) => !matchdayMap.has(number));
+      const totalOperations = missingMatchdays.length + rows.length + 1;
+      let completedOperations = 0;
+      const updateOperationProgress = (phase: string) => {
+        const percent = 18 + Math.floor((completedOperations / totalOperations) * 80);
+        setImportProgress({
+          percent: Math.min(percent, 98),
+          phase,
+          processed: completedOperations,
+          total: totalOperations,
+        });
+      };
+      for (const [matchdayIndex, [number, matchdayRows]] of missingMatchdays.entries()) {
+        updateOperationProgress(`Creando jornada ${matchdayIndex + 1} de ${missingMatchdays.length}`);
         const kickoffs = matchdayRows.map((row) => new Date(row.kickoff_at));
         const startsAt = new Date(Math.min(...kickoffs.map((date) => date.getTime())));
         const endsAt = new Date(Math.max(...kickoffs.map((date) => date.getTime())) + 3 * 60 * 60 * 1000);
@@ -415,6 +439,7 @@ export function AdminMatchesPanel() {
           }),
         });
         matchdayMap.set(number, created);
+        completedOperations += 1;
       }
 
       const allMatches = await backendFetch<Match[]>("/matches", accessToken);
@@ -426,7 +451,8 @@ export function AdminMatchesPanel() {
       );
       let createdCount = 0;
       let updatedCount = 0;
-      for (const row of rows) {
+      for (const [rowIndex, row] of rows.entries()) {
+        updateOperationProgress(`Guardando partido ${rowIndex + 1} de ${rows.length}`);
         const matchday = matchdayMap.get(Number(row.matchday_number));
         if (!matchday) throw new Error(`No se pudo resolver la jornada de la fila ${row.row_number}.`);
         const kickoffAt = row.kickoff_at;
@@ -453,11 +479,16 @@ export function AdminMatchesPanel() {
         });
         if (existing) updatedCount += 1;
         else createdCount += 1;
+        completedOperations += 1;
       }
 
+      updateOperationProgress("Actualizando calendario y lista de partidos");
       await loadData();
+      completedOperations += 1;
+      setImportProgress({ percent: 100, phase: "Importación completa", processed: totalOperations, total: totalOperations });
       setMessage(`Importación completa: ${createdCount} creados y ${updatedCount} actualizados.`);
     } catch (caughtError) {
+      setImportProgress((current) => current ? { ...current, phase: "Importación detenida" } : null);
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo importar la plantilla.");
     } finally {
       setImportingTemplate(false);
@@ -761,6 +792,33 @@ export function AdminMatchesPanel() {
             className="hidden"
           />
         </div>
+
+        {importProgress ? (
+          <div className="mt-5 space-y-2 border-y border-white/[0.08] py-4" aria-live="polite">
+            <div className="flex items-center justify-between gap-4 text-sm">
+              <span className="font-semibold text-ink">{importProgress.phase}</span>
+              <span className="tabular-nums text-steel">{importProgress.percent}%</span>
+            </div>
+            <div
+              className="h-2 overflow-hidden rounded-full bg-white/[0.08]"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={importProgress.percent}
+              aria-label="Progreso de importación del calendario"
+            >
+              <div
+                className="h-full rounded-full bg-[#4f7df3] transition-[width] duration-300"
+                style={{ width: `${importProgress.percent}%` }}
+              />
+            </div>
+            {importProgress.total > 0 ? (
+              <p className="text-xs text-steel">
+                {Math.min(importProgress.processed, importProgress.total)} de {importProgress.total} operaciones completadas
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {message ? <p className="mt-4 text-sm text-moss">{message}</p> : null}
         {error ? <p className="mt-4 text-sm text-coral">{error}</p> : null}
