@@ -1262,12 +1262,12 @@ export function PickBoard() {
 
       {activeTab === "mine" && visibleMatches.length > 0 ? (
         <section className="space-y-3">
-          <div className="hidden grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] gap-2 border-b border-white/10 pb-3 text-[11px] font-medium uppercase tracking-[0.12em] text-steel md:grid">
+          <div className={`hidden gap-2 border-b border-white/10 pb-3 text-[11px] font-medium uppercase tracking-[0.12em] text-steel md:grid ${useNflMode ? "grid-cols-[1.8fr_1fr_1fr_0.6fr_0.5fr_0.8fr]" : "grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr]"}`}>
             <p>Partido</p>
             <p className="text-center">Inicio</p>
             <p className="text-center">Cierre</p>
-            <p className="text-center">{useNflMode ? "Ganador" : "Local"}</p>
-            <p className="text-center">{useNflMode ? "Línea" : "Visitante"}</p>
+            {!useNflMode ? <p className="text-center">Local</p> : null}
+            {!useNflMode ? <p className="text-center">Visitante</p> : null}
             <p className="text-center">Pick</p>
             <p className="text-center">Estado</p>
             <p className="text-center">Guardado</p>
@@ -1299,38 +1299,50 @@ export function PickBoard() {
 
               return (
                 <div key={match.id} className="border-b border-white/5 py-2 last:border-b-0">
-                  <div className="grid grid-cols-[1.7fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.7fr] items-center gap-1.5 md:grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] md:gap-2">
+                  <div className={`grid items-center gap-1.5 md:gap-2 ${useNflMode ? "grid-cols-[1.8fr_1fr_0.6fr_0.5fr_0.8fr] md:grid-cols-[1.8fr_1fr_1fr_0.6fr_0.5fr_0.8fr]" : "grid-cols-[1.7fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.7fr] md:grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr]"}`}>
                     {useNflMode ? (
                       <div className="flex min-w-0 flex-col gap-2">
-                        <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2">
-                          <TeamBubble
-                            crestUrl={homeTeam?.crest_url}
-                            fallback={getTeamInitials(match.home_team_name)}
-                            sizeClassName="h-10 w-10"
-                            textClassName="text-[10px]"
-                            useWorldCupBubbles={false}
-                          />
-                          <span className="min-w-0 text-[9px] font-semibold leading-tight text-ink">
-                            {getMatchTeamLabel(match.home_team_id, match.home_team_name)}
-                          </span>
-                          <span className="min-w-[38px] text-right text-[10px] font-semibold tabular-nums text-mint">
+                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateForm(match.id, { winner_selection: "home" })}
+                            disabled={pickDisabled}
+                            aria-pressed={form?.winner_selection === "home"}
+                            className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-2 rounded-lg p-1 text-left transition ${form?.winner_selection === "home" ? "bg-mint/15 text-mint" : "hover:bg-white/[0.04]"}`}
+                          >
+                            <TeamBubble crestUrl={homeTeam?.crest_url} fallback={getTeamInitials(match.home_team_name)} sizeClassName="h-10 w-10" textClassName="text-[10px]" useWorldCupBubbles={false} />
+                            <span className="min-w-0 text-[9px] font-semibold leading-tight">{getMatchTeamLabel(match.home_team_id, match.home_team_name)}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateForm(match.id, { spread_selection: "home" })}
+                            disabled={pickDisabled || !match.spread_home_line}
+                            aria-pressed={form?.spread_selection === "home"}
+                            className={`min-w-[44px] rounded-lg px-2 py-2 text-center text-[10px] font-semibold tabular-nums transition ${form?.spread_selection === "home" ? "bg-mint/15 text-mint" : "text-ink hover:bg-white/[0.04]"} disabled:text-steel`}
+                          >
                             {match.spread_home_line ?? "S/L"}
-                          </span>
+                          </button>
                         </div>
-                        <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2">
-                          <TeamBubble
-                            crestUrl={awayTeam?.crest_url}
-                            fallback={getTeamInitials(match.away_team_name)}
-                            sizeClassName="h-10 w-10"
-                            textClassName="text-[10px]"
-                            useWorldCupBubbles={false}
-                          />
-                          <span className="min-w-0 text-[9px] font-semibold leading-tight text-ink">
-                            {getMatchTeamLabel(match.away_team_id, match.away_team_name)}
-                          </span>
-                          <span className="min-w-[38px] text-right text-[10px] font-semibold tabular-nums text-mint">
+                        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateForm(match.id, { winner_selection: "away" })}
+                            disabled={pickDisabled}
+                            aria-pressed={form?.winner_selection === "away"}
+                            className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-2 rounded-lg p-1 text-left transition ${form?.winner_selection === "away" ? "bg-mint/15 text-mint" : "hover:bg-white/[0.04]"}`}
+                          >
+                            <TeamBubble crestUrl={awayTeam?.crest_url} fallback={getTeamInitials(match.away_team_name)} sizeClassName="h-10 w-10" textClassName="text-[10px]" useWorldCupBubbles={false} />
+                            <span className="min-w-0 text-[9px] font-semibold leading-tight">{getMatchTeamLabel(match.away_team_id, match.away_team_name)}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateForm(match.id, { spread_selection: "away" })}
+                            disabled={pickDisabled || !match.spread_away_line}
+                            aria-pressed={form?.spread_selection === "away"}
+                            className={`min-w-[44px] rounded-lg px-2 py-2 text-center text-[10px] font-semibold tabular-nums transition ${form?.spread_selection === "away" ? "bg-mint/15 text-mint" : "text-ink hover:bg-white/[0.04]"} disabled:text-steel`}
+                          >
                             {match.spread_away_line ?? "S/L"}
-                          </span>
+                          </button>
                         </div>
                       </div>
                     ) : (
@@ -1389,7 +1401,7 @@ export function PickBoard() {
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Cierre</p>
                       <p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityCompactDateTime(match.picks_lock_at)}</p>
                     </div>
-                    <div className="text-center">
+                    {!useNflMode ? <div className="text-center">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">
                         {useNflMode ? "ML" : "L"}
                       </p>
@@ -1428,8 +1440,8 @@ export function PickBoard() {
                           className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
                         />
                       )}
-                    </div>
-                    <div className="text-center">
+                    </div> : null}
+                    {!useNflMode ? <div className="text-center">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">
                         {useNflMode ? "ATS" : "V"}
                       </p>
@@ -1468,7 +1480,7 @@ export function PickBoard() {
                           className={`${compactPickControlClass} mx-auto w-9 [appearance:textfield]`}
                         />
                       )}
-                    </div>
+                    </div> : null}
                     <div className="text-center">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Pick</p>
                       <p className={`mt-1 text-[10px] font-semibold md:mt-0 ${derivedSelection ? "text-ink" : "text-steel"}`}>
