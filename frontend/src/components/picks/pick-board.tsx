@@ -1266,8 +1266,8 @@ export function PickBoard() {
             <p>Partido</p>
             <p className="text-center">Inicio</p>
             <p className="text-center">Cierre</p>
-            <p className="text-center">Local</p>
-            <p className="text-center">Visitante</p>
+            <p className="text-center">{useNflMode ? "Ganador" : "Local"}</p>
+            <p className="text-center">{useNflMode ? "Línea" : "Visitante"}</p>
             <p className="text-center">Pick</p>
             <p className="text-center">Estado</p>
             <p className="text-center">Guardado</p>
@@ -1300,6 +1300,40 @@ export function PickBoard() {
               return (
                 <div key={match.id} className="border-b border-white/5 py-2 last:border-b-0">
                   <div className="grid grid-cols-[1.7fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.7fr] items-center gap-1.5 md:grid-cols-[1.5fr_1fr_1fr_0.55fr_0.55fr_0.55fr_0.45fr_0.8fr] md:gap-2">
+                    {useNflMode ? (
+                      <div className="flex min-w-0 flex-col gap-2">
+                        <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2">
+                          <TeamBubble
+                            crestUrl={homeTeam?.crest_url}
+                            fallback={getTeamInitials(match.home_team_name)}
+                            sizeClassName="h-10 w-10"
+                            textClassName="text-[10px]"
+                            useWorldCupBubbles={false}
+                          />
+                          <span className="min-w-0 text-[9px] font-semibold leading-tight text-ink">
+                            {getMatchTeamLabel(match.home_team_id, match.home_team_name)}
+                          </span>
+                          <span className="min-w-[38px] text-right text-[10px] font-semibold tabular-nums text-mint">
+                            {match.spread_home_line ?? "S/L"}
+                          </span>
+                        </div>
+                        <div className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-2">
+                          <TeamBubble
+                            crestUrl={awayTeam?.crest_url}
+                            fallback={getTeamInitials(match.away_team_name)}
+                            sizeClassName="h-10 w-10"
+                            textClassName="text-[10px]"
+                            useWorldCupBubbles={false}
+                          />
+                          <span className="min-w-0 text-[9px] font-semibold leading-tight text-ink">
+                            {getMatchTeamLabel(match.away_team_id, match.away_team_name)}
+                          </span>
+                          <span className="min-w-[38px] text-right text-[10px] font-semibold tabular-nums text-mint">
+                            {match.spread_away_line ?? "S/L"}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-1">
                       <button
                         type="button"
@@ -1343,6 +1377,7 @@ export function PickBoard() {
                         </span>
                       </button>
                     </div>
+                    )}
                     <div className="text-center">
                       <p className="text-[6px] uppercase tracking-[0.06em] text-steel/80 md:hidden">Inicio</p>
                       <p className="mt-1 text-[9px] text-ink md:mt-0">{formatMexicoCityCompactDateTime(match.kickoff_at)}</p>
@@ -1406,7 +1441,7 @@ export function PickBoard() {
                             disabled={pickDisabled || !match.spread_home_line}
                             className={`app-pill h-7 min-w-[52px] px-2 text-[9px] ${form?.spread_selection === "home" ? "app-pill-active text-ink" : ""}`}
                           >
-                            {match.spread_home_line ? `${getMatchTeamLabel(match.home_team_id, match.home_team_name)} ${match.spread_home_line}` : "Sin linea"}
+                            {match.spread_home_line ?? "Sin línea"}
                           </button>
                           <button
                             type="button"
@@ -1414,7 +1449,7 @@ export function PickBoard() {
                             disabled={pickDisabled || !match.spread_away_line}
                             className={`app-pill h-7 min-w-[52px] px-2 text-[9px] ${form?.spread_selection === "away" ? "app-pill-active text-ink" : ""}`}
                           >
-                            {match.spread_away_line ? `${getMatchTeamLabel(match.away_team_id, match.away_team_name)} ${match.spread_away_line}` : "Sin linea"}
+                            {match.spread_away_line ?? "Sin línea"}
                           </button>
                         </div>
                       ) : (
