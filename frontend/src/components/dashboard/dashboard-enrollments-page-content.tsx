@@ -133,7 +133,7 @@ export function DashboardEnrollmentsPageContent() {
   const [survivorPricing, setSurvivorPricing] = useState<Record<string, EffectivePricing>>({});
   const [seasonPricing, setSeasonPricing] = useState<Record<string, EffectivePricing>>({});
   const { enabled: devModeEnabled } = useDevMode();
-  const { seasonId, competitionId, buildHrefWithSeason, setSeasonId } = useDashboardSeasonParam();
+  const { seasonId, competitionId, buildHrefWithSeason } = useDashboardSeasonParam();
 
   useEffect(() => {
     async function load() {
@@ -185,13 +185,6 @@ export function DashboardEnrollmentsPageContent() {
         setSeasonPricing(seasonPricingRows);
         setSurvivorPricing(survivorPricingRows);
 
-        if (selectedSeason) {
-          const nextCompetitionId = selectedSeason.competition_id ?? "";
-          if (selectedSeason.id !== seasonId || competitionId !== nextCompetitionId) {
-            setSeasonId(selectedSeason.id, nextCompetitionId);
-          }
-        }
-
         setState({
           me: bootstrap.me,
           seasons: bootstrap.seasons,
@@ -212,7 +205,7 @@ export function DashboardEnrollmentsPageContent() {
     }
 
     void load();
-  }, [competitionId, refreshVersion, seasonId, setSeasonId]);
+  }, [competitionId, refreshVersion, seasonId]);
 
   useEffect(() => {
     const refreshOnFocus = () => setRefreshVersion((current) => current + 1);
@@ -530,11 +523,11 @@ export function DashboardEnrollmentsPageContent() {
     }
   }
 
-  if (loading) {
+  if (loading && !state.me) {
     return <p className="text-sm text-ink/70">Cargando inscripciones...</p>;
   }
 
-  if (error) {
+  if (error && !state.me) {
     return <p className="text-sm text-coral">{error}</p>;
   }
 
@@ -543,6 +536,9 @@ export function DashboardEnrollmentsPageContent() {
       <header className="page-header">
         <h1 className="page-title">Inscripciones</h1>
       </header>
+
+      {loading ? <p className="text-sm text-ink/70">Actualizando inscripciones...</p> : null}
+      {error ? <p className="text-sm text-coral">{error}</p> : null}
 
       <section className="grid gap-x-12 gap-y-5 border-y border-white/10 py-5 sm:grid-cols-2">
         <div>

@@ -213,20 +213,39 @@ export function AdminTournamentEnrollmentsPanel() {
 
       <section className="space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {([
-              ["all", "Todos", counts.all],
-              ["active", "Inscritos", counts.active],
-              ["pending", "Pendientes", counts.pending],
-              ["inactive", "No inscritos", counts.inactive],
-              ["rejected", "No aprobados", counts.rejected],
-            ] as const).map(([value, label, count]) => (
-              <button key={value} type="button" onClick={() => setStatusFilter(value)} className={statusFilter === value ? "app-pill-active h-10 px-4 text-sm" : "app-pill h-10 px-4 text-sm"}>
-                {label} · {count}
-              </button>
-            ))}
+          <div>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-steel">Filtrar por estado</p>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar participantes por estado de inscripción">
+              {([
+                ["all", "Todos", counts.all],
+                ["active", "Inscritos", counts.active],
+                ["pending", "Pendientes", counts.pending],
+                ["inactive", "No inscritos", counts.inactive],
+                ["rejected", "No aprobados", counts.rejected],
+              ] as const).map(([value, label, count]) => {
+                const selected = statusFilter === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setStatusFilter(value)}
+                    aria-pressed={selected}
+                    className={`h-10 border px-4 text-sm font-semibold transition ${
+                      selected
+                        ? "border-[#4f7df3] bg-[#4f7df3]/15 text-[#7da0ff]"
+                        : "border-white/15 bg-white/[0.02] text-ink hover:border-white/35 hover:bg-white/[0.05]"
+                    }`}
+                  >
+                    {label} <span className={selected ? "text-[#7da0ff]" : "text-steel"}>· {count}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Buscar nombre, usuario o correo" className="field-control lg:max-w-sm" />
+          <label className="block w-full lg:max-w-sm">
+            <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-steel">Buscar participante</span>
+            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Nombre, usuario o correo" className="field-control w-full" />
+          </label>
         </div>
 
         {loading ? <p className="py-6 text-sm text-steel">Cargando inscritos...</p> : null}
