@@ -5,7 +5,7 @@ const defaultWorldCupLogoUrl =
 const defaultLigaMxLogoUrl =
   "https://exmvulojkzfjivoykagb.supabase.co/storage/v1/object/public/LOGOS/league/LIGAMX.png";
 const defaultLeaguesCupLogoUrl =
-  "https://images.mlssoccer.com/image/upload/assets/lc/logos/lc-logo";
+  "https://exmvulojkzfjivoykagb.supabase.co/storage/v1/object/public/LOGOS/league/LEAGUESCUP.png?v=1";
 const defaultNflLogoUrl =
   "https://exmvulojkzfjivoykagb.supabase.co/storage/v1/object/public/LOGOS/NFL/nfl-logo/nfl-logo-png-transparent.png";
 

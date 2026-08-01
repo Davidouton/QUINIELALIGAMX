@@ -78,7 +78,7 @@ export default function LoginPage() {
             ].map((competition) => (
               <div
                 key={competition.name}
-                className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white p-2 shadow-[0_12px_30px_rgba(0,0,0,0.24)] sm:h-20 sm:w-20"
+                className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-white p-2 shadow-[0_12px_30px_rgba(0,0,0,0.24)] sm:h-20 sm:w-20"
                 title={competition.name}
               >
                 {competition.src ? (
