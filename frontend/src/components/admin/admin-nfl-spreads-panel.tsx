@@ -118,6 +118,12 @@ export function AdminNflSpreadsPanel() {
   async function selectTiebreak(row: AdminNflSpreadRow) {
     setSaving(true);
     setError(null);
+    setRows((current) => current.map((candidate) => ({
+      ...candidate,
+      is_tiebreaker: candidate.matchday_id === row.matchday_id
+        ? candidate.match_id === row.match_id
+        : candidate.is_tiebreaker,
+    })));
     try {
       const token = await getBrowserAccessToken();
       await backendFetch(`/admin/nfl-tiebreak/${row.match_id}`, token, {
@@ -127,6 +133,7 @@ export function AdminNflSpreadsPanel() {
       setMessage(`Tie Break configurado: ${row.home_team_name} vs ${row.away_team_name}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "No se pudo configurar el Tie Break");
+      await loadRows(seasonId, matchdayId || undefined).catch(() => undefined);
     } finally {
       setSaving(false);
     }
@@ -179,7 +186,17 @@ export function AdminNflSpreadsPanel() {
                 <td className="px-3 py-3 text-steel">{formatMexicoCityDateTime(row.kickoff_at)}</td>
                 <td className="px-3 py-3"><input value={drafts[row.match_id] ?? ""} onChange={(event) => setDrafts((current) => ({ ...current, [row.match_id]: event.target.value }))} placeholder="-3.5 / PK" className="field-control min-w-28" /></td>
                 <td className="px-3 py-3 font-semibold text-ink">{awayLine(drafts[row.match_id] ?? "")}</td>
-                <td className="px-3 py-3"><label className="inline-flex items-center gap-2 text-steel"><input type="radio" name={`tiebreak-${row.matchday_id}`} checked={row.is_tiebreaker} onChange={() => void selectTiebreak(row)} disabled={saving} /> SNF/MNF</label></td>
+                <td className="px-3 py-3">
+                  <button
+                    type="button"
+                    onClick={() => void selectTiebreak(row)}
+                    disabled={saving || row.is_tiebreaker}
+                    aria-pressed={row.is_tiebreaker}
+                    className={`app-pill h-9 min-w-[104px] px-3 text-[11px] ${row.is_tiebreaker ? "app-pill-active text-ink" : ""} disabled:opacity-70`}
+                  >
+                    {row.is_tiebreaker ? "Seleccionado" : "Elegir"}
+                  </button>
+                </td>
                 <td className="px-3 py-3 text-steel">{row.is_frozen ? `Congelado · ${row.pick_count} picks` : row.spread_home_line ? "Publicado" : "Sin publicar"}</td>
               </tr>
             ))}</tbody>

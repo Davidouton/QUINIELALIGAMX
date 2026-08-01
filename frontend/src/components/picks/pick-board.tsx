@@ -599,7 +599,20 @@ export function PickBoard() {
           matchdays,
           teams: teamRows,
         } = bootstrap;
-        const preferredSeason = resolveLiveSeason(seasons, seasonIdParam);
+        const accessibleSeasonIds = new Set(
+          me.season_memberships
+            .filter((membership) => membership.can_participate)
+            .map((membership) => membership.season_id),
+        );
+        vipCompetitions
+          .filter((vip) => vip.my_membership?.status === "approved")
+          .flatMap((vip) => vip.matchdays)
+          .forEach((vipMatchday) => {
+            const matchday = matchdays.find((row) => row.id === vipMatchday.id);
+            if (matchday) accessibleSeasonIds.add(matchday.season_id);
+          });
+        const accessibleSeasons = seasons.filter((season) => accessibleSeasonIds.has(season.id));
+        const preferredSeason = resolveLiveSeason(accessibleSeasons, seasonIdParam);
         const preferredSeasonMatchdays = preferredSeason ? filterMatchdaysBySeason(matchdays, preferredSeason.id) : [];
         const activeMatchday =
           (preferredSeason
@@ -612,7 +625,7 @@ export function PickBoard() {
           null;
         const selectedSeason =
           preferredSeason ??
-          seasons.find((season) => season.id === selectedMatchday?.season_id) ??
+          accessibleSeasons.find((season) => season.id === selectedMatchday?.season_id) ??
           null;
 
         if (selectedSeason) {
@@ -625,7 +638,7 @@ export function PickBoard() {
           setTeams(teamRows);
           setState({
             me,
-            seasons,
+            seasons: accessibleSeasons,
             matchdays,
             selectedSeason,
             selectedMatchday: null,
@@ -660,7 +673,7 @@ export function PickBoard() {
         setTeams(teamRows);
         setState({
           me,
-          seasons,
+          seasons: accessibleSeasons,
           matchdays,
           selectedSeason,
           selectedMatchday,
@@ -1345,7 +1358,10 @@ export function PickBoard() {
                             className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-2 rounded-lg p-1 text-left transition ${form?.winner_selection === "home" ? "bg-mint/15 text-mint" : "hover:bg-white/[0.04]"}`}
                           >
                             <TeamBubble crestUrl={homeTeam?.crest_url} fallback={getTeamInitials(match.home_team_name)} sizeClassName="h-10 w-10" textClassName="text-[10px]" useWorldCupBubbles={false} />
-                            <span className="min-w-0 text-[9px] font-semibold leading-tight">{getMatchTeamLabel(match.home_team_id, match.home_team_name)}</span>
+                            <span className="min-w-0 text-[9px] font-semibold leading-tight">
+                              <span className="md:hidden">{homeTeam?.short_name || getTeamInitials(match.home_team_name)}</span>
+                              <span className="hidden md:inline">{match.home_team_name}</span>
+                            </span>
                           </button>
                           <button
                             type="button"
@@ -1366,7 +1382,10 @@ export function PickBoard() {
                             className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-2 rounded-lg p-1 text-left transition ${form?.winner_selection === "away" ? "bg-mint/15 text-mint" : "hover:bg-white/[0.04]"}`}
                           >
                             <TeamBubble crestUrl={awayTeam?.crest_url} fallback={getTeamInitials(match.away_team_name)} sizeClassName="h-10 w-10" textClassName="text-[10px]" useWorldCupBubbles={false} />
-                            <span className="min-w-0 text-[9px] font-semibold leading-tight">{getMatchTeamLabel(match.away_team_id, match.away_team_name)}</span>
+                            <span className="min-w-0 text-[9px] font-semibold leading-tight">
+                              <span className="md:hidden">{awayTeam?.short_name || getTeamInitials(match.away_team_name)}</span>
+                              <span className="hidden md:inline">{match.away_team_name}</span>
+                            </span>
                           </button>
                           <button
                             type="button"
