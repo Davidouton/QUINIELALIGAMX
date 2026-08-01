@@ -149,11 +149,17 @@ export function AdminResultsPanel() {
       backendFetch<Season[]>("/seasons", accessToken),
       backendFetch<Matchday[]>("/matchdays", accessToken),
     ]);
-    const defaultSeasonId = seasonRows.find((season) => season.is_active)?.id || seasonRows[0]?.id || "";
+    const operationalSeasonRows = seasonRows.filter(
+      (season) => season.visibility_status !== "archived",
+    );
+    const defaultSeasonId =
+      operationalSeasonRows.find((season) => season.is_active)?.id ||
+      operationalSeasonRows[0]?.id ||
+      "";
     const defaultMatchdayId =
       pickDefaultMatchday(matchdayRows, defaultSeasonId) || pickDefaultMatchday(matchdayRows);
 
-    setSeasons(seasonRows);
+    setSeasons(operationalSeasonRows);
     setMatchdays(matchdayRows);
     setSelectedSeasonId(defaultSeasonId);
     setSelectedMatchdayId(defaultMatchdayId);
