@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { env } from "@/lib/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import { getBrowserSession } from "@/lib/supabase/session";
 
@@ -44,7 +43,7 @@ export default function RegisterPage() {
       email,
       password,
       options: {
-        emailRedirectTo: `${env.siteUrl}/auth/confirm`,
+        emailRedirectTo: `${window.location.origin}/auth/confirm`,
         data: {
           display_name: displayName,
           username,
