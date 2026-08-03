@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { backendFetch, CATALOG_CACHE_TTL_MS } from "@/lib/api/backend";
+import { backendFetch } from "@/lib/api/backend";
 import { isSurvivorAvailableForSeason, resolveSurvivorSeason, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -167,7 +167,7 @@ export function SurvivorPageContent() {
     async function load() {
       try {
         const accessToken = await getBrowserAccessToken();
-        const seasonsResponse = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+        const seasonsResponse = await backendFetch<Season[]>("/seasons", accessToken);
         const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
         setSurvivorSeasons(
           seasons.filter(
@@ -327,7 +327,7 @@ export function SurvivorPageContent() {
     setError(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      const seasonsResponse = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
+      const seasonsResponse = await backendFetch<Season[]>("/seasons", accessToken);
       const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
       const resolvedSeason = resolveSurvivorSeason(seasons, seasonIdParam, competitionId);
       if (!resolvedSeason) {
