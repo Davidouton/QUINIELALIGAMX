@@ -549,7 +549,7 @@ export function QuinielaPlusPageContent() {
   const distributionContextOptions = useMemo<DistributionContextOption[]>(() => {
     const activeSeasonIds = new Set(
       seasons
-        .filter((season) => season.is_active && season.visibility_status === "live")
+        .filter((season) => season.visibility_status === "live")
         .map((season) => season.id),
     );
     const seasonOptions =
