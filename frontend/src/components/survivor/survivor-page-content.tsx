@@ -153,7 +153,8 @@ function buildSeasonBoardFallback(season: Season): SurvivorBoard {
 }
 
 export function SurvivorPageContent() {
-  const { seasonId: seasonIdParam, competitionId } = useDashboardSeasonParam();
+  const { seasonId: seasonIdParam, competitionId, setSeasonId } = useDashboardSeasonParam();
+  const [survivorSeasons, setSurvivorSeasons] = useState<Season[]>([]);
   const [selectedSeason, setSelectedSeason] = useState<Season | null>(null);
   const [board, setBoard] = useState<SurvivorBoard>(initialBoard);
   const [loading, setLoading] = useState(true);
@@ -168,6 +169,11 @@ export function SurvivorPageContent() {
         const accessToken = await getBrowserAccessToken();
         const seasonsResponse = await backendFetch<Season[]>("/seasons", accessToken, { cacheTtlMs: CATALOG_CACHE_TTL_MS });
         const seasons = Array.isArray(seasonsResponse) ? seasonsResponse : [];
+        setSurvivorSeasons(
+          seasons.filter(
+            (season) => season.visibility_status === "live" && isSurvivorAvailableForSeason(season),
+          ),
+        );
         const resolvedSeason = resolveSurvivorSeason(seasons, seasonIdParam, competitionId);
         if (!resolvedSeason) {
           setSelectedSeason(null);
@@ -363,9 +369,28 @@ export function SurvivorPageContent() {
           </h1>
           <div className="max-w-md">
             <p className="text-xs text-steel">Torneo</p>
-            <p className="mt-1 border-b border-white/[0.12] pb-2 text-sm font-medium text-ink">
-              {board.season.season_name || selectedSeason?.name || board.season.competition_name || "Liga MX"}
-            </p>
+            {survivorSeasons.length > 1 ? (
+              <select
+                value={selectedSeason?.id ?? ""}
+                onChange={(event) => {
+                  const nextSeason = survivorSeasons.find((season) => season.id === event.target.value);
+                  if (nextSeason) {
+                    setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
+                  }
+                }}
+                className="field-control mt-1 min-w-[260px] py-2 text-sm"
+              >
+                {survivorSeasons.map((season) => (
+                  <option key={season.id} value={season.id}>
+                    {season.survivor_name || "Survivor"} · {season.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="mt-1 border-b border-white/[0.12] pb-2 text-sm font-medium text-ink">
+                {board.season.season_name || selectedSeason?.name || board.season.competition_name || "Liga MX"}
+              </p>
+            )}
           </div>
         </header>
         <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
