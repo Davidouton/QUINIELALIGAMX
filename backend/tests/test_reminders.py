@@ -2,8 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
-from conftest import MATCHDAY_ID, MATCH_ONE_ID, PROFILE_USER_ID, SessionLocal
-from app.models.entities import Match, MatchResult, Matchday, MatchdayStatus, PickPoint, PickReminderEmailEvent, PickReminderKind, PickSelection, Profile, PushNotificationEvent, StandingsMatchday, UserPick
+from conftest import MATCHDAY_ID, MATCH_ONE_ID, PROFILE_USER_ID, SEASON_ID, SessionLocal
+from app.models.entities import Match, MatchResult, Matchday, MatchdayStatus, PickPoint, PickReminderEmailEvent, PickReminderKind, PickSelection, Profile, PushNotificationEvent, Season, SeasonVisibilityStatus, StandingsMatchday, UserPick
 from app.services.reminder_service import ReminderService
 
 
@@ -106,6 +106,34 @@ def test_collect_due_push_reminders_includes_matchday_start():
         db.close()
 
 
+def test_archived_season_does_not_generate_due_reminders():
+    service = ReminderService()
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        profile = db.get(Profile, PROFILE_USER_ID)
+        first_match = db.scalar(
+            select(Match).where(Match.matchday_id == MATCHDAY_ID).order_by(Match.kickoff_at.asc())
+        )
+        assert season is not None
+        assert profile is not None
+        assert first_match is not None
+        season.visibility_status = SeasonVisibilityStatus.ARCHIVED
+        profile.pick_reminder_email_enabled = True
+        profile.matchday_start_notification_enabled = True
+        db.commit()
+
+        reminders = service.collect_due_push_reminders(
+            db,
+            now_utc=first_match.kickoff_at - timedelta(hours=1) + timedelta(minutes=5),
+            window_minutes=70,
+        )
+
+        assert reminders == []
+    finally:
+        db.close()
+
+
 def test_collect_due_push_reminders_skips_already_sent_matchday_start():
     service = ReminderService()
     db = SessionLocal()
@@ -178,6 +206,23 @@ def test_send_matchday_summary_notifications_records_event(monkeypatch):
         db.close()
 
 
+def test_archived_season_does_not_generate_matchday_summary():
+    service = ReminderService()
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        matchday = db.get(Matchday, MATCHDAY_ID)
+        assert season is not None
+        assert matchday is not None
+        season.visibility_status = SeasonVisibilityStatus.ARCHIVED
+        matchday.status = MatchdayStatus.PUBLISHED
+        db.commit()
+
+        assert service.collect_matchday_summary_reminders(db, matchday_id=MATCHDAY_ID) == []
+    finally:
+        db.close()
+
+
 def _prepare_match_result_notification(db):
     profile = db.get(Profile, PROFILE_USER_ID)
     match = db.get(Match, MATCH_ONE_ID)
@@ -246,6 +291,27 @@ def test_match_result_notification_is_audited_and_deduplicated(monkeypatch):
         assert event.attempt_count == 1
         assert event.provider_message_id == "result_msg_123"
         assert event.match_id == MATCH_ONE_ID
+    finally:
+        db.close()
+
+
+def test_archived_season_does_not_send_match_result_notification(monkeypatch):
+    service = ReminderService()
+    db = SessionLocal()
+    try:
+        _prepare_match_result_notification(db)
+        season = db.get(Season, SEASON_ID)
+        assert season is not None
+        season.visibility_status = SeasonVisibilityStatus.ARCHIVED
+        db.commit()
+        monkeypatch.setattr(service.push_service, "is_configured", lambda: True)
+
+        assert service.send_match_scoring_notifications(
+            db,
+            matchday_id=MATCHDAY_ID,
+            match_id=MATCH_ONE_ID,
+        ) == []
+        assert db.scalar(select(PushNotificationEvent)) is None
     finally:
         db.close()
 

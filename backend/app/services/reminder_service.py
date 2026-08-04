@@ -22,6 +22,7 @@ from app.models.entities import (
     PushNotificationEvent,
     Season,
     SeasonMembership,
+    SeasonVisibilityStatus,
     StandingsMatchday,
     StandingsOverall,
     Team,
@@ -77,7 +78,10 @@ class ReminderService:
         active_rows = db.execute(
             select(Matchday, Season)
             .join(Season, Season.id == Matchday.season_id)
-            .where(Matchday.status == MatchdayStatus.ACTIVE)
+            .where(
+                Matchday.status == MatchdayStatus.ACTIVE,
+                Season.visibility_status == SeasonVisibilityStatus.LIVE,
+            )
             .order_by(Matchday.starts_at.asc())
         ).all()
 
@@ -189,12 +193,14 @@ class ReminderService:
             select(Match, MatchResult, Matchday, home_team_alias, away_team_alias)
             .join(MatchResult, MatchResult.match_id == Match.id)
             .join(Matchday, Matchday.id == Match.matchday_id)
+            .join(Season, Season.id == Matchday.season_id)
             .join(home_team_alias, home_team_alias.id == Match.home_team_id)
             .join(away_team_alias, away_team_alias.id == Match.away_team_id)
             .where(
                 MatchResult.is_official.is_(True),
                 MatchResult.last_synced_at >= recent_result_cutoff,
                 Match.kickoff_at >= recent_match_cutoff,
+                Season.visibility_status == SeasonVisibilityStatus.LIVE,
             )
         )
         if matchday_id is not None:
@@ -311,6 +317,8 @@ class ReminderService:
             return []
 
         matchday, season = row
+        if season.visibility_status != SeasonVisibilityStatus.LIVE:
+            return []
         if matchday.status not in {MatchdayStatus.CLOSED, MatchdayStatus.PUBLISHED}:
             return []
 
