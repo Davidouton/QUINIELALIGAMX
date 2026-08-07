@@ -603,9 +603,6 @@ class SurvivorService:
             if matchday.status in {MatchdayStatus.DRAFT, MatchdayStatus.ACTIVE, MatchdayStatus.CLOSED}
             and not self._is_matchday_locked(matchday, matches_by_matchday.get(matchday.id, []))
         ]
-        active_open_matchday = next((row for row in open_matchdays if row.status == MatchdayStatus.ACTIVE), None)
-        if active_open_matchday is not None:
-            return active_open_matchday
         if open_matchdays:
             return min(
                 open_matchdays,

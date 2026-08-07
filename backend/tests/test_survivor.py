@@ -379,6 +379,49 @@ def test_survivor_board_moves_to_next_open_matchday_after_first_game_lock(client
     assert payload["available_teams"]
 
 
+def test_survivor_board_prefers_earliest_open_matchday_over_future_active_one(client) -> None:
+    future_matchday_id = "30000000-0000-0000-0000-000000000097"
+    future_match_id = "50000000-0000-0000-0000-000000000097"
+
+    db = SessionLocal()
+    try:
+        season = db.get(Season, SEASON_ID)
+        current_matchday = db.get(Matchday, MATCHDAY_ID)
+        assert season is not None
+        assert current_matchday is not None
+        season.survivor_enabled = True
+        current_matchday.status = MatchdayStatus.DRAFT
+        db.add(
+            Matchday(
+                id=future_matchday_id,
+                season_id=SEASON_ID,
+                number=6,
+                name="Jornada 6",
+                status=MatchdayStatus.ACTIVE,
+                starts_at=datetime.now(UTC) + timedelta(days=21),
+                ends_at=datetime.now(UTC) + timedelta(days=22),
+            )
+        )
+        db.add(
+            Match(
+                id=future_match_id,
+                matchday_id=future_matchday_id,
+                home_team_id=TEAM_A_ID,
+                away_team_id=TEAM_C_ID,
+                kickoff_at=datetime.now(UTC) + timedelta(days=21, hours=2),
+                picks_lock_at=datetime.now(UTC) + timedelta(days=21, hours=1),
+                status=MatchStatus.SCHEDULED,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"/api/v1/survivor/board?season_id={SEASON_ID}")
+    assert response.status_code == 200
+    assert response.json()["current_matchday"]["id"] == MATCHDAY_ID
+
+
 def test_survivor_rejects_pick_after_first_matchday_lock(client) -> None:
     db = SessionLocal()
     try:
