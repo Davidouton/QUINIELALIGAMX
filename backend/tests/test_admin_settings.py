@@ -180,6 +180,41 @@ def test_general_settings_update_does_not_overwrite_prizes(admin_client: TestCli
     assert payload["third_place_pct"] == 10
 
 
+@pytest.mark.parametrize("prize_scope", ["season", "survivor"])
+def test_prize_panel_saves_before_entry_price_is_configured(
+    admin_client: TestClient, prize_scope: str,
+) -> None:
+    if prize_scope == "survivor":
+        with SessionLocal() as db:
+            season = db.get(Season, SEASON_ID)
+            season.survivor_enabled = True
+            db.commit()
+    response = admin_client.put(
+        "/api/v1/admin/settings?set_active=false&update_prizes=true&update_pricing=false",
+        json={
+            "active_season_id": SEASON_ID,
+            "prize_scope": prize_scope,
+            "entry_fee_amount": 0,
+            "weekly_first_place_amount": 150,
+            "first_place_pct": 60,
+            "second_place_pct": 30,
+            "third_place_pct": 10,
+        },
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert response.status_code == 200
+    saved = admin_client.get(
+        f"/api/v1/admin/settings?season_id={SEASON_ID}&prize_scope={prize_scope}",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["weekly_first_place_amount"] == 150
+    assert saved.json()["first_place_pct"] == 60
+    assert saved.json()["entry_fee_amount"] == 0
+    with SessionLocal() as db:
+        assert db.query(PricingRule).count() == 0
+
+
 def test_prize_panel_saves_pricing_and_prizes_for_selected_product(
     admin_client: TestClient,
 ) -> None:

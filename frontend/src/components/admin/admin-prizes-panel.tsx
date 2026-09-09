@@ -95,6 +95,11 @@ export function AdminPrizesPanel() {
       setError("Selecciona una temporada para editar sus premios.");
       return;
     }
+    const updatePricing = Number(form.entry_fee_amount) !== settings.entry_fee_amount;
+    if (updatePricing && Number(form.entry_fee_amount) <= 0) {
+      setError("El costo por ingreso debe ser mayor a cero para actualizar la tarifa.");
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -103,7 +108,7 @@ export function AdminPrizesPanel() {
     try {
       const accessToken = await getBrowserAccessToken();
       const savedSettings = await backendFetch<AdminSettings>(
-        "/admin/settings?set_active=false&update_prizes=true&update_pricing=true",
+        `/admin/settings?set_active=false&update_prizes=true&update_pricing=${updatePricing}`,
         accessToken,
         {
         method: "PUT",
@@ -222,6 +227,7 @@ export function AdminPrizesPanel() {
         <p className="mt-1 text-xs text-steel/80">
           El costo, los premios semanales y los porcentajes se guardan para esta temporada y modalidad.
         </p>
+        {error ? <p role="alert" className="mt-3 text-sm text-coral">{error}</p> : null}
       </section>
 
       <form id="season-prizes-form" onSubmit={handleSubmit} className="space-y-6">
@@ -232,7 +238,7 @@ export function AdminPrizesPanel() {
               <span className="text-sm text-steel">Costo por ingreso</span>
               <input
                 type="number"
-                min={0.01}
+                min={0}
                 max={1000000}
                 step={0.01}
                 value={form.entry_fee_amount}

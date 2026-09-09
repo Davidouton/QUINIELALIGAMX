@@ -78,6 +78,28 @@ class LeaderboardService:
                 eligible_profile_ids_cache=eligible_profile_ids_cache,
             )
         ]
+        if season is not None:
+            # Memberships exist before scoring creates standings, and new
+            # participants can join after the last standings rebuild.
+            ranked_profile_ids = {profile.id for _, profile in eligible_rows}
+            missing_profile_ids = {
+                membership.profile_id
+                for membership in self.membership_repo.list_for_season(db, season.id)
+                if membership.profile_id not in ranked_profile_ids
+                and self.eligibility_service.counts_for_scoring(db, season, membership)
+            }
+            for profile in db.scalars(select(Profile).where(Profile.id.in_(missing_profile_ids))):
+                eligible_rows.append((
+                    StandingsOverall(
+                        season_id=season.id,
+                        profile_id=profile.id,
+                        total_points=0,
+                        correct_results=0,
+                        exact_scores=0,
+                        rank_position=1,
+                    ),
+                    profile,
+                ))
         return self._overall_entries(eligible_rows)
 
     def _season_needs_overall_rebuild(

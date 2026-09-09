@@ -4,6 +4,40 @@ from conftest import MATCH_ONE_ID, MATCH_TWO_ID, MATCHDAY_ID, PROFILE_LEADER_ID,
 from app.models.entities import MatchResult, Matchday, MatchdayStatus, PickPoint, PickSelection, Profile, RoleCode, Season, SeasonMembership, StandingsMatchday, StandingsOverall, UserPick
 
 
+def test_overall_lists_enrolled_participants_before_results(client):
+    with SessionLocal() as db:
+        db.query(StandingsOverall).delete()
+        db.commit()
+
+    response = client.get(f"/api/v1/leaderboard/overall?season_id={SEASON_ID}")
+    assert response.status_code == 200
+    rows = response.json()
+    assert {row["profile_id"] for row in rows} == {PROFILE_USER_ID, PROFILE_LEADER_ID}
+    assert all(row["total_points"] == 0 and row["rank_position"] == 1 for row in rows)
+
+
+def test_overall_includes_new_participant_without_changing_existing_points(client):
+    response = client.get(f"/api/v1/leaderboard/overall?season_id={SEASON_ID}")
+    assert response.status_code == 200
+    rows = {row["profile_id"]: row for row in response.json()}
+    assert rows[PROFILE_USER_ID]["total_points"] == 0
+    assert rows[PROFILE_USER_ID]["rank_position"] == 2
+    assert rows[PROFILE_LEADER_ID]["total_points"] > 0
+
+
+def test_overall_does_not_add_inactive_participant(client):
+    with SessionLocal() as db:
+        membership = db.query(SeasonMembership).filter_by(
+            season_id=SEASON_ID, profile_id=PROFILE_USER_ID,
+        ).one()
+        membership.is_active = False
+        db.commit()
+
+    response = client.get(f"/api/v1/leaderboard/overall?season_id={SEASON_ID}")
+    assert response.status_code == 200
+    assert {row["profile_id"] for row in response.json()} == {PROFILE_LEADER_ID}
+
+
 def test_first_flow(client):
     health = client.get("/api/v1/health")
     assert health.status_code == 200
