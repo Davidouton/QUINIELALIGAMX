@@ -98,7 +98,11 @@ class ScoringService:
 
             evaluated_picks += 1
             winner = self._resolve_winner(result.home_score, result.away_score)
-            result_points = rules["result_correct"] if pick.selection == winner else 0
+            result_points = (
+                rules["result_correct"]
+                if not is_nfl_match and pick.selection == winner
+                else 0
+            )
             exact_points = 0
             if not is_nfl_match:
                 exact_points = (
@@ -608,7 +612,11 @@ class ScoringService:
         rules: dict[str, int],
     ) -> tuple[int, int, int, int]:
         winner = self._resolve_winner(result.home_score, result.away_score)
-        result_points = rules["result_correct"] if pick.selection == winner else 0
+        result_points = (
+            rules["result_correct"]
+            if not is_nfl_match and pick.selection == winner
+            else 0
+        )
         exact_points = 0
         if not is_nfl_match:
             exact_points = (

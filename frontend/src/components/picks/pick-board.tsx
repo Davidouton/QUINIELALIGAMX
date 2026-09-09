@@ -134,7 +134,7 @@ function isPickFormComplete(
     return false;
   }
   if (nflMode) {
-    return Boolean(form?.winner_selection && form?.spread_selection);
+    return Boolean(form?.spread_selection);
   }
   if (!form || form.predicted_home_score === "" || form.predicted_away_score === "") {
     return false;
@@ -147,7 +147,9 @@ function isPickFormComplete(
 
 function deriveSelectionFromForm(form: PickFormState | undefined, nflMode: boolean): PickSelection | null {
   if (nflMode) {
-    return form?.winner_selection || null;
+    // NFL has one user choice: the side that covers the spread. `selection`
+    // remains in the API payload only for backwards compatibility.
+    return form?.spread_selection || null;
   }
   if (!form || form.predicted_home_score === "" || form.predicted_away_score === "") {
     return null;
@@ -304,7 +306,7 @@ function getFormSignature(
     return "";
   }
   if (nflMode) {
-    return `${form?.winner_selection ?? ""}:${form?.spread_selection ?? ""}`;
+    return form?.spread_selection ?? "";
   }
   return `${form?.predicted_home_score}:${form?.predicted_away_score}:${form?.advancing_team_id ?? ""}`;
 }
@@ -314,7 +316,7 @@ function getPickSignature(pick: Pick | undefined, nflMode: boolean) {
     return "";
   }
   if (nflMode) {
-    return `${pick.selection}:${pick.spread_selection ?? ""}`;
+    return pick.spread_selection ?? "";
   }
   return `${pick.predicted_home_score}:${pick.predicted_away_score}:${pick.advancing_team_id ?? ""}`;
 }
@@ -1335,7 +1337,12 @@ export function PickBoard() {
                 autoSaveState,
                 Boolean(existingPick),
               );
-              const pickDisabled = match.is_locked || !match.is_ready_for_picks || !canPickSelectedMatchday;
+              const nflLineAvailable = Boolean(match.spread_home_line && match.spread_away_line);
+              const pickDisabled =
+                match.is_locked ||
+                !match.is_ready_for_picks ||
+                !canPickSelectedMatchday ||
+                (useNflMode && !nflLineAvailable);
               const canPickAdvancingTeam = requiresAdvancingTeam(match, state.selectedSeason) && match.is_ready_for_picks;
               const missingAdvancingTeamSelection = isMissingAdvancingTeamSelection(match, form, useWorldCupMode);
               const homeAdvances = canPickAdvancingTeam && form?.advancing_team_id === match.home_team_id;
@@ -1355,10 +1362,10 @@ export function PickBoard() {
                         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => updateForm(match.id, { winner_selection: "home" })}
+                            onClick={() => updateForm(match.id, { winner_selection: "home", spread_selection: "home" })}
                             disabled={pickDisabled}
-                            aria-pressed={form?.winner_selection === "home"}
-                            className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-2 rounded-lg p-1 text-left transition ${form?.winner_selection === "home" ? "bg-mint/15 text-mint" : "hover:bg-white/[0.04]"}`}
+                            aria-pressed={form?.spread_selection === "home"}
+                            className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-2 rounded-lg p-1 text-left transition ${form?.spread_selection === "home" ? "bg-mint/15 text-mint" : "hover:bg-white/[0.04]"}`}
                           >
                             <TeamBubble crestUrl={homeTeam?.crest_url} fallback={getTeamInitials(match.home_team_name)} sizeClassName="h-10 w-10" textClassName="text-[10px]" useWorldCupBubbles={false} />
                             <span className="min-w-0 text-[9px] font-semibold leading-tight">
@@ -1368,7 +1375,7 @@ export function PickBoard() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => updateForm(match.id, { spread_selection: "home" })}
+                            onClick={() => updateForm(match.id, { winner_selection: "home", spread_selection: "home" })}
                             disabled={pickDisabled || !match.spread_home_line}
                             aria-pressed={form?.spread_selection === "home"}
                             className={`min-w-[44px] rounded-lg px-2 py-2 text-center text-[10px] font-semibold tabular-nums transition ${form?.spread_selection === "home" ? "bg-mint/15 text-mint" : "text-ink hover:bg-white/[0.04]"} disabled:text-steel`}
@@ -1379,10 +1386,10 @@ export function PickBoard() {
                         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => updateForm(match.id, { winner_selection: "away" })}
+                            onClick={() => updateForm(match.id, { winner_selection: "away", spread_selection: "away" })}
                             disabled={pickDisabled}
-                            aria-pressed={form?.winner_selection === "away"}
-                            className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-2 rounded-lg p-1 text-left transition ${form?.winner_selection === "away" ? "bg-mint/15 text-mint" : "hover:bg-white/[0.04]"}`}
+                            aria-pressed={form?.spread_selection === "away"}
+                            className={`grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-center gap-2 rounded-lg p-1 text-left transition ${form?.spread_selection === "away" ? "bg-mint/15 text-mint" : "hover:bg-white/[0.04]"}`}
                           >
                             <TeamBubble crestUrl={awayTeam?.crest_url} fallback={getTeamInitials(match.away_team_name)} sizeClassName="h-10 w-10" textClassName="text-[10px]" useWorldCupBubbles={false} />
                             <span className="min-w-0 text-[9px] font-semibold leading-tight">
@@ -1392,7 +1399,7 @@ export function PickBoard() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => updateForm(match.id, { spread_selection: "away" })}
+                            onClick={() => updateForm(match.id, { winner_selection: "away", spread_selection: "away" })}
                             disabled={pickDisabled || !match.spread_away_line}
                             aria-pressed={form?.spread_selection === "away"}
                             className={`min-w-[44px] rounded-lg px-2 py-2 text-center text-[10px] font-semibold tabular-nums transition ${form?.spread_selection === "away" ? "bg-mint/15 text-mint" : "text-ink hover:bg-white/[0.04]"} disabled:text-steel`}
@@ -1565,14 +1572,28 @@ export function PickBoard() {
                             ? "text-amber-100"
                             : match.is_locked
                               ? "text-rose-100"
+                              : useNflMode && !nflLineAvailable
+                                ? "text-amber-100"
                               : "text-emerald-100"
                         }`}
                       >
                         <span className="md:hidden">
-                          {!match.is_ready_for_picks ? "PD" : match.is_locked ? "C" : "A"}
+                          {!match.is_ready_for_picks
+                            ? "PD"
+                            : match.is_locked
+                              ? "C"
+                              : useNflMode && !nflLineAvailable
+                                ? "S/L"
+                                : "A"}
                         </span>
                         <span className="hidden md:inline">
-                          {!match.is_ready_for_picks ? "Pendiente" : match.is_locked ? "Cerrado" : "Abierto"}
+                          {!match.is_ready_for_picks
+                            ? "Pendiente"
+                            : match.is_locked
+                              ? "Cerrado"
+                              : useNflMode && !nflLineAvailable
+                                ? "Sin línea"
+                                : "Abierto"}
                         </span>
                       </p>
                     </div>

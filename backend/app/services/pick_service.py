@@ -229,7 +229,13 @@ class PickService:
             spread_points = 0
             if pick is not None and is_official and result is not None:
                 winner = self._resolve_winner(result.home_score, result.away_score)
-                result_points = rules["result_correct"] if pick.selection == winner else 0
+                # NFL has one ATS pick. `selection` mirrors the spread side for
+                # schema compatibility, so it must not also score moneyline.
+                result_points = (
+                    rules["result_correct"]
+                    if not is_nfl_match and pick.selection == winner
+                    else 0
+                )
                 exact_score_points = 0
                 if not is_nfl_match:
                     exact_score_points = (

@@ -1955,7 +1955,11 @@ class VipService:
         for pick, match_result, match, _matchday, season, competition in rows:
             is_nfl_match = scoring._is_nfl_competition(competition)
             winner = scoring._resolve_winner(match_result.home_score, match_result.away_score)
-            result_points = rules["result_correct"] if pick.selection == winner else 0
+            result_points = (
+                rules["result_correct"]
+                if not is_nfl_match and pick.selection == winner
+                else 0
+            )
             exact_points = 0
             if not is_nfl_match:
                 exact_points = (

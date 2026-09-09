@@ -1112,7 +1112,11 @@ class LeaderboardService:
         rules: dict[str, int],
     ) -> dict[str, int]:
         winner = self._resolve_winner(result.home_score, result.away_score)
-        result_points = rules["result_correct"] if pick.selection == winner else 0
+        result_points = (
+            rules["result_correct"]
+            if not is_nfl_competition and pick.selection == winner
+            else 0
+        )
         exact_points = 0
         if not is_nfl_competition:
             exact_points = (
