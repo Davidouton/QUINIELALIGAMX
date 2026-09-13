@@ -20,9 +20,11 @@ from app.core.security import AuthUser
 from app.main import app
 from app.models.entities import (
     AnalyticsEvent,
+    Competition,
     Match,
     Matchday,
     PaymentScopeType,
+    PickSelection,
     Profile,
     PricingRule,
     RoleCode,
@@ -32,6 +34,7 @@ from app.models.entities import (
     SettlementAssignment,
     SettlementStatus,
     SurvivorMembership,
+    UserPick,
 )
 from app.services.settlement_service import SettlementService
 
@@ -52,6 +55,48 @@ def admin_client() -> Generator[TestClient, None, None]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.mark.parametrize("has_picks", [False, True])
+def test_admin_saves_nfl_line_and_confirms_correction(
+    admin_client: TestClient, has_picks: bool,
+) -> None:
+    with SessionLocal() as db:
+        competition = Competition(name="NFL", slug="nfl", sport_name="football")
+        db.add(competition)
+        db.flush()
+        season = db.get(Season, SEASON_ID)
+        season.competition_id = competition.id
+        if has_picks:
+            db.add(UserPick(
+                profile_id=PROFILE_USER_ID,
+                match_id=MATCH_ONE_ID,
+                selection=PickSelection.HOME,
+                spread_selection=PickSelection.HOME,
+                spread_line_value="-3.5",
+                predicted_home_score=0,
+                predicted_away_score=0,
+            ))
+        db.commit()
+
+    path = f"/api/v1/admin/nfl-spreads/{MATCH_ONE_ID}"
+    headers = {"Authorization": "Bearer test-token"}
+    if has_picks:
+        blocked = admin_client.put(path, json={"home_line": "-10"}, headers=headers)
+        assert blocked.status_code == 409
+    response = admin_client.put(
+        path, json={"home_line": "-10", "force": has_picks}, headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    saved = admin_client.get(f"/api/v1/admin/nfl-spreads?season_id={SEASON_ID}", headers=headers)
+    assert saved.status_code == 200
+    row = next(row for row in saved.json() if row["match_id"] == MATCH_ONE_ID)
+    assert row["spread_home_line"] == "-10"
+    assert row["spread_away_line"] == "+10"
+    if has_picks:
+        with SessionLocal() as db:
+            pick = db.query(UserPick).filter_by(match_id=MATCH_ONE_ID).one()
+            assert pick.spread_line_value == "-10"
 
 
 def test_get_admin_settings_returns_defaults(admin_client: TestClient) -> None:

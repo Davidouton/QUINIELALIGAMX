@@ -1007,7 +1007,7 @@ def normalize_nfl_spread_line(raw_value: str | None) -> tuple[str | None, str | 
         home_value = Decimal(normalized)
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Spread invalido") from exc
-    if abs(home_value) > Decimal("100") or home_value % Decimal("0.5") != 0:
+    if not home_value.is_finite() or abs(home_value) > Decimal("100") or home_value % Decimal("0.5") != 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Usa una linea entre -100 y +100 en incrementos de 0.5",
@@ -1016,7 +1016,9 @@ def normalize_nfl_spread_line(raw_value: str | None) -> tuple[str | None, str | 
     def render(value: Decimal) -> str:
         if value == 0:
             return "0"
-        rendered = format(value, "f").rstrip("0").rstrip(".")
+        rendered = format(value, "f")
+        if "." in rendered:
+            rendered = rendered.rstrip("0").rstrip(".")
         return f"+{rendered}" if value > 0 else rendered
 
     return render(home_value), render(-home_value)

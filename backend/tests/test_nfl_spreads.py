@@ -13,6 +13,10 @@ from app.services.scoring_service import ScoringService
     [
         ("-3.5", ("-3.5", "+3.5")),
         ("+7", ("+7", "-7")),
+        ("-10", ("-10", "+10")),
+        ("+20", ("+20", "-20")),
+        ("100", ("+100", "-100")),
+        ("-10.0", ("-10", "+10")),
         ("PK", ("0", "0")),
         ("0", ("0", "0")),
         ("", (None, None)),
@@ -25,6 +29,13 @@ def test_normalize_nfl_spread_line(raw: str, expected: tuple[str | None, str | N
 def test_nfl_spread_rejects_quarter_points() -> None:
     with pytest.raises(HTTPException, match="incrementos de 0.5"):
         normalize_nfl_spread_line("-3.25")
+
+
+@pytest.mark.parametrize("raw", ["NaN", "sNaN", "Infinity", "-Infinity", "abc"])
+def test_nfl_spread_rejects_invalid_numbers(raw: str) -> None:
+    with pytest.raises(HTTPException) as error:
+        normalize_nfl_spread_line(raw)
+    assert error.value.status_code == 400
 
 
 def test_nfl_pick_scores_only_the_spread() -> None:

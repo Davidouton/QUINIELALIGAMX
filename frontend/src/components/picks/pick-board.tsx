@@ -1771,38 +1771,51 @@ export function PickBoard() {
                       </td>
                       {visibleGlobalMatches.map((match) => {
                         const cell = globalCellByKey[getGlobalCellKey(player.profile_id, match.match_id)];
+                        const atsTeam = cell?.spread_selection === "home"
+                          ? { name: match.home_team_name, crestUrl: match.home_team_crest_url }
+                          : cell?.spread_selection === "away"
+                            ? { name: match.away_team_name, crestUrl: match.away_team_crest_url }
+                            : null;
                         return (
                           <td key={match.match_id} className="px-3 py-2 text-center">
                             {!match.is_locked || !cell?.is_revealed ? (
                               <span className="text-[10px] font-semibold uppercase text-steel/65">Oculto</span>
+                            ) : useNflMode ? (
+                              cell.has_pick && atsTeam ? (
+                                <div
+                                  className="flex flex-col items-center gap-1"
+                                  title={`ATS: ${atsTeam.name}`}
+                                  aria-label={`Equipo elegido ATS: ${atsTeam.name}`}
+                                >
+                                  <TeamBubble
+                                    crestUrl={atsTeam.crestUrl}
+                                    fallback={getTeamInitials(atsTeam.name)}
+                                    sizeClassName="h-8 w-8"
+                                    textClassName="text-[9px]"
+                                    useWorldCupBubbles={false}
+                                  />
+                                  <span className="max-w-[112px] text-[9px] leading-tight text-ink">
+                                    {atsTeam.name}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] font-semibold uppercase text-steel/65">Sin pick</span>
+                              )
                             ) : cell.has_pick && cell.selection ? (
                               <div className="space-y-1 text-center">
-                                {useNflMode ? (
-                                  <>
-                                    <p className="font-semibold text-ink">
-                                      ML {getSelectionShortLabel(cell.selection)}
-                                    </p>
-                                    <p className="text-[10px] font-semibold uppercase text-steel">
-                                      ATS {getSelectionShortLabel(cell.spread_selection ?? null)}
-                                    </p>
-                                  </>
-                                ) : (
-                                  <>
-                                    <p className="font-semibold text-ink">
-                                      <ScorePair
-                                        homeScore={cell.predicted_home_score ?? 0}
-                                        awayScore={cell.predicted_away_score ?? 0}
-                                        advancingTeamId={cell.advancing_team_id}
-                                        homeTeamId={match.home_team_id}
-                                        awayTeamId={match.away_team_id}
-                                        emphasizeKnockoutAdvance={isKnockoutGlobalMatch(match)}
-                                      />
-                                    </p>
-                                    <p className="text-[10px] font-semibold uppercase text-steel">
-                                      {getSelectionShortLabel(cell.selection)}
-                                    </p>
-                                  </>
-                                )}
+                                <p className="font-semibold text-ink">
+                                  <ScorePair
+                                    homeScore={cell.predicted_home_score ?? 0}
+                                    awayScore={cell.predicted_away_score ?? 0}
+                                    advancingTeamId={cell.advancing_team_id}
+                                    homeTeamId={match.home_team_id}
+                                    awayTeamId={match.away_team_id}
+                                    emphasizeKnockoutAdvance={isKnockoutGlobalMatch(match)}
+                                  />
+                                </p>
+                                <p className="text-[10px] font-semibold uppercase text-steel">
+                                  {getSelectionShortLabel(cell.selection)}
+                                </p>
                               </div>
                             ) : (
                               <span className="text-[10px] font-semibold uppercase text-steel/65">Sin pick</span>
