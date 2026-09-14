@@ -266,6 +266,12 @@ export function LeaderboardPageContent() {
         : null,
     [liveSeasons, selectedBoardId],
   );
+  const rankingSeason = selectedRegularSeason ?? state.seasons.find(
+    (season) => season.id === selectedVipCompetition?.season_id,
+  );
+  const isNflRanking = /\bnfl\b/i.test(
+    `${rankingSeason?.competition_name ?? ""} ${rankingSeason?.name ?? ""} ${rankingSeason?.slug ?? ""}`,
+  ) || /american football|f[uú]tbol americano/i.test(rankingSeason?.competition_sport_name ?? "");
   const activeEntries = useMemo<RankingEntry[]>(
     () =>
       selectedVipCompetition
@@ -511,7 +517,7 @@ export function LeaderboardPageContent() {
               <col className="w-[44%]" />
               <col className="w-[128px]" />
               <col className="w-[128px]" />
-              <col className="w-[128px]" />
+              {!isNflRanking ? <col className="w-[128px]" /> : null}
             </colgroup>
             <thead className="app-table-head">
               <tr>
@@ -519,7 +525,7 @@ export function LeaderboardPageContent() {
                 <th className="px-3 py-3">Jugador</th>
                 <th className="px-3 py-3 text-center">Puntos</th>
                 <th className="px-3 py-3 text-center">Aciertos</th>
-                <th className="px-3 py-3 text-center">Exactos</th>
+                {!isNflRanking ? <th className="px-3 py-3 text-center">Exactos</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -531,7 +537,7 @@ export function LeaderboardPageContent() {
                   </td>
                   <td className="px-3 py-3 text-center">{entry.total_points}</td>
                   <td className="px-3 py-3 text-center">{entry.correct_results}</td>
-                  <td className="px-3 py-3 text-center">{entry.exact_scores}</td>
+                  {!isNflRanking ? <td className="px-3 py-3 text-center">{entry.exact_scores}</td> : null}
                 </tr>
               ))}
             </tbody>
@@ -696,7 +702,7 @@ export function LeaderboardPageContent() {
                         <th className="w-20 px-3 py-3 text-left">Lugar</th>
                         <th className="px-3 py-3 text-left">Jugador</th>
                         <th className="w-28 px-3 py-3 text-center">Puntos</th>
-                        <th className="w-28 px-3 py-3 text-center">Exactos</th>
+                        {!isNflRanking ? <th className="w-28 px-3 py-3 text-center">Exactos</th> : null}
                         <th className="w-32 px-3 py-3 text-right">Premio</th>
                       </tr>
                     </thead>
@@ -706,7 +712,7 @@ export function LeaderboardPageContent() {
                           <td className="px-3 py-3 font-semibold">#{winner.rank_position}</td>
                           <td className="px-3 py-3 font-medium">{winner.display_name}</td>
                           <td className="px-3 py-3 text-center">{winner.total_points}</td>
-                          <td className="px-3 py-3 text-center">{winner.exact_scores}</td>
+                          {!isNflRanking ? <td className="px-3 py-3 text-center">{winner.exact_scores}</td> : null}
                           <td className="px-3 py-3 text-right font-semibold">
                             {new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 2 }).format(winner.prize_amount)}
                           </td>
