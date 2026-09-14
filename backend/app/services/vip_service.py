@@ -1983,7 +1983,7 @@ class VipService:
                     match_result.away_score,
                     pick.spread_selection,
                     pick.spread_line_value,
-                    rules["spread_correct"],
+                    1,  # NFL ranks by ATS hits, regardless of legacy scoring rules.
                 )
             result.append(
                 (
@@ -1991,7 +1991,7 @@ class VipService:
                     match.matchday_id,
                     {
                         "total_points": result_points + exact_points + advancing_points + spread_points,
-                        "correct_results": 1 if result_points else 0,
+                        "correct_results": 1 if result_points or spread_points else 0,
                         "exact_scores": 1 if exact_points else 0,
                     },
                 )

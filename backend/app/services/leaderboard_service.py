@@ -130,6 +130,12 @@ class LeaderboardService:
             return False
         if not rows:
             return True
+        competition = db.get(Competition, season.competition_id) if season.competition_id else None
+        if self._is_nfl_competition(competition) and any(
+            standing.total_points != standing.correct_results for standing, _ in rows
+        ):
+            # Repair cached NFL standings calculated with the former 3-point rule.
+            return True
         cached_totals = {standing.profile_id: standing.total_points for standing, _profile in rows}
         point_totals = {
             profile_id: int(total_points or 0)
@@ -1034,17 +1040,19 @@ class LeaderboardService:
             rows,
             key=lambda item: (
                 -item[0].total_points,
+                item[0].tiebreak_difference if item[0].tiebreak_difference is not None else 10**9,
                 -item[0].exact_scores,
                 item[1].display_name.lower(),
             ),
         )
         ranked_entries: list[LeaderboardEntry] = []
-        previous_points: int | None = None
+        previous_signature: tuple[int, int | None] | None = None
         previous_rank = 0
         for index, (standing, profile) in enumerate(sorted_rows, start=1):
-            if previous_points is None or standing.total_points != previous_points:
+            signature = (standing.total_points, standing.tiebreak_difference)
+            if signature != previous_signature:
                 previous_rank = index
-                previous_points = standing.total_points
+                previous_signature = signature
             ranked_entries.append(
                 LeaderboardEntry(
                     profile_id=profile.id,
@@ -1161,11 +1169,11 @@ class LeaderboardService:
                 result.away_score,
                 pick.spread_selection,
                 pick.spread_line_value,
-                rules["spread_correct"],
+                1,  # NFL ranks by ATS hits, regardless of legacy scoring rules.
             )
         return {
             "total_points": result_points + exact_points + advancing_points + spread_points,
-            "correct_results": 1 if result_points else 0,
+            "correct_results": 1 if result_points or spread_points else 0,
             "exact_scores": 1 if exact_points else 0,
         }
 

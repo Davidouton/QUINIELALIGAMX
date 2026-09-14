@@ -126,7 +126,7 @@ class ScoringService:
                     result.away_score,
                     pick.spread_selection,
                     pick.spread_line_value,
-                    rules["spread_correct"],
+                    1,  # NFL ranks by ATS hits, regardless of legacy scoring rules.
                 )
             total_points = result_points + exact_points + advancing_points + spread_points
 
@@ -146,12 +146,12 @@ class ScoringService:
 
             matchday_key = (match.matchday_id, pick.profile_id)
             matchday_agg[matchday_key]["total_points"] += total_points
-            matchday_agg[matchday_key]["correct_results"] += 1 if result_points else 0
+            matchday_agg[matchday_key]["correct_results"] += 1 if result_points or spread_points else 0
             matchday_agg[matchday_key]["exact_scores"] += 1 if exact_points else 0
 
             season_key = (season_id, pick.profile_id)
             season_agg[season_key]["total_points"] += total_points
-            season_agg[season_key]["correct_results"] += 1 if result_points else 0
+            season_agg[season_key]["correct_results"] += 1 if result_points or spread_points else 0
             season_agg[season_key]["exact_scores"] += 1 if exact_points else 0
 
         for season_id, participant_ids in eligible_profiles_by_season.items():
@@ -367,7 +367,7 @@ class ScoringService:
 
             bucket = matchday_agg[pick.profile_id]
             bucket["total_points"] += total_points
-            bucket["correct_results"] += 1 if result_points else 0
+            bucket["correct_results"] += 1 if result_points or spread_points else 0
             bucket["exact_scores"] += 1 if exact_points else 0
 
         weekly_leaders, weekly_awards = self._rebuild_matchday_standings(
@@ -488,7 +488,7 @@ class ScoringService:
 
             bucket = matchday_agg_by_matchday[match.matchday_id][pick.profile_id]
             bucket["total_points"] += total_points
-            bucket["correct_results"] += 1 if result_points else 0
+            bucket["correct_results"] += 1 if result_points or spread_points else 0
             bucket["exact_scores"] += 1 if exact_points else 0
 
         weekly_leaders = 0
@@ -598,7 +598,7 @@ class ScoringService:
             "result_correct": stored_rules.get("result_correct", 3),
             "exact_score": stored_rules.get("exact_score", 2),
             "advancing_team": stored_rules.get("advancing_team", 1),
-            "spread_correct": stored_rules.get("spread_correct", 3),
+            "spread_correct": 1,  # One point per NFL ATS hit.
         }
 
     def _calculate_pick_points(
@@ -640,7 +640,7 @@ class ScoringService:
                 result.away_score,
                 pick.spread_selection,
                 pick.spread_line_value,
-                rules["spread_correct"],
+                1,  # NFL ranks by ATS hits, regardless of legacy scoring rules.
             )
         return result_points, exact_points, advancing_points, spread_points
 
@@ -784,7 +784,7 @@ class ScoringService:
                 continue
             bucket = season_agg[row.profile_id]
             bucket["total_points"] += row.total_points
-            bucket["correct_results"] += 1 if row.result_points else 0
+            bucket["correct_results"] += 1 if row.result_points or row.spread_points else 0
             bucket["exact_scores"] += 1 if row.exact_score_points else 0
 
         for profile_id in eligible_profile_ids:

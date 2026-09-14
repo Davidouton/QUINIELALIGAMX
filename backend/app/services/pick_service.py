@@ -257,7 +257,7 @@ class PickService:
                         result.away_score,
                         pick.spread_selection,
                         pick.spread_line_value,
-                        rules["spread_correct"],
+                        1,  # NFL ranks by ATS hits, regardless of legacy scoring rules.
                     )
 
             result_rows.append(
@@ -986,7 +986,7 @@ class PickService:
             "result_correct": stored_rules.get("result_correct", 3),
             "exact_score": stored_rules.get("exact_score", 2),
             "advancing_team": stored_rules.get("advancing_team", 1),
-            "spread_correct": stored_rules.get("spread_correct", 3),
+            "spread_correct": 1,  # One point per NFL ATS hit.
         }
 
     def _load_teams(self, db: Session, matches: list[Match]) -> dict[str, Team]:
