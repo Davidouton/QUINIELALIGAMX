@@ -3465,7 +3465,10 @@ def save_admin_pick_override(
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
 ) -> AdminPickRowOut:
-    return pick_service.save_admin_override(db, payload, updated_by=current_profile)
+    row = pick_service.save_admin_override(db, payload, updated_by=current_profile)
+    ScoringService().recalculate_matchday(db, row.matchday_id)
+    recalculate_vips_for_matchday(db, row.matchday_id)
+    return row
 
 
 @router.get("/survivor/picks", response_model=list[AdminSurvivorPickRowOut])

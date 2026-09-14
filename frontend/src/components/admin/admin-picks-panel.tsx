@@ -7,6 +7,7 @@ import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AdminPickRow, Matchday, PickSelection, Season } from "@/types/api";
 
 type DraftState = {
+  spread_selection: "home" | "away" | "";
   predicted_home_score: string;
   predicted_away_score: string;
   advancing_team_id: string;
@@ -14,6 +15,7 @@ type DraftState = {
 };
 
 const initialDraft: DraftState = {
+  spread_selection: "",
   predicted_home_score: "",
   predicted_away_score: "",
   advancing_team_id: "",
@@ -118,6 +120,7 @@ function rowKey(row: Pick<AdminPickRow, "profile_id" | "match_id">) {
 
 function toDraft(row: AdminPickRow): DraftState {
   return {
+    spread_selection: row.spread_selection === "home" || row.spread_selection === "away" ? row.spread_selection : "",
     predicted_home_score: row.predicted_home_score === null ? "" : String(row.predicted_home_score),
     predicted_away_score: row.predicted_away_score === null ? "" : String(row.predicted_away_score),
     advancing_team_id: row.advancing_team_id ?? "",
@@ -287,12 +290,12 @@ export function AdminPicksPanel() {
   async function handleSaveOverride(row: AdminPickRow) {
     const key = rowKey(row);
     const draft = drafts[key] ?? initialDraft;
-    const selection = deriveSelection(draft.predicted_home_score, draft.predicted_away_score);
+    const selection = isNflSeason ? draft.spread_selection || null : deriveSelection(draft.predicted_home_score, draft.predicted_away_score);
     const mustPickAdvancingTeam = requiresAdvancingTeam(row, selectedSeason);
     const advancingTeamId = resolveAdvancingTeamId(row, draft, selectedSeason);
 
     if (!selection) {
-      setError("Captura ambos marcadores para guardar el override.");
+      setError(isNflSeason ? "Selecciona el equipo ATS para guardar el override." : "Captura ambos marcadores para guardar el override.");
       return;
     }
     if (mustPickAdvancingTeam && !advancingTeamId) {
@@ -305,20 +308,25 @@ export function AdminPicksPanel() {
     setMessage(null);
     try {
       const accessToken = await getBrowserAccessToken();
-      await backendFetch<AdminPickRow>("/admin/picks/override", accessToken, {
+      const savedRow = await backendFetch<AdminPickRow>("/admin/picks/override", accessToken, {
         method: "POST",
         body: JSON.stringify({
           profile_id: row.profile_id,
           match_id: row.match_id,
           selection,
-          predicted_home_score: Number(draft.predicted_home_score),
-          predicted_away_score: Number(draft.predicted_away_score),
+          spread_selection: isNflSeason ? selection : null,
+          predicted_home_score: isNflSeason ? (selection === "home" ? 1 : 0) : Number(draft.predicted_home_score),
+          predicted_away_score: isNflSeason ? (selection === "away" ? 1 : 0) : Number(draft.predicted_away_score),
           advancing_team_id: mustPickAdvancingTeam ? advancingTeamId : null,
           admin_override_note: draft.admin_override_note || null,
         }),
       });
-      await loadRows(selectedMatchdayId, accessToken);
-      setMessage(`${row.profile_display_name}: pick overrideado.`);
+      if (rowKey(savedRow) !== key || !savedRow.is_admin_override || savedRow.selection !== selection) {
+        throw new Error("El servidor no confirmó el cambio del pick. Vuelve a cargar la jornada.");
+      }
+      setRows((current) => current.map((item) => rowKey(item) === key ? savedRow : item));
+      setDrafts((current) => ({ ...current, [key]: toDraft(savedRow) }));
+      setMessage(`${row.profile_display_name}: override guardado para ${row.home_team_name} vs ${row.away_team_name}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el override");
     } finally {
@@ -329,6 +337,9 @@ export function AdminPicksPanel() {
   const overrideCount = filteredRows.filter((row) => row.is_admin_override).length;
   const missingCount = filteredRows.filter((row) => !row.has_pick).length;
   const selectedSeason = seasons.find((season) => season.id === selectedSeasonId) ?? null;
+  const isNflSeason = /nfl|american football|f[uú]tbol americano/i.test(
+    `${selectedSeason?.competition_name ?? ""} ${selectedSeason?.competition_sport_name ?? ""} ${selectedSeason?.name ?? ""}`,
+  );
 
   return (
     <section className="space-y-5">
@@ -433,7 +444,7 @@ export function AdminPicksPanel() {
                 <th className="px-3 py-2">Inicio</th>
                 <th className="px-3 py-2">Cierre</th>
                 <th className="px-3 py-2">Estado</th>
-                <th className="px-3 py-2">Marcador</th>
+                <th className="px-3 py-2">{isNflSeason ? "Equipo ATS" : "Marcador"}</th>
                 <th className="px-3 py-2">Pick</th>
                 <th className="px-3 py-2">Nota admin</th>
                 <th className="px-3 py-2">Rastro</th>
@@ -444,7 +455,7 @@ export function AdminPicksPanel() {
               {filteredRows.map((row) => {
                 const key = rowKey(row);
                 const draft = drafts[key] ?? initialDraft;
-                const selection = deriveSelection(draft.predicted_home_score, draft.predicted_away_score);
+                const selection = isNflSeason ? draft.spread_selection || null : deriveSelection(draft.predicted_home_score, draft.predicted_away_score);
                 const mustPickAdvancingTeam = requiresAdvancingTeam(row, selectedSeason);
                 const advancingTeamId = resolveAdvancingTeamId(row, draft, selectedSeason);
 
@@ -466,6 +477,18 @@ export function AdminPicksPanel() {
                       </p>
                     </td>
                     <td className="px-3 py-5">
+                      {isNflSeason ? (
+                        <select
+                          aria-label={`Equipo ATS de ${row.profile_display_name}: ${row.home_team_name} vs ${row.away_team_name}`}
+                          value={draft.spread_selection}
+                          onChange={(event) => updateDraft(key, { spread_selection: event.target.value as DraftState["spread_selection"] })}
+                          className="field-control h-9 text-xs"
+                        >
+                          <option value="">Selecciona equipo</option>
+                          <option value="home">{row.home_team_name}</option>
+                          <option value="away">{row.away_team_name}</option>
+                        </select>
+                      ) : (
                       <div className="flex items-center gap-2">
                         <input
                           value={draft.predicted_home_score}
@@ -487,10 +510,11 @@ export function AdminPicksPanel() {
                           placeholder="-"
                         />
                       </div>
+                      )}
                     </td>
                     <td className="px-3 py-5">
                       <p className="font-semibold text-ink">{getSelectionLabel(selection)}</p>
-                      {row.selection ? <p className="mt-1 text-[11px] text-steel">Actual: {getSelectionLabel(row.selection)}</p> : null}
+                      {(isNflSeason ? row.spread_selection : row.selection) ? <p className="mt-1 text-[11px] text-steel">Actual: {getSelectionLabel(isNflSeason ? row.spread_selection : row.selection)}</p> : null}
                       {mustPickAdvancingTeam ? (
                         <label className="mt-3 block space-y-1.5">
                           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-steel">
@@ -538,7 +562,7 @@ export function AdminPicksPanel() {
                       <button
                         type="button"
                         onClick={() => void handleSaveOverride(row)}
-                        disabled={savingKey === key}
+                        disabled={savingKey !== null}
                         className="primary-button h-9 px-4 text-xs disabled:opacity-60"
                       >
                         {savingKey === key ? "Guardando..." : "Override"}

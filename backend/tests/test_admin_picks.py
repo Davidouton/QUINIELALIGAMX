@@ -170,3 +170,39 @@ def test_my_pick_results_expose_admin_override_notice(client) -> None:
     row = next(item for item in payload if item["match_id"] == MATCH_ONE_ID)
     assert row["is_admin_override"] is True
     assert row["admin_override_note"] == "Ajustado por admin por llamada telefonica."
+
+
+def test_override_refreshes_previously_scored_points_and_rankings(admin_client):
+    from conftest import SEASON_ID
+    from app.models.entities import MatchResult, PickPoint, StandingsOverall
+    from app.services.scoring_service import ScoringService
+
+    with SessionLocal() as db:
+        db.add(UserPick(
+            profile_id=PROFILE_USER_ID, match_id=MATCH_ONE_ID,
+            selection="away", predicted_home_score=0, predicted_away_score=1,
+        ))
+        db.add(MatchResult(match_id=MATCH_ONE_ID, home_score=2, away_score=1, is_official=True))
+        db.commit()
+        ScoringService().recalculate_matchday(db, MATCHDAY_ID)
+        assert db.query(PickPoint).filter_by(profile_id=PROFILE_USER_ID).one().total_points == 0
+
+    response = admin_client.post('/api/v1/admin/picks/override', json={
+        'profile_id': PROFILE_USER_ID, 'match_id': MATCH_ONE_ID,
+        'selection': 'home', 'predicted_home_score': 2, 'predicted_away_score': 1,
+        'admin_override_note': 'Correccion solicitada',
+    })
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        assert db.query(PickPoint).filter_by(profile_id=PROFILE_USER_ID).one().total_points == 5
+        standing = db.query(StandingsOverall).filter_by(profile_id=PROFILE_USER_ID, season_id=SEASON_ID).one()
+        assert standing.total_points == 5
+        assert standing.correct_results == 1
+
+    response = admin_client.post('/api/v1/admin/picks/override', json={
+        'profile_id': PROFILE_USER_ID, 'match_id': MATCH_ONE_ID,
+        'selection': 'away', 'predicted_home_score': 0, 'predicted_away_score': 1,
+    })
+    assert response.status_code == 200, response.text
+    with SessionLocal() as db:
+        assert db.query(PickPoint).filter_by(profile_id=PROFILE_USER_ID).one().total_points == 0
