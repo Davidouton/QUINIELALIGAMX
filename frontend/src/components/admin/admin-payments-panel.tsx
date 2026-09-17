@@ -6,7 +6,7 @@ import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AdminUser, AdminVipCompetition, PricingRule, Season, SettlementGeneratedScope, SettlementScopeSummary } from "@/types/api";
 
-type ScopeType = "season" | "vip";
+type ScopeType = "season" | "survivor" | "vip";
 type EntryProductType = "season" | "survivor" | "vip";
 
 function formatMoney(value: number) {
@@ -26,6 +26,7 @@ function formatDateTime(value: string | null) {
 }
 
 function scopeTitle(scopeType: ScopeType) {
+  if (scopeType === "survivor") return "Survivor";
   return scopeType === "season" ? "Temporada" : "VIP";
 }
 
@@ -86,7 +87,11 @@ export function AdminPaymentsPanel() {
         setAdminUsers(userRows.filter((row) => row.role_code === "admin" || row.role_code === "master_admin"));
         setPricingRules(pricingRows);
         const searchParams = new URLSearchParams(window.location.search);
-        const requestedScopeType = searchParams.get("scope_type") === "vip" ? "vip" : "season";
+        const requestedScopeType: ScopeType = searchParams.get("scope_type") === "vip"
+          ? "vip"
+          : searchParams.get("scope_type") === "survivor"
+            ? "survivor"
+            : "season";
         const requestedScopeId = searchParams.get("scope_id") ?? "";
         const activeSeasonId = seasonRows.find((row) => row.is_active)?.id ?? seasonRows[0]?.id ?? "";
         const activeVipId = vipRows.find((row) => row.is_active)?.id ?? vipRows[0]?.id ?? "";
@@ -109,7 +114,7 @@ export function AdminPaymentsPanel() {
     void loadCatalogs();
   }, []);
 
-  const availableScopes = scopeType === "season" ? seasons : vips;
+  const availableScopes = scopeType === "vip" ? vips : seasons;
 
   useEffect(() => {
     if (!availableScopes.length) {
@@ -181,7 +186,9 @@ export function AdminPaymentsPanel() {
   );
 
   useEffect(() => {
-    setEntryProductType(scopeType === "vip" ? "vip" : "season");
+    setEntryProductType(
+      scopeType === "vip" ? "vip" : scopeType === "survivor" ? "survivor" : "season",
+    );
   }, [scopeType, selectedScopeId]);
 
   useEffect(() => {
@@ -475,7 +482,7 @@ export function AdminPaymentsPanel() {
       <section className="grid gap-4 rounded-[20px] border border-white/[0.08] bg-white/[0.03] p-5 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-4">
           <label className="block space-y-2 text-sm">
-            <span className="text-steel">Competencia normal o VIP</span>
+            <span className="text-steel">Competencia normal, Survivor o VIP</span>
             <select
               value={selectedScopeId ? `${scopeType}:${selectedScopeId}` : ""}
               onChange={(event) => {
@@ -505,10 +512,24 @@ export function AdminPaymentsPanel() {
             </div>
             {scopeType === "season" ? (
               <div className="flex gap-5 border-b border-white/[0.08] text-sm font-semibold">
-                <button type="button" onClick={() => setEntryProductType("season")} className={`pb-2 ${entryProductType === "season" ? "text-[#4f7df3]" : "text-steel"}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScopeType("season");
+                    setEntryProductType("season");
+                  }}
+                  className={`pb-2 ${entryProductType === "season" ? "text-[#4f7df3]" : "text-steel"}`}
+                >
                   Quiniela
                 </button>
-                <button type="button" onClick={() => setEntryProductType("survivor")} className={`pb-2 ${entryProductType === "survivor" ? "text-[#4f7df3]" : "text-steel"}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScopeType("survivor");
+                    setEntryProductType("survivor");
+                  }}
+                  className={`pb-2 ${entryProductType === "survivor" ? "text-[#4f7df3]" : "text-steel"}`}
+                >
                   Survivor
                 </button>
               </div>
