@@ -503,6 +503,34 @@ def test_admin_generates_survivor_charge_in_players_payment_hub(admin_client: Te
     finally:
         db.close()
 
+    def test_survivor_settlement_counts_only_survivor_members(admin_client: TestClient) -> None:
+        with SessionLocal() as db:
+            db.add(
+                SurvivorMembership(
+                    season_id=SEASON_ID,
+                    profile_id=PROFILE_USER_ID,
+                    is_active=True,
+                    is_paid=True,
+                    joined_at=datetime.now(UTC),
+                )
+            )
+            db.add(
+                PricingRule(
+                    scope_type=PaymentScopeType.SURVIVOR,
+                    scope_id=SEASON_ID,
+                    label="Survivor",
+                    amount=500,
+                    currency="mxn",
+                    is_active=True,
+                )
+            )
+            db.commit()
+
+            summary = SettlementService().get_scope_summary(db, "survivor", SEASON_ID)
+
+        assert [participant.profile_id for participant in summary.participants] == [PROFILE_USER_ID]
+        assert summary.total_receivable_amount == 0
+
 
 def test_admin_can_create_invited_user_with_season_membership(
     admin_client: TestClient,

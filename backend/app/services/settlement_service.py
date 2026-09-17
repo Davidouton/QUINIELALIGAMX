@@ -116,7 +116,11 @@ class SettlementService:
         rows = list(
             db.scalars(
                 select(SettlementAssignment)
-                .where(SettlementAssignment.scope_type.in_([PaymentScopeType.SEASON, PaymentScopeType.VIP]))
+                .where(SettlementAssignment.scope_type.in_([
+                    PaymentScopeType.SEASON,
+                    PaymentScopeType.SURVIVOR,
+                    PaymentScopeType.VIP,
+                ]))
                 .order_by(SettlementAssignment.updated_at.desc())
             )
         )
@@ -774,6 +778,9 @@ class SettlementService:
         scope_type: PaymentScopeType,
         scope_id: str,
     ) -> tuple[str, list[ParticipantSnapshot]]:
+        if scope_type == PaymentScopeType.SURVIVOR:
+            season = self._ensure_survivor_scope_exists(db, scope_id)
+            return season.survivor_name or f"Survivor {season.name}", self._build_survivor_participants(db, season)
         if scope_type == PaymentScopeType.SEASON:
             season = self._ensure_scope_exists(db, scope_type, scope_id)
             assert isinstance(season, Season)
@@ -848,6 +855,50 @@ class SettlementService:
         if not allocations and season.commission_recipient_profile_id:
             allocations = [{"profile_id": season.commission_recipient_profile_id, "amount": float(settings["admin_commission_amount"])}]
         self._apply_commission_allocations(db, participants, allocations)
+        return participants
+
+    def _build_survivor_participants(self, db: Session, season: Season) -> list[ParticipantSnapshot]:
+        memberships = list(
+            db.scalars(
+                select(SurvivorMembership).where(
+                    SurvivorMembership.season_id == season.id,
+                    SurvivorMembership.is_active.is_(True),
+                )
+            )
+        )
+        if not memberships:
+            return []
+
+        profile_ids = [membership.profile_id for membership in memberships]
+        profile_map, aval_name_map = self._profile_maps(db, profile_ids)
+        settings = self._survivor_prize_settings(db, season)
+        participants: list[ParticipantSnapshot] = []
+        for rank_position, membership in enumerate(memberships, start=1):
+            profile = profile_map.get(membership.profile_id)
+            pending_entry_amount = Decimal("0.00") if membership.is_paid else settings["entry_fee_amount"]
+            participants.append(
+                ParticipantSnapshot(
+                    profile_id=membership.profile_id,
+                    display_name=profile.display_name if profile is not None else "Participante",
+                    rank_position=rank_position,
+                    total_points=0,
+                    prize_amount=Decimal("0.00"),
+                    weekly_prize_amount=Decimal("0.00"),
+                    final_prize_amount=Decimal("0.00"),
+                    admin_commission_amount=Decimal("0.00"),
+                    pending_entry_amount=self._to_money(pending_entry_amount),
+                    net_amount=self._to_money(-pending_entry_amount),
+                    contact_phone=profile.contact_phone if profile is not None else None,
+                    bank_name=profile.bank_name if profile is not None else None,
+                    deposit_account=profile.deposit_account if profile is not None else None,
+                    modality=profile.modality if profile is not None else None,
+                    aval_display_name=(
+                        aval_name_map.get(profile.aval_profile_id)
+                        if profile is not None and profile.aval_profile_id
+                        else None
+                    ),
+                )
+            )
         return participants
 
     def _build_vip_participants(self, db: Session, vip: VipCompetition) -> list[ParticipantSnapshot]:
@@ -988,12 +1039,53 @@ class SettlementService:
             ),
         }
 
+    def _survivor_prize_settings(self, db: Session, season: Season) -> dict[str, Decimal]:
+        from app.services.payment_service import PaymentService
+
+        confirmed_participants = sum(
+            1
+            for row in db.scalars(
+                select(SurvivorMembership).where(SurvivorMembership.season_id == season.id)
+            )
+            if row.is_active
+        )
+        entry_fee_amount = self._to_money(
+            PaymentService().get_effective_pricing(db, PaymentScopeType.SURVIVOR.value, season.id).amount
+        )
+        gross_pool_amount = self._to_money(Decimal(confirmed_participants) * entry_fee_amount)
+        admin_commission_amount = self._to_money(
+            gross_pool_amount * (Decimal(season.survivor_admin_commission_pct) / Decimal("100"))
+        )
+        income_after_commission_amount = self._to_money(gross_pool_amount - admin_commission_amount)
+        reserve_amount = self._to_money(
+            gross_pool_amount * (Decimal(season.survivor_reserve_pct) / Decimal("100"))
+        )
+        distributable_prize_pool_amount = self._to_money(income_after_commission_amount - reserve_amount)
+        return {
+            "entry_fee_amount": entry_fee_amount,
+            "admin_commission_amount": admin_commission_amount,
+            "first_place_amount": self._to_money(
+                distributable_prize_pool_amount * (Decimal(season.survivor_first_place_pct) / Decimal("100"))
+            ),
+            "second_place_amount": self._to_money(
+                distributable_prize_pool_amount * (Decimal(season.survivor_second_place_pct) / Decimal("100"))
+            ),
+            "third_place_amount": self._to_money(
+                distributable_prize_pool_amount * (Decimal(season.survivor_third_place_pct) / Decimal("100"))
+            ),
+        }
+
     def _expected_commission_amount(
         self,
         db: Session,
         scope_type: PaymentScopeType,
         scope_id: str,
     ) -> Decimal:
+        if scope_type == PaymentScopeType.SURVIVOR:
+            return self._survivor_prize_settings(
+                db,
+                self._ensure_survivor_scope_exists(db, scope_id),
+            )["admin_commission_amount"]
         scope = self._ensure_scope_exists(db, scope_type, scope_id)
         if scope_type == PaymentScopeType.SEASON:
             assert isinstance(scope, Season)
@@ -1401,6 +1493,8 @@ class SettlementService:
         scope_type: PaymentScopeType,
         scope_id: str,
     ) -> Season | VipCompetition:
+        if scope_type == PaymentScopeType.SURVIVOR:
+            return self._ensure_survivor_scope_exists(db, scope_id)
         if scope_type == PaymentScopeType.SEASON:
             row = db.get(Season, scope_id)
             if row is None:
@@ -1413,15 +1507,21 @@ class SettlementService:
             return row
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scope_type invalido para este flujo.")
 
+    def _ensure_survivor_scope_exists(self, db: Session, scope_id: str) -> Season:
+        row = db.get(Season, scope_id)
+        if row is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Temporada no encontrada.")
+        return row
+
     def _supported_scope_type(self, scope_type: str) -> PaymentScopeType:
         try:
             scope_type_enum = PaymentScopeType(scope_type)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="scope_type invalido.") from exc
-        if scope_type_enum not in {PaymentScopeType.SEASON, PaymentScopeType.VIP}:
+        if scope_type_enum not in {PaymentScopeType.SEASON, PaymentScopeType.SURVIVOR, PaymentScopeType.VIP}:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Los pagos entre jugadores solo aplican a temporada o VIP.",
+                detail="Los pagos entre jugadores solo aplican a temporada, Survivor o VIP.",
             )
         return scope_type_enum
 
