@@ -67,6 +67,7 @@ export function AdminPaymentsPanel() {
   const [manualAssignment, setManualAssignment] = useState({ payer_profile_id: "", payee_profile_id: "", amount: "" });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const settlementScopeType: ScopeType = entryProductType === "survivor" ? "survivor" : scopeType;
 
   useEffect(() => {
     async function loadCatalogs() {
@@ -171,8 +172,8 @@ export function AdminPaymentsPanel() {
   }
 
   useEffect(() => {
-    void loadSummary(scopeType, selectedScopeId);
-  }, [scopeType, selectedScopeId]);
+    void loadSummary(settlementScopeType, selectedScopeId);
+  }, [settlementScopeType, selectedScopeId]);
 
   const selectedScope = useMemo(
     () => availableScopes.find((row) => row.id === selectedScopeId) ?? null,
@@ -256,7 +257,7 @@ export function AdminPaymentsPanel() {
         {
           method: "PUT",
           body: JSON.stringify({
-            scope_type: scopeType,
+            scope_type: settlementScopeType,
             scope_id: selectedScopeId,
             max_payment_amount: Number(configDraft.max_payment_amount),
             confirmation_window_hours: Number(configDraft.confirmation_window_hours),
@@ -265,7 +266,7 @@ export function AdminPaymentsPanel() {
         },
       );
       setMessage("Configuración guardada.");
-      await loadSummary(scopeType, selectedScopeId);
+      await loadSummary(settlementScopeType, selectedScopeId);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar la configuración.");
     } finally {
@@ -300,7 +301,7 @@ export function AdminPaymentsPanel() {
         {
           method: "PUT",
           body: JSON.stringify({
-            scope_type: scopeType,
+            scope_type: settlementScopeType,
             scope_id: selectedScopeId,
             max_payment_amount: Number(configDraft.max_payment_amount),
             confirmation_window_hours: Number(configDraft.confirmation_window_hours),
@@ -309,7 +310,7 @@ export function AdminPaymentsPanel() {
         },
       );
       const refreshedSummary = await backendFetch<SettlementScopeSummary>(
-        `/payments/settlements/admin/summary?scope_type=${scopeType}&scope_id=${selectedScopeId}`,
+        `/payments/settlements/admin/summary?scope_type=${settlementScopeType}&scope_id=${selectedScopeId}`,
         accessToken,
       );
       const payerCandidates = new Set(
@@ -325,7 +326,7 @@ export function AdminPaymentsPanel() {
         {
           method: "POST",
           body: JSON.stringify({
-            scope_type: scopeType,
+            scope_type: settlementScopeType,
             scope_id: selectedScopeId,
             payer_profile_ids: effectivePayerIds,
           }),
@@ -361,7 +362,7 @@ export function AdminPaymentsPanel() {
     try {
       const accessToken = await getBrowserAccessToken();
       const response = await backendFetch<SettlementScopeSummary>(
-        `/payments/settlements/admin/assignments?scope_type=${scopeType}&scope_id=${selectedScopeId}`,
+        `/payments/settlements/admin/assignments?scope_type=${settlementScopeType}&scope_id=${selectedScopeId}`,
         accessToken,
         { method: "DELETE" },
       );
@@ -390,7 +391,7 @@ export function AdminPaymentsPanel() {
       const response = await backendFetch<SettlementScopeSummary>("/payments/settlements/admin/manual", accessToken, {
         method: "POST",
         body: JSON.stringify({
-          scope_type: scopeType,
+          scope_type: settlementScopeType,
           scope_id: selectedScopeId,
           payer_profile_id: manualAssignment.payer_profile_id,
           payee_profile_id: manualAssignment.payee_profile_id,
@@ -418,12 +419,12 @@ export function AdminPaymentsPanel() {
     try {
       const accessToken = await getBrowserAccessToken();
       const response = await backendFetch<{ assignments_count: number; notification_dispatches: number }>(
-        `/payments/settlements/admin/assign?scope_type=${scopeType}&scope_id=${selectedScopeId}`,
+        `/payments/settlements/admin/assign?scope_type=${settlementScopeType}&scope_id=${selectedScopeId}`,
         accessToken,
         { method: "POST" },
       );
       setMessage(`${response.assignments_count} pagos asignados. Se procesaron ${response.notification_dispatches} avisos.`);
-      await loadSummary(scopeType, selectedScopeId);
+      await loadSummary(settlementScopeType, selectedScopeId);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudieron asignar los pagos.");
     } finally {
@@ -669,13 +670,14 @@ export function AdminPaymentsPanel() {
         {generatedScopes.length ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {generatedScopes.map((generated) => {
-              const isSelected = generated.scope_type === scopeType && generated.scope_id === selectedScopeId;
+              const isSelected = generated.scope_type === settlementScopeType && generated.scope_id === selectedScopeId;
               return (
                 <button
                   key={`${generated.scope_type}:${generated.scope_id}`}
                   type="button"
                   onClick={() => {
                     setScopeType(generated.scope_type);
+                    setEntryProductType(generated.scope_type === "survivor" ? "survivor" : generated.scope_type);
                     setSelectedScopeId(generated.scope_id);
                   }}
                   className={`rounded-[16px] border p-4 text-left transition ${
@@ -687,7 +689,7 @@ export function AdminPaymentsPanel() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[10px] uppercase tracking-[0.22em] text-steel">
-                        {generated.scope_type === "vip" ? "VIP" : "Temporada normal"}
+                        {generated.scope_type === "vip" ? "VIP" : generated.scope_type === "survivor" ? "Survivor" : "Temporada normal"}
                       </p>
                       <p className="mt-1 font-semibold text-ink">{generated.scope_label}</p>
                     </div>

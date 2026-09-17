@@ -641,7 +641,7 @@ export interface SettlementScopeSummary {
 }
 
 export interface SettlementGeneratedScope {
-  scope_type: "season" | "vip";
+  scope_type: "season" | "survivor" | "vip";
   scope_id: string;
   scope_label: string;
   assignments_count: number;

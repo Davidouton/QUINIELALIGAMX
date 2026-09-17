@@ -211,7 +211,7 @@ class SettlementScopeSummaryOut(BaseModel):
 
 
 class SettlementGeneratedScopeOut(BaseModel):
-    scope_type: Literal["season", "vip"]
+    scope_type: Literal["season", "survivor", "vip"]
     scope_id: str
     scope_label: str
     assignments_count: int = 0
