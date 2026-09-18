@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -67,6 +67,7 @@ export function AdminPaymentsPanel() {
   const [manualAssignment, setManualAssignment] = useState({ payer_profile_id: "", payee_profile_id: "", amount: "" });
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const summaryRequestId = useRef(0);
   const settlementScopeType: ScopeType = entryProductType === "survivor" ? "survivor" : scopeType;
 
   useEffect(() => {
@@ -129,6 +130,8 @@ export function AdminPaymentsPanel() {
   }, [availableScopes, selectedScopeId]);
 
   async function loadSummary(nextScopeType: ScopeType, nextScopeId: string) {
+    const requestId = summaryRequestId.current + 1;
+    summaryRequestId.current = requestId;
     if (!nextScopeId) {
       setSummary(null);
       setSelectedPayerIds([]);
@@ -143,6 +146,7 @@ export function AdminPaymentsPanel() {
         `/payments/settlements/admin/summary?scope_type=${nextScopeType}&scope_id=${nextScopeId}`,
         accessToken,
       );
+      if (requestId !== summaryRequestId.current) return;
       setSummary(response);
       const savedAllocations = response.config.commission_allocations.map((row) => ({
         profile_id: row.profile_id,
@@ -164,6 +168,7 @@ export function AdminPaymentsPanel() {
           : response.participants.filter((participant) => participant.is_payer_candidate).map((participant) => participant.profile_id);
       setSelectedPayerIds(defaultPayers);
     } catch (caughtError) {
+      if (requestId !== summaryRequestId.current) return;
       setSummary(null);
       setSelectedPayerIds([]);
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar el split.");
