@@ -97,7 +97,8 @@ export function AdminPaymentsPanel() {
         const activeSeasonId = seasonRows.find((row) => row.is_active)?.id ?? seasonRows[0]?.id ?? "";
         const activeVipId = vipRows.find((row) => row.is_active)?.id ?? vipRows[0]?.id ?? "";
         const requestedRows = requestedScopeType === "vip" ? vipRows : seasonRows;
-        setScopeType(requestedScopeType);
+        setScopeType(requestedScopeType === "vip" ? "vip" : "season");
+        setEntryProductType(requestedScopeType === "survivor" ? "survivor" : requestedScopeType);
         setSelectedScopeId(
           requestedRows.some((row) => row.id === requestedScopeId)
             ? requestedScopeId
@@ -187,10 +188,12 @@ export function AdminPaymentsPanel() {
   );
 
   useEffect(() => {
-    setEntryProductType(
-      scopeType === "vip" ? "vip" : scopeType === "survivor" ? "survivor" : "season",
-    );
-  }, [scopeType, selectedScopeId]);
+    if (scopeType === "vip") {
+      setEntryProductType("vip");
+    } else if (entryProductType === "vip") {
+      setEntryProductType("season");
+    }
+  }, [scopeType, entryProductType]);
 
   useEffect(() => {
     setEntryPriceDraft({
@@ -485,10 +488,10 @@ export function AdminPaymentsPanel() {
           <label className="block space-y-2 text-sm">
             <span className="text-steel">Competencia normal, Survivor o VIP</span>
             <select
-              value={selectedScopeId ? `${scopeType}:${selectedScopeId}` : ""}
+              value={selectedScopeId ? `${scopeType === "vip" ? "vip" : "season"}:${selectedScopeId}` : ""}
               onChange={(event) => {
                 const [nextScopeType, nextScopeId] = event.target.value.split(":", 2) as [ScopeType, string];
-                setScopeType(nextScopeType);
+                setScopeType(nextScopeType === "vip" ? "vip" : "season");
                 setSelectedScopeId(nextScopeId);
               }}
               className="field-control"
@@ -676,7 +679,7 @@ export function AdminPaymentsPanel() {
                   key={`${generated.scope_type}:${generated.scope_id}`}
                   type="button"
                   onClick={() => {
-                    setScopeType(generated.scope_type);
+                    setScopeType(generated.scope_type === "vip" ? "vip" : "season");
                     setEntryProductType(generated.scope_type === "survivor" ? "survivor" : generated.scope_type);
                     setSelectedScopeId(generated.scope_id);
                   }}
