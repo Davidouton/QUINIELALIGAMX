@@ -43,6 +43,7 @@ from app.schemas.payments import (
 from app.services.onesignal_service import OneSignalPushService
 from app.services.leaderboard_service import LeaderboardService
 from app.services.scoring_service import ScoringService
+from app.services.survivor_service import SurvivorService
 from app.services.vip_service import VipService
 
 settings = get_settings()
@@ -872,22 +873,38 @@ class SettlementService:
         profile_ids = [membership.profile_id for membership in memberships]
         profile_map, aval_name_map = self._profile_maps(db, profile_ids)
         settings = self._survivor_prize_settings(db, season)
+        active_membership_ids = {membership.profile_id for membership in memberships if membership.is_active}
+        survivor_board = SurvivorService()._build_board_bundle(db, season)["leaderboard"]
+        ranked_rows = [
+            (entry.profile_id, rank_position)
+            for rank_position, entry in enumerate(
+                (entry for entry in survivor_board if entry.profile_id in active_membership_ids),
+                start=1,
+            )
+        ]
+        prize_shares = ScoringService.calculate_prize_shares(
+            ranked_rows,
+            settings["first_place_amount"],
+            settings["second_place_amount"],
+            settings["third_place_amount"],
+        )
         participants: list[ParticipantSnapshot] = []
         for rank_position, membership in enumerate(memberships, start=1):
             profile = profile_map.get(membership.profile_id)
             pending_entry_amount = Decimal("0.00") if membership.is_paid else settings["entry_fee_amount"]
+            final_prize_amount = self._to_money(prize_shares.get(membership.profile_id, Decimal("0.00")))
             participants.append(
                 ParticipantSnapshot(
                     profile_id=membership.profile_id,
                     display_name=profile.display_name if profile is not None else "Participante",
                     rank_position=rank_position,
                     total_points=0,
-                    prize_amount=Decimal("0.00"),
+                    prize_amount=final_prize_amount,
                     weekly_prize_amount=Decimal("0.00"),
-                    final_prize_amount=Decimal("0.00"),
+                    final_prize_amount=final_prize_amount,
                     admin_commission_amount=Decimal("0.00"),
                     pending_entry_amount=self._to_money(pending_entry_amount),
-                    net_amount=self._to_money(-pending_entry_amount),
+                    net_amount=self._to_money(final_prize_amount - pending_entry_amount),
                     contact_phone=profile.contact_phone if profile is not None else None,
                     bank_name=profile.bank_name if profile is not None else None,
                     deposit_account=profile.deposit_account if profile is not None else None,
@@ -1061,6 +1078,15 @@ class SettlementService:
             gross_pool_amount * (Decimal(season.survivor_reserve_pct) / Decimal("100"))
         )
         distributable_prize_pool_amount = self._to_money(income_after_commission_amount - reserve_amount)
+        weekly_total_prize_amount = self._to_money(
+            season.survivor_weekly_first_place_amount
+            + season.survivor_weekly_second_place_amount
+            + season.survivor_weekly_third_place_amount
+        )
+        tournament_matchdays_count = self._survivor_matchday_count(db, season)
+        distributable_prize_pool_amount = self._to_money(
+            distributable_prize_pool_amount - weekly_total_prize_amount * Decimal(tournament_matchdays_count)
+        )
         return {
             "entry_fee_amount": entry_fee_amount,
             "admin_commission_amount": admin_commission_amount,
@@ -1074,6 +1100,10 @@ class SettlementService:
                 distributable_prize_pool_amount * (Decimal(season.survivor_third_place_pct) / Decimal("100"))
             ),
         }
+
+    @staticmethod
+    def _survivor_matchday_count(db: Session, season: Season) -> int:
+        return len(list(db.scalars(select(Matchday).where(Matchday.season_id == season.id))))
 
     def _expected_commission_amount(
         self,

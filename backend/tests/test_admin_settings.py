@@ -508,6 +508,9 @@ def test_survivor_settlement_counts_only_survivor_members(admin_client: TestClie
         season = db.get(Season, SEASON_ID)
         assert season is not None
         season.survivor_enabled = True
+        season.survivor_first_place_pct = 60
+        season.survivor_second_place_pct = 30
+        season.survivor_third_place_pct = 10
         db.add_all(
             [
                 SurvivorMembership(
@@ -545,7 +548,12 @@ def test_survivor_settlement_counts_only_survivor_members(admin_client: TestClie
     pending_participant = next(
         participant for participant in summary.participants if participant.profile_id == PROFILE_LEADER_ID
     )
+    active_participant = next(
+        participant for participant in summary.participants if participant.profile_id == PROFILE_USER_ID
+    )
     assert pending_participant.pending_entry_amount == 500
+    assert active_participant.final_prize_amount == 300
+    assert active_participant.net_amount == 300
 
 
 def test_admin_can_create_invited_user_with_season_membership(
