@@ -503,18 +503,27 @@ def test_admin_generates_survivor_charge_in_players_payment_hub(admin_client: Te
     finally:
         db.close()
 
-    def test_survivor_settlement_counts_only_survivor_members(admin_client: TestClient) -> None:
-        with SessionLocal() as db:
-            db.add(
+def test_survivor_settlement_counts_only_survivor_members(admin_client: TestClient) -> None:
+    with SessionLocal() as db:
+        season = db.get(Season, SEASON_ID)
+        assert season is not None
+        season.survivor_enabled = True
+        db.add_all(
+            [
                 SurvivorMembership(
                     season_id=SEASON_ID,
                     profile_id=PROFILE_USER_ID,
                     is_active=True,
                     is_paid=True,
                     joined_at=datetime.now(UTC),
-                )
-            )
-            db.add(
+                ),
+                SurvivorMembership(
+                    season_id=SEASON_ID,
+                    profile_id=PROFILE_LEADER_ID,
+                    is_active=False,
+                    is_rejected=False,
+                    is_paid=False,
+                ),
                 PricingRule(
                     scope_type=PaymentScopeType.SURVIVOR,
                     scope_id=SEASON_ID,
@@ -522,14 +531,21 @@ def test_admin_generates_survivor_charge_in_players_payment_hub(admin_client: Te
                     amount=500,
                     currency="mxn",
                     is_active=True,
-                )
-            )
-            db.commit()
+                ),
+            ]
+        )
+        db.commit()
 
-            summary = SettlementService().get_scope_summary(db, "survivor", SEASON_ID)
+        summary = SettlementService().get_scope_summary(db, "survivor", SEASON_ID)
 
-        assert [participant.profile_id for participant in summary.participants] == [PROFILE_USER_ID]
-        assert summary.total_receivable_amount == 0
+    assert {participant.profile_id for participant in summary.participants} == {
+        PROFILE_USER_ID,
+        PROFILE_LEADER_ID,
+    }
+    pending_participant = next(
+        participant for participant in summary.participants if participant.profile_id == PROFILE_LEADER_ID
+    )
+    assert pending_participant.pending_entry_amount == 500
 
 
 def test_admin_can_create_invited_user_with_season_membership(

@@ -862,7 +862,7 @@ class SettlementService:
             db.scalars(
                 select(SurvivorMembership).where(
                     SurvivorMembership.season_id == season.id,
-                    SurvivorMembership.is_active.is_(True),
+                    SurvivorMembership.is_rejected.is_(False),
                 )
             )
         )
