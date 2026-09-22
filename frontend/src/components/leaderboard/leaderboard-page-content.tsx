@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MatchdayRanking } from "@/components/leaderboard/matchday-ranking";
 
 import { backendFetch, CATALOG_CACHE_TTL_MS, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
@@ -51,7 +52,7 @@ export function LeaderboardPageContent() {
   const [loading, setLoading] = useState(true);
   const [loadingVipBoardId, setLoadingVipBoardId] = useState("");
   const [loadedVipDetailIds, setLoadedVipDetailIds] = useState<string[]>([]);
-  const [activeView, setActiveView] = useState<"overall" | "weekly-prizes">("overall");
+  const [activeView, setActiveView] = useState<"overall" | "weekly-prizes" | "matchday">("overall");
   const [weeklyPrizeView, setWeeklyPrizeView] = useState<"matchday" | "matrix">("matchday");
   const [selectedWeeklyMatchdayId, setSelectedWeeklyMatchdayId] = useState("");
   const lastLoadedAtRef = useRef(0);
@@ -501,6 +502,11 @@ export function LeaderboardPageContent() {
           >
             {activeSectionLabel}
           </button>
+          {selectedRegularSeason ? <button
+            type="button"
+            onClick={() => setActiveView("matchday")}
+            className={activeView === "matchday" ? "tab-control tab-control-active" : "tab-control"}
+          >Ganadores por jornada</button> : null}
           <button
             type="button"
             onClick={() => setActiveView("weekly-prizes")}
@@ -510,7 +516,9 @@ export function LeaderboardPageContent() {
           </button>
         </div>
 
-        {activeView === "overall" ? <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {activeView === "matchday" && selectedRegularSeason ? (
+          <MatchdayRanking key={selectedRegularSeason.id} seasonId={selectedRegularSeason.id} isNfl={isNflRanking} />
+        ) : activeView === "overall" || activeView === "matchday" ? <div className="overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <table className="min-w-[720px] w-full table-fixed text-left text-[11px] text-ink sm:text-sm">
             <colgroup>
               <col className="w-[72px]" />

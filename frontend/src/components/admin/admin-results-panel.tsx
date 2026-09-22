@@ -107,6 +107,7 @@ export function AdminResultsPanel() {
   const [syncing, setSyncing] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [savingBatch, setSavingBatch] = useState(false);
   const [closing, setClosing] = useState(false);
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
   const [clearingResultMatchId, setClearingResultMatchId] = useState<string | null>(null);
@@ -295,12 +296,7 @@ export function AdminResultsPanel() {
       const accessToken = await getBrowserAccessToken();
       const savedRow = await saveResultRow(row, draft, accessToken);
       applySavedRows([savedRow]);
-      try {
-        await refreshCurrentRows(accessToken);
-      } catch {
-        // The saved row is already reflected locally; a later reload can reconcile the full table.
-      }
-      setMessage("Resultado guardado. Recalculo general y VIP en proceso.");
+      setMessage(`Resultado guardado: ${savedRow.home_team_name} ${savedRow.home_score} - ${savedRow.away_score} ${savedRow.away_team_name}.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "No se pudo guardar el resultado");
     } finally {
@@ -404,27 +400,57 @@ export function AdminResultsPanel() {
     }
   }
 
+  const changedRows = results.filter((row) => {
+    const draft = drafts[row.match_id];
+    if (!draft) return false;
+    const saved = buildDraft(row);
+    return (Object.keys(saved) as (keyof ResultDraft)[]).some((key) => draft[key] !== saved[key]);
+  });
+
+  async function saveChangedRows(rows: AdminResultRow[], accessToken: string) {
+    let savedCount = 0;
+    // Each save recalculates the same standings; serialize to avoid competing rebuilds.
+    for (const row of rows) {
+      try {
+        const saved = await saveResultRow(row, drafts[row.match_id], accessToken);
+        applySavedRows([saved]);
+        savedCount += 1;
+      } catch (caught) {
+        const detail = caught instanceof Error ? caught.message : "No se pudo guardar";
+        throw new Error(`${savedCount} de ${rows.length} marcadores guardados. ${row.home_team_name} vs ${row.away_team_name}: ${detail}. Los cambios pendientes se conservan.`);
+      }
+    }
+  }
+
+  async function handleSaveAll() {
+    const invalid = changedRows.find((row) => getSaveValidationError(row, drafts[row.match_id]));
+    setError(null);
+    setMessage(null);
+    if (invalid) {
+      setError(`${invalid.home_team_name} vs ${invalid.away_team_name}: ${getSaveValidationError(invalid, drafts[invalid.match_id])}`);
+      return;
+    }
+    if (!changedRows.length) return;
+    const count = changedRows.length;
+    setSavingBatch(true);
+    try {
+      const token = await getBrowserAccessToken();
+      await saveChangedRows(changedRows, token);
+      setMessage(`${count} marcadores guardados.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "No se pudieron guardar los marcadores.");
+    } finally {
+      setSavingBatch(false);
+    }
+  }
+
   async function handlePublishMatchday() {
     if (!selectedMatchdayId) {
       setError("Selecciona una jornada primero.");
       return;
     }
 
-    const rowsToSave = results.filter((row) => {
-      const draft = drafts[row.match_id];
-      if (!draft || draft.home_score === "" || draft.away_score === "") {
-        return false;
-      }
-      const savedDraft = buildDraft(row);
-      return (
-        draft.home_score !== savedDraft.home_score ||
-        draft.away_score !== savedDraft.away_score ||
-        draft.home_penalty_score !== savedDraft.home_penalty_score ||
-        draft.away_penalty_score !== savedDraft.away_penalty_score ||
-        draft.advancing_team_id !== savedDraft.advancing_team_id ||
-        draft.is_official !== savedDraft.is_official
-      );
-    });
+    const rowsToSave = changedRows;
     const invalidRow = rowsToSave.find((row) => getSaveValidationError(row, drafts[row.match_id]));
     if (invalidRow) {
       setError(getSaveValidationError(invalidRow, drafts[invalidRow.match_id]));
@@ -448,10 +474,7 @@ export function AdminResultsPanel() {
     try {
       const accessToken = await getBrowserAccessToken();
       if (rowsToSave.length > 0) {
-        const savedRows = await Promise.all(
-          rowsToSave.map((row) => saveResultRow(row, drafts[row.match_id], accessToken)),
-        );
-        applySavedRows(savedRows);
+        await saveChangedRows(rowsToSave, accessToken);
       }
       await backendFetch(`/admin/matchdays/${selectedMatchdayId}/publish`, accessToken, {
         method: "POST",
@@ -518,14 +541,14 @@ export function AdminResultsPanel() {
   const isSelectedMatchdayClosed = selectedMatchday?.status === "closed";
 
   return (
-    <div className="space-y-6">
+    <fieldset disabled={savingBatch || publishing} className="min-w-0 space-y-6">
       <section className="space-y-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-ink">Carga de marcadores oficiales</h2>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)] xl:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)_auto_auto_auto_auto]">
+          <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)] xl:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)_auto_auto_auto_auto_auto]">
             <select
               value={selectedSeasonId}
               onChange={(event) => {
@@ -565,6 +588,15 @@ export function AdminResultsPanel() {
                 </option>
               ))}
             </select>
+
+            <button
+              type="button"
+              onClick={() => void handleSaveAll()}
+              disabled={loading || savingBatch || syncing || recalculating || publishing || closing || Boolean(savingMatchId || clearingResultMatchId || clearingMatchId) || !changedRows.length}
+              className={`${positiveActionClass} h-11 justify-center text-sm sm:h-10 sm:text-[11px]`}
+            >
+              {savingBatch ? "Guardando marcadores..." : `Guardar marcadores (${changedRows.length})`}
+            </button>
 
             <button
               type="button"
@@ -848,6 +880,6 @@ export function AdminResultsPanel() {
           </p>
         ) : null}
       </section>
-    </div>
+    </fieldset>
   );
 }

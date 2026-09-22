@@ -567,3 +567,32 @@ def test_admin_can_clear_manual_override_and_restore_pending_raw(admin_client: T
     assert result.is_official is False
     assert match is not None
     assert match.status == MatchStatus.SCHEDULED
+
+
+@pytest.mark.parametrize('home_score,away_score', [(24, 21), (31, 21), (10, 30), (0, 0)])
+def test_admin_can_register_nfl_scores_and_read_them_back(admin_client, home_score, away_score):
+    from app.models.entities import Competition, UserPick, StandingsOverall
+
+    with SessionLocal() as db:
+        competition = Competition(name='NFL', slug='nfl', sport_name='American Football')
+        db.add(competition)
+        db.flush()
+        db.get(Season, SEASON_ID).competition_id = competition.id
+        db.add(UserPick(
+            profile_id=PROFILE_USER_ID, match_id=MATCH_ONE_ID,
+            selection='home', spread_selection='home', spread_line_value='-3',
+            predicted_home_score=1, predicted_away_score=0,
+        ))
+        db.commit()
+    response = admin_client.put(f'/api/v1/admin/results/{MATCH_ONE_ID}', json={
+        'home_score': home_score, 'away_score': away_score, 'is_official': True,
+    })
+    assert response.status_code == 200, response.text
+    response = admin_client.get(f'/api/v1/admin/results?matchday_id={MATCHDAY_ID}')
+    assert response.status_code == 200
+    row = next(row for row in response.json() if row['match_id'] == MATCH_ONE_ID)
+    assert (row['home_score'], row['away_score']) == (home_score, away_score)
+    assert row['is_official'] is True
+    with SessionLocal() as db:
+        standing = db.query(StandingsOverall).filter_by(season_id=SEASON_ID, profile_id=PROFILE_USER_ID).one()
+        assert standing.total_points == int(home_score - 3 > away_score)
