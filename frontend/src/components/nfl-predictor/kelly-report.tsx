@@ -12,7 +12,7 @@ type Row = {
   stake: number | null; profit: number | null; outcome: string; cumulative: number;
 };
 type Report = {
-  comparison?: { games: number; duplicate_excel_rows: number; engine: { profit: number; roi: number | null; wins: number; losses: number; entries: number }; original: { profit: number; roi: number | null; wins: number; losses: number; entries: number } } | null;
+  comparison?: { games: number; duplicate_excel_rows: number; engine: { profit: number; staked?: number; pushes?: number; no_entry?: number; roi: number | null; wins: number; losses: number; entries: number }; original: { profit: number; staked?: number; pushes?: number; no_entry?: number; roi: number | null; wins: number; losses: number; entries: number } } | null;
   rows: Row[]; periods: { season: number; week: number }[];
   source: { metadata: { filename: string }; imported_at: string } | null;
   summary: { profit: number; staked: number; wins: number; losses: number; pushes: number; roi: number | null; win_rate: number | null };
@@ -116,9 +116,10 @@ export function KellyReport() {
         <div className="rounded-2xl border border-white/10 p-5"><p className="text-xs text-steel">Acierto · sin pushes</p><p className="mt-2 text-2xl font-semibold tabular-nums text-ink">{percent(summary?.win_rate)}</p><p className="mt-1 text-[11px] text-steel">Solo entradas con monto positivo</p></div>
       </div>
       {report?.comparison && <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-5">
-        <h3 className="font-semibold text-ink">Motor vs. Excel · mismos {report.comparison.games} partidos</h3>
-        <p className="mt-1 text-xs text-steel">Comparación de montos simulados sobre partidos con cálculo en ambas fuentes. {report.comparison.duplicate_excel_rows} filas duplicadas del Excel excluidas aquí; sus fórmulas originales se conservan.</p>
-        <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-steel"><tr><th className="py-2">Fuente</th><th>G/P</th><th>ROI</th><th>Ganadas / perdidas</th><th>Entradas</th></tr></thead><tbody>{([['Motor actual', report.comparison.engine], ['Excel original', report.comparison.original]] as const).map(([name, stats]) => <tr key={name} className="border-t border-white/10 text-ink"><td className="py-3 pr-3">{name}</td><td className="pr-3 font-mono">{money(stats.profit)}</td><td className="pr-3">{percent(stats.roi)}</td><td>{stats.wins} / {stats.losses}</td><td>{stats.entries}</td></tr>)}</tbody></table></div>
+        <h3 className="font-semibold text-ink">Motor vs. Excel · {report.comparison.games} partidos en común</h3>
+        <p className="mt-1 text-xs text-steel">Cada estrategia decide en cuáles apostar y cuánto: compartir calendario no significa tener las mismas apuestas ni el mismo monto total. El ROI es G/P dividido entre el monto simulado liquidado. {report.comparison.duplicate_excel_rows} filas duplicadas del Excel excluidas.</p>
+        <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-steel"><tr><th className="py-2">Fuente</th><th>Monto liquidado</th><th>G/P</th><th>ROI</th><th>Ganadas / perdidas / push</th><th>Entradas</th><th>Sin apuesta</th></tr></thead><tbody>{([['Motor actual', report.comparison.engine], ['Excel original', report.comparison.original]] as const).map(([name, stats]) => <tr key={name} className="border-t border-white/10 text-ink"><td className="py-3 pr-3">{name}</td><td className="pr-3 font-mono">{money(stats.staked)}</td><td className="pr-3 font-mono">{money(stats.profit)}</td><td className="pr-3">{percent(stats.roi)}</td><td>{stats.wins} / {stats.losses} / {stats.pushes ?? "—"}</td><td>{stats.entries}</td><td>{stats.no_entry ?? "—"}</td></tr>)}</tbody></table></div>
+        <p className="mt-3 text-xs text-amber-200">El Excel conserva sus cálculos originales; su rentabilidad no es una evaluación independiente del motor. Los montos son simulados sobre una base fija por mercado, no el saldo de una cuenta.</p>
       </div>}
       <ProfitChart key={`${market}:${season}:${week}:${mode}`} rows={rows}/>
       <div className="overflow-hidden rounded-2xl border border-white/10">

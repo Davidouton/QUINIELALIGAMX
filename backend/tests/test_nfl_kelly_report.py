@@ -173,3 +173,23 @@ def test_engine_predictions_do_not_change_when_target_scores_change():
     markets = {r["market"]: r for r in entries}
     assert markets["ATS"]["selection"] != markets["CONTRA_ATS"]["selection"]
     assert markets["TOTAL"]["selection"] != markets["CONTRA_TOTAL"]["selection"]
+
+
+def test_comparison_explains_stakes_pushes_and_no_entries():
+    from app.nfl_predictor.report import comparison
+
+    rows = [
+        dict(
+            date="2025-12-25", home=str(i), away="DEN", stake=stake, profit=profit, outcome=outcome
+        )
+        for i, (stake, profit, outcome) in enumerate(
+            [(20, 10, "win"), (10, -10, "loss"), (30, 0, "push"), (0, 0, "loss")]
+        )
+    ]
+    result = comparison(rows, rows)
+    stats = result["engine"]
+    assert result["games"] == 4
+    assert stats["staked"] == 60
+    assert stats["wins"] + stats["losses"] + stats["pushes"] == stats["entries"] == 3
+    assert stats["no_entry"] == 1
+    assert stats["roi"] == 0

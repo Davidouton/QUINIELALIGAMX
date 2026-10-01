@@ -293,6 +293,9 @@ def comparison(engine, original):
         profit = sum(r["profit"] for r in active)
         return dict(
             profit=round(profit, 2),
+            staked=round(stake, 2),
+            pushes=sum(r["outcome"] == "push" for r in active),
+            no_entry=sum(r["stake"] == 0 for r in rows),
             roi=profit / stake if stake else None,
             wins=sum(r["outcome"] == "win" for r in active),
             losses=sum(r["outcome"] == "loss" for r in active),
