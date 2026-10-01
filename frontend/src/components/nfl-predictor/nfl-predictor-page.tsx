@@ -5,6 +5,8 @@ import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 
+import { KellyReport } from "./kelly-report";
+
 type Bet = {
   Mercado: string; Seleccion: string; Linea: number | null; Momio: number | null;
   Prob_ganar: number | null; Prob_push: number | null; EV_por_unidad: number | null;
@@ -27,7 +29,7 @@ const quote = (n: number | null) => n == null ? "—" : n >= 100 ? `+${n}` : `${
 const states: Record<string, string> = { complete: "Actualizado", failed: "Falló la actualización", running: "Actualizando", skipped: "Sin jornada próxima" };
 const stages: Record<string, string> = { starting: "Iniciando", schedule: "Calendario y resultados", play_by_play: "Estadísticas por jugada", odds: "Líneas", predict: "Calculando probabilidades", interrupted: "Ejecución interrumpida" };
 
-export function NFLPredictorPage() {
+function LivePredictions() {
   const [data, setData] = useState<Response | null>(null);
   const [period, setPeriod] = useState("");
   const [market, setMarket] = useState("ALL");
@@ -133,4 +135,16 @@ export function NFLPredictorPage() {
     })}</div>
     <p className="text-xs text-steel">EV es el valor esperado por unidad según el modelo, incluyendo devolución por empate de línea. Las cuotas pueden cambiar; un EV positivo no garantiza ganancias. Las probabilidades ML contemplan la aproximación de empate del modelo.</p>
   </section>;
+}
+
+export function NFLPredictorPage() {
+  const [view, setView] = useState<"report" | "live">("report");
+  return <div className="space-y-6">
+    <header><p className="text-xs uppercase tracking-[.25em] text-steel">Quiniela+ · Super admin</p><h1 className="page-title mt-2">Predictor NFL</h1></header>
+    <div className="tab-list" aria-label="Vista del predictor">
+      <button className={view === "report" ? "tab-control tab-control-active" : "tab-control"} onClick={() => setView("report")}>Reporte Kelly</button>
+      <button className={view === "live" ? "tab-control tab-control-active" : "tab-control"} onClick={() => setView("live")}>Pronósticos actuales</button>
+    </div>
+    {view === "report" ? <KellyReport /> : <LivePredictions />}
+  </div>;
 }

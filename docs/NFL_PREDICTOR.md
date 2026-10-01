@@ -86,3 +86,25 @@ npm run build:verify
 ```
 
 Referencias: [calendario y convenciones de nflverse](https://raw.githubusercontent.com/nflverse/nflreadr/main/data-raw/dictionary_schedules.csv), [conexiones Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres), [horarios de GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+
+## Reporte Kelly y evaluación histórica
+
+Quiniela+ → Predictor NFL → Reporte Kelly muestra **Motor NFL · histórico** por defecto, con filtros de mercado (ML, spread, totales y contras), temporada y semana; tabla paginada, curva interactiva de ganancia/pérdida acumulada, ROI y W/L/push. Sigue restringido a `master_admin` activo, incluido el endpoint `/api/v1/nfl-predictor/report`.
+
+El selector permite consultar también las cifras guardadas en `NFLPredictorbet_MUCHADATA2.xlsx`. No son apuestas confirmadas: los montos provienen de fórmulas. La comparación usa la intersección de partidos con cálculo en ambas fuentes y elimina duplicados del Excel por fecha/equipos. Conserva sus errores de cálculo para que sea una referencia fiel, no una medida validada de rentabilidad.
+
+El backtest llama al mismo `data.prepare` y `pipeline.run` del motor; entrena de nuevo cada semana, calcula ELO/estadísticas anteriores al inicio de la jornada y calibra con semanas previas separadas. Las probabilidades originales del Excel no entran al entrenamiento. Selecciona el lado de mayor probabilidad por mercado y el opuesto para las contras; Kelly completo usa una base fija por mercado, sin capitalización ni límite conjunto de exposición. Kelly negativo implica monto cero.
+
+Para reproducir/importar desde `backend`:
+
+```sh
+.venv/bin/python -m app.nfl_predictor.report /ruta/NFLPredictorbet_MUCHADATA2.xlsx
+.venv/bin/python -m app.nfl_predictor.backtest /ruta/NFLPredictorbet_MUCHADATA2.xlsx \
+  --metrics /ruta/nfl_team_epa_sr_asof.csv --output /ruta/cache-backtest --publish
+```
+
+`--publish` reemplaza atómicamente solo el reporte histórico del motor en `nfp_kelly_reports`/`nfp_kelly_rows`; sin esa opción genera JSON local. No modifica pronósticos en vivo ni apuestas. El cache por semana se identifica por SHA256 de datos y código. Es necesario aplicar `database/sql/038_nfl_kelly_report.sql`; ambos comandos también inicializan estas tablas con RLS sin permisos de clientes Supabase.
+
+La primera ejecución cubrió 2,163 partidos (10,815 selecciones) entre 2018 y enero de 2026, incluyendo 2025 W17. Omite 2018 W1–W4 por menos de 50 partidos anteriores. Se recuperaron 16 años faltantes del calendario según temporada/mes. Los IDs repetidos del archivo no sirven para identificar partidos; se utiliza fecha/local/visitante. El reporte original conserva sus filas mediante identificadores de fila propios.
+
+Limitación de la evaluación: las líneas/momios históricos del archivo no tienen timestamps verificados. El corte semanal protege resultados y estadísticas, pero **no acredita que esas cuotas estuvieran disponibles al inicio de esa semana**. El backtest no sustituye la validación en vivo con snapshots fechados. Las probabilidades de empate ML corresponden al modelo actual, sin ajuste especial retrospectivo.

@@ -47,4 +47,4 @@ select = ["E", "F", "I", "B", "UP"]
 ignore = ["B008"]
 
 [tool.setuptools.package-data]
-"app.nfl_predictor" = ["teams.json", "schema.sql", "PROVENANCE.json"]
+"app.nfl_predictor" = ["teams.json", "schema.sql", "report_schema.sql", "PROVENANCE.json"]
