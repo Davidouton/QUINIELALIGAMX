@@ -10,6 +10,7 @@ from app.api.v1.routes.leaderboard import router as leaderboard_router
 from app.api.v1.routes.matchdays import router as matchdays_router
 from app.api.v1.routes.matches import router as matches_router
 from app.api.v1.routes.me import router as me_router
+from app.api.v1.routes.nfl_predictor import router as nfl_predictor_router
 from app.api.v1.routes.payments import router as payments_router
 from app.api.v1.routes.picks import router as picks_router
 from app.api.v1.routes.quiniela_plus import router as quiniela_plus_router
@@ -42,3 +43,5 @@ api_router.include_router(vip_router, tags=["vip"])
 api_router.include_router(world_cup_router, tags=["world-cup"])
 api_router.include_router(admin_router, prefix="/admin", tags=["admin"])
 api_router.include_router(admin_world_cup_router, prefix="/admin", tags=["admin-world-cup"])
+
+api_router.include_router(nfl_predictor_router, tags=["nfl-predictor"])

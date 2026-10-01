@@ -1,0 +1,20 @@
+[
+  {
+    "source": "NFL_METRICAS.py",
+    "sha256": "ad69c110954af047144f6a7a8d77408bcef6e3e0804502aa1f2e068fd80ae79a",
+    "adapted_module": "legacy_model",
+    "original_path": "/Users/davidouton/Library/Mobile Documents/com~apple~CloudDocs/Documents/PyCharmMiscProject/.venv/NFL/NFL_FIN/NFL_METRICAS.py"
+  },
+  {
+    "source": "Metadata.py",
+    "sha256": "d5f48e30966964edcbb6e5fab65a2c5b1aa6c634f5454a86fed9839651c3b7a2",
+    "adapted_module": "legacy_pbp",
+    "original_path": "/Users/davidouton/Library/Mobile Documents/com~apple~CloudDocs/Documents/PyCharmMiscProject/.venv/NFL/NFL_FIN/Metadata.py"
+  },
+  {
+    "source": "ELO_NFL_V5_.py",
+    "sha256": "845fdcadaae9f5dcedb6efe437c5642845b8616a919b3151a21550ad90daa00e",
+    "adapted_module": "legacy_elo",
+    "original_path": "/Users/davidouton/Library/Mobile Documents/com~apple~CloudDocs/Documents/PyCharmMiscProject/.venv/NFL/NFL_FIN/ELO_NFL_V5_.py"
+  }
+]
