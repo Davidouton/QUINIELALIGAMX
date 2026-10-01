@@ -1,11 +1,11 @@
 # NFL Predictor dentro de Quiniela
 
-Ruta web: `/dashboard/nfl-predictor`. Usa el inicio de sesión de Quiniela y su backend FastAPI. No depende de tener abierto Excel ni de ejecutar un programa en tu Mac.
+Ruta web: `/dashboard/quiniela-plus/nfl-predictor`, desde **Quiniela+ → Predictor NFL**. Exclusivo para super admin (`master_admin`); usuarios y administradores normales reciben 403 en la API. La ruta anterior redirige a esta sección. Usa el inicio de sesión de Quiniela y su backend FastAPI. No depende de tener abierto Excel ni de ejecutar un programa en tu Mac.
 
 ## Componentes
 
 - `backend/app/nfl_predictor`: modelo adaptado desde NFLPredictor (ELO de mercado, EPA/SR, Poisson/Logit), ingesta automática y persistencia PostgreSQL.
-- `GET /api/v1/nfl-predictor?season=2026&week=4`: resultados de la última ejecución completa de cada partido; requiere cuenta activa y token Supabase.
+- `GET /api/v1/nfl-predictor?season=2026&week=4`: resultados de la última ejecución completa de cada partido; requiere cuenta activa, rol `master_admin` y token Supabase.
 - Tablas `nfp_games`, `nfp_team_metrics`, `nfp_odds`, `nfp_runs`, `nfp_predictions` dentro del **mismo Supabase** de Quiniela. No se modifican los picks, premios, resultados ni rankings de la quiniela.
 - Nueva sección de navegación con filtros de jornada/mercado, probabilidades, cuota usada, EV, marcador y estado de actualización.
 

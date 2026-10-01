@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
@@ -837,6 +839,11 @@ export function QuinielaPlusPageContent() {
       </header>
 
       <section className="tab-list">
+        {me?.role_code === "master_admin" ? (
+          <Link href="/dashboard/quiniela-plus/nfl-predictor" className="tab-control">
+            Predictor NFL
+          </Link>
+        ) : null}
         <button
           type="button"
           onClick={() => {

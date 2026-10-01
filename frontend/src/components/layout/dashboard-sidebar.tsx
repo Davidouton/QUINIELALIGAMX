@@ -11,7 +11,6 @@ import { useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { cn } from "@/lib/utils";
 
 const primaryLinks = [
-  { href: "/dashboard/nfl-predictor", label: "NFL Predictor", shortLabel: "NFL" },
   { href: "/dashboard/quiniela-plus", label: "Quiniela +", shortLabel: "Q+" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/picks", label: "Picks Center" },

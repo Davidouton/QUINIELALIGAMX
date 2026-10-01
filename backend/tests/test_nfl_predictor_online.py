@@ -138,6 +138,8 @@ def test_no_upcoming_games_skips_odds_request(monkeypatch):
 
 
 def test_authenticated_dashboard(client, monkeypatch):
+    set_profile_role("master_admin")
+
     class Fake:
         def dashboard(self, s, w):
             return {"predictions": [], "runs": [], "periods": [{"season": s, "week": w}]}
@@ -154,6 +156,7 @@ def test_authenticated_dashboard(client, monkeypatch):
 
 
 def test_missing_schema_has_useful_error(client, monkeypatch):
+    set_profile_role("master_admin")
     import psycopg
 
     @contextmanager
@@ -173,3 +176,37 @@ def test_anonymous_cannot_read_predictions(client):
 
     app.dependency_overrides.pop(get_current_profile, None)
     assert client.get("/api/v1/nfl-predictor").status_code in (401, 403)
+
+
+def set_profile_role(role, active=True):
+    from conftest import PROFILE_USER_ID
+
+    from app.core.database import SessionLocal
+    from app.models.entities import Profile, RoleCode
+
+    with SessionLocal() as db:
+        profile = db.get(Profile, PROFILE_USER_ID)
+        profile.role_code = RoleCode(role)
+        profile.is_active = active
+        db.commit()
+
+
+@pytest.mark.parametrize("role", ["user", "admin"])
+def test_only_super_admin_can_read_predictions(client, monkeypatch, role):
+    set_profile_role(role)
+
+    def forbidden_connection():
+        pytest.fail("Unauthorized users must not query predictor data")
+
+    monkeypatch.setattr(route, "connection", forbidden_connection)
+    assert client.get("/api/v1/nfl-predictor").status_code == 403
+
+
+def test_inactive_super_admin_cannot_read_predictions(client, monkeypatch):
+    set_profile_role("master_admin", active=False)
+
+    def forbidden_connection():
+        pytest.fail("Inactive accounts must not query predictor data")
+
+    monkeypatch.setattr(route, "connection", forbidden_connection)
+    assert client.get("/api/v1/nfl-predictor").status_code == 403

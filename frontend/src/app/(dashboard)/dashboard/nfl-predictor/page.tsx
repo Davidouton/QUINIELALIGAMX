@@ -1,5 +1,5 @@
-import { NFLPredictorPage } from "@/components/nfl-predictor/nfl-predictor-page";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <NFLPredictorPage />;
+  redirect("/dashboard/quiniela-plus/nfl-predictor");
 }
