@@ -98,7 +98,13 @@ class AnalyticsUserStatOut(BaseModel):
 
 class AdminAnalyticsStatsOut(BaseModel):
     window_days: int
+    window_start: datetime
+    window_end: datetime
     generated_at: datetime
+    events_page: int
+    events_page_size: int
+    events_total: int
+    events_total_pages: int
     selected_profile_id: str | None = None
     selected_profile_display_name: str | None = None
     kpis: AnalyticsKpiOut

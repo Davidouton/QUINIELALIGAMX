@@ -267,6 +267,8 @@ export interface AnalyticsRecentEvent {
 
 export interface AdminAnalyticsStats {
   window_days: number;
+  window_start: string;
+  window_end: string;
   generated_at: string;
   selected_profile_id: string | null;
   selected_profile_display_name: string | null;
@@ -275,6 +277,10 @@ export interface AdminAnalyticsStats {
   screens: AnalyticsScreenStat[];
   top_events: AnalyticsEventStat[];
   daily: AnalyticsDailyStat[];
+  events_page: number;
+  events_page_size: number;
+  events_total: number;
+  events_total_pages: number;
   recent_events: AnalyticsRecentEvent[];
 }
 

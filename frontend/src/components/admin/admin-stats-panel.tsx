@@ -3,21 +3,36 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { backendFetch } from "@/lib/api/backend";
+import {
+  formatMexicoCityDateTime,
+  shiftMexicoCityInputValue,
+  toMexicoCityInputValue,
+} from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AdminAnalyticsStats, AdminUser } from "@/types/api";
 
-const dayOptions = [1, 7, 30];
+const dayOptions = [1, 7, 30, 90];
+const pageSizeOptions = [25, 50, 100, 200];
+
+type AppliedRange = {
+  startAt: string;
+  endAt: string;
+  quickDays: number | null;
+  requestedEndAt: string | null;
+};
+
+function quickRange(days: number): AppliedRange {
+  const end = new Date();
+  return {
+    startAt: new Date(end.getTime() - days * 24 * 60 * 60 * 1000).toISOString(),
+    endAt: end.toISOString(),
+    quickDays: days,
+    requestedEndAt: null,
+  };
+}
 
 function formatDateTime(value: string) {
-  try {
-    return new Intl.DateTimeFormat("es-MX", {
-      dateStyle: "short",
-      timeStyle: "short",
-      timeZone: "America/Mexico_City",
-    }).format(new Date(value));
-  } catch {
-    return value;
-  }
+  return formatMexicoCityDateTime(value);
 }
 
 function formatLoadMs(value: number | null) {
@@ -38,90 +53,207 @@ function formatPercent(part: number, total: number) {
 }
 
 export function AdminStatsPanel() {
-  const [days, setDays] = useState(7);
+  const [range, setRange] = useState<AppliedRange | null>(null);
+  const [fromInput, setFromInput] = useState("");
+  const [toInput, setToInput] = useState("");
+  const [rangeError, setRangeError] = useState<string | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [usersError, setUsersError] = useState<string | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [refreshVersion, setRefreshVersion] = useState(0);
   const [stats, setStats] = useState<AdminAnalyticsStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const initialRange = quickRange(7);
+    setRange(initialRange);
+    setFromInput(toMexicoCityInputValue(initialRange.startAt));
+    setToInput(toMexicoCityInputValue(initialRange.endAt));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function loadUsers() {
+      setUsersError(null);
+      try {
+        const accessToken = await getBrowserAccessToken();
+        if (!active) return;
+        const response = await backendFetch<AdminUser[]>("/admin/users", accessToken);
+        if (active) setUsers(response);
+      } catch (caughtError) {
+        if (active) {
+          setUsersError(caughtError instanceof Error ? caughtError.message : "No se pudo cargar la lista de usuarios.");
+        }
+      }
+    }
+    void loadUsers();
+    return () => { active = false; };
+  }, [refreshVersion]);
+
+  useEffect(() => {
+    if (!range) return;
+    let active = true;
+    const controller = new AbortController();
     async function loadStats() {
       setLoading(true);
       setError(null);
       try {
         const accessToken = await getBrowserAccessToken();
-        const params = new URLSearchParams({ days: String(days) });
+        if (!active || !range) return;
+        const params = new URLSearchParams({
+          start_at: range.startAt,
+          end_at: range.endAt,
+          page: String(page),
+          page_size: String(pageSize),
+        });
         if (selectedProfileId) {
           params.set("profile_id", selectedProfileId);
         }
-        const [statsResponse, usersResponse] = await Promise.all([
-          backendFetch<AdminAnalyticsStats>(`/admin/stats?${params.toString()}`, accessToken, {
-            cacheTtlMs: 15000,
-          }),
-          backendFetch<AdminUser[]>("/admin/users", accessToken, {
-            cacheTtlMs: 15000,
-          }),
-        ]);
-        setStats(statsResponse);
-        setUsers(usersResponse);
+        const response = await backendFetch<AdminAnalyticsStats>(
+          `/admin/stats?${params.toString()}`, accessToken, { signal: controller.signal },
+        );
+        if (active) setStats(response);
       } catch (caughtError) {
-        setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los stats");
+        if (active) {
+          setError(caughtError instanceof Error ? caughtError.message : "No se pudieron cargar los movimientos.");
+        }
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
     void loadStats();
-  }, [days, selectedProfileId]);
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [range, selectedProfileId, page, pageSize, refreshVersion]);
+
+  function applyQuickRange(days: number) {
+    const next = quickRange(days);
+    setRange(next);
+    setFromInput(toMexicoCityInputValue(next.startAt));
+    setToInput(toMexicoCityInputValue(next.endAt));
+    setRangeError(null);
+    setPage(1);
+  }
+
+  function applyCustomRange() {
+    const endExclusive = shiftMexicoCityInputValue(toInput, 1);
+    const now = new Date();
+    const nowInput = toMexicoCityInputValue(now.toISOString());
+    if (!fromInput || !toInput || !endExclusive) {
+      setRangeError("Elige una fecha y hora en Desde y Hasta.");
+      return;
+    }
+    if (fromInput > toInput) {
+      setRangeError("Desde debe ser anterior o igual a Hasta.");
+      return;
+    }
+    if (fromInput > nowInput) {
+      setRangeError("Desde no puede estar en el futuro.");
+      return;
+    }
+    setRange({
+      startAt: fromInput,
+      endAt: endExclusive > nowInput ? now.toISOString() : endExclusive,
+      quickDays: null,
+      requestedEndAt: endExclusive,
+    });
+    setRangeError(null);
+    setPage(1);
+  }
+
+  function selectProfile(profileId: string) {
+    setSelectedProfileId(profileId);
+    setPage(1);
+  }
+
+  function refresh() {
+    if (range?.quickDays) {
+      applyQuickRange(range.quickDays);
+    } else if (range?.requestedEndAt) {
+      const now = new Date();
+      const nowInput = toMexicoCityInputValue(now.toISOString());
+      const endAt = range.requestedEndAt > nowInput ? now.toISOString() : range.requestedEndAt;
+      setRange({ ...range, endAt });
+      if (endAt !== range.endAt) setPage(1);
+    }
+    setRefreshVersion((version) => version + 1);
+  }
 
   const maxDailyViews = useMemo(
     () => Math.max(...(stats?.daily.map((row) => row.screen_views) ?? [0]), 1),
     [stats],
   );
 
-  if (loading) {
-    return <p className="text-sm text-ink/60">Cargando stats...</p>;
-  }
-
-  if (error) {
-    return <p className="text-sm text-coral">{error}</p>;
-  }
-
-  if (!stats) {
-    return <p className="text-sm text-steel">Todavia no hay datos de uso.</p>;
-  }
-
   return (
     <div className="space-y-6">
-      <section className="flex flex-wrap items-end justify-between gap-4">
-        <div />
-        <div className="space-y-2">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Ventana</p>
-          <div className="flex gap-2">
+      <section className="space-y-4 rounded-[22px] border border-white/[0.06] bg-white/[0.03] px-4 py-4" aria-label="Filtros de movimientos">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-steel">Periodo de actividad</p>
+          <div className="flex flex-wrap gap-2">
             {dayOptions.map((option) => {
-              const isActive = option === days;
+              const isActive = option === range?.quickDays;
               return (
                 <button
                   key={option}
                   type="button"
-                  onClick={() => setDays(option)}
+                  aria-pressed={isActive}
+                  onClick={() => applyQuickRange(option)}
                   className={
                     isActive
                       ? "app-pill-active px-3 py-2 text-xs uppercase tracking-[0.16em] text-ink"
                       : "app-pill-ghost px-3 py-2 text-xs uppercase tracking-[0.16em]"
                   }
                 >
-                  {option}d
+                  {option === 1 ? "Últimas 24 h" : `${option} días`}
                 </button>
               );
             })}
           </div>
+        </div>
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(event) => { event.preventDefault(); applyCustomRange(); }}
+        >
+          <label className="block space-y-1.5">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-steel">Desde · CDMX</span>
+            <input
+              type="datetime-local"
+              value={fromInput}
+              onChange={(event) => setFromInput(event.target.value)}
+              required
+              step={60}
+              className="field-control text-sm"
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-steel">Hasta · CDMX</span>
+            <input
+              type="datetime-local"
+              value={toInput}
+              onChange={(event) => setToInput(event.target.value)}
+              required
+              step={60}
+              className="field-control text-sm"
+            />
+          </label>
+          <button type="submit" className="app-pill-active px-4 py-2 text-xs uppercase tracking-[0.16em] text-ink">
+            Aplicar
+          </button>
+        </form>
+        <p className="text-[11px] text-steel">Al aplicar, se incluye el minuto final. Si Hasta está en el futuro, se consulta hasta ahora.</p>
+        {rangeError ? <p role="alert" className="text-sm text-coral">{rangeError}</p> : null}
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="block space-y-1.5">
             <span className="text-[10px] uppercase tracking-[0.18em] text-steel">Usuario</span>
             <select
               value={selectedProfileId}
-              onChange={(event) => setSelectedProfileId(event.target.value)}
+              onChange={(event) => selectProfile(event.target.value)}
               className="field-control min-w-[220px] text-sm"
             >
               <option value="">Todos los usuarios</option>
@@ -132,15 +264,36 @@ export function AdminStatsPanel() {
               ))}
             </select>
           </label>
-          <p className="text-[11px] text-steel">
-            {stats.selected_profile_display_name
-              ? `Filtrando: ${stats.selected_profile_display_name}`
-              : "Filtrando: todos"}
-          </p>
-          <p className="text-[11px] text-steel">Actualizado: {formatDateTime(stats.generated_at)}</p>
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={loading}
+            className="app-pill-ghost px-4 py-2 text-xs uppercase tracking-[0.16em] disabled:cursor-wait disabled:opacity-50"
+          >
+            Actualizar
+          </button>
         </div>
+        {usersError ? <p role="alert" className="text-sm text-coral">Usuarios: {usersError}</p> : null}
+        {stats ? (
+          <div className="space-y-1 text-[11px] text-steel">
+            <p>Consulta mostrada: {stats.selected_profile_display_name ?? "todos los usuarios"}</p>
+            <p>Periodo consultado: {formatDateTime(stats.window_start)} – {formatDateTime(new Date(new Date(stats.window_end).getTime() - 1).toISOString())} · CDMX</p>
+            <p>Actualizado: {formatDateTime(stats.generated_at)}. Los indicadores corresponden a todo el periodo.</p>
+          </div>
+        ) : null}
       </section>
 
+      <div className="min-h-6">
+        {loading ? <p role="status" className="text-sm text-ink/60">{stats ? "Actualizando movimientos; abajo se conserva la consulta anterior." : "Cargando movimientos..."}</p> : null}
+        {error ? <p role="alert" className="text-sm text-coral">{error}{stats ? " Los datos de abajo corresponden a la consulta anterior." : ""}</p> : null}
+      </div>
+      {!loading && !error && !stats ? <p className="text-sm text-steel">Todavía no hay datos de uso.</p> : null}
+      {stats ? (
+      <fieldset
+        disabled={loading || Boolean(error)}
+        aria-busy={loading}
+        className={`min-w-0 space-y-6 border-0 p-0 transition-opacity ${loading || error ? "opacity-50" : ""}`}
+      >
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-[18px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
           <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Usuarios unicos</p>
@@ -174,7 +327,7 @@ export function AdminStatsPanel() {
                 <button
                   key={user.profile_id}
                   type="button"
-                  onClick={() => setSelectedProfileId((current) => (current === user.profile_id ? "" : user.profile_id))}
+                  onClick={() => selectProfile(selectedProfileId === user.profile_id ? "" : user.profile_id)}
                   className="block w-full rounded-[16px] border border-white/[0.05] bg-night/20 px-4 py-3 text-left transition hover:border-white/[0.1] hover:bg-night/30"
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -284,8 +437,26 @@ export function AdminStatsPanel() {
       </section>
 
       <section className="rounded-[22px] border border-white/[0.06] bg-white/[0.03] px-4 py-4">
-        <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Reciente</p>
-        <h2 className="mt-2 text-lg font-semibold text-ink">Ultimos eventos</h2>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.22em] text-steel">Movimientos</p>
+            <h2 className="mt-2 text-lg font-semibold text-ink">Historial del periodo</h2>
+            <p className="mt-1 text-[11px] text-steel">{stats.events_total.toLocaleString("es-MX")} movimientos · Más recientes primero</p>
+          </div>
+          <label className="block space-y-1.5">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-steel">Por página</span>
+            <select
+              value={pageSize}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value));
+                setPage(1);
+              }}
+              className="field-control text-sm"
+            >
+              {pageSizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
+        </div>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead className="text-[10px] uppercase tracking-[0.18em] text-steel">
@@ -299,6 +470,13 @@ export function AdminStatsPanel() {
               </tr>
             </thead>
             <tbody>
+              {stats.recent_events.length === 0 ? (
+                <tr className="border-t border-white/[0.05]">
+                  <td colSpan={6} className="py-8 text-center text-sm text-steel">
+                    No hay movimientos para este usuario y periodo.
+                  </td>
+                </tr>
+              ) : null}
               {stats.recent_events.map((event) => (
                 <tr key={event.id} className="border-t border-white/[0.05]">
                   <td className="py-3 pr-4 text-[12px] text-steel">{formatDateTime(event.created_at)}</td>
@@ -316,7 +494,37 @@ export function AdminStatsPanel() {
             </tbody>
           </table>
         </div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.05] pt-4">
+          <p className="text-[11px] text-steel">
+            {stats.events_total > 0
+              ? `Mostrando ${(stats.events_page - 1) * stats.events_page_size + 1}–${Math.min((stats.events_page - 1) * stats.events_page_size + stats.recent_events.length, stats.events_total)} de ${stats.events_total.toLocaleString("es-MX")}`
+              : "0 movimientos"}
+          </p>
+          <nav aria-label="Páginas del historial" className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setPage(stats.events_page - 1)}
+              disabled={stats.events_page <= 1 || stats.events_total_pages === 0}
+              className="app-pill-ghost px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Anterior
+            </button>
+            <span className="text-xs text-steel">
+              {stats.events_total_pages > 0 ? `${stats.events_page} / ${stats.events_total_pages}` : "Sin páginas"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage(stats.events_page + 1)}
+              disabled={stats.events_page >= stats.events_total_pages}
+              className="app-pill-ghost px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Siguiente
+            </button>
+          </nav>
+        </div>
       </section>
+      </fieldset>
+      ) : null}
     </div>
   );
 }
