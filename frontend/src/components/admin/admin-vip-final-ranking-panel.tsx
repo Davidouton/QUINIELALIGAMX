@@ -84,11 +84,15 @@ export function AdminVipFinalRankingPanel() {
 
   function getPrize(rankPosition: number) {
     if (!selectedVip) return 0;
+    const tiedPlayers = rows.filter((row) => row.rank_position === rankPosition).length;
+    if (selectedVip.competition_kind === "weekly_pool") {
+      const prizes = [selectedVip.first_place_amount, selectedVip.second_place_amount, selectedVip.third_place_amount];
+      return prizes.slice(rankPosition - 1, rankPosition - 1 + tiedPlayers).reduce((sum, prize) => sum + prize, 0) / Math.max(tiedPlayers, 1);
+    }
     let positionPrize = 0;
     if (rankPosition === 1) positionPrize = selectedVip.first_place_amount;
     else if (rankPosition === 2) positionPrize = selectedVip.second_place_amount;
     else if (rankPosition === 3) positionPrize = selectedVip.third_place_amount;
-    const tiedPlayers = rows.filter((row) => row.rank_position === rankPosition).length;
     return positionPrize / Math.max(tiedPlayers, 1);
   }
 
@@ -102,6 +106,7 @@ export function AdminVipFinalRankingPanel() {
       "posicion", "jugador", "username", "profile_id", "puntos", "resultados_correctos", "marcadores_exactos", "tipo_membresia",
       "aval", "costo_entrada", "estado_pago", "saldo_por_pagar", "premio_final", "pago_neto", "telefono",
       "banco", "numero_cuenta",
+      ...(selectedVip.competition_kind === "weekly_pool" ? ["goles_desempate", "diferencia_desempate"] : []),
     ];
     const csvRows = rows.map((row) => {
       const pendingBalance = getPendingBalance(row);
@@ -112,6 +117,7 @@ export function AdminVipFinalRankingPanel() {
         getModalityLabel(row.user?.modality), row.user?.aval_display_name ?? "", selectedVip.entry_fee_amount,
         row.membership?.is_paid ? "Pagado" : "Pendiente", pendingBalance, prize, prize - pendingBalance,
         row.user?.contact_phone ?? "", row.user?.bank_name ?? "", row.user?.deposit_account ?? "",
+        ...(selectedVip.competition_kind === "weekly_pool" ? [row.tiebreak_prediction ?? "", row.tiebreak_difference ?? ""] : []),
       ];
     });
     const csv = [headers, ...csvRows].map((row) => row.map(escapeCsv).join(",")).join("\r\n");
@@ -156,6 +162,7 @@ export function AdminVipFinalRankingPanel() {
                 {[
                   "Pos.", "Jugador", "Puntos", "Membresía", "Aval", "Entrada", "Pago", "Por pagar",
                   "Premio final", "Pago neto", "Teléfono", "Banco", "Número de cuenta",
+                  ...(selectedVip?.competition_kind === "weekly_pool" ? ["Goles desempate", "Diferencia"] : []),
                 ].map((label) => <th key={label} className="px-3 py-3">{label}</th>)}
               </tr>
             </thead>
@@ -181,11 +188,15 @@ export function AdminVipFinalRankingPanel() {
                     <td className="px-3 py-3 text-steel">{row.user?.contact_phone ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.bank_name ?? "-"}</td>
                     <td className="px-3 py-3 text-steel">{row.user?.deposit_account ?? "-"}</td>
+                    {selectedVip?.competition_kind === "weekly_pool" ? <>
+                      <td className="px-3 py-3 text-steel">{row.tiebreak_prediction ?? "—"}</td>
+                      <td className="px-3 py-3 text-steel">{row.tiebreak_difference ?? "—"}</td>
+                    </> : null}
                   </tr>
                 );
               })}
               {rows.length === 0 ? (
-                <tr><td colSpan={13} className="px-3 py-8 text-sm text-steel">Esta VIP todavía no tiene posiciones calculadas.</td></tr>
+                <tr><td colSpan={selectedVip?.competition_kind === "weekly_pool" ? 15 : 13} className="px-3 py-8 text-sm text-steel">Esta VIP todavía no tiene posiciones calculadas.</td></tr>
               ) : null}
             </tbody>
           </table>

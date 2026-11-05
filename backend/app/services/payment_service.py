@@ -25,6 +25,7 @@ from app.models.entities import (
     SeasonMembership,
     SurvivorMembership,
     VipCompetition,
+    VipCompetitionKind,
     VipMembership,
     VipMembershipStatus,
 )
@@ -634,12 +635,31 @@ class PaymentService:
             db.add(membership)
             return
 
+        # Serialize VIP entitlements with weekly closure and membership changes.
+        # A completed checkout remains paid even when its webhook arrives late.
+        vip = db.scalar(select(VipCompetition).where(
+            VipCompetition.id == payment.scope_id,
+        ).with_for_update().execution_options(populate_existing=True))
         membership = db.scalar(
             select(VipMembership).where(
                 VipMembership.vip_competition_id == payment.scope_id,
                 VipMembership.profile_id == payment.profile_id,
-            )
+            ).with_for_update().execution_options(populate_existing=True)
         )
+        if (
+            vip is not None
+            and vip.competition_kind == VipCompetitionKind.WEEKLY_POOL
+            and vip.lifecycle_status != "active"
+        ):
+            if membership is not None and membership.status == VipMembershipStatus.APPROVED:
+                membership.is_paid = True
+                db.add(membership)
+            else:
+                # Do not change the finalized participant set or prize pool.
+                # Retain the confirmed payment for administrative reconciliation.
+                payment_metadata["entitlement_review_required"] = "weekly_pool_closed"
+                payment.metadata_json = json.dumps(payment_metadata, default=str)
+            return
         if membership is None:
             membership = VipMembership(
                 vip_competition_id=payment.scope_id,

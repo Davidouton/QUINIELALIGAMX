@@ -143,6 +143,8 @@ from app.schemas.vip import (
     AdminVipTeamWinnerEntryPaymentRequest,
     AdminVipTeamWinnerTeamStatusRequest,
     AdminVipUpsertRequest,
+    AdminVipWeeklyMatchesRequest,
+    AdminVipWeeklyResultsRequest,
 )
 from app.api.v1.routes.rules import build_rule_page_out, get_or_create_rule_page
 from app.services.match_service import MatchService
@@ -160,6 +162,7 @@ from app.services.sync_matches import sync_matches
 from app.services.sync_odds import sync_odds
 from app.services.sync_results import sync_results
 from app.services.vip_service import VipService
+from app.services.weekly_pool_service import WeeklyPoolService
 
 logger = logging.getLogger(__name__)
 
@@ -3598,6 +3601,28 @@ def add_admin_vip_membership(
     )
     background_tasks.add_task(run_vip_recalculate_background, vip_id)
     return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
+@router.put("/vip/{vip_id}/weekly/matches")
+def configure_admin_weekly_matches(
+    vip_id: str,
+    payload: AdminVipWeeklyMatchesRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> dict[str, str]:
+    WeeklyPoolService().configure_matches(db, vip_id, payload)
+    return {"status": "ok"}
+
+
+@router.put("/vip/{vip_id}/weekly/results")
+def save_admin_weekly_results(
+    vip_id: str,
+    payload: AdminVipWeeklyResultsRequest,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> dict[str, str]:
+    WeeklyPoolService().save_results(db, vip_id, payload)
+    return {"status": "ok"}
 
 
 @router.put("/vip/{vip_id}/team-winner/config", response_model=AdminVipCompetitionOut)

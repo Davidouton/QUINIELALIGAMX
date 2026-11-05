@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { AdminVipWeeklyPanel } from "@/components/admin/admin-vip-weekly-panel";
 import { backendFetch } from "@/lib/api/backend";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
@@ -157,6 +158,7 @@ function normalizeVipCompetition(vip: AdminVipCompetition): AdminVipCompetition 
     team_winner_teams: Array.isArray(vip.team_winner_teams) ? vip.team_winner_teams : [],
     team_winner_entries: Array.isArray(vip.team_winner_entries) ? vip.team_winner_entries : [],
     question_pool_questions: questionPoolQuestions,
+    weekly_matches: Array.isArray(vip.weekly_matches) ? vip.weekly_matches : [],
   };
 }
 
@@ -260,6 +262,7 @@ export function AdminVipPanel() {
   const teamWinnerTeams = selectedVip?.team_winner_teams ?? [];
   const isTeamWinnerMode = form.competitionKind === "team_winner";
   const isQuestionPoolMode = form.competitionKind === "question_pool";
+  const isWeeklyPoolMode = form.competitionKind === "weekly_pool";
   const questionPoolQuestions = useMemo(
     () =>
       [...(selectedVip?.question_pool_questions ?? [])].sort((left, right) => {
@@ -1142,14 +1145,14 @@ export function AdminVipPanel() {
                       ? "Equipos"
                       : vip.competition_kind === "question_pool"
                         ? "Preguntas"
-                        : "Jornadas"}
+                        : vip.competition_kind === "weekly_pool" ? "Juegos" : "Jornadas"}
                   </p>
                   <p className="mt-1 text-sm font-semibold text-ink">
                     {vip.competition_kind === "team_winner"
                       ? vip.team_winner_teams.length
                       : vip.competition_kind === "question_pool"
                         ? vip.question_pool_questions.length
-                        : vip.matchdays.length}
+                        : vip.competition_kind === "weekly_pool" ? (vip.weekly_matches?.length ?? 0) : vip.matchdays.length}
                   </p>
                 </div>
                 <div>
@@ -1247,6 +1250,7 @@ export function AdminVipPanel() {
                     setForm((current) => ({
                       ...current,
                       competitionKind: event.target.value as VipCompetitionKind,
+                      name: event.target.value === "weekly_pool" && !current.name.trim() ? "Quinielón Semanal" : current.name,
                       matchdayIds: event.target.value === "matchday" ? current.matchdayIds : [],
                     }))
                   }
@@ -1255,6 +1259,7 @@ export function AdminVipPanel() {
                   <option value="matchday">VIP por jornadas</option>
                   <option value="team_winner">Equipo ganador</option>
                   <option value="question_pool">Preguntas / trivia</option>
+                  <option value="weekly_pool">Quinielón Semanal</option>
                 </select>
               </label>
               <label className="grid gap-1 lg:col-span-2">
@@ -1421,6 +1426,14 @@ export function AdminVipPanel() {
             </div>
             ) : null}
           </section>
+
+          {isWeeklyPoolMode ? (
+            selectedVip?.competition_kind === "weekly_pool" ? (
+              <AdminVipWeeklyPanel key={selectedVip.id} vip={selectedVip} onRefresh={() => loadVipDetail(selectedVip.id)} />
+            ) : (
+              <p className="text-sm text-steel">Primero crea la VIP. Después carga los 10 juegos y elige el partido de desempate.</p>
+            )
+          ) : null}
 
           {isQuestionPoolMode ? (
             <section className="space-y-5">
@@ -2052,7 +2065,9 @@ export function AdminVipPanel() {
               </div>
               {selectedVip.join_locked ? (
                 <p className="text-xs text-steel">
-                  La VIP ya cerro solicitudes publicas; el alta manual admin sigue disponible.
+                  {selectedVip.competition_kind === "weekly_pool" && !selectedVip.weekly_ready
+                    ? "La VIP está en configuración. Guarda los 10 juegos para abrir el registro."
+                    : "La VIP ya cerró solicitudes públicas; el alta manual admin sigue disponible."}
                 </p>
               ) : null}
             </section>

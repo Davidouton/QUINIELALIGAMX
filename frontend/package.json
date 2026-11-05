@@ -10,7 +10,8 @@
     "build:verify": "NEXT_DIST_DIR=.next-verify node ./node_modules/next/dist/bin/next build",
     "start": "node ./node_modules/next/dist/bin/next start",
     "start:local": "NEXT_DIST_DIR=.next-build node ./node_modules/next/dist/bin/next start",
-    "lint": "node ./node_modules/next/dist/bin/next lint"
+    "lint": "node ./node_modules/next/dist/bin/next lint",
+    "test:weekly": "node --test tests/vip-weekly.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

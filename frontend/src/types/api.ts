@@ -351,8 +351,24 @@ export interface VipMatchday {
   name: string;
 }
 
-export type VipCompetitionKind = "matchday" | "team_winner" | "question_pool";
+export type VipCompetitionKind = "matchday" | "team_winner" | "question_pool" | "weekly_pool";
 export type VipLifecycleStatus = "active" | "closed_pending_payments" | "settled" | "archived";
+
+export type VipWeeklySelection = "home" | "draw" | "away";
+
+export interface VipWeeklyMatch {
+  id: string;
+  home_team: string;
+  away_team: string;
+  kickoff_at: string;
+  lock_at: string;
+  is_tiebreaker: boolean;
+  home_score: number | null;
+  away_score: number | null;
+  my_selection: VipWeeklySelection | null;
+  my_total_goals: number | null;
+  is_locked: boolean;
+}
 
 export interface VipLeaderboardEntry {
   profile_id: string;
@@ -362,6 +378,8 @@ export interface VipLeaderboardEntry {
   correct_results: number;
   exact_scores: number;
   rank_position: number;
+  tiebreak_prediction?: number | null;
+  tiebreak_difference?: number | null;
 }
 
 export interface VipQuestionPoolOption {
@@ -459,6 +477,8 @@ export interface VipCompetition {
   team_winner_teams: VipTeamWinnerTeam[];
   team_winner_entries: VipTeamWinnerEntry[];
   question_pool_questions: VipQuestionPoolQuestion[];
+  weekly_matches?: VipWeeklyMatch[];
+  weekly_ready?: boolean;
 }
 
 export interface VipJoinResponse {
@@ -500,6 +520,8 @@ export interface AdminVipCompetition {
   team_winner_teams: VipTeamWinnerTeam[];
   team_winner_entries: VipTeamWinnerEntry[];
   question_pool_questions: VipQuestionPoolQuestion[];
+  weekly_matches?: VipWeeklyMatch[];
+  weekly_ready?: boolean;
 }
 
 export interface PricingRule {

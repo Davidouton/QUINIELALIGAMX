@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, Uuid, func
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Enum as SqlEnum, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -93,6 +93,7 @@ class VipCompetitionKind(str, Enum):
     MATCHDAY = "matchday"
     TEAM_WINNER = "team_winner"
     QUESTION_POOL = "question_pool"
+    WEEKLY_POOL = "weekly_pool"
 
 
 class PickReminderKind(str, Enum):
@@ -887,6 +888,63 @@ class VipStanding(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+class VipWeeklyMatch(Base):
+    __tablename__ = "vip_weekly_matches"
+    __table_args__ = (
+        UniqueConstraint("vip_competition_id", "sort_order", name="uq_vip_weekly_match_order"),
+        CheckConstraint("sort_order BETWEEN 1 AND 10", name="ck_vip_weekly_match_order"),
+        CheckConstraint(
+            "(home_score IS NULL AND away_score IS NULL) OR "
+            "(home_score IS NOT NULL AND away_score IS NOT NULL "
+            "AND home_score BETWEEN 0 AND 99 AND away_score BETWEEN 0 AND 99)",
+            name="ck_vip_weekly_match_scores",
+        ),
+        Index("idx_vip_weekly_matches_vip_kickoff", "vip_competition_id", "kickoff_at"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    vip_competition_id: Mapped[str] = mapped_column(
+        UUID_SQL, ForeignKey("vip_competitions.id", ondelete="CASCADE"), index=True,
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    home_team: Mapped[str] = mapped_column(String(160), nullable=False)
+    away_team: Mapped[str] = mapped_column(String(160), nullable=False)
+    kickoff_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_tiebreaker: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    home_score: Mapped[int | None] = mapped_column(Integer)
+    away_score: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
+    )
+
+
+class VipWeeklyPick(Base):
+    __tablename__ = "vip_weekly_picks"
+    __table_args__ = (
+        UniqueConstraint("match_id", "profile_id", name="uq_vip_weekly_pick_profile"),
+        CheckConstraint("selection IN ('home', 'draw', 'away')", name="ck_vip_weekly_pick_selection"),
+        CheckConstraint("total_goals BETWEEN 0 AND 99", name="ck_vip_weekly_pick_total"),
+        Index("idx_vip_weekly_picks_profile", "profile_id"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
+    match_id: Mapped[str] = mapped_column(
+        UUID_SQL, ForeignKey("vip_weekly_matches.id", ondelete="CASCADE"), index=True,
+    )
+    profile_id: Mapped[str] = mapped_column(
+        UUID_SQL, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False,
+    )
+    selection: Mapped[PickSelection] = mapped_column(
+        SqlEnum(PickSelection, native_enum=False, values_callable=enum_values), nullable=False,
+    )
+    total_goals: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
     )
 
 

@@ -9,11 +9,24 @@ from app.schemas.vip import (
     VipQuestionPoolBulkResponseRequest,
     VipQuestionPoolResponseRequest,
     VipRequestJoinResponse,
+    VipWeeklyPicksRequest,
 )
 from app.services.vip_service import VipService
+from app.services.weekly_pool_service import WeeklyPoolService
 
 router = APIRouter()
 service = VipService()
+
+
+@router.put("/vip/{vip_id}/weekly/picks")
+def save_weekly_picks(
+    vip_id: str,
+    payload: VipWeeklyPicksRequest,
+    db: Session = Depends(get_db),
+    current_profile: Profile = Depends(get_current_profile),
+) -> dict[str, str]:
+    WeeklyPoolService().save_picks(db, vip_id, current_profile, payload)
+    return {"status": "ok"}
 
 
 @router.get("/vip", response_model=list[VipCompetitionOut])

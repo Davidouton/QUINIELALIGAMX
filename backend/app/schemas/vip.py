@@ -1,9 +1,10 @@
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.models.entities import VipMembershipStatus
+from app.models.entities import PickSelection, VipMembershipStatus
 
 
 class VipMatchdayOut(BaseModel):
@@ -21,6 +22,120 @@ class VipLeaderboardEntryOut(BaseModel):
     correct_results: int
     exact_scores: int
     rank_position: int
+    tiebreak_prediction: int | None = None
+    tiebreak_difference: int | None = None
+
+
+class VipWeeklyMatchOut(BaseModel):
+    id: str
+    sort_order: int
+    home_team: str
+    away_team: str
+    kickoff_at: datetime
+    lock_at: datetime
+    is_tiebreaker: bool
+    home_score: int | None = None
+    away_score: int | None = None
+    my_selection: PickSelection | None = None
+    my_total_goals: int | None = None
+    is_locked: bool
+
+
+class AdminVipWeeklyMatchInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = None
+    home_team: str = Field(min_length=1, max_length=160)
+    away_team: str = Field(min_length=1, max_length=160)
+    kickoff_at: AwareDatetime
+    is_tiebreaker: bool = False
+
+    @field_validator("id")
+    @classmethod
+    def valid_id(cls, value: str | None) -> str | None:
+        return str(UUID(value)) if value is not None else None
+
+    @field_validator("home_team", "away_team")
+    @classmethod
+    def clean_team(cls, value: str) -> str:
+        value = value.strip()
+        if not value or any(ord(char) < 32 for char in value):
+            raise ValueError("Escribe un nombre de equipo válido")
+        return value
+
+    @model_validator(mode="after")
+    def distinct_teams(self) -> "AdminVipWeeklyMatchInput":
+        if self.home_team.casefold() == self.away_team.casefold():
+            raise ValueError("Local y visitante deben ser distintos")
+        return self
+
+
+class AdminVipWeeklyMatchesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    matches: list[AdminVipWeeklyMatchInput] = Field(min_length=10, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_matches(self) -> "AdminVipWeeklyMatchesRequest":
+        if sum(match.is_tiebreaker for match in self.matches) != 1:
+            raise ValueError("Selecciona exactamente un partido para el desempate")
+        ids = [match.id for match in self.matches if match.id is not None]
+        if len(ids) != len(set(ids)):
+            raise ValueError("No repitas partidos en la configuración")
+        fixtures = [
+            (match.home_team.casefold(), match.away_team.casefold(), match.kickoff_at)
+            for match in self.matches
+        ]
+        if len(fixtures) != len(set(fixtures)):
+            raise ValueError("No repitas el mismo partido")
+        return self
+
+
+class AdminVipWeeklyResultInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    match_id: str
+    home_score: int = Field(ge=0, le=99, strict=True)
+    away_score: int = Field(ge=0, le=99, strict=True)
+
+    @field_validator("match_id")
+    @classmethod
+    def valid_id(cls, value: str) -> str:
+        return str(UUID(value))
+
+
+class AdminVipWeeklyResultsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    results: list[AdminVipWeeklyResultInput] = Field(min_length=1, max_length=10)
+
+    @model_validator(mode="after")
+    def unique_matches(self) -> "AdminVipWeeklyResultsRequest":
+        ids = [result.match_id for result in self.results]
+        if len(ids) != len(set(ids)):
+            raise ValueError("No repitas resultados del mismo partido")
+        return self
+
+
+class VipWeeklyPickInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    match_id: str
+    selection: PickSelection
+    total_goals: int | None = Field(default=None, ge=0, le=99, strict=True)
+
+    @field_validator("match_id")
+    @classmethod
+    def valid_id(cls, value: str) -> str:
+        return str(UUID(value))
+
+
+class VipWeeklyPicksRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    picks: list[VipWeeklyPickInput] = Field(min_length=1, max_length=10)
+
+    @model_validator(mode="after")
+    def unique_matches(self) -> "VipWeeklyPicksRequest":
+        ids = [pick.match_id for pick in self.picks]
+        if len(ids) != len(set(ids)):
+            raise ValueError("No repitas pronósticos del mismo partido")
+        return self
 
 
 class VipQuestionPoolOptionOut(BaseModel):
@@ -124,7 +239,7 @@ class VipCompetitionOut(BaseModel):
     season_id: str
     season_name: str
     season_visibility_status: Literal["live", "testing", "closed", "archived"] = "live"
-    competition_kind: Literal["matchday", "team_winner", "question_pool"] = "matchday"
+    competition_kind: Literal["matchday", "team_winner", "question_pool", "weekly_pool"] = "matchday"
     name: str
     entry_fee_amount: float
     admin_commission_pct: float = 0
@@ -155,6 +270,8 @@ class VipCompetitionOut(BaseModel):
     team_winner_teams: list[VipTeamWinnerTeamOut] = []
     team_winner_entries: list[VipTeamWinnerEntryOut] = []
     question_pool_questions: list[VipQuestionPoolQuestionOut] = []
+    weekly_matches: list[VipWeeklyMatchOut] = []
+    weekly_ready: bool = False
 
 
 class VipRequestJoinResponse(BaseModel):
@@ -163,7 +280,7 @@ class VipRequestJoinResponse(BaseModel):
 
 
 class AdminVipUpsertRequest(BaseModel):
-    competition_kind: Literal["matchday", "team_winner", "question_pool"] = "matchday"
+    competition_kind: Literal["matchday", "team_winner", "question_pool", "weekly_pool"] = "matchday"
     season_id: str | None = None
     name: str = Field(min_length=1, max_length=160)
     entry_fee_amount: float = Field(default=0, ge=0, le=1000000)
@@ -182,7 +299,7 @@ class AdminVipUpsertRequest(BaseModel):
             raise ValueError("La suma de comision y premios no puede rebasar 100%")
         if self.competition_kind == "matchday" and not self.matchday_ids:
             raise ValueError("Selecciona al menos una jornada para la VIP")
-        if self.competition_kind in {"team_winner", "question_pool"} and not self.season_id:
+        if self.competition_kind in {"team_winner", "question_pool", "weekly_pool"} and not self.season_id:
             raise ValueError("Selecciona una temporada para esta VIP")
         if self.competition_kind == "question_pool" and self.questions_lock_at is None:
             raise ValueError("Define fecha y hora de bloqueo para la VIP de preguntas")
@@ -284,7 +401,7 @@ class AdminVipCompetitionOut(BaseModel):
     id: str
     season_id: str
     season_name: str
-    competition_kind: Literal["matchday", "team_winner", "question_pool"] = "matchday"
+    competition_kind: Literal["matchday", "team_winner", "question_pool", "weekly_pool"] = "matchday"
     name: str
     entry_fee_amount: float
     admin_commission_pct: float = 0
@@ -314,3 +431,5 @@ class AdminVipCompetitionOut(BaseModel):
     team_winner_teams: list[VipTeamWinnerTeamOut] = []
     team_winner_entries: list[VipTeamWinnerEntryOut] = []
     question_pool_questions: list[VipQuestionPoolQuestionOut] = []
+    weekly_matches: list[VipWeeklyMatchOut] = []
+    weekly_ready: bool = False

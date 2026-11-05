@@ -32,6 +32,8 @@ from app.models.entities import (
     VipStanding,
     VipTeamWinnerEntry,
     VipTeamWinnerTeam,
+    VipWeeklyMatch,
+    VipWeeklyPick,
 )
 from app.schemas.vip import (
     AdminVipQuestionPoolBulkCorrectOptionRequest,
@@ -60,6 +62,7 @@ from app.schemas.vip import (
     VipTeamWinnerTeamOut,
 )
 from app.services.scoring_service import ScoringService
+from app.services.weekly_pool_service import WeeklyPoolService
 
 
 class VipService:
@@ -146,6 +149,10 @@ class VipService:
                     is_active=vip.is_active,
                     lifecycle_status=vip.lifecycle_status,
                     questions_lock_at=vip.questions_lock_at,
+                    weekly_matches=(WeeklyPoolService().match_outs(db, vip.id, profile.id)
+                                    if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL else []),
+                    weekly_ready=(WeeklyPoolService().ready(db, vip.id)
+                                  if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL else False),
                     matchdays=matchdays,
                     approved_members_count=sum(1 for membership in memberships if membership.status == VipMembershipStatus.APPROVED),
                     pending_requests_count=sum(1 for membership in memberships if membership.status == VipMembershipStatus.PENDING),
@@ -203,12 +210,14 @@ class VipService:
 
     def request_join(self, db: Session, vip_id: str, profile: Profile) -> VipMembership:
         self._ensure_question_pool_schema(db)
-        vip = db.get(VipCompetition, vip_id)
+        vip = db.scalar(select(VipCompetition).where(VipCompetition.id == vip_id).with_for_update())
         if vip is None or not vip.is_active:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
 
         join_lock = self._join_lock_for_vip(db, vip_id)
         if join_lock["locked"]:
+            if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL and join_lock["lock_at"] is None:
+                raise HTTPException(status_code=400, detail="El administrador aún está configurando los 10 partidos")
             lock_at_text = join_lock["lock_at"].strftime("%d/%m/%Y %H:%M") if join_lock["lock_at"] else "la fecha limite"
             match_label = join_lock["match_label"] or "el primer partido de la VIP"
             raise HTTPException(
@@ -281,6 +290,10 @@ class VipService:
                 is_active=vip.is_active,
                 lifecycle_status=vip.lifecycle_status,
                 questions_lock_at=vip.questions_lock_at,
+                weekly_matches=(WeeklyPoolService().match_outs(db, vip.id)
+                                if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL else []),
+                weekly_ready=(WeeklyPoolService().ready(db, vip.id)
+                              if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL else False),
                 created_by_profile_id=vip.created_by_profile_id,
                 created_by_display_name=(
                     bundle["profile_names"].get(vip.created_by_profile_id)
@@ -379,7 +392,7 @@ class VipService:
         payload: AdminVipUpsertRequest,
     ) -> VipCompetition:
         self._ensure_question_pool_schema(db)
-        vip = db.get(VipCompetition, vip_id)
+        vip = db.scalar(select(VipCompetition).where(VipCompetition.id == vip_id).with_for_update())
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
         if vip.lifecycle_status != "active":
@@ -390,6 +403,17 @@ class VipService:
 
         season, matchdays = self._resolve_vip_season_and_matchdays(db, payload)
         previous_kind = vip.competition_kind
+        if previous_kind != payload.competition_kind and VipCompetitionKind.WEEKLY_POOL in {
+            previous_kind, payload.competition_kind,
+        }:
+            has_members = db.scalar(select(VipMembership.id).where(
+                VipMembership.vip_competition_id == vip.id,
+            ).limit(1))
+            has_picks = db.scalar(select(VipWeeklyPick.id).join(VipWeeklyMatch).where(
+                VipWeeklyMatch.vip_competition_id == vip.id,
+            ).limit(1))
+            if has_members or has_picks:
+                raise HTTPException(status_code=409, detail="No puedes cambiar el modo de una VIP con participantes")
         vip.season_id = season.id
         vip.competition_kind = payload.competition_kind
         vip.name = payload.name.strip()
@@ -407,13 +431,15 @@ class VipService:
                 self._clear_team_winner_data(db, vip.id)
             if previous_kind == VipCompetitionKind.QUESTION_POOL:
                 self._clear_question_pool_data(db, vip.id)
+            if previous_kind == VipCompetitionKind.WEEKLY_POOL:
+                self._clear_weekly_pool_data(db, vip.id)
         self._replace_matchdays(db, vip.id, matchdays)
         db.commit()
         db.refresh(vip)
         return vip
 
     def close_admin_vip(self, db: Session, vip_id: str) -> VipCompetition:
-        vip = db.get(VipCompetition, vip_id)
+        vip = db.scalar(select(VipCompetition).where(VipCompetition.id == vip_id).with_for_update())
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
         if vip.lifecycle_status != "active":
@@ -435,7 +461,10 @@ class VipService:
                     detail=f"Cierra primero las jornadas pendientes: {labels}",
                 )
 
-        self.recalculate_vip_standings(db, vip.id)
+        if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL:
+            WeeklyPoolService().validate_close(db, vip.id)
+        else:
+            self.recalculate_vip_standings(db, vip.id)
         vip.lifecycle_status = "closed_pending_payments"
         vip.is_active = False
         db.add(vip)
@@ -461,10 +490,12 @@ class VipService:
 
     def delete_admin_vip(self, db: Session, vip_id: str) -> None:
         self._ensure_question_pool_schema(db)
-        vip = db.get(VipCompetition, vip_id)
+        vip = db.scalar(select(VipCompetition).where(VipCompetition.id == vip_id).with_for_update())
         if vip is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
 
+        if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL:
+            self._clear_weekly_pool_data(db, vip.id)
         question_ids = list(
             db.scalars(
                 select(VipQuestionPoolQuestion.id).where(VipQuestionPoolQuestion.vip_competition_id == vip.id)
@@ -490,9 +521,7 @@ class VipService:
         current_profile: Profile,
     ) -> VipMembership:
         self._ensure_question_pool_schema(db)
-        vip = db.get(VipCompetition, vip_id)
-        if vip is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VIP no encontrada")
+        self._lock_membership_changes(db, vip_id)
 
         profile = db.get(Profile, payload.profile_id)
         if profile is None:
@@ -1201,6 +1230,7 @@ class VipService:
         current_profile: Profile,
         payload: AdminVipMembershipDecisionRequest,
     ) -> VipMembership:
+        self._lock_membership_changes(db, vip_id)
         membership = db.get(VipMembership, membership_id)
         if membership is None or membership.vip_competition_id != vip_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Solicitud no encontrada")
@@ -1224,6 +1254,7 @@ class VipService:
         current_profile: Profile,
         payload: AdminVipMembershipDecisionRequest,
     ) -> VipMembership:
+        self._lock_membership_changes(db, vip_id)
         membership = db.get(VipMembership, membership_id)
         if membership is None or membership.vip_competition_id != vip_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Miembro VIP no encontrado")
@@ -1239,6 +1270,17 @@ class VipService:
         db.commit()
         db.refresh(membership)
         return membership
+
+    def _lock_membership_changes(self, db: Session, vip_id: str) -> None:
+        # Match the weekly pick lock order (VIP, then member), and keep the
+        # participant set stable once a weekly competition reaches settlement.
+        vip = db.scalar(select(VipCompetition).where(
+            VipCompetition.id == vip_id,
+        ).with_for_update().execution_options(populate_existing=True))
+        if vip is None:
+            raise HTTPException(status_code=404, detail="VIP no encontrada")
+        if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL and vip.lifecycle_status != "active":
+            raise HTTPException(status_code=409, detail="Los participantes quedan fijos al cerrar el Quinielón")
 
     def update_membership_payment(
         self,
@@ -1300,6 +1342,19 @@ class VipService:
         if not profile_ids:
             db.commit()
             return 0
+
+        if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL:
+            rows = WeeklyPoolService().leaderboard(
+                db, vip.id, profile_ids, self._profile_names(db, profile_ids), {},
+            )
+            for row in rows:
+                db.add(VipStanding(
+                    vip_competition_id=vip.id, profile_id=row.profile_id,
+                    total_points=row.total_points, correct_results=row.correct_results,
+                    exact_scores=0, rank_position=row.rank_position,
+                ))
+            db.commit()
+            return len(rows)
 
         if vip.competition_kind == VipCompetitionKind.QUESTION_POOL:
             totals = self._calculate_question_pool_leaderboard_totals(db, vip.id, profile_ids)
@@ -1521,6 +1576,8 @@ class VipService:
         result: dict[str, dict[str, object]] = {}
         vip_by_id = {vip.id: vip for vip in vip_rows}
         for vip in vip_rows:
+            if vip.competition_kind == VipCompetitionKind.WEEKLY_POOL:
+                result[vip.id] = WeeklyPoolService().join_lock(db, vip.id)
             if vip.competition_kind == VipCompetitionKind.QUESTION_POOL and vip.questions_lock_at is not None:
                 lock_at = ensure_utc(vip.questions_lock_at)
                 result[vip.id] = {
@@ -1554,7 +1611,9 @@ class VipService:
 
         for vip_id, matchday_ids in matchday_ids_by_vip.items():
             vip = vip_by_id.get(vip_id)
-            if vip is not None and vip.competition_kind == VipCompetitionKind.QUESTION_POOL:
+            if vip is not None and vip.competition_kind in {
+                VipCompetitionKind.QUESTION_POOL, VipCompetitionKind.WEEKLY_POOL,
+            }:
                 continue
             selected_row = next(
                 (
@@ -1596,6 +1655,13 @@ class VipService:
         if any(profile_id not in profile_name_map for profile_id in approved_profile_ids):
             profile_name_map.update(self._profile_names(db, approved_profile_ids))
 
+        vip = db.get(VipCompetition, vip_id)
+        if vip is not None and vip.competition_kind == VipCompetitionKind.WEEKLY_POOL:
+            # Weekly rankings include the goals tiebreaker, which the legacy cache
+            # does not store. Compute from current picks/results for settlements too.
+            return self._with_leaderboard_usernames(db, WeeklyPoolService().leaderboard(
+                db, vip_id, approved_profile_ids, profile_name_map, {},
+            ))
         cached_rows = self._cached_leaderboard(vip_id, approved_profile_ids, profile_name_map, db)
         if cached_rows is not None:
             return self._with_leaderboard_usernames(db, cached_rows)
@@ -2066,6 +2132,11 @@ class VipService:
     def _clear_team_winner_data(self, db: Session, vip_id: str) -> None:
         db.execute(delete(VipTeamWinnerEntry).where(VipTeamWinnerEntry.vip_competition_id == vip_id))
         db.execute(delete(VipTeamWinnerTeam).where(VipTeamWinnerTeam.vip_competition_id == vip_id))
+
+    def _clear_weekly_pool_data(self, db: Session, vip_id: str) -> None:
+        match_ids = select(VipWeeklyMatch.id).where(VipWeeklyMatch.vip_competition_id == vip_id)
+        db.execute(delete(VipWeeklyPick).where(VipWeeklyPick.match_id.in_(match_ids)))
+        db.execute(delete(VipWeeklyMatch).where(VipWeeklyMatch.vip_competition_id == vip_id))
 
     def _clear_question_pool_data(self, db: Session, vip_id: str) -> None:
         question_ids = list(

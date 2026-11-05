@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { VipWeeklyBoard } from "@/components/vip/vip-weekly-board";
 import { backendFetch } from "@/lib/api/backend";
+import { buildVipDetailPath } from "@/lib/api/vip";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type {
   CheckoutSessionResponse,
@@ -85,6 +87,9 @@ function registrationStatusCopy(vip: VipCompetition) {
       dot: "bg-gold",
     };
   }
+  if (vip.competition_kind === "weekly_pool" && !vip.weekly_ready) {
+    return { label: "En configuración", sublabel: "Faltan los 10 juegos", tone: "text-gold", dot: "bg-gold" };
+  }
   if (vip.join_locked) {
     return {
       label: "Jugandose",
@@ -142,6 +147,9 @@ function membershipIconType(status: VipMembershipStatus | null) {
 }
 
 function getVipModeLabel(vip: VipCompetition) {
+  if (vip.competition_kind === "weekly_pool") {
+    return "Quinielón Semanal · 10 juegos";
+  }
   if (vip.competition_kind === "team_winner") {
     return `${vip.team_winner_teams.length} equipos`;
   }
@@ -200,6 +208,9 @@ function getTeamWinnerEntryTeamName(
 }
 
 function getVipJoinLockCopy(vip: VipCompetition) {
+  if (vip.competition_kind === "weekly_pool" && !vip.weekly_ready) {
+    return "El registro se habilita cuando el administrador guarda los 10 juegos.";
+  }
   if (!vip.join_lock_at || !vip.join_lock_match_label) {
     return null;
   }
@@ -354,6 +365,14 @@ export function VipPageContent() {
         ? current
         : (rows.find((vip) => vip.season_visibility_status !== "archived" && vip.lifecycle_status !== "archived")?.id ?? rows[0]?.id ?? ""),
     );
+  }
+
+  async function refreshWeeklyVip(vipId: string) {
+    const token = await getBrowserAccessToken();
+    const rows = await backendFetch<VipCompetition[]>(buildVipDetailPath(vipId), token);
+    const updated = rows.find((vip) => vip.id === vipId);
+    if (!updated) throw new Error("No se pudo actualizar el Quinielón Semanal.");
+    setVips((current) => current.map((vip) => vip.id === updated.id ? updated : vip));
   }
 
   useEffect(() => {
@@ -646,7 +665,9 @@ export function VipPageContent() {
 
               {!selectedVipIsArchived && selectedVip.my_membership?.status !== "approved" ? (
                 <div className="flex flex-wrap items-center gap-3 border-y border-white/[0.06] py-3">
-                  {selectedVip.join_locked && !selectedVip.my_membership ? (
+                  {selectedVip.competition_kind === "weekly_pool" && !selectedVip.weekly_ready ? (
+                    <span className="text-sm font-semibold text-gold">En configuración</span>
+                  ) : selectedVip.join_locked && (!selectedVip.my_membership || selectedVip.competition_kind === "weekly_pool") ? (
                     <span className="text-sm font-semibold text-coral">Solicitud cerrada</span>
                   ) : selectedVipPricing ? (
                     <button
@@ -726,6 +747,10 @@ export function VipPageContent() {
                       .join(" · ")}
                   </p>
                 </div>
+              ) : null}
+
+              {selectedVip.competition_kind === "weekly_pool" ? (
+                <VipWeeklyBoard key={selectedVip.id} vip={selectedVip} onRefresh={() => refreshWeeklyVip(selectedVip.id)} />
               ) : null}
 
               {selectedVip.competition_kind === "question_pool" ? (

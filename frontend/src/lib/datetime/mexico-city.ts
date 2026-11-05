@@ -67,6 +67,25 @@ export function toMexicoCityInputValue(value: string) {
   return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
+/** Interpret a datetime-local input in Mexico City, independently of the browser's zone. */
+export function fromMexicoCityInputValue(value: string): string | null {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  const wallTime = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+  if (!Number.isFinite(wallTime)) return null;
+  let timestamp = wallTime;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const parts = getFormattedParts(new Date(timestamp));
+    const formattedWallTime = Date.UTC(
+      Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute),
+    );
+    timestamp += wallTime - formattedWallTime;
+  }
+  const result = new Date(timestamp).toISOString();
+  return toMexicoCityInputValue(result) === value ? result : null;
+}
+
 export function shiftMexicoCityInputValue(value: string, minutes: number) {
   if (!value) {
     return "";

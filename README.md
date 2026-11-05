@@ -66,3 +66,32 @@ npm run dev
 - [Arquitectura](./docs/ARCHITECTURE.md)
 - [API inicial](./docs/API.md)
 
+## Quinielón Semanal
+
+En **Administración → VIP**, elige el modo **Quinielón Semanal**, una temporada,
+el importe de entrada y los porcentajes de premios. Guarda la VIP y registra sus
+10 partidos con local, visitante y fecha/hora de Ciudad de México. Selecciona un
+partido común para el desempate. Las inscripciones se habilitan cuando los diez
+partidos están configurados.
+
+Los participantes aprobados registran local, empate o visitante en **VIP**. Cada
+acierto vale un punto. Cada pronóstico cierra exactamente diez minutos antes de
+su partido; los demás siguen abiertos hasta su propio cierre. El total de goles
+del partido de desempate se guarda con su pronóstico y cierra al mismo tiempo.
+Las inscripciones públicas cierran con el primer partido; el administrador puede
+dar acceso después, pero no habilita pronósticos de partidos ya cerrados.
+
+El administrador captura los marcadores oficiales y el ranking se actualiza al
+consultarlo. A igualdad de aciertos, gana la menor diferencia absoluta con el
+total de goles del desempate. Si el empate persiste, se comparten los premios de
+las posiciones ocupadas, como en la liquidación VIP. La bolsa sigue sumando una
+entrada por miembro aprobado, con su estado de pago independiente.
+
+Los partidos y el desempate quedan fijos al recibir el primer pronóstico o
+alcanzar el primer cierre. Para cerrar la VIP y pasar a liquidación deben estar
+registrados los diez resultados.
+
+Antes de desplegar este modo, ejecuta `database/sql/040_vip_weekly_pool.sql` en
+Supabase; después publica backend y frontend. La migración crea únicamente las
+tablas de este modo, con RLS y acceso de escritura a través del backend. Railway
+tiene las migraciones automáticas de arranque desactivadas.

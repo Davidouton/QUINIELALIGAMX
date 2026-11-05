@@ -11,6 +11,7 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.username import unique_username
 from app.models import Base
+from app.models.entities import VipWeeklyMatch, VipWeeklyPick
 
 settings = get_settings()
 
@@ -1331,6 +1332,25 @@ def run_startup_migrations() -> None:
                 "ON vip_question_pool_responses(vip_competition_id, profile_id)"
             )
         )
+
+        # Independent weekly VIP matches/picks; use the model definitions for
+        # both local installations and production startup migrations.
+        for weekly_table in (VipWeeklyMatch.__table__, VipWeeklyPick.__table__):
+            weekly_table.create(bind=connection, checkfirst=True)
+            if connection.dialect.name == "postgresql":
+                name = weekly_table.name
+                connection.execute(text(f"ALTER TABLE {name} ENABLE ROW LEVEL SECURITY"))
+                connection.execute(text(f"REVOKE ALL ON TABLE {name} FROM PUBLIC"))
+                connection.execute(text(f"""
+                    DO $$ BEGIN
+                        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+                            REVOKE ALL ON TABLE {name} FROM anon;
+                        END IF;
+                        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+                            REVOKE ALL ON TABLE {name} FROM authenticated;
+                        END IF;
+                    END $$;
+                """))
 
         if "pricing_rules" not in table_names:
             connection.execute(
