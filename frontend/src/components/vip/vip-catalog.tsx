@@ -19,10 +19,6 @@ export type VipCatalogItem = {
   detail?: string;
 };
 
-function money(value: number) {
-  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
-}
-
 export function VipCatalog({ items, filter, onFilterChange, search, onSearchChange, selectedId, onSelect, compact = false }: {
   items: VipCatalogItem[];
   filter: VipCatalogFilter;
@@ -40,7 +36,7 @@ export function VipCatalog({ items, filter, onFilterChange, search, onSearchChan
   ));
 
   return (
-    <section className="space-y-4" aria-label="Catálogo de VIPs">
+    <section className="space-y-3" aria-label="Catálogo de VIPs">
       <div className={`flex gap-3 ${compact ? "flex-col" : "flex-col sm:flex-row sm:items-center sm:justify-between"}`}>
         <div className="flex flex-wrap gap-2" aria-label="Filtrar VIPs">
           {([
@@ -57,27 +53,14 @@ export function VipCatalog({ items, filter, onFilterChange, search, onSearchChan
           <input type="search" value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Buscar VIP por nombre o modalidad" className="field-control w-full rounded-[8px] px-3 text-sm" />
         </label>
       </div>
-      <div className={`grid gap-3 ${compact ? "grid-cols-1" : "md:grid-cols-2 2xl:grid-cols-3"}`}>
+      <div className={`grid gap-2 ${compact ? "grid-cols-1" : "md:grid-cols-2 2xl:grid-cols-3"}`}>
         {visible.map((item) => {
           const selected = selectedId === item.id;
           return (
-            <button key={item.id} type="button" aria-pressed={selected} onClick={() => onSelect(item.id)} className={`flex min-w-0 flex-col rounded-[12px] border p-4 text-left transition ${selected ? "border-mint/60 bg-mint/[0.07] ring-1 ring-mint/25" : "border-white/[0.12] bg-white/[0.02] hover:border-white/30"}`}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-steel">{item.mode}</span>
-                <span className={`rounded-full bg-white/[0.05] px-2 py-1 text-xs font-semibold ${item.statusTone}`}>{item.status}</span>
-              </div>
-              <h3 className="mt-3 break-words text-lg font-semibold leading-snug text-ink">{item.name}</h3>
-              <p className="mt-1 break-words text-xs text-steel">{item.context}</p>
-              <dl className="mt-4 grid w-full grid-cols-3 gap-2 border-t border-white/[0.08] pt-3">
-                <div><dt className="text-[10px] uppercase tracking-[0.1em] text-steel">Entrada</dt><dd className="mt-1 text-sm font-semibold text-ink">{money(item.fee)}</dd></div>
-                <div><dt className="text-[10px] uppercase tracking-[0.1em] text-steel">Bolsa</dt><dd className="mt-1 text-sm font-semibold text-ink">{money(item.pool)}</dd></div>
-                <div><dt className="text-[10px] uppercase tracking-[0.1em] text-steel">Jugadores</dt><dd className="mt-1 text-sm font-semibold text-ink">{item.participants}</dd></div>
-              </dl>
-              {item.detail ? <p className="mt-3 text-xs text-steel">{item.detail}</p> : null}
-              <div className="mt-auto flex w-full flex-wrap items-center justify-between gap-2 pt-4">
-                {item.access ? <span className={`text-xs font-medium ${item.accessTone ?? "text-steel"}`}>Mi acceso: {item.access}</span> : <span />}
-                <span className={`text-xs font-semibold ${selected ? "text-mint" : "text-ink"}`}>{selected ? "Seleccionada" : "Ver detalle →"}</span>
-              </div>
+            <button key={item.id} type="button" aria-label={`${item.name}, ${item.status}`} aria-pressed={selected} onClick={() => onSelect(item.id)} className={`flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-[8px] border px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint ${selected ? "border-mint/60 bg-mint/[0.07] text-mint" : "border-white/[0.12] bg-white/[0.02] text-ink hover:border-white/30"}`}>
+              <span className="min-w-0 break-words text-sm font-semibold leading-5">{item.name}</span>
+              <span aria-hidden="true" className={`shrink-0 text-sm ${selected ? "text-mint" : "text-steel"}`}>{selected ? "✓" : "›"}</span>
+              {selected ? <span className="sr-only">Seleccionada</span> : null}
             </button>
           );
         })}

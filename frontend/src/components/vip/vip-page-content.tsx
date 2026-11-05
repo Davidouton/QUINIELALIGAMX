@@ -553,7 +553,7 @@ export function VipPageContent() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm uppercase tracking-[0.22em] text-steel">{vipContextLabel(selectedVip)}</p>
+                    <p className="text-sm text-steel">{vipModeName(selectedVip.competition_kind)} · {vipContextLabel(selectedVip)}</p>
                     <span
                       className={`flex items-center ${registrationStatusCopy(selectedVip).tone}`}
                       title={`${registrationStatusCopy(selectedVip).label} · ${registrationStatusCopy(selectedVip).sublabel}`}

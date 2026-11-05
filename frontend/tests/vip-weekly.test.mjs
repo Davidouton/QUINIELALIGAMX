@@ -85,7 +85,7 @@ test("VIP archive state is independent of financial settlement and weekly season
   assert.equal(display.vipContextLabel(vip), "Independiente · 10 juegos");
 });
 
-test("VIP catalog shows full names, textual status and selection; archived entries stay in their tab", () => {
+test("VIP catalog keeps names and selection compact; archived entries stay in their tab", () => {
   const activeName = "Quinielón Semanal especial para la primera semana de noviembre";
   const archivedName = "VIP del torneo anterior";
   const base = { mode: "Quinielón Semanal", context: "Independiente · 10 juegos", status: "Registro abierto", statusTone: "text-mint", fee: 100.5, pool: 1500, participants: 15 };
@@ -97,7 +97,7 @@ test("VIP catalog shows full names, textual status and selection; archived entri
   assert.ok(active.includes(activeName));
   assert.ok(active.includes("Registro abierto"));
   assert.ok(active.includes("Seleccionada"));
-  assert.ok(active.includes("$100.5"));
+  assert.ok(!active.includes("$100.5"));
   assert.ok(!active.includes(archivedName));
   const archived = renderToStaticMarkup(React.createElement(VipCatalog, { ...props, filter: "archived" }));
   assert.ok(archived.includes(archivedName));
