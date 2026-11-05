@@ -12,6 +12,7 @@ import { SurvivorPageContent } from "@/components/survivor/survivor-page-content
 import { backendFetch, MATCHDAY_CACHE_TTL_MS } from "@/lib/api/backend";
 import { getDashboardScreenName, trackAnalyticsEvent } from "@/lib/analytics/track";
 import { buildVipDetailPath } from "@/lib/api/vip";
+import { isVipArchived } from "@/lib/vip-display";
 import { getMatchdayDisplayLabel } from "@/lib/dashboard/matchday-label";
 import {
   filterMatchdaysBySeason,
@@ -844,7 +845,7 @@ export function DashboardHome() {
   }, [competitionId, seasonIdParam, setSeasonId]);
 
   useEffect(() => {
-    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved" && !isVipArchived(vip));
     const selectedVipIdFromView = dashboardDefaultView.startsWith("vip:") ? dashboardDefaultView.slice(4) : selectedVipBoardId;
     const selectedVipCompetition =
       approvedVipCompetitions.find((vip) => vip.id === selectedVipIdFromView) ??
@@ -1099,7 +1100,7 @@ export function DashboardHome() {
   }, [activeTab, dashboardDefaultView, effectiveDashboardWidgets, state.matchdays, state.selectedSeason]);
 
   useEffect(() => {
-    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved" && !isVipArchived(vip));
 
     if (approvedVipCompetitions.length > 0) {
       const stillSelected = approvedVipCompetitions.some((vip) => vip.id === selectedVipBoardId);
@@ -1114,7 +1115,7 @@ export function DashboardHome() {
       return;
     }
 
-    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved" && !isVipArchived(vip));
     const selectedSeasonMembership =
       state.selectedSeason && state.me
         ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
@@ -1146,7 +1147,7 @@ export function DashboardHome() {
 
   function handleDashboardDefaultViewChange(value: string) {
     const nextValue: DashboardDefaultView = value.startsWith("vip:") ? (value as DashboardDefaultView) : "regular";
-    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+    const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved" && !isVipArchived(vip));
     const selectedSeasonMembership =
       state.selectedSeason && state.me
         ? state.me.season_memberships.find((membership) => membership.season_id === state.selectedSeason?.id) ?? null
@@ -1356,7 +1357,7 @@ export function DashboardHome() {
       isLigaMxSeason &&
       (!hasActiveLigaMxMembership || (canJoinSurvivor && !hasSurvivorMembership)),
   );
-  const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved");
+  const approvedVipCompetitions = state.vipCompetitions.filter((vip) => vip.my_membership?.status === "approved" && !isVipArchived(vip));
   const hasApprovedVipCompetition = approvedVipCompetitions.length > 0;
   const canViewRegularDashboard = Boolean(selectedSeasonMembership?.can_participate);
   const selectableSeasons = getLiveSeasons(state.seasons)

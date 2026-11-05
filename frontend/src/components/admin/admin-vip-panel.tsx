@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { AdminVipWeeklyPanel } from "@/components/admin/admin-vip-weekly-panel";
+import { VipCatalog, type VipCatalogFilter } from "@/components/vip/vip-catalog";
 import { backendFetch } from "@/lib/api/backend";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { isVipArchived, vipContextLabel, vipModeName } from "@/lib/vip-display";
 import type { AdminUser, AdminVipCompetition, Matchday, Season, Team, VipCompetitionKind, VipLifecycleStatus } from "@/types/api";
 
 type FormState = {
@@ -67,7 +69,8 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("es-MX", {
     style: "currency",
     currency: "MXN",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 
@@ -172,7 +175,7 @@ function toFormState(vip: AdminVipCompetition | null, seasons: Season[]): FormSt
   return {
     competitionKind: vip.competition_kind,
     name: vip.name,
-    seasonId: vip.season_id,
+    seasonId: vip.season_id ?? "",
     entryFeeAmount: String(vip.entry_fee_amount),
     adminCommissionPct: String(vip.admin_commission_pct),
     firstPlacePct: String(vip.first_place_pct),
@@ -191,6 +194,8 @@ export function AdminVipPanel() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedVipId, setSelectedVipId] = useState("");
+  const [catalogFilter, setCatalogFilter] = useState<VipCatalogFilter>("active");
+  const [catalogSearch, setCatalogSearch] = useState("");
   const [form, setForm] = useState<FormState>(initialForm);
   const [addMemberProfileId, setAddMemberProfileId] = useState("");
   const [teamWinnerTeamIds, setTeamWinnerTeamIds] = useState<string[]>([]);
@@ -219,6 +224,7 @@ export function AdminVipPanel() {
     () => vips.find((vip) => vip.id === selectedVipId) ?? null,
     [selectedVipId, vips],
   );
+  const selectedVipArchived = selectedVip ? isVipArchived(selectedVip) : false;
 
   const seasonMatchdays = useMemo(
     () =>
@@ -370,7 +376,7 @@ export function AdminVipPanel() {
     setUsers(userRows);
     setTeams(teamRows);
 
-    const nextSelectedVip = vipRows.find((vip) => vip.id === preferredVipId) ?? vipRows[0] ?? null;
+    const nextSelectedVip = vipRows.find((vip) => vip.id === preferredVipId) ?? vipRows.find((vip) => !isVipArchived(vip)) ?? null;
     setSelectedVipId(nextSelectedVip?.id ?? "");
     setForm(toFormState(nextSelectedVip, seasonRows));
     setAddMemberProfileId("");
@@ -415,7 +421,7 @@ export function AdminVipPanel() {
   }, []);
 
   useEffect(() => {
-    if (form.seasonId || seasons.length === 0) {
+    if (form.competitionKind === "weekly_pool" || form.seasonId || seasons.length === 0) {
       return;
     }
     const fallbackSeasonId = seasons.find((season) => season.is_active)?.id ?? seasons[0]?.id ?? "";
@@ -423,7 +429,7 @@ export function AdminVipPanel() {
       return;
     }
     setForm((current) => ({ ...current, seasonId: fallbackSeasonId }));
-  }, [form.seasonId, seasons]);
+  }, [form.competitionKind, form.seasonId, seasons]);
 
   useEffect(() => {
     if (!questionPoolQuestions.some((question) => question.id === selectedQuestionId)) {
@@ -432,6 +438,8 @@ export function AdminVipPanel() {
   }, [questionPoolQuestions, selectedQuestionId]);
 
   function resetForNewVip() {
+    setCatalogFilter("active");
+    setCatalogSearch("");
     setSelectedVipId("");
     setSelectedQuestionId("");
     setForm(toFormState(null, seasons));
@@ -553,7 +561,7 @@ export function AdminVipPanel() {
         method,
         body: JSON.stringify({
           competition_kind: form.competitionKind,
-          season_id: seasonId,
+          season_id: form.competitionKind === "weekly_pool" ? null : seasonId,
           name: form.name,
           entry_fee_amount: Number(form.entryFeeAmount || 0),
           admin_commission_pct: Number(form.adminCommissionPct || 0),
@@ -595,7 +603,7 @@ export function AdminVipPanel() {
 
   async function handleArchiveVip() {
     if (!selectedVip) return;
-    if (!window.confirm(`Vas a archivar "${selectedVip.name}". Continuar?`)) return;
+    if (!window.confirm(`Archivar "${selectedVip.name}" la mueve al historial y detiene nuevas participaciones. Se conservan resultados, entradas y pagos. ¿Continuar?`)) return;
     setUpdatingLifecycle(true);
     setError(null);
     setMessage(null);
@@ -603,9 +611,28 @@ export function AdminVipPanel() {
       const accessToken = await getBrowserAccessToken();
       await backendFetch(`/admin/vip/${selectedVip.id}/archive`, accessToken, { method: "POST" });
       await loadPanel(selectedVip.id);
-      setMessage("VIP archivada.");
+      setCatalogFilter("archived");
+      setMessage("VIP archivada. Su historial y pagos se conservan.");
     } catch (caughtError) {
       setError(`Archivar VIP: ${getCaughtMessage(caughtError, "No se pudo archivar la VIP")}`);
+    } finally {
+      setUpdatingLifecycle(false);
+    }
+  }
+
+  async function handleRestoreVip() {
+    if (!selectedVip || updatingLifecycle) return;
+    setUpdatingLifecycle(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const token = await getBrowserAccessToken();
+      await backendFetch(`/admin/vip/${selectedVip.id}/restore`, token, { method: "POST" });
+      await loadPanel(selectedVip.id);
+      setCatalogFilter("active");
+      setMessage("VIP restaurada. Conserva su estado y las fechas de cierre originales.");
+    } catch (caughtError) {
+      setError(`Restaurar VIP: ${getCaughtMessage(caughtError, "No se pudo restaurar la VIP")}`);
     } finally {
       setUpdatingLifecycle(false);
     }
@@ -1114,88 +1141,53 @@ export function AdminVipPanel() {
             </button>
           </div>
 
-          {vips.map((vip) => (
-            <button
-              key={vip.id}
-              type="button"
-              onClick={() => selectVip(vip)}
-              className={`w-full rounded-[12px] border px-4 py-4 text-left transition ${
-                selectedVipId === vip.id
-                  ? "border-white/[0.14] bg-white/[0.05]"
-                  : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1]"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-base font-semibold text-ink">{vip.name}</p>
-                  <p className="mt-1 text-sm text-steel">{vip.season_name}</p>
-                </div>
-                <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${vip.lifecycle_status === "active" ? "text-mint" : "text-steel"}`}>
-                  {lifecycleLabel(vip.lifecycle_status)}
-                </span>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-steel">
-                <div>
-                  <p className="uppercase tracking-[0.18em]">Entrada</p>
-                  <p className="mt-1 text-sm font-semibold text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
-                </div>
-                <div>
-                  <p className="uppercase tracking-[0.18em]">
-                    {vip.competition_kind === "team_winner"
-                      ? "Equipos"
-                      : vip.competition_kind === "question_pool"
-                        ? "Preguntas"
-                        : vip.competition_kind === "weekly_pool" ? "Juegos" : "Jornadas"}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-ink">
-                    {vip.competition_kind === "team_winner"
-                      ? vip.team_winner_teams.length
-                      : vip.competition_kind === "question_pool"
-                        ? vip.question_pool_questions.length
-                        : vip.competition_kind === "weekly_pool" ? (vip.weekly_matches?.length ?? 0) : vip.matchdays.length}
-                  </p>
-                </div>
-                <div>
-                  <p className="uppercase tracking-[0.18em]">
-                    {vip.competition_kind === "team_winner"
-                      ? "Sorteo"
-                      : vip.competition_kind === "question_pool"
-                        ? "Respuestas"
-                        : "Pendientes"}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-ink">
-                    {vip.competition_kind === "team_winner"
-                      ? `${vip.team_winner_entries.filter((entry) => entry.revealed_at).length}/${vip.team_winner_entries.length}`
-                      : vip.competition_kind === "question_pool"
-                        ? vip.question_pool_questions.reduce((sum, question) => sum + question.responses_count, 0)
-                        : vip.pending_requests_count}
-                  </p>
-                </div>
-              </div>
-              {!vip.is_active ? (
-                <p className="mt-3 text-xs text-steel">Oculta para usuarios</p>
-              ) : null}
-            </button>
-          ))}
+          <VipCatalog
+            compact
+            items={vips.map((vip) => ({
+              id: vip.id,
+              name: vip.name,
+              mode: vipModeName(vip.competition_kind),
+              context: vipContextLabel(vip),
+              archived: isVipArchived(vip),
+              status: isVipArchived(vip) ? "Archivada" : vip.competition_kind === "weekly_pool" && !vip.weekly_ready ? "En configuración" : lifecycleLabel(vip.lifecycle_status),
+              statusTone: isVipArchived(vip) ? "text-steel" : vip.lifecycle_status === "active" ? "text-mint" : "text-gold",
+              fee: vip.entry_fee_amount,
+              pool: vip.gross_pool_amount,
+              participants: vip.approved_members_count,
+              detail: `${vip.pending_requests_count} solicitudes pendientes${!vip.is_active ? " · Oculta para usuarios" : ""}`,
+            }))}
+            filter={catalogFilter}
+            onFilterChange={(filter) => {
+              setCatalogFilter(filter);
+              const first = vips.find((vip) => isVipArchived(vip) === (filter === "archived"));
+              if (first) selectVip(first);
+              else {
+                setSelectedVipId("");
+                setForm(toFormState(null, seasons));
+              }
+            }}
+            search={catalogSearch}
+            onSearchChange={setCatalogSearch}
+            selectedId={selectedVipId}
+            onSelect={(id) => {
+              const vip = vips.find((row) => row.id === id);
+              if (vip) selectVip(vip);
+            }}
+          />
 
-          {vips.length === 0 ? (
-            <div className="rounded-[12px] border border-white/[0.06] bg-white/[0.02] px-4 py-5 text-sm text-steel">
-              Todavia no hay VIPs creadas.
-            </div>
-          ) : null}
         </div>
 
         <div className="space-y-6 rounded-[12px] border border-white/[0.06] bg-white/[0.02] p-5">
           <section className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.22em] text-steel">Configuracion VIP</p>
                 <h2 className="mt-2 text-xl font-semibold text-ink">
                   {selectedVip ? `Editar ${selectedVip.name}` : "Nueva VIP"}
                 </h2>
               </div>
-              <div className="flex gap-2">
-                {selectedVip?.lifecycle_status === "active" ? (
+              <div className="flex flex-wrap gap-2">
+                {selectedVip?.lifecycle_status === "active" && !selectedVipArchived ? (
                   <button
                     type="button"
                     onClick={() => void handleCloseVip()}
@@ -1210,14 +1202,19 @@ export function AdminVipPanel() {
                     Preparar pagos
                   </button>
                 ) : null}
-                {selectedVip?.lifecycle_status === "settled" ? (
+                {selectedVip && !selectedVipArchived ? (
                   <button
                     type="button"
                     onClick={() => void handleArchiveVip()}
                     disabled={updatingLifecycle}
                     className="app-pill px-4 text-steel disabled:opacity-50"
                   >
-                    {updatingLifecycle ? "Archivando" : "Archivar"}
+                    {updatingLifecycle ? "Archivando…" : "Archivar VIP"}
+                  </button>
+                ) : null}
+                {selectedVipArchived ? (
+                  <button type="button" onClick={() => void handleRestoreVip()} disabled={updatingLifecycle} className="app-pill px-4 text-mint disabled:opacity-50">
+                    {updatingLifecycle ? "Restaurando…" : "Restaurar VIP"}
                   </button>
                 ) : null}
                 {selectedVip ? (
@@ -1233,7 +1230,7 @@ export function AdminVipPanel() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={saving || Boolean(selectedVip && selectedVip.lifecycle_status !== "active")}
+                  disabled={saving || selectedVipArchived || Boolean(selectedVip && selectedVip.lifecycle_status !== "active")}
                   className="app-pill px-4 disabled:opacity-50"
                 >
                   {saving ? "Guardando" : selectedVip ? "Guardar cambios" : "Crear VIP"}
@@ -1241,6 +1238,12 @@ export function AdminVipPanel() {
               </div>
             </div>
 
+            {selectedVipArchived ? (
+              <p className="rounded-[8px] border border-white/[0.12] px-4 py-3 text-sm text-steel">
+                Archivada{selectedVip?.archived_at ? ` el ${formatMexicoCityDateTime(selectedVip.archived_at)}` : ""}. Historial conservado · Estado financiero: {selectedVip ? lifecycleLabel(selectedVip.lifecycle_status) : ""}.
+              </p>
+            ) : null}
+            <fieldset disabled={selectedVipArchived} className="space-y-4">
             <div className="grid gap-x-4 gap-y-3 lg:grid-cols-4">
               <label className="grid gap-1">
                 <span className={flatLabelClass}>Tipo</span>
@@ -1250,6 +1253,7 @@ export function AdminVipPanel() {
                     setForm((current) => ({
                       ...current,
                       competitionKind: event.target.value as VipCompetitionKind,
+                      seasonId: event.target.value === "weekly_pool" ? "" : current.seasonId,
                       name: event.target.value === "weekly_pool" && !current.name.trim() ? "Quinielón Semanal" : current.name,
                       matchdayIds: event.target.value === "matchday" ? current.matchdayIds : [],
                     }))
@@ -1271,6 +1275,7 @@ export function AdminVipPanel() {
                   placeholder="VIP Clausura"
                 />
               </label>
+              {!isWeeklyPoolMode ? (
               <label className="grid gap-1">
                 <span className={flatLabelClass}>Temporada</span>
                 <select
@@ -1295,6 +1300,12 @@ export function AdminVipPanel() {
                   ))}
                 </select>
               </label>
+              ) : (
+                <div className="grid gap-1 content-start">
+                  <span className={flatLabelClass}>Modalidad independiente</span>
+                  <p className="py-2 text-sm text-steel">Sin temporada</p>
+                </div>
+              )}
               {isQuestionPoolMode ? (
                 <label className="grid gap-1 lg:col-span-2">
                   <span className={flatLabelClass}>Bloqueo respuestas</span>
@@ -1425,6 +1436,7 @@ export function AdminVipPanel() {
               </div>
             </div>
             ) : null}
+            </fieldset>
           </section>
 
           {isWeeklyPoolMode ? (
@@ -1436,7 +1448,7 @@ export function AdminVipPanel() {
           ) : null}
 
           {isQuestionPoolMode ? (
-            <section className="space-y-5">
+            <fieldset disabled={selectedVipArchived} className="space-y-5">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <p className="text-sm uppercase tracking-[0.22em] text-steel">Preguntas VIP</p>
@@ -1750,7 +1762,7 @@ export function AdminVipPanel() {
                   </div>
                 </>
               )}
-            </section>
+            </fieldset>
           ) : null}
 
           {isTeamWinnerMode ? (
@@ -1766,7 +1778,7 @@ export function AdminVipPanel() {
                   <button
                     type="button"
                     onClick={() => void handleSaveTeamWinnerConfig()}
-                    disabled={!selectedVip || savingTeamWinner || hasTeamWinnerDraw}
+                    disabled={selectedVipArchived || !selectedVip || savingTeamWinner || hasTeamWinnerDraw}
                     className="app-pill h-9 px-4 text-sm disabled:opacity-50"
                   >
                     {savingTeamWinner ? "Guardando" : "Guardar sorteo"}
@@ -1774,7 +1786,7 @@ export function AdminVipPanel() {
                   <button
                     type="button"
                     onClick={() => void handleSaveAndRunTeamWinnerDraw()}
-                    disabled={savingTeamWinner || !canRunTeamWinnerDraw}
+                    disabled={selectedVipArchived || savingTeamWinner || !canRunTeamWinnerDraw}
                     className="app-pill h-9 px-4 text-sm text-mint disabled:opacity-50"
                   >
                     Guardar y sortear
@@ -1782,7 +1794,7 @@ export function AdminVipPanel() {
                   <button
                     type="button"
                     onClick={() => void handleResetTeamWinnerDraw()}
-                    disabled={!selectedVip || savingTeamWinner || !hasTeamWinnerDraw}
+                    disabled={selectedVipArchived || !selectedVip || savingTeamWinner || !hasTeamWinnerDraw}
                     className="app-pill h-9 px-4 text-sm text-coral disabled:opacity-50"
                   >
                     Resetear sorteo
@@ -1791,7 +1803,7 @@ export function AdminVipPanel() {
                     type="button"
                     onClick={() => void handleTeamWinnerAction("reveal-next")}
                     disabled={
-                      savingTeamWinner ||
+                      selectedVipArchived || savingTeamWinner ||
                       !teamWinnerEntries.some((entry) => entry.reveal_order && !entry.revealed_at)
                     }
                     className="app-pill h-9 px-4 text-sm disabled:opacity-50"
@@ -1872,7 +1884,7 @@ export function AdminVipPanel() {
                           <input
                             type="checkbox"
                             checked={teamWinnerTeamIds.includes(team.id)}
-                            disabled={assigned || hasTeamWinnerDraw}
+                            disabled={selectedVipArchived || assigned || hasTeamWinnerDraw}
                             onChange={() => toggleTeamWinnerTeam(team.id)}
                           />
                           <span className="truncate">{team.name}</span>
@@ -1902,7 +1914,7 @@ export function AdminVipPanel() {
                     <input
                       type="checkbox"
                       checked={includeHouse}
-                      disabled={hasTeamWinnerDraw}
+                      disabled={selectedVipArchived || hasTeamWinnerDraw}
                       onChange={(event) => setIncludeHouse(event.target.checked)}
                     />
                     <span>Agregar casa</span>
@@ -1910,7 +1922,7 @@ export function AdminVipPanel() {
                       value={houseLabel}
                       onChange={(event) => setHouseLabel(event.target.value)}
                       className={`${flatFieldClass} ml-auto max-w-[160px]`}
-                      disabled={!includeHouse || hasTeamWinnerDraw}
+                      disabled={selectedVipArchived || !includeHouse || hasTeamWinnerDraw}
                     />
                   </label>
                   <div className="grid max-h-[312px] gap-2 overflow-y-auto pr-1">
@@ -1928,7 +1940,7 @@ export function AdminVipPanel() {
                           <input
                             type="checkbox"
                             checked={teamWinnerProfileIds.includes(membership.profile_id)}
-                            disabled={assigned || hasTeamWinnerDraw}
+                            disabled={selectedVipArchived || assigned || hasTeamWinnerDraw}
                             onChange={() => toggleTeamWinnerProfile(membership.profile_id)}
                           />
                           <span className="truncate">{membership.display_name}</span>
@@ -2011,7 +2023,7 @@ export function AdminVipPanel() {
                       <button
                         type="button"
                         onClick={() => void handleTeamWinnerTeamStatus(team.id, !team.is_eliminated, false)}
-                        disabled={savingTeamWinner}
+                        disabled={selectedVipArchived || savingTeamWinner}
                         className="text-xs font-semibold text-coral disabled:opacity-50"
                       >
                         {team.is_eliminated ? "Reactivar" : "Eliminar"}
@@ -2019,7 +2031,7 @@ export function AdminVipPanel() {
                       <button
                         type="button"
                         onClick={() => void handleTeamWinnerTeamStatus(team.id, false, !team.is_champion)}
-                        disabled={savingTeamWinner}
+                        disabled={selectedVipArchived || savingTeamWinner}
                         className="text-xs font-semibold text-mint disabled:opacity-50"
                       >
                         {team.is_champion ? "Quitar campeon" : "Campeon"}
@@ -2056,7 +2068,7 @@ export function AdminVipPanel() {
                   <button
                     type="button"
                     onClick={() => void handleAddMember()}
-                    disabled={addingMember || !addMemberProfileId}
+                    disabled={addingMember || selectedVipArchived || !addMemberProfileId}
                     className="app-pill h-9 px-4 text-sm disabled:opacity-50"
                   >
                     {addingMember ? "Agregando" : "Agregar"}
@@ -2100,7 +2112,7 @@ export function AdminVipPanel() {
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          disabled={processingMembershipId === membership.id}
+                          disabled={selectedVipArchived || processingMembershipId === membership.id}
                           onClick={() => void handleDecision(membership.id, "approve")}
                           className="app-pill px-3 text-mint"
                         >
@@ -2108,7 +2120,7 @@ export function AdminVipPanel() {
                         </button>
                         <button
                           type="button"
-                          disabled={processingMembershipId === membership.id}
+                          disabled={selectedVipArchived || processingMembershipId === membership.id}
                           onClick={() => void handleDecision(membership.id, "reject")}
                           className="app-pill px-3 text-coral"
                         >
@@ -2174,7 +2186,7 @@ export function AdminVipPanel() {
                         </button>
                         <button
                           type="button"
-                          disabled={processingMembershipId === membership.id}
+                          disabled={selectedVipArchived || processingMembershipId === membership.id}
                           onClick={() => void handleDecision(membership.id, "remove")}
                           className="text-sm font-semibold text-coral transition hover:text-coral/80 disabled:opacity-50"
                         >
@@ -2199,7 +2211,7 @@ export function AdminVipPanel() {
                   <button
                     type="button"
                     onClick={handleRecalculateVip}
-                    disabled={recalculatingVip}
+                    disabled={selectedVipArchived || recalculatingVip}
                     className="app-pill px-3 text-xs"
                   >
                     {recalculatingVip ? "Recalculando" : "Recalcular"}

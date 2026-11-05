@@ -3,22 +3,26 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
 import vm from "node:vm";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 
 const require = createRequire(import.meta.url);
 
-function loadTypeScript(relativePath) {
+function loadTypeScript(relativePath, mocks = {}) {
   const filename = new URL(relativePath, import.meta.url);
   const source = ts.transpileModule(readFileSync(filename, "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const exports = {};
-  vm.runInNewContext(source, { exports, require, Date, Intl }, { filename: filename.pathname });
+  vm.runInNewContext(source, { exports, require: (name) => mocks[name] ?? require(name), Date, Intl }, { filename: filename.pathname });
   return exports;
 }
 
 const dates = loadTypeScript("../src/lib/datetime/mexico-city.ts");
 const weekly = loadTypeScript("../src/lib/vip-weekly.ts");
+const display = loadTypeScript("../src/lib/vip-display.ts");
+const { VipCatalog } = loadTypeScript("../src/components/vip/vip-catalog.tsx", { "@/lib/vip-display": display });
 
 test("CDMX inputs convert to UTC without using the browser timezone", () => {
   const previous = process.env.TZ;
@@ -67,4 +71,37 @@ test("a score is pending until both values exist, and a scoreless draw counts", 
   assert.equal(weekly.weeklyMatchResult({ home_score: 0, away_score: 0 }), "draw");
   assert.equal(weekly.weeklyMatchResult({ home_score: 2, away_score: 1 }), "home");
   assert.equal(weekly.weeklyMatchResult({ home_score: 0, away_score: 1 }), "away");
+});
+
+test("VIP archive state is independent of financial settlement and weekly seasons", () => {
+  const vip = { competition_kind: "weekly_pool", lifecycle_status: "active", season_name: null };
+  assert.equal(display.isVipArchived(vip), false);
+  assert.equal(display.isVipArchived({ ...vip, lifecycle_status: "settled" }), false);
+  assert.equal(display.isVipArchived({ ...vip, is_archived: true }), true);
+  assert.equal(display.isVipArchived({ ...vip, archived_at: "2026-11-04T00:00:00Z" }), true);
+  assert.equal(display.isVipArchived({ ...vip, lifecycle_status: "archived" }), true);
+  assert.equal(display.isVipArchived({ ...vip, season_visibility_status: "archived" }), false);
+  assert.equal(display.isVipArchived({ ...vip, competition_kind: "matchday", season_visibility_status: "archived" }), true);
+  assert.equal(display.vipContextLabel(vip), "Independiente · 10 juegos");
+});
+
+test("VIP catalog shows full names, textual status and selection; archived entries stay in their tab", () => {
+  const activeName = "Quinielón Semanal especial para la primera semana de noviembre";
+  const archivedName = "VIP del torneo anterior";
+  const base = { mode: "Quinielón Semanal", context: "Independiente · 10 juegos", status: "Registro abierto", statusTone: "text-mint", fee: 100.5, pool: 1500, participants: 15 };
+  const props = {
+    items: [{ ...base, id: "current", name: activeName, archived: false }, { ...base, id: "old", name: archivedName, status: "Archivada", archived: true }],
+    filter: "active", search: "", selectedId: "current", onFilterChange() {}, onSearchChange() {}, onSelect() {},
+  };
+  const active = renderToStaticMarkup(React.createElement(VipCatalog, props));
+  assert.ok(active.includes(activeName));
+  assert.ok(active.includes("Registro abierto"));
+  assert.ok(active.includes("Seleccionada"));
+  assert.ok(active.includes("$100.5"));
+  assert.ok(!active.includes(archivedName));
+  const archived = renderToStaticMarkup(React.createElement(VipCatalog, { ...props, filter: "archived" }));
+  assert.ok(archived.includes(archivedName));
+  assert.ok(!archived.includes(activeName));
+  const searched = renderToStaticMarkup(React.createElement(VipCatalog, { ...props, search: "quinielon" }));
+  assert.ok(searched.includes(activeName));
 });

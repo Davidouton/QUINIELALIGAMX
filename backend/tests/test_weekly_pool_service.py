@@ -105,10 +105,9 @@ def test_configuration_validation(mutation):
         AdminVipWeeklyMatchesRequest.model_validate(payload)
 
 
-def test_weekly_kind_requires_season():
-    with pytest.raises(ValidationError):
-        AdminVipUpsertRequest(competition_kind="weekly_pool", name="Semanal")
-    request = AdminVipUpsertRequest(competition_kind="weekly_pool", name="Semanal", season_id=SEASON_ID)
+def test_weekly_kind_does_not_require_season():
+    request = AdminVipUpsertRequest(competition_kind="weekly_pool", name="Semanal")
+    assert request.season_id is None
     assert request.matchday_ids == []
 
 
@@ -437,7 +436,8 @@ def test_late_checkout_keeps_payment_without_changing_closed_weekly_participants
     metadata = json.loads(payment.metadata_json)
     assert metadata["last_webhook_event"]["id"] == "evt_weekly_test"
     if membership_status != "approved":
-        assert metadata["entitlement_review_required"] == "weekly_pool_closed"
+        expected_reason = "vip_archived" if lifecycle == "archived" else "weekly_pool_closed"
+        assert metadata["entitlement_review_required"] == expected_reason
     # Stripe retries remain idempotent after the confirmed payment is retained.
     service._mark_checkout_completed(db, {"id": "test_weekly_checkout"}, {"id": "evt_weekly_retry"})
     assert payment.status == PaymentStatus.PAID

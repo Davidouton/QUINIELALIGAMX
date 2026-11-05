@@ -785,9 +785,15 @@ class PushNotificationEvent(Base):
 
 class VipCompetition(Base):
     __tablename__ = "vip_competitions"
+    __table_args__ = (
+        CheckConstraint(
+            "competition_kind = 'weekly_pool' OR season_id IS NOT NULL",
+            name="ck_vip_season_required",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(UUID_SQL, primary_key=True, default=uuid_str)
-    season_id: Mapped[str] = mapped_column(UUID_SQL, ForeignKey("seasons.id", ondelete="CASCADE"), index=True)
+    season_id: Mapped[str | None] = mapped_column(UUID_SQL, ForeignKey("seasons.id", ondelete="CASCADE"), index=True)
     competition_kind: Mapped[VipCompetitionKind] = mapped_column(
         SqlEnum(VipCompetitionKind, native_enum=False, values_callable=enum_values),
         default=VipCompetitionKind.MATCHDAY,
@@ -802,6 +808,7 @@ class VipCompetition(Base):
     third_place_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     lifecycle_status: Mapped[str] = mapped_column(String(32), default="active", nullable=False, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     questions_lock_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_profile_id: Mapped[str | None] = mapped_column(
         UUID_SQL,
@@ -814,6 +821,10 @@ class VipCompetition(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+    @property
+    def is_archived(self) -> bool:
+        return self.archived_at is not None or self.lifecycle_status == "archived"
 
 
 class VipCompetitionMatchday(Base):

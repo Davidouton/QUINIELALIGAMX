@@ -68,8 +68,9 @@ npm run dev
 
 ## Quinielón Semanal
 
-En **Administración → VIP**, elige el modo **Quinielón Semanal**, una temporada,
-el importe de entrada y los porcentajes de premios. Guarda la VIP y registra sus
+En **Administración → VIP**, elige el modo **Quinielón Semanal**,
+el importe de entrada y los porcentajes de premios. Este modo es independiente
+de las temporadas. Guarda la VIP y registra sus
 10 partidos con local, visitante y fecha/hora de Ciudad de México. Selecciona un
 partido común para el desempate. Las inscripciones se habilitan cuando los diez
 partidos están configurados.
@@ -95,3 +96,18 @@ Antes de desplegar este modo, ejecuta `database/sql/040_vip_weekly_pool.sql` en
 Supabase; después publica backend y frontend. La migración crea únicamente las
 tablas de este modo, con RLS y acceso de escritura a través del backend. Railway
 tiene las migraciones automáticas de arranque desactivadas.
+
+### Archivo e independencia de temporadas
+
+El catálogo VIP permite buscar por nombre y consultar **Activas** o
+**Archivadas**. El administrador puede **Archivar** una VIP y después
+**Restaurarla**. Archivar la retira del catálogo activo y bloquea nuevas
+inscripciones y pronósticos; conserva resultados, participantes, pagos y el
+estado de liquidación. Los pagos pendientes pueden seguir administrándose.
+
+Para actualizar una instalación existente sin interrumpir el backend anterior:
+
+1. Aplicar `041_vip_archive_and_optional_season.sql`.
+2. Desplegar el backend y frontend actualizados, que aceptan temporadas nulas.
+3. Aplicar `042_detach_weekly_vip_seasons.sql` para separar los Quinielones
+   existentes de sus temporadas anteriores, conservando todos sus registros.

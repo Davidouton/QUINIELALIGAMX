@@ -36,6 +36,7 @@ def list_vips(
     include_member_dashboard: bool = Query(default=True),
     include_approved_members: bool = Query(default=True),
     include_team_winner_details: bool = Query(default=True),
+    include_archived: bool = Query(default=True),
     db: Session = Depends(get_db),
     current_profile: Profile = Depends(get_current_profile),
 ) -> list[VipCompetitionOut]:
@@ -47,6 +48,7 @@ def list_vips(
         include_member_dashboard=include_member_dashboard,
         include_approved_members=include_approved_members,
         include_team_winner_details=include_team_winner_details,
+        include_archived=include_archived,
     )
 
 

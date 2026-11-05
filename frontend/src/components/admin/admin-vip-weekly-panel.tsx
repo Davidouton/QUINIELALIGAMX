@@ -6,6 +6,7 @@ import { VipWeeklyRanking } from "@/components/vip/vip-weekly-ranking";
 import { backendFetch } from "@/lib/api/backend";
 import { formatMexicoCityDateTime, fromMexicoCityInputValue, toMexicoCityInputValue } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { isVipArchived } from "@/lib/vip-display";
 import { WEEKLY_MATCH_COUNT, weeklyGoalValue } from "@/lib/vip-weekly";
 import type { AdminVipCompetition, VipWeeklyMatch } from "@/types/api";
 
@@ -41,7 +42,7 @@ export function AdminVipWeeklyPanel({ vip, onRefresh }: { vip: AdminVipCompetiti
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const active = vip.lifecycle_status === "active";
+  const active = vip.lifecycle_status === "active" && !isVipArchived(vip);
   const editable = active && !saving;
   const tieIndex = drafts.findIndex((match) => match.isTiebreaker);
 

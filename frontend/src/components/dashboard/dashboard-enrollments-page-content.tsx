@@ -8,6 +8,7 @@ import { VIP_SUMMARY_PATH } from "@/lib/api/vip";
 import { useDevMode } from "@/components/layout/dev-mode-provider";
 import { isSeasonLive, resolveSeasonForContext, useDashboardSeasonParam } from "@/lib/dashboard-season";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { isVipArchived, vipContextLabel } from "@/lib/vip-display";
 import { VipStatusIcon } from "@/components/vip/vip-page-content";
 import type { AppBootstrap, EffectivePricing, Me, MembershipHistoryEntry, RegisteredUserOption, Season, SurvivorBoard, VipCompetition } from "@/types/api";
 
@@ -232,7 +233,7 @@ export function DashboardEnrollmentsPageContent() {
   const visibleVipCompetitions = useMemo(
     () =>
       [...state.vipCompetitions]
-        .filter((vip) => vip.season_visibility_status !== "archived")
+        .filter((vip) => !isVipArchived(vip))
         .filter((vip) => Boolean(vip.my_membership) || !vip.join_locked)
         .sort((left, right) => {
           const leftRank = left.my_membership ? 0 : left.join_locked ? 2 : 1;
@@ -404,10 +405,10 @@ export function DashboardEnrollmentsPageContent() {
             ? "No inscrito"
             : "Disponible",
         detail: status.description,
-        meta: `${vip.season_name} · Modalidad: ${isAvalMode ? "Aval" : "Pre-pago"} · Costo: ${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(vip.entry_fee_amount)}${vip.matchdays.length ? ` · ${vip.matchdays.length} jornadas` : ""}${vip.join_lock_at ? ` · Cierre ${formatMexicoDateTime(vip.join_lock_at) ?? "Por definir"}` : ""}`,
+        meta: `${vipContextLabel(vip)} · Modalidad: ${isAvalMode ? "Aval" : "Pre-pago"} · Costo: ${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(vip.entry_fee_amount)}${vip.matchdays.length ? ` · ${vip.matchdays.length} jornadas` : ""}${vip.join_lock_at ? ` · Cierre ${formatMexicoDateTime(vip.join_lock_at) ?? "Por definir"}` : ""}`,
         action: (
           <Link
-            href={buildHrefWithSeason("/dashboard/vip", vip.season_id)}
+            href={vip.competition_kind === "weekly_pool" ? "/dashboard/vip" : buildHrefWithSeason("/dashboard/vip", vip.season_id ?? undefined)}
             className="text-sm font-semibold text-ink transition hover:text-[#4f7df3]"
           >
             {vip.my_membership ? "Ir a VIP" : "Ver VIP"}
@@ -440,11 +441,11 @@ export function DashboardEnrollmentsPageContent() {
   );
   const inactiveMembershipRows = useMemo(() => {
     const vipRows = state.vipCompetitions.flatMap((vip) =>
-      vip.season_visibility_status !== "archived" && vip.my_membership?.status === "rejected"
+      !isVipArchived(vip) && vip.my_membership?.status === "rejected"
         ? [{
             id: `inactive-vip-${vip.id}`,
             name: vip.name,
-            meta: vip.season_name,
+            meta: vipContextLabel(vip),
             status: "Rechazada",
           }]
         : [],

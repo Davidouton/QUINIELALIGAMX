@@ -3551,6 +3551,16 @@ def archive_admin_vip(
     return admin_vip_row(db, vip_id, include_leaderboard=True)
 
 
+@router.post("/vip/{vip_id}/restore", response_model=AdminVipCompetitionOut)
+def restore_admin_vip(
+    vip_id: str,
+    db: Session = Depends(get_db),
+    _: Profile = Depends(require_roles(RoleCode.ADMIN, RoleCode.MASTER_ADMIN)),
+) -> AdminVipCompetitionOut:
+    vip_service.restore_admin_vip(db, vip_id)
+    return admin_vip_row(db, vip_id, include_leaderboard=True)
+
+
 @router.post("/vip", response_model=AdminVipCompetitionOut, status_code=201)
 def create_admin_vip(
     payload: AdminVipUpsertRequest,

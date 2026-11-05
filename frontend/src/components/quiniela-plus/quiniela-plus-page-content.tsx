@@ -569,7 +569,7 @@ export function QuinielaPlusPageContent() {
           vip.is_active &&
           vip.lifecycle_status === "active" &&
           vip.season_visibility_status === "live" &&
-          activeSeasonIds.has(vip.season_id),
+          Boolean(vip.season_id && activeSeasonIds.has(vip.season_id)) && !vip.is_archived,
       )
       .map((vip) => ({
         value: `vip:${vip.id}`,

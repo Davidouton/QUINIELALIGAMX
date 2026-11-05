@@ -63,6 +63,8 @@ class WeeklyPoolService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "VIP no encontrada")
         if vip.competition_kind != VipCompetitionKind.WEEKLY_POOL:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Esta VIP no es un Quinielón Semanal")
+        if writing and vip.is_archived:
+            raise HTTPException(status.HTTP_409_CONFLICT, "El Quinielón está archivado. Restáuralo para modificarlo")
         if writing and vip.lifecycle_status != "active":
             raise HTTPException(status.HTTP_409_CONFLICT, "El Quinielón Semanal ya está cerrado")
         return vip
@@ -215,7 +217,7 @@ class WeeklyPoolService:
             ))
         } if profile_id is not None and matches else {}
         vip = db.get(VipCompetition, vip_id)
-        disabled = vip is None or not vip.is_active or vip.lifecycle_status != "active"
+        disabled = vip is None or vip.is_archived or not vip.is_active or vip.lifecycle_status != "active"
         now = self._now()
         return [VipWeeklyMatchOut(
             id=match.id, sort_order=match.sort_order,
@@ -236,7 +238,7 @@ class WeeklyPoolService:
         lock_at = self._lock_at(first_match)
         vip = db.get(VipCompetition, vip_id)
         return {
-            "locked": vip is None or not vip.is_active or vip.lifecycle_status != "active" or self._now() >= lock_at,
+            "locked": vip is None or vip.is_archived or not vip.is_active or vip.lifecycle_status != "active" or self._now() >= lock_at,
             "lock_at": lock_at,
             "match_label": f"{first_match.home_team} vs {first_match.away_team}",
         }

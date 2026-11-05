@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { backendFetch, invalidateBackendCache } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { isVipArchived, vipContextLabel } from "@/lib/vip-display";
 import type { AdminUser, AdminVipCompetition, Season } from "@/types/api";
 
 type Props = { userId: string };
@@ -109,8 +110,8 @@ export function AdminUserDetailPanel({ userId }: Props) {
         type: "VIP" as const,
         name: vip.name,
         status: membership.status,
-        detail: `${vip.season_name} · ${membership.is_paid ? "Pagada" : "Pago pendiente"}`,
-        archived: seasonById.get(vip.season_id)?.visibility_status === "archived",
+        detail: `${vipContextLabel(vip)} · ${membership.is_paid ? "Pagada" : "Pago pendiente"}`,
+        archived: isVipArchived(vip) || (vip.competition_kind !== "weekly_pool" && Boolean(vip.season_id && seasonById.get(vip.season_id)?.visibility_status === "archived")),
         seasonId: vip.season_id,
         isActive: membership.status === "approved",
       })),

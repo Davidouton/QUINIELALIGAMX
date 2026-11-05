@@ -156,7 +156,7 @@ def get_membership_history(
     vip_rows = db.execute(
         select(VipMembership, VipCompetition, Season)
         .join(VipCompetition, VipCompetition.id == VipMembership.vip_competition_id)
-        .join(Season, Season.id == VipCompetition.season_id)
+        .outerjoin(Season, Season.id == VipCompetition.season_id)
         .where(VipMembership.profile_id == current_profile.id)
     ).all()
     for membership, vip, season in vip_rows:
@@ -165,11 +165,11 @@ def get_membership_history(
                 id=membership.id,
                 membership_type="vip",
                 name=vip.name,
-                season_name=season.name,
+                season_name=season.name if season is not None else "Sin temporada",
                 status=membership.status.value.capitalize(),
                 is_paid=membership.is_paid,
                 joined_at=membership.requested_at,
-                season_visibility_status=season.visibility_status.value,
+                season_visibility_status=season.visibility_status.value if season is not None else "live",
             )
         )
 
@@ -275,6 +275,7 @@ def get_dashboard_home(
             include_member_dashboard=False,
             include_approved_members=False,
             include_team_winner_details=False,
+            include_archived=False,
         ),
         leaderboard=leaderboard_service.list_overall(db, season_id=season_id) if season_id else [],
         matches=match_service.list_matches(db, matchday_id=matchday_id) if matchday_id else [],

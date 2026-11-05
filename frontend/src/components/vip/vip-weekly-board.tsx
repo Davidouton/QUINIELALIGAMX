@@ -6,6 +6,7 @@ import { VipWeeklyRanking } from "@/components/vip/vip-weekly-ranking";
 import { backendFetch } from "@/lib/api/backend";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { isVipArchived } from "@/lib/vip-display";
 import { WEEKLY_SELECTIONS, weeklyGoalValue, weeklyMatchIsLocked, weeklyMatchResult } from "@/lib/vip-weekly";
 import type { VipCompetition, VipWeeklyMatch, VipWeeklySelection } from "@/types/api";
 
@@ -21,7 +22,7 @@ export function VipWeeklyBoard({ vip, onRefresh }: { vip: VipCompetition; onRefr
   const [message, setMessage] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const serverSignature = JSON.stringify(matches.map((match) => [match.id, match.my_selection, match.my_total_goals]));
-  const canParticipate = vip.my_membership?.status === "approved" && vip.lifecycle_status === "active" && vip.season_visibility_status !== "archived" && Boolean(vip.weekly_ready);
+  const canParticipate = vip.my_membership?.status === "approved" && vip.lifecycle_status === "active" && !isVipArchived(vip) && Boolean(vip.weekly_ready);
 
   useEffect(() => {
     const refreshTime = () => setNow(Date.now());

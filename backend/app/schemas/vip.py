@@ -236,8 +236,8 @@ class VipMembershipOut(BaseModel):
 
 class VipCompetitionOut(BaseModel):
     id: str
-    season_id: str
-    season_name: str
+    season_id: str | None = None
+    season_name: str | None = None
     season_visibility_status: Literal["live", "testing", "closed", "archived"] = "live"
     competition_kind: Literal["matchday", "team_winner", "question_pool", "weekly_pool"] = "matchday"
     name: str
@@ -248,6 +248,8 @@ class VipCompetitionOut(BaseModel):
     third_place_pct: float = 0
     is_active: bool
     lifecycle_status: Literal["active", "closed_pending_payments", "settled", "archived"] = "active"
+    archived_at: datetime | None = None
+    is_archived: bool = False
     questions_lock_at: datetime | None = None
     matchdays: list[VipMatchdayOut] = []
     approved_members_count: int = 0
@@ -299,7 +301,7 @@ class AdminVipUpsertRequest(BaseModel):
             raise ValueError("La suma de comision y premios no puede rebasar 100%")
         if self.competition_kind == "matchday" and not self.matchday_ids:
             raise ValueError("Selecciona al menos una jornada para la VIP")
-        if self.competition_kind in {"team_winner", "question_pool", "weekly_pool"} and not self.season_id:
+        if self.competition_kind in {"team_winner", "question_pool"} and not self.season_id:
             raise ValueError("Selecciona una temporada para esta VIP")
         if self.competition_kind == "question_pool" and self.questions_lock_at is None:
             raise ValueError("Define fecha y hora de bloqueo para la VIP de preguntas")
@@ -399,8 +401,8 @@ class VipQuestionPoolBulkResponseRequest(BaseModel):
 
 class AdminVipCompetitionOut(BaseModel):
     id: str
-    season_id: str
-    season_name: str
+    season_id: str | None = None
+    season_name: str | None = None
     competition_kind: Literal["matchday", "team_winner", "question_pool", "weekly_pool"] = "matchday"
     name: str
     entry_fee_amount: float
@@ -410,6 +412,8 @@ class AdminVipCompetitionOut(BaseModel):
     third_place_pct: float = 0
     is_active: bool
     lifecycle_status: Literal["active", "closed_pending_payments", "settled", "archived"] = "active"
+    archived_at: datetime | None = None
+    is_archived: bool = False
     questions_lock_at: datetime | None = None
     created_by_profile_id: str | None = None
     created_by_display_name: str | None = None

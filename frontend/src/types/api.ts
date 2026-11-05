@@ -443,8 +443,8 @@ export interface VipMembership {
 
 export interface VipCompetition {
   id: string;
-  season_id: string;
-  season_name: string;
+  season_id: string | null;
+  season_name: string | null;
   season_visibility_status: SeasonVisibilityStatus;
   competition_kind: VipCompetitionKind;
   name: string;
@@ -455,6 +455,8 @@ export interface VipCompetition {
   third_place_pct: number;
   is_active: boolean;
   lifecycle_status: VipLifecycleStatus;
+  is_archived?: boolean;
+  archived_at?: string | null;
   questions_lock_at: string | null;
   matchdays: VipMatchday[];
   approved_members_count: number;
@@ -488,8 +490,8 @@ export interface VipJoinResponse {
 
 export interface AdminVipCompetition {
   id: string;
-  season_id: string;
-  season_name: string;
+  season_id: string | null;
+  season_name: string | null;
   competition_kind: VipCompetitionKind;
   name: string;
   entry_fee_amount: number;
@@ -499,6 +501,8 @@ export interface AdminVipCompetition {
   third_place_pct: number;
   is_active: boolean;
   lifecycle_status: VipLifecycleStatus;
+  is_archived?: boolean;
+  archived_at?: string | null;
   questions_lock_at: string | null;
   created_by_profile_id: string | null;
   created_by_display_name: string | null;

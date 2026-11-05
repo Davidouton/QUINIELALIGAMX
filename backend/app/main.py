@@ -1056,7 +1056,7 @@ def run_startup_migrations() -> None:
                     """
                     CREATE TABLE IF NOT EXISTS vip_competitions (
                       id UUID PRIMARY KEY,
-                      season_id UUID NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+                      season_id UUID REFERENCES seasons(id) ON DELETE CASCADE,
                       competition_kind VARCHAR(32) NOT NULL DEFAULT 'matchday',
                       name VARCHAR(160) NOT NULL,
                       entry_fee_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
@@ -1065,6 +1065,7 @@ def run_startup_migrations() -> None:
                       second_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
                       third_place_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
                       is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                      archived_at TIMESTAMP WITH TIME ZONE,
                       created_by_profile_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
                       created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                       updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
@@ -1091,6 +1092,7 @@ def run_startup_migrations() -> None:
                 "lifecycle_status": "ALTER TABLE vip_competitions ADD COLUMN lifecycle_status VARCHAR(32) NOT NULL DEFAULT 'active'",
                 "created_by_profile_id": "ALTER TABLE vip_competitions ADD COLUMN created_by_profile_id UUID",
                 "questions_lock_at": "ALTER TABLE vip_competitions ADD COLUMN questions_lock_at TIMESTAMP WITH TIME ZONE",
+                "archived_at": "ALTER TABLE vip_competitions ADD COLUMN archived_at TIMESTAMP WITH TIME ZONE",
             }
             for column_name, statement in missing_vip_competition_columns.items():
                 if column_name not in vip_competition_column_names:
@@ -1119,6 +1121,29 @@ def run_startup_migrations() -> None:
                 "ON vip_competitions(competition_kind)"
             )
         )
+
+        if connection.dialect.name == "postgresql":
+            connection.execute(text("ALTER TABLE vip_competitions ALTER COLUMN season_id DROP NOT NULL"))
+            connection.execute(text("""
+                DO $$ BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conrelid = 'vip_competitions'::regclass
+                          AND conname = 'ck_vip_season_required'
+                    ) THEN
+                        ALTER TABLE vip_competitions ADD CONSTRAINT ck_vip_season_required
+                        CHECK (competition_kind = 'weekly_pool' OR season_id IS NOT NULL);
+                    END IF;
+                END $$;
+            """))
+        connection.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_vip_competitions_archived_at
+            ON vip_competitions(archived_at)
+        """))
+        connection.execute(text("""
+            UPDATE vip_competitions SET season_id = NULL
+            WHERE competition_kind = 'weekly_pool' AND season_id IS NOT NULL
+        """))
 
         if "vip_competition_matchdays" not in table_names:
             connection.execute(

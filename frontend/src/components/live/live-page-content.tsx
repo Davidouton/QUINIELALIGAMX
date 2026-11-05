@@ -72,7 +72,7 @@ export function LivePageContent() {
       vips
         .filter(
           (vip) =>
-            vip.is_active &&
+            vip.is_active && !vip.is_archived &&
             vip.competition_kind === "matchday" &&
             vip.my_membership?.status === "approved" &&
             liveEnabledSeasons.some((season) => season.id === vip.season_id),
@@ -159,7 +159,7 @@ export function LivePageContent() {
                 setSeasonId(nextSeason.id, nextSeason.competition_id ?? "");
               } else if (nextValue.startsWith("vip:")) {
                 const nextVip = liveVipOptions.find((vip) => vip.id === nextValue.slice(4)) ?? null;
-                if (!nextVip) {
+                if (!nextVip?.season_id) {
                   return;
                 }
                 setSeasonId(nextVip.season_id, "");

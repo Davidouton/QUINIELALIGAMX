@@ -815,7 +815,7 @@ class LeaderboardService:
 
     def _get_live_vip_leaderboard(self, db: Session, vip_id: str) -> LiveLeaderboardResponse:
         vip = db.get(VipCompetition, vip_id)
-        if vip is None or vip.competition_kind != VipCompetitionKind.MATCHDAY:
+        if vip is None or vip.is_archived or vip.competition_kind != VipCompetitionKind.MATCHDAY:
             return LiveLeaderboardResponse()
 
         season = db.get(Season, vip.season_id)

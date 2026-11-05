@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { backendFetch } from "@/lib/api/backend";
 import { formatMexicoCityDateTime } from "@/lib/datetime/mexico-city";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { vipContextLabel } from "@/lib/vip-display";
 import type {
   AdminSettings,
   AdminVipCompetition,
@@ -277,7 +278,7 @@ export function AdminSettingsPanel() {
     .sort((left, right) => left.number - right.number);
   const pricingTargetOptions =
     pricingForm.scope_type === "vip"
-      ? adminVips.map((vip) => ({ id: vip.id, label: `${vip.name} · ${vip.season_name}` }))
+      ? adminVips.map((vip) => ({ id: vip.id, label: `${vip.name} · ${vipContextLabel(vip)}` }))
       : seasons
           .filter((season) => pricingForm.scope_type !== "survivor" || season.survivor_enabled)
           .map((season) => ({ id: season.id, label: season.name }));

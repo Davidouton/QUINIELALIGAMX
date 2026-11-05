@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { VipWeeklyBoard } from "@/components/vip/vip-weekly-board";
+import { VipCatalog, type VipCatalogFilter } from "@/components/vip/vip-catalog";
 import { backendFetch } from "@/lib/api/backend";
 import { buildVipDetailPath } from "@/lib/api/vip";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
+import { isVipArchived, vipContextLabel, vipModeName } from "@/lib/vip-display";
 import type {
   CheckoutSessionResponse,
   EffectivePricing,
@@ -18,7 +20,8 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("es-MX", {
     style: "currency",
     currency: "MXN",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 
@@ -63,7 +66,7 @@ function statusCopy(status: VipMembershipStatus | null) {
 }
 
 function registrationStatusCopy(vip: VipCompetition) {
-  if (vip.season_visibility_status === "archived" || vip.lifecycle_status === "archived") {
+  if (isVipArchived(vip)) {
     return {
       label: "Archivada",
       sublabel: "Consulta histórica",
@@ -225,6 +228,9 @@ export function VipPageContent() {
   const [vips, setVips] = useState<VipCompetition[]>([]);
   const [pricingByVipId, setPricingByVipId] = useState<Record<string, EffectivePricing>>({});
   const [selectedVipId, setSelectedVipId] = useState("");
+  const [catalogFilter, setCatalogFilter] = useState<VipCatalogFilter>("active");
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const detailRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [requestingVipId, setRequestingVipId] = useState<string | null>(null);
   const [payingVipId, setPayingVipId] = useState<string | null>(null);
@@ -235,18 +241,19 @@ export function VipPageContent() {
   const [message, setMessage] = useState<string | null>(null);
 
   const activeVips = useMemo(
-    () => vips.filter((vip) => vip.season_visibility_status !== "archived" && vip.lifecycle_status !== "archived"),
+    () => vips.filter((vip) => !isVipArchived(vip)),
     [vips],
   );
   const archivedVips = useMemo(
-    () => vips.filter((vip) => vip.season_visibility_status === "archived" || vip.lifecycle_status === "archived"),
+    () => vips.filter(isVipArchived),
     [vips],
   );
+  const catalogVips = catalogFilter === "archived" ? archivedVips : activeVips;
   const selectedVip = useMemo(
-    () => vips.find((vip) => vip.id === selectedVipId) ?? activeVips[0] ?? archivedVips[0] ?? null,
-    [activeVips, archivedVips, selectedVipId, vips],
+    () => catalogVips.find((vip) => vip.id === selectedVipId) ?? catalogVips[0] ?? null,
+    [catalogVips, selectedVipId],
   );
-  const selectedVipIsArchived = selectedVip?.season_visibility_status === "archived" || selectedVip?.lifecycle_status === "archived";
+  const selectedVipIsArchived = selectedVip ? isVipArchived(selectedVip) : false;
   const selectedVipPricing = selectedVip ? pricingByVipId[selectedVip.id] ?? null : null;
   const questionPoolQuestions = useMemo(
     () =>
@@ -344,7 +351,7 @@ export function VipPageContent() {
     const accessToken = await getBrowserAccessToken();
     const rows = await backendFetch<VipCompetition[]>("/vip", accessToken);
     const pricingEntries = await Promise.all(
-      rows.filter((vip) => vip.season_visibility_status !== "archived" && vip.lifecycle_status !== "archived").map(async (vip) => {
+      rows.filter((vip) => !isVipArchived(vip)).map(async (vip) => {
         try {
           const pricing = await backendFetch<EffectivePricing>(
             `/payments/pricing?scope_type=vip&scope_id=${vip.id}`,
@@ -363,7 +370,7 @@ export function VipPageContent() {
     setSelectedVipId((current) =>
       rows.some((vip) => vip.id === current)
         ? current
-        : (rows.find((vip) => vip.season_visibility_status !== "archived" && vip.lifecycle_status !== "archived")?.id ?? rows[0]?.id ?? ""),
+        : (rows.find((vip) => !isVipArchived(vip))?.id ?? rows[0]?.id ?? ""),
     );
   }
 
@@ -503,131 +510,56 @@ export function VipPageContent() {
       {error ? <p className="text-sm text-coral">{error}</p> : null}
 
       <section className="space-y-4">
-        <div className="overflow-hidden border-y border-white/[0.08]">
-          <div>
-            <div className="hidden grid-cols-[minmax(0,1.55fr)_minmax(0,0.72fr)_minmax(0,0.58fr)_minmax(0,0.62fr)_minmax(0,0.72fr)_minmax(0,0.82fr)] gap-3 border-b border-white/[0.08] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-steel md:grid">
-              <span>VIP</span>
-              <span className="text-center">Mi acceso</span>
-              <span className="text-center">Entrada</span>
-              <span className="text-center">Bolsa</span>
-              <span className="text-center">Participantes</span>
-              <span className="text-center">Estado</span>
-            </div>
-          {activeVips.map((vip) => {
-            const membershipStatus = statusCopy(vip.my_membership?.status ?? null);
-            const registrationStatus = registrationStatusCopy(vip);
-            const participantsCount = getVipParticipantsCount(vip);
-            return (
-              <button
-                key={vip.id}
-                type="button"
-                onClick={() => setSelectedVipId(vip.id)}
-                className={`grid w-full gap-2 border-b border-white/[0.05] px-4 py-3 text-left transition last:border-b-0 md:min-h-[76px] md:grid-cols-[minmax(0,1.55fr)_minmax(0,0.72fr)_minmax(0,0.58fr)_minmax(0,0.62fr)_minmax(0,0.72fr)_minmax(0,0.82fr)] md:items-center md:gap-3 ${
-                  selectedVip?.id === vip.id
-                    ? "text-[#4f7df3]"
-                    : "text-ink hover:text-[#4f7df3]"
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="flex items-start justify-between gap-3 md:block">
-                    <p className="truncate text-[13px] font-semibold leading-5">{vip.name}</p>
-                    <div className="flex shrink-0 flex-wrap justify-end gap-2 md:hidden">
-                      <span className={`flex items-center gap-1.5 text-[11px] font-semibold ${membershipStatus.tone}`}>
-                        <VipStatusIcon type={membershipIconType(vip.my_membership?.status ?? null)} />
-                        {membershipStatus.label}
-                      </span>
-                      <span
-                        className={`flex items-center ${registrationStatus.tone}`}
-                        title={`${registrationStatus.label} · ${registrationStatus.sublabel}`}
-                        aria-label={`${registrationStatus.label}. ${registrationStatus.sublabel}`}
-                      >
-                        <VipStatusIcon type={vip.join_locked ? "closed" : "open"} />
-                      </span>
-                    </div>
-                  </div>
-                  <p className="mt-0.5 truncate text-xs leading-5 text-steel">{vip.season_name}</p>
-                  <p className="mt-1 text-[11px] leading-5 text-steel md:hidden">
-                    {getVipModeLabel(vip)} · {participantsCount} participantes · {formatCurrency(vip.entry_fee_amount)}
-                  </p>
-                </div>
-                <div className="hidden min-w-0 text-center md:block">
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Mi acceso</p>
-                  <p className={`flex min-w-0 items-center justify-center gap-2 text-[13px] font-semibold leading-5 ${membershipStatus.tone}`}>
-                    <VipStatusIcon type={membershipIconType(vip.my_membership?.status ?? null)} />
-                    <span className="truncate">{membershipStatus.label}</span>
-                  </p>
-                </div>
-                <div className="hidden min-w-0 text-center md:block">
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Entrada</p>
-                  <p className="text-[13px] font-semibold leading-5 text-ink">{formatCurrency(vip.entry_fee_amount)}</p>
-                </div>
-                <div className="hidden min-w-0 text-center md:block">
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Bolsa</p>
-                  <p className="text-[13px] font-semibold leading-5 text-ink">{formatCurrency(vip.gross_pool_amount)}</p>
-                </div>
-                <div className="hidden min-w-0 text-center md:block">
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Participantes</p>
-                  <p className="text-[13px] font-semibold leading-5 text-ink">{participantsCount}</p>
-                </div>
-                <div className="hidden min-w-0 text-center md:block">
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-steel md:hidden">Estado</p>
-                  <span
-                    className="inline-flex items-center justify-center"
-                    title={`${registrationStatus.label} · ${registrationStatus.sublabel}`}
-                    aria-label={`${registrationStatus.label}. ${registrationStatus.sublabel}`}
-                  >
-                    <VipStatusIcon type={vip.join_locked ? "closed" : "open"} />
-                  </span>
-                </div>
-              </button>
-            );
+        <VipCatalog
+          items={vips.map((vip) => {
+            const state = registrationStatusCopy(vip);
+            const membership = statusCopy(vip.my_membership?.status ?? null);
+            return {
+              id: vip.id,
+              name: vip.name,
+              mode: vipModeName(vip.competition_kind),
+              context: vipContextLabel(vip),
+              archived: isVipArchived(vip),
+              status: state.label,
+              statusTone: state.tone,
+              fee: vip.entry_fee_amount,
+              pool: vip.gross_pool_amount,
+              participants: getVipParticipantsCount(vip),
+              access: membership.label,
+              accessTone: membership.tone,
+              detail: getVipModeLabel(vip),
+            };
           })}
+          filter={catalogFilter}
+          onFilterChange={(filter) => {
+            setCatalogFilter(filter);
+            setSelectedVipId((filter === "archived" ? archivedVips : activeVips)[0]?.id ?? "");
+          }}
+          search={catalogSearch}
+          onSearchChange={setCatalogSearch}
+          selectedId={selectedVip?.id ?? ""}
+          onSelect={(id) => {
+            setSelectedVipId(id);
+            window.requestAnimationFrame(() => {
+              detailRef.current?.focus({ preventScroll: true });
+              detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
+          }}
+        />
 
-          {activeVips.length === 0 ? (
-            <div className="border-y border-white/[0.06] px-4 py-5 text-sm text-steel">
-              Aun no hay VIPs activas disponibles.
-            </div>
-          ) : null}
-          </div>
-        </div>
-
-        {archivedVips.length > 0 ? (
-          <details className="border-y border-white/[0.08] py-4">
-            <summary className="cursor-pointer text-sm font-semibold uppercase tracking-[0.22em] text-steel">
-              Archivados ({archivedVips.length})
-            </summary>
-            <div className="mt-4 divide-y divide-white/[0.06] border-t border-white/[0.06]">
-              {archivedVips.map((vip) => (
-                <button
-                  key={vip.id}
-                  type="button"
-                  onClick={() => setSelectedVipId(vip.id)}
-                  className={`grid w-full gap-1 px-4 py-4 text-left transition sm:grid-cols-[minmax(0,1fr)_minmax(0,0.7fr)_auto] sm:items-center sm:gap-4 ${
-                    selectedVip?.id === vip.id ? "text-[#4f7df3]" : "text-ink hover:text-[#4f7df3]"
-                  }`}
-                >
-                  <span className="font-semibold">{vip.name}</span>
-                  <span className="text-sm text-steel">{vip.season_name}</span>
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-steel">Archivada</span>
-                </button>
-              ))}
-            </div>
-          </details>
-        ) : null}
-
-        <div className="space-y-5 border-y border-white/[0.08] py-5">
+        <div ref={detailRef} tabIndex={-1} className="scroll-mt-6 space-y-5 border-y border-white/[0.08] py-5">
           {selectedVip ? (
             <>
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm uppercase tracking-[0.22em] text-steel">{selectedVip.season_name}</p>
+                    <p className="text-sm uppercase tracking-[0.22em] text-steel">{vipContextLabel(selectedVip)}</p>
                     <span
                       className={`flex items-center ${registrationStatusCopy(selectedVip).tone}`}
                       title={`${registrationStatusCopy(selectedVip).label} · ${registrationStatusCopy(selectedVip).sublabel}`}
                       aria-label={`${registrationStatusCopy(selectedVip).label}. ${registrationStatusCopy(selectedVip).sublabel}`}
                     >
-                      <VipStatusIcon type={selectedVipIsArchived || selectedVip.join_locked ? "closed" : "open"} />
+                      {registrationStatusCopy(selectedVip).label}
                     </span>
                     <span className={`flex items-center gap-1.5 text-xs font-semibold ${statusCopy(selectedVip.my_membership?.status ?? null).tone}`}>
                       <VipStatusIcon type={membershipIconType(selectedVip.my_membership?.status ?? null)} />
@@ -779,7 +711,7 @@ export function VipPageContent() {
                     <button
                       type="button"
                       onClick={() => void handleSaveQuestionPoolResponses(selectedVip.id)}
-                      disabled={savingQuestionResponses || pendingQuestionResponseCount === 0}
+                      disabled={savingQuestionResponses || selectedVipIsArchived || pendingQuestionResponseCount === 0}
                       className={`text-sm font-semibold transition hover:text-[#4f7df3] active:text-[#4f7df3] disabled:text-steel/45 ${savingQuestionResponses ? "text-[#4f7df3]" : "text-ink"}`}
                     >
                       {savingQuestionResponses ? "Guardando..." : "Guardar respuestas"}
@@ -874,6 +806,7 @@ export function VipPageContent() {
                             const solved = option.is_correct;
                             const canAnswer =
                               selectedVip.my_membership?.status === "approved" &&
+                              !selectedVipIsArchived &&
                               !selectedVip.join_locked &&
                               selectedQuestion.is_active;
                             return (

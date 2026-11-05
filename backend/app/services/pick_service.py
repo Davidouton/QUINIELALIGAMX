@@ -477,6 +477,8 @@ class PickService:
                 .where(
                     VipCompetition.id == vip_id,
                     VipCompetition.is_active.is_(True),
+                    VipCompetition.archived_at.is_(None),
+                    VipCompetition.lifecycle_status != "archived",
                     VipCompetitionMatchday.matchday_id == matchday_id,
                 )
                 .limit(1)
@@ -700,6 +702,8 @@ class PickService:
                 VipMembership.profile_id == profile_id,
                 VipMembership.status == VipMembershipStatus.APPROVED,
                 VipCompetition.is_active.is_(True),
+                VipCompetition.archived_at.is_(None),
+                VipCompetition.lifecycle_status != "archived",
                 VipCompetitionMatchday.matchday_id == matchday_id,
             )
             .limit(1)
@@ -808,6 +812,8 @@ class PickService:
                     VipMembership.profile_id == profile_id,
                     VipMembership.status == VipMembershipStatus.APPROVED,
                     VipCompetition.is_active.is_(True),
+                    VipCompetition.archived_at.is_(None),
+                    VipCompetition.lifecycle_status != "archived",
                     VipCompetitionMatchday.matchday_id == matchday_id,
                 )
                 .order_by(VipCompetition.name.asc())

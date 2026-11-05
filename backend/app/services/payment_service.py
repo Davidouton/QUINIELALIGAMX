@@ -402,6 +402,8 @@ class PaymentService:
             return
 
         assert isinstance(scope, VipCompetition)
+        if scope.is_archived:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP está archivada")
         if not scope.is_active:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Esta VIP no esta activa")
         from app.services.vip_service import VipService
@@ -648,8 +650,10 @@ class PaymentService:
         )
         if (
             vip is not None
-            and vip.competition_kind == VipCompetitionKind.WEEKLY_POOL
-            and vip.lifecycle_status != "active"
+            and (vip.is_archived or (
+                vip.competition_kind == VipCompetitionKind.WEEKLY_POOL
+                and vip.lifecycle_status != "active"
+            ))
         ):
             if membership is not None and membership.status == VipMembershipStatus.APPROVED:
                 membership.is_paid = True
@@ -657,7 +661,9 @@ class PaymentService:
             else:
                 # Do not change the finalized participant set or prize pool.
                 # Retain the confirmed payment for administrative reconciliation.
-                payment_metadata["entitlement_review_required"] = "weekly_pool_closed"
+                payment_metadata["entitlement_review_required"] = (
+                    "vip_archived" if vip.is_archived else "weekly_pool_closed"
+                )
                 payment.metadata_json = json.dumps(payment_metadata, default=str)
             return
         if membership is None:
