@@ -599,8 +599,19 @@ export function VipPageContent() {
                 <div className="flex flex-wrap items-center gap-3 border-y border-white/[0.06] py-3">
                   {selectedVip.competition_kind === "weekly_pool" && !selectedVip.weekly_ready ? (
                     <span className="text-sm font-semibold text-gold">En configuración</span>
+                  ) : selectedVip.competition_kind === "weekly_pool" && selectedVip.my_membership?.status === "pending" ? (
+                    <span className="text-sm font-semibold text-gold">Pendiente de aprobación del admin</span>
                   ) : selectedVip.join_locked && (!selectedVip.my_membership || selectedVip.competition_kind === "weekly_pool") ? (
                     <span className="text-sm font-semibold text-coral">Solicitud cerrada</span>
+                  ) : selectedVip.competition_kind === "weekly_pool" ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleRequest(selectedVip.id)}
+                      disabled={requestingVipId === selectedVip.id}
+                      className="text-sm font-semibold text-ink transition hover:text-[#4f7df3] active:text-[#4f7df3] disabled:opacity-50"
+                    >
+                      {requestingVipId === selectedVip.id ? "Enviando..." : "Solicitar aprobación"}
+                    </button>
                   ) : selectedVipPricing ? (
                     <button
                       type="button"
@@ -622,8 +633,22 @@ export function VipPageContent() {
                       {requestingVipId === selectedVip.id ? "Enviando..." : "Solicitar acceso"}
                     </button>
                   )}
+                  {selectedVip.competition_kind === "weekly_pool" && selectedVip.weekly_ready && !selectedVip.join_locked && selectedVipPricing && !selectedVip.my_membership?.is_paid && selectedVip.my_membership?.status !== "rejected" ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleVipCheckout(selectedVip.id)}
+                      disabled={payingVipId === selectedVip.id}
+                      className="text-sm font-semibold text-steel transition hover:text-ink disabled:opacity-50"
+                    >
+                      {payingVipId === selectedVip.id
+                        ? "Abriendo checkout..."
+                        : `Pagar entrada · ${formatCurrency(selectedVipPricing.amount)}`}
+                    </button>
+                  ) : null}
                   <p className="text-sm text-steel">
-                    {getVipJoinLockCopy(selectedVip)
+                    {selectedVip.competition_kind === "weekly_pool"
+                      ? `${selectedVip.my_membership?.is_paid ? "Pago registrado. " : ""}El administrador debe aprobar tu ingreso para guardar pronósticos.${selectedVipPricing ? " El pago no sustituye su aprobación." : ""}`
+                      : getVipJoinLockCopy(selectedVip)
                       ? getVipJoinLockCopy(selectedVip)
                       : selectedVipPricing
                       ? "El precio vigente se cobra en Stripe y tu acceso se activa cuando el backend confirme el pago."

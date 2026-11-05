@@ -666,6 +666,21 @@ class PaymentService:
                 )
                 payment.metadata_json = json.dumps(payment_metadata, default=str)
             return
+        if vip is not None and vip.competition_kind == VipCompetitionKind.WEEKLY_POOL:
+            # Payment confirms the entry fee, never admission to a Quinielón.
+            # Preserve explicit admin approvals/rejections even if checkout
+            # started before that decision or the payer has an aval.
+            if membership is None:
+                membership = VipMembership(
+                    vip_competition_id=payment.scope_id,
+                    profile_id=payment.profile_id,
+                    status=VipMembershipStatus.PENDING,
+                    requested_at=now,
+                    admin_note="Pago confirmado vía Stripe · pendiente de aprobación admin",
+                )
+            membership.is_paid = True
+            db.add(membership)
+            return
         if membership is None:
             membership = VipMembership(
                 vip_competition_id=payment.scope_id,

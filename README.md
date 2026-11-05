@@ -75,6 +75,13 @@ de las temporadas. Guarda la VIP y registra sus
 partido común para el desempate. Las inscripciones se habilitan cuando los diez
 partidos están configurados.
 
+El ingreso al Quinielón requiere aprobación explícita del administrador, desde
+**Administración → VIP → Solicitudes**. El pago o el aval no aprueban el acceso:
+se registra el pago y la solicitud permanece pendiente hasta que el admin decida.
+Las membresías VIP se administran únicamente mediante el backend.
+Aplica `database/sql/043_vip_membership_server_access.sql` para restringir su
+acceso directo en Supabase; conserva las solicitudes y pagos existentes.
+
 Los participantes aprobados registran local, empate o visitante en **VIP**. Cada
 acierto vale un punto. Cada pronóstico cierra exactamente diez minutos antes de
 su partido; los demás siguen abiertos hasta su propio cierre. El total de goles

@@ -23,6 +23,14 @@ const dates = loadTypeScript("../src/lib/datetime/mexico-city.ts");
 const weekly = loadTypeScript("../src/lib/vip-weekly.ts");
 const display = loadTypeScript("../src/lib/vip-display.ts");
 const { VipCatalog } = loadTypeScript("../src/components/vip/vip-catalog.tsx", { "@/lib/vip-display": display });
+const { VipWeeklyBoard } = loadTypeScript("../src/components/vip/vip-weekly-board.tsx", {
+  "@/components/vip/vip-weekly-ranking": { VipWeeklyRanking: () => null },
+  "@/lib/api/backend": {},
+  "@/lib/datetime/mexico-city": dates,
+  "@/lib/supabase/session": {},
+  "@/lib/vip-display": display,
+  "@/lib/vip-weekly": weekly,
+});
 
 test("CDMX inputs convert to UTC without using the browser timezone", () => {
   const previous = process.env.TZ;
@@ -83,6 +91,35 @@ test("VIP archive state is independent of financial settlement and weekly season
   assert.equal(display.isVipArchived({ ...vip, season_visibility_status: "archived" }), false);
   assert.equal(display.isVipArchived({ ...vip, competition_kind: "matchday", season_visibility_status: "archived" }), true);
   assert.equal(display.vipContextLabel(vip), "Independiente · 10 juegos");
+});
+
+test("paying for the weekly pool keeps picks disabled until admin approval", () => {
+  const vip = {
+    id: "weekly", competition_kind: "weekly_pool", lifecycle_status: "active", weekly_ready: true,
+    weekly_matches: [{
+      id: "match", home_team: "Atlético de Madrid", away_team: "Barcelona", is_tiebreaker: true,
+      kickoff_at: new Date(Date.now() + 7_200_000).toISOString(),
+      lock_at: new Date(Date.now() + 6_600_000).toISOString(), is_locked: false,
+      my_selection: null, my_total_goals: null, home_score: null, away_score: null,
+    }], leaderboard: [],
+  };
+  for (const status of [null, "pending", "rejected"]) {
+    const html = renderToStaticMarkup(React.createElement(VipWeeklyBoard, {
+      vip: { ...vip, my_membership: status ? { status, is_paid: true } : null }, onRefresh: async () => {},
+    }));
+    const buttons = html.match(/<button\b[^>]*>/g) ?? [];
+    assert.equal(buttons.length, 3);
+    assert.ok(buttons.every((tag) => tag.includes('disabled=""')));
+    assert.match(html, /<input\b[^>]*disabled=""/);
+    assert.ok(html.includes("Necesitas la aprobación del administrador"));
+    assert.ok(!html.includes("Guardar pronósticos"));
+  }
+  const approved = renderToStaticMarkup(React.createElement(VipWeeklyBoard, {
+    vip: { ...vip, my_membership: { status: "approved", is_paid: false } }, onRefresh: async () => {},
+  }));
+  const enabledButtons = (approved.match(/<button\b[^>]*>/g) ?? []).filter((tag) => !tag.includes('disabled=""'));
+  assert.equal(enabledButtons.length, 3);
+  assert.ok(approved.includes("Guardar pronósticos"));
 });
 
 test("VIP catalog keeps names and selection compact; archived entries stay in their tab", () => {

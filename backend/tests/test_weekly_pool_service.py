@@ -444,10 +444,11 @@ def test_late_checkout_keeps_payment_without_changing_closed_weekly_participants
 
 
 @pytest.mark.parametrize("kind,lifecycle", [
-    (VipCompetitionKind.WEEKLY_POOL, "active"),
     (VipCompetitionKind.MATCHDAY, "closed_pending_payments"),
+    (VipCompetitionKind.TEAM_WINNER, "active"),
+    (VipCompetitionKind.QUESTION_POOL, "active"),
 ])
-def test_active_weekly_and_existing_other_modes_keep_paid_aval_approval(weekly, kind, lifecycle):
+def test_other_vip_modes_keep_paid_aval_approval(weekly, kind, lifecycle):
     db, _, vip = weekly
     vip.competition_kind = kind
     vip.lifecycle_status = lifecycle

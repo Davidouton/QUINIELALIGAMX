@@ -123,7 +123,7 @@ export function VipWeeklyBoard({ vip, onRefresh }: { vip: VipCompetition; onRefr
         {vip.my_membership?.status === "approved" ? <p className="text-sm font-semibold text-ink">{savedCount}/{matches.length || 10} guardados</p> : null}
       </div>
       {!vip.weekly_ready ? <p className="rounded-[8px] border border-white/[0.08] px-4 py-3 text-sm text-steel">El administrador está preparando los 10 juegos. El registro aún no está abierto.</p> : null}
-      {vip.weekly_ready && vip.my_membership?.status !== "approved" ? <p className="text-sm text-steel">Necesitas acceso aprobado a esta VIP para guardar tus pronósticos.</p> : null}
+      {vip.weekly_ready && vip.my_membership?.status !== "approved" ? <p className="text-sm text-steel">Necesitas la aprobación del administrador para guardar tus pronósticos.</p> : null}
       {error ? <p role="alert" className="text-sm text-coral">{error}</p> : null}
       {message ? <p role="status" className="text-sm text-mint">{message}</p> : null}
       {expiredChanges.length > 0 ? <p role="status" className="text-sm text-gold">{expiredChanges.length === 1 ? "Un juego cerró" : `${expiredChanges.length} juegos cerraron`} con cambios sin guardar. Se conserva lo que habías guardado antes del cierre.</p> : null}

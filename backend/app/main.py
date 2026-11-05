@@ -1200,6 +1200,25 @@ def run_startup_migrations() -> None:
                     text("ALTER TABLE vip_memberships ADD COLUMN is_paid BOOLEAN NOT NULL DEFAULT FALSE")
                 )
 
+        if connection.dialect.name == "postgresql":
+            # Requests and approvals must use backend role checks; a direct
+            # client write must never turn a pending membership into approved.
+            connection.execute(text("ALTER TABLE public.vip_memberships ENABLE ROW LEVEL SECURITY"))
+            connection.execute(text("REVOKE ALL ON TABLE public.vip_memberships FROM PUBLIC"))
+            connection.execute(text("""
+                DO $$ BEGIN
+                    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+                        REVOKE ALL ON TABLE public.vip_memberships FROM anon;
+                    END IF;
+                    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+                        REVOKE ALL ON TABLE public.vip_memberships FROM authenticated;
+                    END IF;
+                    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+                        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.vip_memberships TO service_role;
+                    END IF;
+                END $$;
+            """))
+
         if "vip_standings" not in table_names:
             connection.execute(
                 text(
