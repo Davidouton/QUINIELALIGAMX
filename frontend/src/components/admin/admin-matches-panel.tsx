@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "re
 import { Trash2 } from "lucide-react";
 
 import { backendFetch } from "@/lib/api/backend";
+import { importedMatchdayBounds, importedMatchTimes, parseWorkbookDateTime } from "@/lib/datetime/calendar-import";
 import {
   formatMexicoCityDateTime,
   shiftMexicoCityInputValue,
@@ -202,6 +203,7 @@ export function AdminMatchesPanel() {
         ["Temporada", season.name],
         ["Zona horaria", "America/Mexico_City"],
         ["Formato de fecha", "AAAA-MM-DD HH:MM, por ejemplo 2026-08-04 19:00"],
+        ["Fechas con zona", "ISO con Z u offset conserva su instante. Fechas sin zona y celdas de fecha de Excel usan Ciudad de México."],
         ["Equipos", "Selecciona los slugs desde las listas desplegables. No cambies los slugs."],
         ["Cierre de picks", "Puede dejarse vacío; el sistema usará el offset configurado en la jornada."],
         ["external_id", "Identificador único recomendado para poder corregir y volver a importar sin duplicar."],
@@ -313,15 +315,6 @@ export function AdminMatchesPanel() {
     return String(value).trim();
   }
 
-  function workbookDateTime(value: unknown) {
-    if (value instanceof Date) {
-      const pad = (part: number) => String(part).padStart(2, "0");
-      return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
-    }
-    const normalized = workbookCellText(value).replace(" ", "T");
-    return normalized.length === 16 ? normalized : normalized.slice(0, 16);
-  }
-
   async function handleImportBulkTemplate(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -364,17 +357,27 @@ export function AdminMatchesPanel() {
       const rows: Array<Record<string, string>> = [];
       calendar.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return;
-        const value = (header: string) => workbookCellText(row.getCell(headers.get(header) ?? 0).value);
-        const kickoffAt = workbookDateTime(row.getCell(headers.get("kickoff_at") ?? 0).value);
-        if (!value("matchday_number") && !kickoffAt && !value("home_slug") && !value("away_slug")) return;
+        const cell = (header: string) => {
+          const column = headers.get(header);
+          return column ? row.getCell(column).value : undefined;
+        };
+        const value = (header: string) => workbookCellText(cell(header));
+        if (!value("matchday_number") && !value("kickoff_at") && !value("home_slug") && !value("away_slug")) return;
+        const dateTime = (header: string) => {
+          try {
+            return parseWorkbookDateTime(cell(header));
+          } catch (error) {
+            throw new Error(`Fila ${rowNumber}, ${header}: ${error instanceof Error ? error.message : "Fecha inválida."}`);
+          }
+        };
         rows.push({
           row_number: String(rowNumber),
           external_id: value("external_id"),
           matchday_number: value("matchday_number"),
           matchday_name: value("matchday_name"),
           stage_type: value("stage_type") || "regular",
-          kickoff_at: kickoffAt,
-          picks_lock_at: workbookDateTime(row.getCell(headers.get("picks_lock_at") ?? 0).value),
+          kickoff_at: dateTime("kickoff_at"),
+          picks_lock_at: dateTime("picks_lock_at"),
           home_slug: value("home_slug"),
           away_slug: value("away_slug"),
           venue: value("venue"),
@@ -386,11 +389,21 @@ export function AdminMatchesPanel() {
 
       const validStages = new Set(Object.keys(stageLabels));
       const teamBySlug = new Map(getTemplateTeams(season.id).map((team) => [team.slug, team]));
+      const seasonMatchdays = matchdays.filter((matchday) => matchday.season_id === season.id);
+      const matchdayMap = new Map(seasonMatchdays.map((matchday) => [matchday.number, matchday]));
       const validationErrors: string[] = [];
       for (const row of rows) {
         const number = Number(row.matchday_number);
         if (!Number.isInteger(number) || number < 1) validationErrors.push(`Fila ${row.row_number}: jornada inválida`);
-        if (!row.kickoff_at) validationErrors.push(`Fila ${row.row_number}: falta fecha de inicio`);
+        try {
+          Object.assign(row, importedMatchTimes(
+            row.kickoff_at,
+            row.picks_lock_at,
+            matchdayMap.get(number)?.default_lock_offset_minutes ?? 10,
+          ));
+        } catch (error) {
+          validationErrors.push(`Fila ${row.row_number}: ${error instanceof Error ? error.message : "Fecha inválida"}`);
+        }
         if (!validStages.has(row.stage_type)) validationErrors.push(`Fila ${row.row_number}: fase inválida`);
         if (!teamBySlug.has(row.home_slug)) validationErrors.push(`Fila ${row.row_number}: local no existe`);
         if (!teamBySlug.has(row.away_slug)) validationErrors.push(`Fila ${row.row_number}: visitante no existe`);
@@ -402,14 +415,15 @@ export function AdminMatchesPanel() {
       setImportProgress({ percent: 18, phase: "Preparando jornadas y partidos", processed: 0, total: rows.length });
 
       const accessToken = await getBrowserAccessToken();
-      const seasonMatchdays = matchdays.filter((matchday) => matchday.season_id === season.id);
-      const matchdayMap = new Map(seasonMatchdays.map((matchday) => [matchday.number, matchday]));
       const rowsByMatchday = new Map<number, typeof rows>();
       for (const row of rows) {
         const number = Number(row.matchday_number);
         rowsByMatchday.set(number, [...(rowsByMatchday.get(number) ?? []), row]);
       }
       const missingMatchdays = [...rowsByMatchday].filter(([number]) => !matchdayMap.has(number));
+      const matchdayBounds = new Map(missingMatchdays.map(([number, matchdayRows]) => (
+        [number, importedMatchdayBounds(matchdayRows.map((row) => row.kickoff_at))]
+      )));
       const totalOperations = missingMatchdays.length + rows.length + 1;
       let completedOperations = 0;
       const updateOperationProgress = (phase: string) => {
@@ -423,9 +437,6 @@ export function AdminMatchesPanel() {
       };
       for (const [matchdayIndex, [number, matchdayRows]] of missingMatchdays.entries()) {
         updateOperationProgress(`Creando jornada ${matchdayIndex + 1} de ${missingMatchdays.length}`);
-        const kickoffs = matchdayRows.map((row) => new Date(row.kickoff_at));
-        const startsAt = new Date(Math.min(...kickoffs.map((date) => date.getTime())));
-        const endsAt = new Date(Math.max(...kickoffs.map((date) => date.getTime())) + 3 * 60 * 60 * 1000);
         const created = await backendFetch<Matchday>("/admin/matchdays", accessToken, {
           method: "POST",
           body: JSON.stringify({
@@ -434,8 +445,7 @@ export function AdminMatchesPanel() {
             name: matchdayRows[0]?.matchday_name || `Jornada ${number}`,
             default_lock_offset_minutes: 10,
             status: "draft",
-            starts_at: startsAt.toISOString(),
-            ends_at: endsAt.toISOString(),
+            ...matchdayBounds.get(number),
           }),
         });
         matchdayMap.set(number, created);
@@ -455,9 +465,6 @@ export function AdminMatchesPanel() {
         updateOperationProgress(`Guardando partido ${rowIndex + 1} de ${rows.length}`);
         const matchday = matchdayMap.get(Number(row.matchday_number));
         if (!matchday) throw new Error(`No se pudo resolver la jornada de la fila ${row.row_number}.`);
-        const kickoffAt = row.kickoff_at;
-        const picksLockAt =
-          row.picks_lock_at || shiftMexicoCityInputValue(kickoffAt, -matchday.default_lock_offset_minutes);
         const existing = row.external_id ? existingByExternalId.get(row.external_id) : undefined;
         await backendFetch(existing ? `/admin/matches/${existing.id}` : "/admin/matches", accessToken, {
           method: existing ? "PUT" : "POST",
@@ -470,8 +477,8 @@ export function AdminMatchesPanel() {
             bracket_slot: row.bracket_slot || null,
             home_placeholder: null,
             away_placeholder: null,
-            kickoff_at: kickoffAt,
-            picks_lock_at: picksLockAt || kickoffAt,
+            kickoff_at: row.kickoff_at,
+            picks_lock_at: row.picks_lock_at,
             venue: row.venue || null,
             status: "scheduled",
             external_id: row.external_id || null,
