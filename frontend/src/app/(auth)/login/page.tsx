@@ -73,7 +73,6 @@ export default function LoginPage() {
           <div className="mt-5 flex items-center justify-center gap-3">
             {[
               { name: "Liga MX", shortName: "LMX", src: env.ligaMxLogoUrl },
-              { name: "Leagues Cup", shortName: "LC", src: env.leaguesCupLogoUrl },
               { name: "NFL", shortName: "NFL", src: env.nflLogoUrl },
             ].map((competition) => (
               <div
