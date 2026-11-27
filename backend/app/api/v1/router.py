@@ -7,6 +7,7 @@ from app.api.v1.routes.bootstrap import router as bootstrap_router
 from app.api.v1.routes.competitions import router as competitions_router
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.leaderboard import router as leaderboard_router
+from app.api.v1.routes.ap26_virtual_credits import router as ap26_virtual_credits_router
 from app.api.v1.routes.matchdays import router as matchdays_router
 from app.api.v1.routes.matches import router as matches_router
 from app.api.v1.routes.me import router as me_router
@@ -39,6 +40,7 @@ api_router.include_router(picks_router, tags=["picks"])
 api_router.include_router(results_router, tags=["results"])
 api_router.include_router(rules_router, tags=["rules"])
 api_router.include_router(leaderboard_router, tags=["leaderboard"])
+api_router.include_router(ap26_virtual_credits_router, tags=["virtual-credits"])
 api_router.include_router(vip_router, tags=["vip"])
 api_router.include_router(world_cup_router, tags=["world-cup"])
 api_router.include_router(admin_router, prefix="/admin", tags=["admin"])
