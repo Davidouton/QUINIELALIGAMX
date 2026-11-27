@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { AdminPendingPayments } from "@/components/admin/admin-pending-payments";
 import { backendFetch } from "@/lib/api/backend";
 import { getBrowserAccessToken } from "@/lib/supabase/session";
 import type { AdminUser, AdminVipCompetition, PricingRule, Season, SettlementGeneratedScope, SettlementScopeSummary } from "@/types/api";
@@ -486,6 +487,7 @@ export function AdminPaymentsPanel() {
         <p className="max-w-3xl text-sm text-steel">
           Selecciona quién paga a los ganadores, configura el monto máximo por depósito y revisa el estado de cada ficha.
         </p>
+        <a href="#pagos-pendientes" className="text-sm font-semibold text-[#4f7df3] hover:underline">Ver pagos pendientes y descargar Excel ↓</a>
       </section>
 
       <section className="grid gap-4 rounded-[20px] border border-white/[0.08] bg-white/[0.03] p-5 lg:grid-cols-[0.9fr_1.1fr]">
@@ -666,6 +668,12 @@ export function AdminPaymentsPanel() {
           </article>
         </div>
       </section>
+
+      <AdminPendingPayments
+        key={`${settlementScopeType}:${selectedScopeId}`}
+        summary={summary?.scope_type === settlementScopeType && summary.scope_id === selectedScopeId ? summary : null}
+        loading={loadingCatalog || loadingSummary}
+      />
 
       <section className="space-y-3">
         <div className="flex items-end justify-between gap-4">
