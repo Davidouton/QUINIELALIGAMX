@@ -384,34 +384,62 @@ export function PaymentsPageContent() {
         [
           { id: "pendientes", title: "Pendientes", description: "Por pagar, por validar o rechazados.", ...groups.pending },
           { id: "completados", title: "Completados", description: "Pagos que ya se confirmaron.", ...groups.completed },
-        ].map(({ id, title, description, outgoing, incoming }) => (
-          <section key={id} aria-labelledby={`pagos-${id}`} className="space-y-4 rounded-[20px] border border-white/[0.1] p-4 sm:p-5">
-            <div>
-              <h2 id={`pagos-${id}`} className="text-lg font-semibold text-ink">
-                {title} <span className="ml-1 text-sm font-normal text-steel">({outgoing.length + incoming.length})</span>
-              </h2>
-              <p className="mt-1 text-sm text-steel">{description}</p>
-            </div>
-            {outgoing.length + incoming.length === 0 ? (
-              <p className="text-sm text-steel">No hay pagos {id}.</p>
-            ) : (
-              <>
-                {outgoing.length > 0 ? (
-                  <div>
-                    <p className="border-b border-white/[0.08] pb-2 text-sm font-semibold text-ink">Tú pagas ({outgoing.length})</p>
-                    <div className="divide-y divide-white/[0.08]">{outgoing.map(renderOutgoing)}</div>
+        ].map(({ id, title, description, outgoing, incoming }) => {
+          const heading = (
+            <h2 id={`pagos-${id}`} className="text-lg font-semibold text-ink">
+              {title} <span className="ml-1 text-sm font-normal text-steel">({outgoing.length + incoming.length})</span>
+            </h2>
+          );
+          const content = (
+            <>
+              {outgoing.length + incoming.length === 0 ? (
+                <p className="text-sm text-steel">No hay pagos {id}.</p>
+              ) : (
+                <>
+                  {outgoing.length > 0 ? (
+                    <div>
+                      <p className="border-b border-white/[0.08] pb-2 text-sm font-semibold text-ink">Tú pagas ({outgoing.length})</p>
+                      <div className="divide-y divide-white/[0.08]">{outgoing.map(renderOutgoing)}</div>
+                    </div>
+                  ) : null}
+                  {incoming.length > 0 ? (
+                    <div>
+                      <p className="border-b border-white/[0.08] pb-2 text-sm font-semibold text-ink">Tú recibes ({incoming.length})</p>
+                      <div className="divide-y divide-white/[0.08]">{incoming.map(renderIncoming)}</div>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </>
+          );
+
+          return (
+            <section key={id} aria-labelledby={`pagos-${id}`} className="rounded-[20px] border border-white/[0.1]">
+              {id === "completados" ? (
+                <details className="group/completed">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-[20px] p-4 transition hover:bg-white/[0.02] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-steel sm:p-5 [&::-webkit-details-marker]:hidden">
+                    {heading}
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 shrink-0 text-steel transition-transform group-open/completed:rotate-180">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </summary>
+                  <div className="space-y-4 px-4 pb-4 sm:px-5 sm:pb-5">
+                    <p className="text-sm text-steel">{description}</p>
+                    {content}
                   </div>
-                ) : null}
-                {incoming.length > 0 ? (
+                </details>
+              ) : (
+                <div className="space-y-4 p-4 sm:p-5">
                   <div>
-                    <p className="border-b border-white/[0.08] pb-2 text-sm font-semibold text-ink">Tú recibes ({incoming.length})</p>
-                    <div className="divide-y divide-white/[0.08]">{incoming.map(renderIncoming)}</div>
+                    {heading}
+                    <p className="mt-1 text-sm text-steel">{description}</p>
                   </div>
-                ) : null}
-              </>
-            )}
-          </section>
-        ))
+                  {content}
+                </div>
+              )}
+            </section>
+          );
+        })
       ) : null}
     </div>
   );

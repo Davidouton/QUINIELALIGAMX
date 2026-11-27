@@ -31,6 +31,13 @@ test('real page component separates rows and keeps actions only in pending group
  assert.match(pending,/Entrada por validar/);assert.match(pending,/Salida rechazada/);assert.match(pending,/Ficha repetida/);
  assert.match(pending,/Enviar ficha/);assert.match(pending,/>Confirmar</);
  assert.doesNotMatch(pending,/confirmada reciente|Entrada confirmada/);
+ const detailsStart=completed.match(/<details\b[^>]*>/)?.[0];
+ const summary=completed.match(/<summary\b[^>]*>[\s\S]*?<\/summary>/)?.[0];
+ assert.ok(detailsStart&&summary);
+ assert.doesNotMatch(detailsStart,/\bopen(?:=|\s|>)/);
+ assert.match(summary,/Completados[\s\S]*?\(3\)/);
+ assert.doesNotMatch(summary,/Salida confirmada|Entrada confirmada/);
+ assert.doesNotMatch(pending,/<details[^>]*group\/completed/);
  assert.match(completed,/Salida confirmada reciente/);assert.match(completed,/Entrada confirmada/);
  assert.doesNotMatch(completed,/Enviar ficha|>Confirmar<|>Rechazar<|Entrada por validar/);
  assert.match(html,/Te falta enviar ficha<\/dt><dd[^>]*>2<\/dd>/);assert.match(html,/Te falta validar<\/dt><dd[^>]*>1<\/dd>/);
